@@ -34,6 +34,8 @@ and an admin UI. See `CLAUDE.md` for conventions and constraints.
 - `MCPServer`
   - `id` (ULID), `namespace` (publisher slug), `name`, `slug`
   - `description`, `homepage_url`, `repository_url`, `license`
+  - `visibility` (`private` | `public`) — new entries default to `private`;
+    an admin must explicitly set `public` after validation/security review
   - `status` (`draft` | `published` | `deprecated`)
   - `created_at`, `updated_at`
 - `MCPServerVersion`
@@ -49,6 +51,7 @@ and an admin UI. See `CLAUDE.md` for conventions and constraints.
 
 - `Agent`
   - `id`, `namespace`, `name`, `slug`, `description`
+  - `visibility` (`private` | `public`) — same gating as MCP servers
   - `status`, `created_at`, `updated_at`
 - `AgentVersion`
   - `id`, `agent_id`, `version`, `released_at`
@@ -69,7 +72,7 @@ and an admin UI. See `CLAUDE.md` for conventions and constraints.
 All endpoints under `/api/v1` unless noted. Responses use `application/json`;
 errors use `application/problem+json`.
 
-### 3.1 Public (read-only)
+### 3.1 Public (read-only, `visibility=public` entries only)
 
 - `GET /api/v1/mcp/servers` — list, filter by `namespace`, `q`, `tag`.
 - `GET /api/v1/mcp/servers/{ns}/{slug}` — server detail + latest version.
@@ -78,6 +81,9 @@ errors use `application/problem+json`.
 - `GET /api/v1/agents` — list.
 - `GET /api/v1/agents/{ns}/{slug}` — agent detail.
 - `GET /api/v1/agents/{ns}/{slug}/versions` / `/{version}`.
+
+Private entries are hidden from public GETs; admins see all entries via
+the admin endpoints.
 - `GET /agents/{ns}/{slug}/.well-known/agent-card.json` — A2A Agent Card.
 - `GET /.well-known/oauth-protected-resource` — MCP-mandated resource metadata.
 
@@ -99,6 +105,8 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
   `POST /{ns}/{slug}/versions`, `POST /{ns}/{slug}/versions/{v}:publish`,
   `POST /{ns}/{slug}:deprecate`.
 - Agents: symmetric endpoints.
+- Visibility: `POST /{ns}/{slug}:set-visibility` (toggle `private`/`public`).
+- API keys: `POST/DELETE /api/v1/api-keys` — manage per-publisher API keys.
 - Users & roles: `GET/PATCH /api/v1/users`.
 
 ### 3.4 System
@@ -119,6 +127,11 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - Admin UI uses Auth.js (NextAuth) with the same IdP; session stores the
   access token used for API calls.
 - Public GETs are unauthenticated by default; feature flag to require auth.
+- **API-key auth**: alongside OIDC, support static API keys for
+  machine-to-machine admin operations (CI/CD publish pipelines). API keys are
+  stored hashed in Postgres, scoped per publisher, and checked via
+  `Authorization: Bearer apikey_...` header. The middleware tries JWT first,
+  falls back to API-key lookup.
 
 ## 5. Phased delivery
 
@@ -148,18 +161,21 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - Tests: card conforms to A2A schema for every fixture.
 
 ### Phase 4 — Web app (Next.js)
-- Next.js App Router + shadcn/ui + Tailwind.
+- Next.js App Router + shadcn/ui blocks (minimal) + Tailwind.
+  Build from shadcn/ui primitives: sidebar layout, data tables, cards, forms.
+  No third-party admin template — keep it lean and fully controlled.
 - Public routes: `/`, `/mcp`, `/mcp/[ns]/[slug]`, `/agents`,
-  `/agents/[ns]/[slug]`.
-- Admin routes: `/admin/*` guarded by Auth.js (OIDC).
-- Forms for publisher / MCP server / agent CRUD.
-- Generated TS API client from OpenAPI.
+  `/agents/[ns]/[slug]`. Clean card-grid layout with search/filter bar.
+- Admin routes: `/admin/*` guarded by Auth.js (OIDC). Sidebar nav, data
+  tables with inline actions, forms for publisher / MCP server / agent CRUD,
+  visibility toggle, API-key management.
+- Generated TS API client from OpenAPI (openapi-typescript + openapi-fetch).
 
 ### Phase 5 — Hardening
 - Rate limiting, CORS, audit log table (`who did what when`).
 - Pagination cursors, full-text search (Postgres `tsvector`).
 - E2E tests (Playwright) for admin flows.
-- Deployment manifests (compose prod profile; optional k8s later).
+- Deployment manifests: docker-compose prod profile + Helm chart for k8s.
 
 ### Phase 6 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
@@ -167,16 +183,16 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - Webhooks on publish events.
 - Federation with the public MCP registry.
 
-## 6. Open questions (to confirm before Phase 1)
+## 6. Resolved decisions
 
-1. Namespacing: single global namespace, or one publisher per entry (chosen
-   default: publisher-scoped, `{namespace}/{slug}`)?
-2. Who is allowed to read private entries — is "private" a status we need
-   from day one, or can everything public be public?
-3. IdP choice for dev: Keycloak (assumed) vs Dex vs Ory Hydra.
-4. Deployment target (compose only? k8s manifests needed?).
-5. Do we need API-key auth alongside OIDC for machine-to-machine admin
-   publishes, or is a service-account OIDC flow sufficient?
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | Namespacing | Publisher-scoped: `{namespace}/{slug}` |
+| 2 | Private entries | Yes — `visibility` field (`private`/`public`). New entries default to `private`; admin/security team must approve before setting `public`. Public GETs only return `public` entries. |
+| 3 | IdP for dev | Keycloak via docker-compose |
+| 4 | Deployment target | Docker Compose **and** Helm chart for k8s |
+| 5 | API-key auth | Yes — support both OIDC (interactive) and hashed API keys (machine-to-machine). Middleware tries JWT first, falls back to API-key. |
+| 6 | UI template | shadcn/ui blocks (minimal) — build from primitives, no third-party admin template |
 
 ## 7. Definition of done (per phase)
 

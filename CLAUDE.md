@@ -35,14 +35,16 @@ A centralized registry for AI ecosystem artifacts:
 
 - **Backend**: Go, `chi` router, PostgreSQL, `sqlc` or `pgx` for DB access,
   `golang-migrate` for schema migrations.
-- **Auth**: OAuth2 / OIDC (external IdP, e.g. Keycloak in dev via
-  docker-compose). JWT access tokens validated via JWKS. MCP-compatible.
+- **Auth**: OAuth2 / OIDC (external IdP, Keycloak in dev via docker-compose).
+  JWT access tokens validated via JWKS. MCP-compatible. Also supports hashed
+  API keys for machine-to-machine admin operations.
 - **Frontend**: Next.js (App Router) + TypeScript + shadcn/ui + Tailwind.
   One Next.js app with a public section and an `/admin` section guarded by
   OIDC (NextAuth / Auth.js).
 - **OpenAPI**: hand-written OpenAPI 3.1 spec is the source of truth; server
   types and TS client are generated from it.
 - **Dev infra**: docker-compose for Postgres + Keycloak + backend + web.
+- **Deployment**: docker-compose (dev + prod profiles) + Helm chart for k8s.
 
 ## Repository layout (target)
 
@@ -60,6 +62,7 @@ A centralized registry for AI ecosystem artifacts:
   /migrations/        # SQL migrations
 /web/                 # Next.js app (user + admin UI)
 /deploy/              # docker-compose, env examples
+/deploy/helm/         # Helm chart for k8s
 /docs/                # architecture notes, ADRs
 PLAN.md               # phased implementation plan
 CLAUDE.md             # this file
