@@ -284,3 +284,121 @@ func TestListAgentVersions(t *testing.T) {
 		t.Errorf("versions count = %d, want 3", len(versions))
 	}
 }
+
+func TestGetAgentVersion_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "getaver-ns", "GetAgentVer NS")
+
+	agent, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: "getaver-agent", Name: "GetAgentVer Agent",
+	})
+
+	_, err := sharedDB.GetAgentVersion(ctx, agent.ID, "9.9.9")
+	if err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound for missing version, got %v", err)
+	}
+}
+
+func TestSetAgentVisibility(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "avis-ns", "AgentVis NS")
+
+	agent, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: "avis-agent", Name: "AgentVis Agent",
+	})
+
+	// Set to public.
+	if err := sharedDB.SetAgentVisibility(ctx, agent.ID, domain.VisibilityPublic); err != nil {
+		t.Fatalf("SetAgentVisibility(public): %v", err)
+	}
+	got, err := sharedDB.GetAgent(ctx, "avis-ns", "avis-agent", false)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if got.Visibility != domain.VisibilityPublic {
+		t.Errorf("visibility = %v, want public", got.Visibility)
+	}
+
+	// Set back to private.
+	if err := sharedDB.SetAgentVisibility(ctx, agent.ID, domain.VisibilityPrivate); err != nil {
+		t.Fatalf("SetAgentVisibility(private): %v", err)
+	}
+	got2, _ := sharedDB.GetAgent(ctx, "avis-ns", "avis-agent", false)
+	if got2.Visibility != domain.VisibilityPrivate {
+		t.Errorf("visibility = %v, want private", got2.Visibility)
+	}
+
+	// Non-existent ID must return ErrNotFound.
+	if err := sharedDB.SetAgentVisibility(ctx, "nonexistent-id", domain.VisibilityPublic); err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound for bad ID, got %v", err)
+	}
+}
+
+func TestListAgents_SearchQuery(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "asearch-ns", "AgentSearch NS")
+
+	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: "alpha-agent", Name: "AlphaSearch Agent",
+		Description: "Unique alpha description for agent search test",
+	})
+	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: "beta-agent", Name: "BetaOther Agent",
+		Description: "Completely different beta description",
+	})
+
+	rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
+		Query: "alpha", Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListAgents(query=alpha): %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("expected 1 result for query 'alpha', got %d", len(rows))
+	}
+	if len(rows) > 0 && rows[0].Slug != "alpha-agent" {
+		t.Errorf("expected slug alpha-agent, got %s", rows[0].Slug)
+	}
+}
+
+func TestListAgents_NamespaceFilter(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pub1 := insertPublisher(t, "ansfilt-ns1", "AgentNS Filter 1")
+	pub2 := insertPublisher(t, "ansfilt-ns2", "AgentNS Filter 2")
+
+	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pub1, Slug: "agent-in-ns1", Name: "Agent In NS1",
+	})
+	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pub2, Slug: "agent-in-ns2", Name: "Agent In NS2",
+	})
+
+	rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
+		Namespace: "ansfilt-ns1", Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListAgents(namespace=ansfilt-ns1): %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("expected 1 result for namespace ansfilt-ns1, got %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.Namespace != "ansfilt-ns1" {
+			t.Errorf("expected namespace ansfilt-ns1, got %s", r.Namespace)
+		}
+	}
+}
+
+func TestDeprecateAgent_BadID(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	// A completely non-existent ID must also return ErrNotFound.
+	if err := sharedDB.DeprecateAgent(ctx, "nonexistent-id"); err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound for bad ID, got %v", err)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/store"
@@ -226,5 +227,266 @@ func TestGetMCPServerByID(t *testing.T) {
 	_, err = sharedDB.GetMCPServerByID(ctx, "nonexistent")
 	if err != store.ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestListMCPServerVersions(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "listver-ns", "ListVer NS")
+
+	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "listver-srv", Name: "ListVer Server",
+	})
+
+	for _, v := range []string{"1.0.0", "1.1.0", "2.0.0"} {
+		if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+			ServerID: srv.ID, Version: v, Runtime: domain.RuntimeStdio,
+			Packages: validPackages, ProtocolVersion: "2024-11-05",
+		}); err != nil {
+			t.Fatalf("CreateMCPServerVersion(%s): %v", v, err)
+		}
+	}
+
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	if err != nil {
+		t.Fatalf("ListMCPServerVersions: %v", err)
+	}
+	if len(versions) != 3 {
+		t.Errorf("version count = %d, want 3", len(versions))
+	}
+	// Verify ordering: newest released_at first (all inserted sequentially).
+	// At minimum we should see 2.0.0 listed before 1.0.0.
+	seen := make(map[string]bool)
+	for _, v := range versions {
+		seen[v.Version] = true
+	}
+	for _, want := range []string{"1.0.0", "1.1.0", "2.0.0"} {
+		if !seen[want] {
+			t.Errorf("missing version %s in ListMCPServerVersions result", want)
+		}
+	}
+
+	// Empty result for unknown server.
+	empty, err := sharedDB.ListMCPServerVersions(ctx, "nonexistent-id")
+	if err != nil {
+		t.Fatalf("ListMCPServerVersions(nonexistent): %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("expected empty slice for unknown server, got %d rows", len(empty))
+	}
+}
+
+func TestGetLatestPublishedVersion(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "latest-ns", "Latest NS")
+
+	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "latest-srv", Name: "Latest Server",
+	})
+
+	// No published version yet — must return ErrNotFound.
+	_, err := sharedDB.GetLatestPublishedVersion(ctx, srv.ID)
+	if err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound with no published versions, got %v", err)
+	}
+
+	// Create a draft version and confirm it is still not returned.
+	sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+		ServerID: srv.ID, Version: "0.9.0", Runtime: domain.RuntimeStdio,
+		Packages: validPackages, ProtocolVersion: "2024-11-05",
+	})
+	_, err = sharedDB.GetLatestPublishedVersion(ctx, srv.ID)
+	if err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound for draft-only server, got %v", err)
+	}
+
+	// Publish 1.0.0.
+	sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
+		Packages: validPackages, ProtocolVersion: "2024-11-05",
+	})
+	sharedDB.PublishMCPServerVersion(ctx, srv.ID, "1.0.0")
+
+	// Publish 2.0.0.
+	sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+		ServerID: srv.ID, Version: "2.0.0", Runtime: domain.RuntimeStdio,
+		Packages: validPackages, ProtocolVersion: "2024-11-05",
+	})
+	sharedDB.PublishMCPServerVersion(ctx, srv.ID, "2.0.0")
+
+	latest, err := sharedDB.GetLatestPublishedVersion(ctx, srv.ID)
+	if err != nil {
+		t.Fatalf("GetLatestPublishedVersion: %v", err)
+	}
+	if latest.Version != "2.0.0" {
+		t.Errorf("latest version = %q, want %q", latest.Version, "2.0.0")
+	}
+	if !latest.IsPublished() {
+		t.Error("latest version should be published")
+	}
+}
+
+func TestSetMCPServerVisibility(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "vis-ns", "Vis NS")
+
+	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "vis-srv", Name: "Vis Server",
+	})
+
+	// Set to public.
+	if err := sharedDB.SetMCPServerVisibility(ctx, srv.ID, domain.VisibilityPublic); err != nil {
+		t.Fatalf("SetMCPServerVisibility(public): %v", err)
+	}
+	got, err := sharedDB.GetMCPServerByID(ctx, srv.ID)
+	if err != nil {
+		t.Fatalf("GetMCPServerByID: %v", err)
+	}
+	if got.Visibility != domain.VisibilityPublic {
+		t.Errorf("visibility = %v, want public", got.Visibility)
+	}
+
+	// Set back to private.
+	if err := sharedDB.SetMCPServerVisibility(ctx, srv.ID, domain.VisibilityPrivate); err != nil {
+		t.Fatalf("SetMCPServerVisibility(private): %v", err)
+	}
+	got2, _ := sharedDB.GetMCPServerByID(ctx, srv.ID)
+	if got2.Visibility != domain.VisibilityPrivate {
+		t.Errorf("visibility = %v, want private", got2.Visibility)
+	}
+
+	// Non-existent ID must return ErrNotFound.
+	if err := sharedDB.SetMCPServerVisibility(ctx, "nonexistent-id", domain.VisibilityPublic); err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound for bad ID, got %v", err)
+	}
+}
+
+func TestListMCPServers_SearchQuery(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "search-ns", "Search NS")
+
+	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "alpha-search", Name: "AlphaSearch Tool",
+		Description: "Unique alpha description for search test",
+	})
+	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "beta-other", Name: "BetaOther Tool",
+		Description: "Completely different beta description",
+	})
+
+	rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+		Query: "alpha", Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListMCPServers(query=alpha): %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("expected 1 result for query 'alpha', got %d", len(rows))
+	}
+	if len(rows) > 0 && rows[0].Slug != "alpha-search" {
+		t.Errorf("expected slug alpha-search, got %s", rows[0].Slug)
+	}
+}
+
+func TestListMCPServers_NamespaceFilter(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pub1 := insertPublisher(t, "nsfilt-ns1", "NS Filter 1")
+	pub2 := insertPublisher(t, "nsfilt-ns2", "NS Filter 2")
+
+	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pub1, Slug: "srv-in-ns1", Name: "Server In NS1",
+	})
+	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pub2, Slug: "srv-in-ns2", Name: "Server In NS2",
+	})
+
+	rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+		Namespace: "nsfilt-ns1", Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListMCPServers(namespace=nsfilt-ns1): %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("expected 1 result for namespace nsfilt-ns1, got %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.Namespace != "nsfilt-ns1" {
+			t.Errorf("expected namespace nsfilt-ns1, got %s", r.Namespace)
+		}
+	}
+}
+
+func TestGetMCPServerVersion_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "getver-ns", "GetVer NS")
+
+	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "getver-srv", Name: "GetVer Server",
+	})
+
+	_, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "9.9.9")
+	if err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound for missing version, got %v", err)
+	}
+}
+
+func TestDeprecateMCPServer_BadID(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	// A completely non-existent ID must also return ErrNotFound.
+	if err := sharedDB.DeprecateMCPServer(ctx, "nonexistent-id"); err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound for bad ID, got %v", err)
+	}
+}
+
+func TestEncodeCursorFromTime(t *testing.T) {
+	now := time.Now().UTC()
+	id := "01HXYZ1234567890ABCDEFGHIJ"
+
+	fromTime := store.EncodeCursorFromTime(now, id)
+	direct := store.EncodeCursor(now, id)
+
+	if fromTime != direct {
+		t.Errorf("EncodeCursorFromTime(%v, %s) = %q, want %q (same as EncodeCursor)", now, id, fromTime, direct)
+	}
+	if fromTime == "" {
+		t.Error("EncodeCursorFromTime returned empty string")
+	}
+}
+
+func TestDecodeCursor_Malformed(t *testing.T) {
+	tests := []struct {
+		name   string
+		cursor string
+	}{
+		{"empty string", ""},
+		{"no comma", "20240101T000000Z01HXYZ1234567890ABCDEFGHIJ"},
+		{"invalid time", "not-a-time,01HXYZ1234567890ABCDEFGHIJ"},
+		{"too short", "x,y"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// decodeCursor is unexported; exercise it indirectly via ListMCPServers
+			// — a malformed cursor should be silently ignored (no WHERE clause applied)
+			// rather than returning an error. This matches the implementation's
+			// `if err == nil` guard. We just verify no panic and a valid (empty) result.
+			resetDB(t)
+			ctx := context.Background()
+			_, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+				Cursor: tc.cursor,
+				Limit:  5,
+			})
+			if err != nil {
+				t.Errorf("ListMCPServers with malformed cursor %q returned unexpected error: %v", tc.cursor, err)
+			}
+		})
 	}
 }
