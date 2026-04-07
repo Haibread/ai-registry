@@ -31,19 +31,15 @@ services:
   # ── Keycloak ────────────────────────────────────────────────────────────────
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
-    command: start-dev
+    command: start-dev --import-realm
     restart: unless-stopped
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak-realm-dev.json:/opt/keycloak/data/import/ai-registry-realm.json:ro
     ports:
       - "8080:8080"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
 
   # ── Backend ──────────────────────────────────────────────────────────────────
   backend:
@@ -58,6 +54,18 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── Seed (one-shot, runs after backend is up) ───────────────────────────────
+  seed:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    entrypoint: ["/seed"]
+    restart: "no"
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_started
+
   # ── Web (Next.js dev server with hot reload) ─────────────────────────────────
   web:
     image: node:22-alpine
@@ -65,13 +73,24 @@ services:
     working_dir: /app
     # Install deps on first start (node_modules volume persists across restarts),
     # then launch the dev server.
-    command: sh -c "npm install && npm run dev"
+    # Wait for Keycloak's realm endpoint before starting Next.js.
+    # wget is available in Alpine and uses the Docker-internal hostname.
+    command: >
+      sh -c "
+        echo 'Waiting for Keycloak...' &&
+        until wget -q -O /dev/null http://keycloak:8080/realms/ai-registry 2>/dev/null; do
+          echo 'Keycloak not ready, retrying in 5s...' && sleep 5
+        done &&
+        echo 'Keycloak ready.' &&
+        npm install &&
+        npm run dev
+      "
     environment:
       API_URL: http://backend:8081
       AUTH_SECRET: "${AUTH_SECRET:-dev-secret-replace-in-production}"
       AUTH_KEYCLOAK_ID: "${AUTH_KEYCLOAK_ID:-ai-registry-web}"
       AUTH_KEYCLOAK_SECRET: "${AUTH_KEYCLOAK_SECRET:-}"
-      AUTH_KEYCLOAK_ISSUER: "${AUTH_KEYCLOAK_ISSUER:-http://keycloak:8080/realms/registry}"
+      AUTH_KEYCLOAK_ISSUER: "${AUTH_KEYCLOAK_ISSUER:-http://keycloak:8080/realms/ai-registry}"
       NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
       NODE_ENV: development
       # Polling is required for inotify to work through Docker volume mounts
@@ -88,6 +107,8 @@ services:
       - "3000:3000"
     depends_on:
       backend:
+        condition: service_started
+      keycloak:
         condition: service_started
 
 volumes:

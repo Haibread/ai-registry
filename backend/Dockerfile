@@ -13,12 +13,14 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
+    go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server && \
+    go build -trimpath -ldflags="-s -w" -o /out/seed   ./cmd/seed
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=builder /out/server /server
+COPY --from=builder /out/seed   /seed
 
 EXPOSE 8081
 

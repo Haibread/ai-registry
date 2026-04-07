@@ -1,0 +1,182 @@
+# Default values for ai-registry.
+# This is a YAML-formatted file.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# ----------------------------------------------------------------------------
+# Backend (Go HTTP service)
+# ----------------------------------------------------------------------------
+backend:
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/haibread/ai-registry/backend
+    # Defaults to .Chart.AppVersion when empty
+    tag: ""
+
+  # Non-sensitive environment variables
+  oidcIssuer: ""
+  oidcAudience: ""
+  otlpEndpoint: ""
+
+  # DATABASE_URL — provide exactly one of these:
+  #   databaseUrl        : plain-text value (not recommended for prod)
+  #   databaseUrlSecret  : name of a pre-existing Kubernetes Secret whose key
+  #                        "DATABASE_URL" holds the connection string
+  databaseUrl: ""
+  databaseUrlSecret: ""
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  resources: {}
+  # Example:
+  # resources:
+  #   limits:
+  #     cpu: 500m
+  #     memory: 256Mi
+  #   requests:
+  #     cpu: 100m
+  #     memory: 128Mi
+
+  podAnnotations: {}
+  podLabels: {}
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+    # targetMemoryUtilizationPercentage: 80
+
+  podDisruptionBudget:
+    minAvailable: 1
+
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # Override the name (defaults to fullname-backend)
+    name: ""
+
+# ----------------------------------------------------------------------------
+# Web (Next.js app)
+# ----------------------------------------------------------------------------
+web:
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/haibread/ai-registry/web
+    # Defaults to .Chart.AppVersion when empty
+    tag: ""
+
+  # Non-sensitive environment variables
+  # Internal URL for Next.js server → backend (server-side only)
+  apiUrl: ""
+  nextauthUrl: ""
+  keycloakIssuer: ""
+
+  # Sensitive environment variables stored in a generated Secret
+  # These are required in production.
+  authSecret: ""           # AUTH_SECRET (NextAuth secret)
+  keycloakId: ""           # AUTH_KEYCLOAK_ID
+  keycloakSecret: ""       # AUTH_KEYCLOAK_SECRET
+
+  service:
+    type: ClusterIP
+    port: 3000
+
+  resources: {}
+
+  podAnnotations: {}
+  podLabels: {}
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false  # Next.js writes to .next cache at runtime
+    capabilities:
+      drop:
+        - ALL
+
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+  podDisruptionBudget:
+    minAvailable: 1
+
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+# ----------------------------------------------------------------------------
+# Ingress
+# ----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  # Example annotations for cert-manager + nginx:
+  # annotations:
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+  #   nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  host: ai-registry.example.com
+  tls:
+    enabled: false
+    secretName: ""
+
+# ----------------------------------------------------------------------------
+# CloudNativePG (CNPG) managed Postgres cluster
+# Set cnpg.enabled=true to provision a Postgres cluster inside the namespace.
+# Requires the CNPG operator to be installed in the cluster.
+# ----------------------------------------------------------------------------
+cnpg:
+  enabled: false
+  instances: 1
+  storageSize: 5Gi
+  postgresVersion: "16"
+  # Name of the superuser secret CNPG will create (referenced as DATABASE_URL
+  # source in the backend deployment when cnpg is enabled).
+  # CNPG creates a secret named "<clusterName>-superuser" automatically.
+  # Override only if you need a specific secret name.
+  superuserSecretName: ""

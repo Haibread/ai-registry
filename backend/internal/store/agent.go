@@ -47,21 +47,31 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, e
 		args = append(args, p.Namespace)
 		argN++
 	}
-	if p.Query != "" {
+	hasQuery := p.Query != ""
+	if hasQuery {
 		whereClause += fmt.Sprintf(
-			" AND to_tsvector('english', coalesce(a.name,'') || ' ' || coalesce(a.description,'')) @@ plainto_tsquery('english', $%d)",
+			" AND a.search_vector @@ plainto_tsquery('english', $%d)",
 			argN,
 		)
 		args = append(args, p.Query)
 		argN++
-	}
-	if p.Cursor != "" {
+	} else if p.Cursor != "" {
 		at, id, err := decodeCursor(p.Cursor)
 		if err == nil {
-			whereClause += fmt.Sprintf(" AND (a.created_at, a.id) > ($%d, $%d)", argN, argN+1)
+			whereClause += fmt.Sprintf(" AND (a.created_at, a.id) < ($%d, $%d)", argN, argN+1)
 			args = append(args, at, id)
 			argN += 2
 		}
+	}
+
+	orderClause := "ORDER BY a.created_at DESC, a.id DESC"
+	if hasQuery {
+		orderClause = fmt.Sprintf(
+			"ORDER BY ts_rank(a.search_vector, plainto_tsquery('english', $%d)) DESC, a.created_at DESC",
+			argN,
+		)
+		args = append(args, p.Query)
+		argN++
 	}
 
 	args = append(args, p.Limit)
@@ -71,8 +81,8 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, e
 		FROM agents a
 		JOIN publishers pub ON pub.id = a.publisher_id
 		%s
-		ORDER BY a.created_at ASC, a.id ASC
-		LIMIT $%d`, whereClause, argN)
+		%s
+		LIMIT $%d`, whereClause, orderClause, argN)
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {

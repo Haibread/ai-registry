@@ -1,0 +1,84 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ai-registry.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.labels" . | nindent 4 }}
+  annotations:
+    {{- /*
+      nginx-specific annotations that route specific path prefixes to the
+      backend service and everything else to the web service.
+      Adjust if using a different ingress controller.
+    */}}
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-tls" (include "ai-registry.fullname" .)) }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # --- Backend routes ---
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "ai-registry.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /v0(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "ai-registry.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /healthz
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "ai-registry.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /readyz
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "ai-registry.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /.well-known(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "ai-registry.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /agents(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "ai-registry.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port }}
+          # --- Web (catch-all) ---
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ai-registry.web.fullname" . }}
+                port:
+                  number: {{ .Values.web.service.port }}
+{{- end }}

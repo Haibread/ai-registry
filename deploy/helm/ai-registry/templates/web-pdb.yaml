@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ai-registry.web.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.web.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.web.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ai-registry.web.selectorLabels" . | nindent 6 }}

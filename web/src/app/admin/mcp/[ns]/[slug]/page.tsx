@@ -29,24 +29,19 @@ export default async function AdminMCPServerPage({ params }: Props) {
   async function setPublic(formData: FormData) {
     "use server"
     const client = await getApiClient()
-    // Visibility toggle via the backend's set-visibility endpoint
-    await fetch(
-      `${process.env.API_URL}/api/v1/mcp/servers/${ns}/${slug}/visibility`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibility: formData.get("visibility") }),
-      }
-    )
+    await client.POST("/api/v1/mcp/servers/{namespace}/{slug}/visibility", {
+      params: { path: { namespace: ns, slug } },
+      body: { visibility: formData.get("visibility") as "public" | "private" },
+    })
     redirect(`/admin/mcp/${ns}/${slug}`)
   }
 
   async function deprecate() {
     "use server"
-    await fetch(
-      `${process.env.API_URL}/api/v1/mcp/servers/${ns}/${slug}/deprecate`,
-      { method: "POST" }
-    )
+    const client = await getApiClient()
+    await client.POST("/api/v1/mcp/servers/{namespace}/{slug}/deprecate", {
+      params: { path: { namespace: ns, slug } },
+    })
     redirect(`/admin/mcp/${ns}/${slug}`)
   }
 

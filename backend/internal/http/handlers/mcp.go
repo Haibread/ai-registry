@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+
 	"github.com/go-chi/chi/v5"
 
 	"github.com/haibread/ai-registry/internal/auth"
@@ -14,12 +15,13 @@ import (
 
 // MCPHandlers holds dependencies for MCP registry HTTP handlers.
 type MCPHandlers struct {
-	db *store.DB
+	db    *store.DB
+	audit store.AuditLogger
 }
 
-// NewMCPHandlers creates an MCPHandlers with the given store.
-func NewMCPHandlers(db *store.DB) *MCPHandlers {
-	return &MCPHandlers{db: db}
+// NewMCPHandlers creates an MCPHandlers with the given store and audit logger.
+func NewMCPHandlers(db *store.DB, audit store.AuditLogger) *MCPHandlers {
+	return &MCPHandlers{db: db, audit: audit}
 }
 
 // ── GET /api/v1/mcp/servers ───────────────────────────────────────────────
@@ -164,6 +166,13 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionMCPServerCreated, ResourceType: "mcp_server",
+			ResourceID: srv.ID, ResourceNS: body.Namespace, ResourceSlug: body.Slug,
+		})
+	}
 	writeJSON(w, http.StatusCreated, srv)
 }
 
@@ -288,6 +297,14 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionMCPVersionCreated, ResourceType: "mcp_server",
+			ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+			Metadata: map[string]any{"version": body.Version},
+		})
+	}
 	writeJSON(w, http.StatusCreated, v)
 }
 
@@ -321,6 +338,14 @@ func (h *MCPHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionMCPVersionPublished, ResourceType: "mcp_server",
+			ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+			Metadata: map[string]any{"version": ver},
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "published"})
 }
 
@@ -348,6 +373,13 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
+	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionMCPServerDeprecated, ResourceType: "mcp_server",
+			ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deprecated"})
 }
