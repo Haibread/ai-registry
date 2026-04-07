@@ -50,6 +50,10 @@ func (h *PublisherHandlers) ListPublishers(w http.ResponseWriter, r *http.Reques
 		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
 	}
 
+	if rows == nil {
+		rows = []store.Publisher{}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":       rows,
 		"next_cursor": nextCursor,
