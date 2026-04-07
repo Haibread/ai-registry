@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
 	mcpwire "github.com/haibread/ai-registry/internal/mcp"
 	"github.com/haibread/ai-registry/internal/store"
@@ -16,12 +17,13 @@ import (
 
 // V0MCPHandlers serves the strict MCP registry wire-format endpoints at /v0/.
 type V0MCPHandlers struct {
-	db *store.DB
+	db    *store.DB
+	audit store.AuditLogger
 }
 
-// NewV0MCPHandlers creates a V0MCPHandlers with the given store.
-func NewV0MCPHandlers(db *store.DB) *V0MCPHandlers {
-	return &V0MCPHandlers{db: db}
+// NewV0MCPHandlers creates a V0MCPHandlers with the given store and audit logger.
+func NewV0MCPHandlers(db *store.DB, audit store.AuditLogger) *V0MCPHandlers {
+	return &V0MCPHandlers{db: db, audit: audit}
 }
 
 // ── GET /v0/servers ───────────────────────────────────────────────────────
@@ -155,6 +157,13 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 		}
 		srv = &store.MCPServerRow{MCPServer: *newSrv}
 		srv.Namespace = namespace
+		if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+			h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+				ActorSubject: claims.Subject, ActorEmail: claims.Email,
+				Action: domain.ActionMCPServerCreated, ResourceType: "mcp_server",
+				ResourceID: srv.ID, ResourceNS: namespace, ResourceSlug: slug,
+			})
+		}
 	} else if err != nil {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
@@ -185,6 +194,14 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.PublishMCPServerVersion(r.Context(), srv.ID, ver.Version); err != nil {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
+	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionMCPVersionPublished, ResourceType: "mcp_server",
+			ResourceID: srv.ID, ResourceNS: namespace, ResourceSlug: slug,
+			Metadata: map[string]any{"version": p.Version},
+		})
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]string{

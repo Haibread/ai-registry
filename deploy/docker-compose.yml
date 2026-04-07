@@ -20,19 +20,23 @@ services:
   # ── Keycloak (dev mode, built-in H2 DB) ────────────────────────────────────
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
-    command: start-dev
+    command: start-dev --import-realm
     restart: unless-stopped
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak-realm-dev.json:/opt/keycloak/data/import/ai-registry-realm.json:ro
     ports:
       - "8080:8080"
+      - "9000:9000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      # Keycloak 23+ exposes health on the management port (9000), not 8080.
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/ai-registry || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 15
-      start_period: 30s
+      retries: 20
+      start_period: 60s
 
   # ── Backend ──────────────────────────────────────────────────────────────────
   backend:
@@ -47,6 +51,18 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── Seed (one-shot, runs after backend is up) ───────────────────────────────
+  seed:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    entrypoint: ["/seed"]
+    restart: "no"
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_started
+
   # ── Web (Next.js) ────────────────────────────────────────────────────────────
   web:
     build:
@@ -58,13 +74,15 @@ services:
       AUTH_SECRET: "${AUTH_SECRET}"
       AUTH_KEYCLOAK_ID: "${AUTH_KEYCLOAK_ID:-ai-registry-web}"
       AUTH_KEYCLOAK_SECRET: "${AUTH_KEYCLOAK_SECRET}"
-      AUTH_KEYCLOAK_ISSUER: "${AUTH_KEYCLOAK_ISSUER:-http://keycloak:8080/realms/registry}"
+      AUTH_KEYCLOAK_ISSUER: "${AUTH_KEYCLOAK_ISSUER:-http://keycloak:8080/realms/ai-registry}"
       NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
     ports:
       - "3000:3000"
     depends_on:
       backend:
         condition: service_started
+      keycloak:
+        condition: service_healthy
 
   # ── OTel Collector (observability profile) ──────────────────────────────────
   otel-collector:

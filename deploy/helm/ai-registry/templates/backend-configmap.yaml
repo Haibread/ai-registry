@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-registry.backend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.backend.labels" . | nindent 4 }}
+data:
+  OIDC_ISSUER: {{ .Values.backend.oidcIssuer | quote }}
+  OIDC_AUDIENCE: {{ .Values.backend.oidcAudience | quote }}
+  {{- if .Values.backend.otlpEndpoint }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.backend.otlpEndpoint | quote }}
+  {{- end }}
+  {{- /* Plain-text DATABASE_URL as a last resort (overridden by secret if set) */}}
+  {{- if and .Values.backend.databaseUrl (not .Values.backend.databaseUrlSecret) }}
+  DATABASE_URL: {{ .Values.backend.databaseUrl | quote }}
+  {{- end }}

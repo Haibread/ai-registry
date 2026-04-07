@@ -32,9 +32,11 @@ func NewRouter(deps RouterDeps) http.Handler {
 	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
-	mcpH := handlers.NewMCPHandlers(deps.DB)
-	v0H := handlers.NewV0MCPHandlers(deps.DB)
-	agentH := handlers.NewAgentHandlers(deps.DB)
+	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB)
+	v0H := handlers.NewV0MCPHandlers(deps.DB, deps.DB)
+	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB)
+	auditH := handlers.NewAuditHandlers(deps.DB)
+	statsH := handlers.NewStatsHandlers(deps.DB)
 	cardH := handlers.NewAgentCardHandlers(deps.DB)
 
 	r := chi.NewRouter()
@@ -77,6 +79,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.Get("/", mcpH.GetServer)
 				r.With(auth.RequireAdmin).Post("/deprecate", mcpH.DeprecateServer)
+				r.With(auth.RequireAdmin).Post("/visibility", mcpH.SetVisibility)
 
 				r.Route("/versions", func(r chi.Router) {
 					r.Get("/", mcpH.ListVersions)
@@ -95,6 +98,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.Get("/", agentH.GetAgent)
 				r.With(auth.RequireAdmin).Post("/deprecate", agentH.DeprecateAgent)
+				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
 
 				r.Route("/versions", func(r chi.Router) {
 					r.Get("/", agentH.ListVersions)
@@ -104,6 +108,12 @@ func NewRouter(deps RouterDeps) http.Handler {
 				})
 			})
 		})
+
+		// Stats (admin — includes private entries)
+		r.With(auth.RequireAdmin).Get("/stats", statsH.GetStats)
+
+		// Audit log
+		r.With(auth.RequireAdmin).Get("/audit", auditH.ListEvents)
 	})
 
 	// ── Wrap with OTel HTTP instrumentation ───────────────────────────────────

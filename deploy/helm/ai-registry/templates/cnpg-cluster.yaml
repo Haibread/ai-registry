@@ -1,0 +1,44 @@
+{{- if .Values.cnpg.enabled -}}
+# CloudNativePG Cluster resource.
+# Requires the CloudNativePG operator (https://cloudnative-pg.io/) to be
+# installed in the cluster before deploying this chart.
+#
+# The operator will automatically create the following secrets:
+#   <clusterName>-superuser — superuser credentials (uri key contains the DSN)
+#   <clusterName>-app       — application user credentials
+#
+# The backend deployment references <clusterName>-superuser to construct
+# DATABASE_URL automatically when cnpg.enabled=true.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "ai-registry.cnpg.clusterName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.cnpg.instances }}
+
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "256MB"
+
+  bootstrap:
+    initdb:
+      database: ai_registry
+      owner: ai_registry
+
+  storage:
+    size: {{ .Values.cnpg.storageSize }}
+
+  # Use the official CNPG image for the specified Postgres major version.
+  imageName: {{ printf "ghcr.io/cloudnative-pg/postgresql:%s" .Values.cnpg.postgresVersion }}
+
+  # Managed superuser secret (referenced by backend deployment).
+  superuserSecret:
+    name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
+
+  # Enable automated minor version updates.
+  enableSuperuserAccess: true
+{{- end }}

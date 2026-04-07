@@ -20,6 +20,8 @@ tags:
     description: MCP server registry
   - name: agents
     description: AI agent registry
+  - name: audit
+    description: Audit log (admin only)
 
 paths:
   /healthz:
@@ -214,6 +216,71 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/mcp/servers/{namespace}/{slug}/visibility:
+    post:
+      operationId: setMCPServerVisibility
+      summary: Set MCP server visibility (admin only)
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetVisibilityRequest"
+      responses:
+        "200":
+          description: Visibility updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visibility:
+                    type: string
+                    enum: [public, private]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/mcp/servers/{namespace}/{slug}/deprecate:
+    post:
+      operationId: deprecateMCPServer
+      summary: Deprecate an MCP server (admin only)
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: Server deprecated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/v1/agents:
     get:
       operationId: listAgents
@@ -278,6 +345,127 @@ paths:
                 $ref: "#/components/schemas/Agent"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /api/v1/agents/{namespace}/{slug}/visibility:
+    post:
+      operationId: setAgentVisibility
+      summary: Set agent visibility (admin only)
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetVisibilityRequest"
+      responses:
+        "200":
+          description: Visibility updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visibility:
+                    type: string
+                    enum: [public, private]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/agents/{namespace}/{slug}/deprecate:
+    post:
+      operationId: deprecateAgent
+      summary: Deprecate an agent (admin only)
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: Agent deprecated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/stats:
+    get:
+      operationId: getStats
+      summary: Registry resource counts (admin only)
+      tags: [system]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Total counts for each resource type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistryCounts"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/audit:
+    get:
+      operationId: listAuditEvents
+      summary: List audit log events (admin only)
+      tags: [audit]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resource_type
+          in: query
+          description: Filter by resource type (mcp_server, agent, publisher)
+          schema:
+            type: string
+        - name: resource_id
+          in: query
+          description: Filter by resource ULID
+          schema:
+            type: string
+        - name: actor
+          in: query
+          description: Filter by Keycloak subject UUID
+          schema:
+            type: string
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of audit events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /agents/{namespace}/{slug}/.well-known/agent-card.json:
     get:
@@ -523,6 +711,66 @@ components:
           type: string
         total_count:
           type: integer
+
+    RegistryCounts:
+      type: object
+      required: [mcp_servers, agents, publishers]
+      properties:
+        mcp_servers:
+          type: integer
+        agents:
+          type: integer
+        publishers:
+          type: integer
+
+    SetVisibilityRequest:
+      type: object
+      required: [visibility]
+      properties:
+        visibility:
+          type: string
+          enum: [public, private]
+
+    AuditEvent:
+      type: object
+      required: [id, actor_subject, actor_email, action, resource_type, resource_id, created_at]
+      properties:
+        id:
+          type: string
+          description: ULID
+        actor_subject:
+          type: string
+          description: Keycloak subject UUID
+        actor_email:
+          type: string
+        action:
+          type: string
+          description: Action performed (e.g. mcp_server.created)
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        resource_ns:
+          type: string
+        resource_slug:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    AuditEventList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        next_cursor:
+          type: string
 
     Problem:
       type: object

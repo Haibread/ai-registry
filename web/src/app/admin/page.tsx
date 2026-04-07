@@ -9,29 +9,24 @@ export const metadata: Metadata = { title: "Admin Dashboard" }
 
 export default async function AdminDashboardPage() {
   const api = await getApiClient()
-
-  const [mcpRes, agentsRes, pubRes] = await Promise.all([
-    api.GET("/api/v1/mcp/servers", { params: { query: { limit: 1 } } }),
-    api.GET("/api/v1/agents", { params: { query: { limit: 1 } } }),
-    api.GET("/api/v1/publishers", { params: { query: { limit: 1 } } }),
-  ])
+  const { data } = await api.GET("/api/v1/stats")
 
   const stats = [
     {
       label: "MCP Servers",
-      value: mcpRes.data?.total_count ?? "—",
+      value: data?.mcp_servers ?? "—",
       icon: Server,
       href: "/admin/mcp",
     },
     {
       label: "Agents",
-      value: agentsRes.data?.total_count ?? "—",
+      value: data?.agents ?? "—",
       icon: Bot,
       href: "/admin/agents",
     },
     {
       label: "Publishers",
-      value: pubRes.data?.total_count ?? "—",
+      value: data?.publishers ?? "—",
       icon: Users,
       href: "/admin/publishers",
     },

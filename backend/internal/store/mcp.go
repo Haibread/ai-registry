@@ -56,22 +56,35 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		args = append(args, p.Namespace)
 		argN++
 	}
-	if p.Query != "" {
+	// When searching, use the generated search_vector index and rank results.
+	// Cursor pagination is skipped for ranked searches (rank is not a stable
+	// column for keyset pagination).
+	hasQuery := p.Query != ""
+	if hasQuery {
 		whereClause += fmt.Sprintf(
-			" AND to_tsvector('english', coalesce(s.name,'') || ' ' || coalesce(s.description,'')) @@ plainto_tsquery('english', $%d)",
+			" AND s.search_vector @@ plainto_tsquery('english', $%d)",
 			argN,
 		)
 		args = append(args, p.Query)
 		argN++
-	}
-	if p.Cursor != "" {
-		// cursor = created_at_rfc3339 + "," + id
+	} else if p.Cursor != "" {
+		// Keyset pagination only when not searching (DESC ordering)
 		at, id, err := decodeCursor(p.Cursor)
 		if err == nil {
-			whereClause += fmt.Sprintf(" AND (s.created_at, s.id) > ($%d, $%d)", argN, argN+1)
+			whereClause += fmt.Sprintf(" AND (s.created_at, s.id) < ($%d, $%d)", argN, argN+1)
 			args = append(args, at, id)
 			argN += 2
 		}
+	}
+
+	orderClause := "ORDER BY s.created_at DESC, s.id DESC"
+	if hasQuery {
+		orderClause = fmt.Sprintf(
+			"ORDER BY ts_rank(s.search_vector, plainto_tsquery('english', $%d)) DESC, s.created_at DESC",
+			argN,
+		)
+		args = append(args, p.Query)
+		argN++
 	}
 
 	args = append(args, p.Limit)
@@ -82,8 +95,8 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
 		%s
-		ORDER BY s.created_at ASC, s.id ASC
-		LIMIT $%d`, whereClause, argN)
+		%s
+		LIMIT $%d`, whereClause, orderClause, argN)
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
