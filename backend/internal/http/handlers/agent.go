@@ -15,12 +15,13 @@ import (
 
 // AgentHandlers holds dependencies for agent registry HTTP handlers.
 type AgentHandlers struct {
-	db *store.DB
+	db    *store.DB
+	audit store.AuditLogger
 }
 
-// NewAgentHandlers creates AgentHandlers with the given store.
-func NewAgentHandlers(db *store.DB) *AgentHandlers {
-	return &AgentHandlers{db: db}
+// NewAgentHandlers creates AgentHandlers with the given store and audit logger.
+func NewAgentHandlers(db *store.DB, audit store.AuditLogger) *AgentHandlers {
+	return &AgentHandlers{db: db, audit: audit}
 }
 
 // ── GET /api/v1/agents ────────────────────────────────────────────────────
@@ -150,6 +151,13 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
+	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionAgentCreated, ResourceType: "agent",
+			ResourceID: agent.ID, ResourceNS: body.Namespace, ResourceSlug: body.Slug,
+		})
 	}
 	writeJSON(w, http.StatusCreated, agent)
 }
@@ -286,6 +294,14 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionAgentVersionCreated, ResourceType: "agent",
+			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+			Metadata: map[string]any{"version": body.Version},
+		})
+	}
 	writeJSON(w, http.StatusCreated, v)
 }
 
@@ -317,6 +333,14 @@ func (h *AgentHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionAgentVersionPublished, ResourceType: "agent",
+			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+			Metadata: map[string]any{"version": ver},
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "published"})
 }
 
@@ -344,6 +368,13 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
+	}
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionAgentDeprecated, ResourceType: "agent",
+			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deprecated"})
 }

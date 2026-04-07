@@ -28,23 +28,20 @@ export default async function AdminAgentPage({ params }: Props) {
 
   async function setVisibility(formData: FormData) {
     "use server"
-    await fetch(
-      `${process.env.API_URL}/api/v1/agents/${ns}/${slug}/visibility`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibility: formData.get("visibility") }),
-      }
-    )
+    const client = await getApiClient()
+    await client.POST("/api/v1/agents/{namespace}/{slug}/visibility", {
+      params: { path: { namespace: ns, slug } },
+      body: { visibility: formData.get("visibility") as "public" | "private" },
+    })
     redirect(`/admin/agents/${ns}/${slug}`)
   }
 
   async function deprecate() {
     "use server"
-    await fetch(
-      `${process.env.API_URL}/api/v1/agents/${ns}/${slug}/deprecate`,
-      { method: "POST" }
-    )
+    const client = await getApiClient()
+    await client.POST("/api/v1/agents/{namespace}/{slug}/deprecate", {
+      params: { path: { namespace: ns, slug } },
+    })
     redirect(`/admin/agents/${ns}/${slug}`)
   }
 

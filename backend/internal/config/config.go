@@ -78,7 +78,7 @@ func Load() (*Config, error) {
 			Level: envString("LOG_LEVEL", "info"),
 		},
 		Auth: AuthConfig{
-			OIDCIssuer: envString("OIDC_ISSUER", "http://keycloak:8080/realms/registry"),
+			OIDCIssuer: envString("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry"),
 		},
 	}
 

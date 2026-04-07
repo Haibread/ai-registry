@@ -41,6 +41,11 @@ coverage/
 *.out
 *.test.bin
 
+# Playwright
+web/e2e/.auth/*.json
+web/playwright-report/
+web/test-results/
+
 # ── Misc ─────────────────────────────────────────────────────────────────────
 *.log
 *.tmp

@@ -6,6 +6,7 @@ import "github.com/golang-jwt/jwt/v5"
 // Keycloak-specific fields.
 type KeycloakClaims struct {
 	jwt.RegisteredClaims
+	Email       string      `json:"email"`
 	RealmAccess RealmAccess `json:"realm_access"`
 }
 

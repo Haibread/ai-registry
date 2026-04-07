@@ -1,0 +1,16 @@
+apiVersion: v2
+name: ai-registry
+description: A centralized registry for AI ecosystem artifacts (MCP servers and AI agents)
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - ai
+  - mcp
+  - agent
+  - registry
+home: https://github.com/haibread/ai-registry
+sources:
+  - https://github.com/haibread/ai-registry
+maintainers:
+  - name: Haibread
