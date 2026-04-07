@@ -119,6 +119,17 @@ CLAUDE.md             # this file
    (counter, histogram) is registered in `/internal/observability/`. Use the
    existing tracer/meter from context — never create ad-hoc providers.
 
+## Resolved implementation decisions
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| A | JWT admin claim | `realm_access.roles[]` contains `"admin"` | Keycloak default shape |
+| B | API-key auth | Deferred to Phase 5 | Phase 2 ships JWT-only; Phase 5 adds hashed API keys |
+| C | `/v0/` wire format | Strict MCP registry spec shape | `{ servers: [{id, name, description, version, packages, repository, _meta}], metadata: {count, nextCursor} }` for list; single object for detail |
+| D | Integration test infra | testcontainers-go (postgres module) with snapshot isolation | No external dependency needed to run `go test` |
+| E | `packages` JSONB validation | Structural: each entry must have `registryType`, `identifier`, `version`, `transport.type` | Matches MCP server.json spec; strict schema deferred |
+| F | `capabilities` JSONB validation | Free-form valid JSON only | Structure varies by server; strict validation deferred |
+
 ## References
 
 - MCP specification: https://modelcontextprotocol.io/
