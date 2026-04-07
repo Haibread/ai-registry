@@ -35,6 +35,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB)
 	v0H := handlers.NewV0MCPHandlers(deps.DB, deps.DB)
 	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB)
+	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
 	cardH := handlers.NewAgentCardHandlers(deps.DB)
@@ -70,6 +71,13 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	r.Route("/api/v1", func(r chi.Router) {
+
+		// Publishers
+		r.Route("/publishers", func(r chi.Router) {
+			r.Get("/", pubH.ListPublishers)
+			r.With(auth.RequireAdmin).Post("/", pubH.CreatePublisher)
+			r.Get("/{slug}", pubH.GetPublisher)
+		})
 
 		// MCP servers
 		r.Route("/mcp/servers", func(r chi.Router) {
