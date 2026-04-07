@@ -19,10 +19,10 @@ import (
 
 // RouterDeps bundles the dependencies injected into the router.
 type RouterDeps struct {
-	Logger    *slog.Logger
-	DB        *store.DB
-	Metrics   *observability.Metrics
-	AuthConf  auth.Config
+	Logger   *slog.Logger
+	DB       *store.DB
+	Metrics  *observability.Metrics
+	AuthConf auth.Config
 }
 
 // NewRouter builds and returns the chi router with all middleware and routes.
@@ -34,6 +34,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB)
 	v0H := handlers.NewV0MCPHandlers(deps.DB)
+	agentH := handlers.NewAgentHandlers(deps.DB)
+	cardH := handlers.NewAgentCardHandlers(deps.DB)
 
 	r := chi.NewRouter()
 
@@ -51,6 +53,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
 	r.Get("/.well-known/oauth-protected-resource", handlers.OAuthProtectedResource)
+	// Global registry agent card (makes the registry a first-class A2A citizen)
+	r.Get("/.well-known/agent-card.json", handlers.GlobalAgentCard)
 
 	// ── MCP registry wire-format compat layer ─────────────────────────────────
 	r.Route("/v0", func(r chi.Router) {
@@ -58,6 +62,9 @@ func NewRouter(deps RouterDeps) http.Handler {
 		r.Get("/servers/{id}", v0H.GetServer)
 		r.With(auth.RequireAdmin).Post("/publish", v0H.Publish)
 	})
+
+	// ── Per-agent A2A card (public, outside /api/v1 per A2A spec path) ────────
+	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", cardH.PerAgentCard)
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	r.Route("/api/v1", func(r chi.Router) {
@@ -76,6 +83,24 @@ func NewRouter(deps RouterDeps) http.Handler {
 					r.With(auth.RequireAdmin).Post("/", mcpH.CreateVersion)
 					r.Get("/{version}", mcpH.GetVersion)
 					r.With(auth.RequireAdmin).Post("/{version}/publish", mcpH.PublishVersion)
+				})
+			})
+		})
+
+		// Agents
+		r.Route("/agents", func(r chi.Router) {
+			r.Get("/", agentH.ListAgents)
+			r.With(auth.RequireAdmin).Post("/", agentH.CreateAgent)
+
+			r.Route("/{namespace}/{slug}", func(r chi.Router) {
+				r.Get("/", agentH.GetAgent)
+				r.With(auth.RequireAdmin).Post("/deprecate", agentH.DeprecateAgent)
+
+				r.Route("/versions", func(r chi.Router) {
+					r.Get("/", agentH.ListVersions)
+					r.With(auth.RequireAdmin).Post("/", agentH.CreateVersion)
+					r.Get("/{version}", agentH.GetVersion)
+					r.With(auth.RequireAdmin).Post("/{version}/publish", agentH.PublishVersion)
 				})
 			})
 		})
