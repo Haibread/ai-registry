@@ -45,6 +45,12 @@ A centralized registry for AI ecosystem artifacts:
   types and TS client are generated from it.
 - **Dev infra**: docker-compose for Postgres + Keycloak + backend + web.
 - **Deployment**: docker-compose (dev + prod profiles) + Helm chart for k8s.
+- **Observability**: OpenTelemetry (OTel) for all signals — traces, metrics,
+  and logs. Use the Go `go.opentelemetry.io/otel` SDK in the backend; export
+  via OTLP (gRPC or HTTP). Every HTTP handler must be traced; DB calls must
+  produce child spans. Structured logs must carry `trace_id` and `span_id`
+  fields. Key business metrics (request counts, latency histograms, registry
+  entry counts) must be emitted as OTel metrics.
 
 ## Repository layout (target)
 
@@ -59,6 +65,7 @@ A centralized registry for AI ecosystem artifacts:
     /auth/            # OIDC/JWT validation, scopes, admin guard
     /store/           # Postgres repositories
     /domain/          # entities, validation
+    /observability/   # OTel setup: tracer, meter, logger providers
   /migrations/        # SQL migrations
 /web/                 # Next.js app (user + admin UI)
 /deploy/              # docker-compose, env examples
@@ -83,7 +90,9 @@ CLAUDE.md             # this file
   publish.
 - **Testing**: table-driven tests in Go; integration tests use a real Postgres
   via docker-compose or testcontainers. Web uses Playwright for e2e on the
-  admin flows.
+  admin flows. **Every new piece of code must have tests.** Unit tests are
+  required for business logic; integration tests for handlers and DB
+  repositories. Do not open a PR without test coverage for the changed code.
 
 ## Security rules
 
@@ -104,6 +113,11 @@ CLAUDE.md             # this file
 4. Keep MCP and A2A compatibility: when in doubt, link to the relevant spec
    section in the PR description.
 5. Do not add features outside the current phase without asking.
+6. **Always write tests** for every function, handler, or repository method you
+   create or modify. No exceptions.
+7. **Instrument with OTel**: every new handler gets a span; every new metric
+   (counter, histogram) is registered in `/internal/observability/`. Use the
+   existing tracer/meter from context — never create ad-hoc providers.
 
 ## References
 
