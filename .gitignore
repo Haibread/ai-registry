@@ -1,0 +1,46 @@
+# ── OS / editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.iml
+
+# ── Go ────────────────────────────────────────────────────────────────────────
+backend/bin/
+backend/dist/
+backend/tmp/
+
+# ── Next.js / Node ────────────────────────────────────────────────────────────
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local
+web/.env.*.local
+
+# Generated OpenAPI types (regenerated via `npm run generate`)
+web/src/lib/schema.d.ts
+
+# Next.js auto-generated file (committed only if you customise it)
+web/next-env.d.ts
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+deploy/.env
+deploy/.env.local
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+deploy/postgres_data/
+
+# ── Test / coverage ───────────────────────────────────────────────────────────
+coverage/
+*.out
+*.test.bin
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+*.log
+*.tmp

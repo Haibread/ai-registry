@@ -1,3 +1,14 @@
+name: ai-registry-dev
+
+# Development stack — Next.js runs in dev mode with hot reload.
+#
+# Usage (from the deploy/ directory):
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# The web service mounts ../web directly into the container and runs
+# `next dev`, so any file save is picked up immediately.
+# All other services are identical to the production compose.
+
 services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
@@ -17,7 +28,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Keycloak (dev mode, built-in H2 DB) ────────────────────────────────────
+  # ── Keycloak ────────────────────────────────────────────────────────────────
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: start-dev
@@ -47,47 +58,38 @@ services:
       postgres:
         condition: service_healthy
 
-  # ── Web (Next.js) ────────────────────────────────────────────────────────────
+  # ── Web (Next.js dev server with hot reload) ─────────────────────────────────
   web:
-    build:
-      context: ..
-      dockerfile: web/Dockerfile
+    image: node:22-alpine
     restart: unless-stopped
+    working_dir: /app
+    # Install deps on first start (node_modules volume persists across restarts),
+    # then launch the dev server.
+    command: sh -c "npm install && npm run dev"
     environment:
       API_URL: http://backend:8081
-      AUTH_SECRET: "${AUTH_SECRET}"
+      AUTH_SECRET: "${AUTH_SECRET:-dev-secret-replace-in-production}"
       AUTH_KEYCLOAK_ID: "${AUTH_KEYCLOAK_ID:-ai-registry-web}"
-      AUTH_KEYCLOAK_SECRET: "${AUTH_KEYCLOAK_SECRET}"
+      AUTH_KEYCLOAK_SECRET: "${AUTH_KEYCLOAK_SECRET:-}"
       AUTH_KEYCLOAK_ISSUER: "${AUTH_KEYCLOAK_ISSUER:-http://keycloak:8080/realms/registry}"
       NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
+      NODE_ENV: development
+      # Polling is required for inotify to work through Docker volume mounts
+      # on Linux and WSL2. Has no effect on macOS (native fsevents are used).
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      # Mount source so edits hot-reload without rebuilding the image.
+      - ../web:/app
+      # Keep node_modules in a named volume so the host copy never shadows
+      # the container's installed packages.
+      - web_node_modules:/app/node_modules
     ports:
       - "3000:3000"
     depends_on:
       backend:
         condition: service_started
 
-  # ── OTel Collector (observability profile) ──────────────────────────────────
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.120.0
-    profiles: [observability]
-    restart: unless-stopped
-    command: --config /etc/otel/config.yaml
-    volumes:
-      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
-    ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-
-  # ── Jaeger (observability profile) ──────────────────────────────────────────
-  jaeger:
-    image: jaegertracing/all-in-one:1.65
-    profiles: [observability]
-    restart: unless-stopped
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
-    ports:
-      - "16686:16686"  # Jaeger UI
-      - "4319:4317"    # OTLP gRPC (offset to avoid conflict with collector)
-
 volumes:
   postgres_data:
+  web_node_modules:
