@@ -145,13 +145,15 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - Postgres + migrations + first tables (`publishers`, `users`).
 - Dockerfile + docker-compose (postgres, keycloak, backend).
 
-### Phase 2 — MCP registry MVP
+### Phase 2 — MCP registry MVP ✅
 - Schema: `mcp_servers`, `mcp_server_versions`.
 - CRUD handlers (admin-guarded) + public read endpoints.
-- MCP-compat layer: `/v0/servers`, `/v0/servers/{id}`, `/v0/publish`.
-- JWT middleware + scope check.
-- Validation of `install`/`capabilities` against JSON schema.
-- Table-driven + integration tests.
+- MCP-compat layer: `/v0/servers`, `/v0/servers/{id}`, `/v0/publish` — strict MCP registry wire format.
+- JWT middleware: Keycloak JWKS, checks `realm_access.roles[]` contains `"admin"`.
+- `packages` JSONB validation: structural check (registryType, identifier, version, transport.type required).
+- `capabilities` JSONB: free-form valid JSON; strict schema deferred.
+- Integration tests use testcontainers-go (postgres module, snapshot isolation); no external deps needed.
+- `/.well-known/oauth-protected-resource` endpoint (MCP auth spec).
 
 ### Phase 3 — Agent registry + A2A cards
 - Schema: `agents`, `agent_versions`.

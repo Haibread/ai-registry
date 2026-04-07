@@ -15,6 +15,14 @@ type Config struct {
 	Database DatabaseConfig
 	OTel     OTelConfig
 	Log      LogConfig
+	Auth     AuthConfig
+}
+
+// AuthConfig holds OIDC/Keycloak settings.
+type AuthConfig struct {
+	// OIDCIssuer is the full Keycloak realm issuer URL, e.g.
+	// http://keycloak:8080/realms/registry
+	OIDCIssuer string
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -68,6 +76,9 @@ func Load() (*Config, error) {
 		},
 		Log: LogConfig{
 			Level: envString("LOG_LEVEL", "info"),
+		},
+		Auth: AuthConfig{
+			OIDCIssuer: envString("OIDC_ISSUER", "http://keycloak:8080/realms/registry"),
 		},
 	}
 

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	authpkg "github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/config"
 	registryhttp "github.com/haibread/ai-registry/internal/http"
 	"github.com/haibread/ai-registry/internal/observability"
@@ -79,6 +80,9 @@ func run() error {
 		Logger:  logger,
 		DB:      db,
 		Metrics: metrics,
+		AuthConf: authpkg.Config{
+			OIDCIssuer: cfg.Auth.OIDCIssuer,
+		},
 	})
 	srv := registryhttp.NewServer(handler, registryhttp.ServerConfig{
 		Addr:         cfg.HTTP.Addr,
