@@ -155,12 +155,15 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - Integration tests use testcontainers-go (postgres module, snapshot isolation); no external deps needed.
 - `/.well-known/oauth-protected-resource` endpoint (MCP auth spec).
 
-### Phase 3 — Agent registry + A2A cards
+### Phase 3 — Agent registry + A2A cards ✅
 - Schema: `agents`, `agent_versions`.
-- CRUD + public reads.
-- Agent Card generator → `/.well-known/agent-card.json` per agent,
-  validated against the A2A JSON schema.
-- Tests: card conforms to A2A schema for every fixture.
+- CRUD + public reads. Same draft→published→deprecated lifecycle as MCP servers.
+- Agent Card generator (`internal/agents/card.go`) targets `a2aproject/a2a` June 2025 spec.
+- Per-agent card at `/agents/{ns}/{slug}/.well-known/agent-card.json`.
+- Global registry card at `/.well-known/agent-card.json`.
+- `skills[]` structural validation: `id`, `name`, `description`, `tags[]` required.
+- `authentication` scheme allowlist: Bearer, ApiKey, OAuth2, OpenIdConnect.
+- Integration tests (testcontainers, shared container) + unit tests for card generation and validation.
 
 ### Phase 4 — Web app (Next.js)
 - Next.js App Router + shadcn/ui blocks (minimal) + Tailwind.

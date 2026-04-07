@@ -129,6 +129,11 @@ CLAUDE.md             # this file
 | D | Integration test infra | testcontainers-go (postgres module) with snapshot isolation | No external dependency needed to run `go test` |
 | E | `packages` JSONB validation | Structural: each entry must have `registryType`, `identifier`, `version`, `transport.type` | Matches MCP server.json spec; strict schema deferred |
 | F | `capabilities` JSONB validation | Free-form valid JSON only | Structure varies by server; strict validation deferred |
+| G | A2A spec version | `a2aproject/a2a` June 2025 shape | Pinned to avoid chasing a moving target; documented in `internal/agents/card.go` |
+| H | Agent card endpoint | Per-agent `/agents/{ns}/{slug}/.well-known/agent-card.json` + global `/.well-known/agent-card.json` | Global makes the registry a first-class A2A citizen |
+| I | Agent version lifecycle | Same draft→published→deprecated state machine as MCP servers | Consumers cache agent cards; silent mutation breaks them |
+| J | `skills[]` validation | Structural: `id`, `name`, `description` required strings; `tags` required string array | Skills has a defined A2A schema; enforce at write time |
+| K | `authentication` schemes allowlist | `Bearer`, `ApiKey`, `OAuth2`, `OpenIdConnect` | Arbitrary schemes can't be reliably introspected; add to allowlist explicitly |
 
 ## References
 
