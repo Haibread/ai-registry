@@ -101,7 +101,7 @@ func (db *DB) ListAuditEvents(ctx context.Context, p ListAuditParams) ([]domain.
 		}
 	}
 
-	args = append(args, p.Limit+1)
+	args = append(args, p.Limit)
 	q := fmt.Sprintf(`
 		SELECT id, actor_subject, actor_email, action,
 		       resource_type, resource_id, resource_ns, resource_slug,
