@@ -1,0 +1,74 @@
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: registry
+      POSTGRES_PASSWORD: registry
+      POSTGRES_DB: registry
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U registry -d registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Keycloak (dev mode, built-in H2 DB) ────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev
+    restart: unless-stopped
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  # ── Backend ──────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── OTel Collector (observability profile) ──────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    profiles: [observability]
+    restart: unless-stopped
+    command: --config /etc/otel/config.yaml
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+
+  # ── Jaeger (observability profile) ──────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.65
+    profiles: [observability]
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4319:4317"    # OTLP gRPC (offset to avoid conflict with collector)
+
+volumes:
+  postgres_data:
