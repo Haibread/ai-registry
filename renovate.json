@@ -1,0 +1,79 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "UTC",
+  "schedule": ["before 6am on Monday"],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Group all Go dependencies",
+      "matchManagers": ["gomod"],
+      "groupName": "Go dependencies",
+      "groupSlug": "go-deps"
+    },
+    {
+      "description": "Group all npm/Node dependencies",
+      "matchManagers": ["npm"],
+      "groupName": "Node dependencies",
+      "groupSlug": "node-deps"
+    },
+    {
+      "description": "Group Docker base images",
+      "matchManagers": ["dockerfile"],
+      "groupName": "Docker base images",
+      "groupSlug": "docker-images"
+    },
+    {
+      "description": "Group docker-compose images",
+      "matchManagers": ["docker-compose"],
+      "groupName": "Docker Compose images",
+      "groupSlug": "docker-compose-images"
+    },
+    {
+      "description": "Automerge patch and minor Go updates",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Automerge patch and minor npm updates",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Require manual merge for major updates",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "Pin GitHub Actions to digest",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true,
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
+    },
+    {
+      "description": "OTel packages — keep in sync",
+      "matchManagers": ["gomod"],
+      "matchPackagePrefixes": ["go.opentelemetry.io/"],
+      "groupName": "OpenTelemetry Go",
+      "groupSlug": "otel-go"
+    },
+    {
+      "description": "testcontainers updates — manual review",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/testcontainers/testcontainers-go"],
+      "automerge": false
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security", "dependencies"]
+  },
+  "osvVulnerabilityAlerts": true
+}
