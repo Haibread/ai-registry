@@ -1,9 +1,10 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Circle, CheckCircle2, AlertTriangle, Globe, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   {
     variants: {
       variant: {
@@ -11,8 +12,8 @@ const badgeVariants = cva(
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         destructive: "border-transparent bg-destructive text-destructive-foreground",
         outline: "text-foreground",
-        success: "border-transparent bg-green-100 text-green-800",
-        warning: "border-transparent bg-yellow-100 text-yellow-800",
+        success: "border-transparent bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+        warning: "border-transparent bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
         muted: "border-transparent bg-muted text-muted-foreground",
       },
     },
@@ -50,6 +51,34 @@ export function visibilityVariant(
   visibility: "public" | "private"
 ): VariantProps<typeof badgeVariants>["variant"] {
   return visibility === "public" ? "default" : "secondary"
+}
+
+/** Status badge with icon prefix for colorblind-safe communication. */
+export function StatusBadge({ status, className }: { status: "draft" | "published" | "deprecated"; className?: string }) {
+  const icons = {
+    draft: <Circle className="h-2.5 w-2.5" aria-hidden="true" />,
+    published: <CheckCircle2 className="h-2.5 w-2.5" aria-hidden="true" />,
+    deprecated: <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />,
+  }
+  return (
+    <Badge variant={statusVariant(status)} className={className}>
+      {icons[status]}
+      {status}
+    </Badge>
+  )
+}
+
+/** Visibility badge with icon prefix. */
+export function VisibilityBadge({ visibility, className }: { visibility: "public" | "private"; className?: string }) {
+  return (
+    <Badge variant={visibilityVariant(visibility)} className={className}>
+      {visibility === "public"
+        ? <Globe className="h-2.5 w-2.5" aria-hidden="true" />
+        : <Lock className="h-2.5 w-2.5" aria-hidden="true" />
+      }
+      {visibility}
+    </Badge>
+  )
 }
 
 export { Badge, badgeVariants }

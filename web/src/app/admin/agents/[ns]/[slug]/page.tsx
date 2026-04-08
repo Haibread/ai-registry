@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Cpu, Shield, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge, statusVariant, visibilityVariant } from "@/components/ui/badge"
+import { Badge, StatusBadge, VisibilityBadge } from "@/components/ui/badge"
+import { DeprecateButton } from "@/components/admin/deprecate-button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { RawJsonViewer } from "@/components/ui/raw-json-viewer"
@@ -54,17 +55,21 @@ export default async function AdminAgentPage({ params }: Props) {
 
   return (
     <div className="space-y-6 max-w-3xl">
+      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Link href="/admin/agents" className="flex items-center gap-1 hover:text-foreground transition-colors">
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          Agents
+        </Link>
+        <span aria-hidden="true">/</span>
+        <span className="font-mono text-foreground">{data.namespace}/{data.slug}</span>
+      </nav>
+
       <div className="flex items-center gap-3 flex-wrap">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/admin/agents" className="flex items-center gap-1">
-            <ArrowLeft className="h-4 w-4" /> Back
-          </Link>
-        </Button>
         <h1 className="text-2xl font-bold flex-1">{data.name}</h1>
         <div className="flex gap-2">
           {lv && <Badge variant="outline" className="font-mono">v{lv.version}</Badge>}
-          <Badge variant={statusVariant(data.status)}>{data.status}</Badge>
-          <Badge variant={visibilityVariant(data.visibility)}>{data.visibility}</Badge>
+          <StatusBadge status={data.status} />
+          <VisibilityBadge visibility={data.visibility} />
         </div>
       </div>
 
@@ -153,8 +158,8 @@ export default async function AdminAgentPage({ params }: Props) {
       {/* Skills grid */}
       {lv?.skills && lv.skills.length > 0 && (
         <div className="space-y-3">
-          <h2 className="font-semibold flex items-center gap-2">
-            <Cpu className="h-4 w-4" /> Skills
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Cpu className="h-4 w-4" aria-hidden="true" /> Skills
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {lv.skills.map((skill: AgentSkill) => (
@@ -195,7 +200,7 @@ export default async function AdminAgentPage({ params }: Props) {
       <Separator />
 
       <div className="space-y-3">
-        <h2 className="font-semibold">Actions</h2>
+        <h2 className="text-lg font-semibold">Actions</h2>
         <div className="flex flex-wrap gap-2">
           <form action={setVisibility}>
             <input
@@ -209,11 +214,7 @@ export default async function AdminAgentPage({ params }: Props) {
           </form>
 
           {data.status === "published" && (
-            <form action={deprecate}>
-              <Button variant="destructive" size="sm" type="submit">
-                Deprecate
-              </Button>
-            </form>
+            <DeprecateButton action={deprecate} entityName={data.name} />
           )}
         </div>
       </div>
@@ -221,7 +222,7 @@ export default async function AdminAgentPage({ params }: Props) {
       <Separator />
 
       <div className="space-y-2">
-        <h2 className="font-semibold">A2A Agent Card</h2>
+        <h2 className="text-lg font-semibold">A2A Agent Card</h2>
         <p className="text-sm text-muted-foreground">
           Published at the well-known path for A2A discovery.
         </p>

@@ -4,13 +4,13 @@ import Link from "next/link"
 import { ExternalLink, GitFork, ArrowLeft, Package } from "lucide-react"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
-import { Badge, statusVariant, visibilityVariant } from "@/components/ui/badge"
+import { Badge, StatusBadge, VisibilityBadge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { RawJsonViewer } from "@/components/ui/raw-json-viewer"
 import { InstallCommand } from "@/components/ui/install-command"
 import { getPublicClient } from "@/lib/api-client"
-import { formatDate, getInstallCommand, ecosystemLabel } from "@/lib/utils"
+import { formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from "@/lib/utils"
 
 interface Props {
   params: Promise<{ ns: string; slug: string }>
@@ -36,22 +36,26 @@ export default async function MCPServerPage({ params }: Props) {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-8 max-w-3xl space-y-6">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/mcp" className="flex items-center gap-1">
-            <ArrowLeft className="h-4 w-4" /> Back
+        {/* Breadcrumb */}
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Link href="/mcp" className="flex items-center gap-1 hover:text-foreground transition-colors">
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            MCP Servers
           </Link>
-        </Button>
+          <span aria-hidden="true">/</span>
+          <span className="font-mono text-foreground">{data.namespace}/{data.slug}</span>
+        </nav>
 
         {/* Title row */}
         <div className="space-y-2">
           <div className="flex items-start gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold flex-1">{data.name}</h1>
+            <h1 className="text-3xl font-bold flex-1">{data.name}</h1>
             <div className="flex gap-2 flex-wrap">
               {lv && (
                 <Badge variant="outline" className="font-mono">v{lv.version}</Badge>
               )}
-              <Badge variant={statusVariant(data.status)}>{data.status}</Badge>
-              <Badge variant={visibilityVariant(data.visibility)}>{data.visibility}</Badge>
+              <StatusBadge status={data.status} />
+              <VisibilityBadge visibility={data.visibility} />
             </div>
           </div>
           <p className="text-sm text-muted-foreground font-mono">
@@ -96,26 +100,42 @@ export default async function MCPServerPage({ params }: Props) {
         {/* Packages / Install commands */}
         {lv?.packages && lv.packages.length > 0 && (
           <div className="space-y-3">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Package className="h-4 w-4" /> Installation
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Package className="h-4 w-4" aria-hidden="true" />
+              {lv.packages.every(p => isRemoteTransport(p.transport.type))
+                ? "Connection"
+                : "Installation"}
             </h2>
-            <div className="space-y-3">
-              {lv.packages.map((pkg, i) => (
-                <div key={i} className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">
-                      {ecosystemLabel(pkg.registryType)}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {pkg.identifier}@{pkg.version}
-                    </span>
-                    <Badge variant="outline" className="text-xs">
-                      {pkg.transport.type}
-                    </Badge>
+            <div className="space-y-4">
+              {lv.packages.map((pkg, i) => {
+                const remote = isRemoteTransport(pkg.transport.type)
+                return (
+                  <div key={i} className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary" className="text-xs">
+                        {ecosystemLabel(pkg.registryType)}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {pkg.identifier}@{pkg.version}
+                      </span>
+                      <Badge variant="outline" className="text-xs">
+                        {pkg.transport.type}
+                      </Badge>
+                    </div>
+                    {remote && pkg.transport.url ? (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Endpoint URL</p>
+                        <InstallCommand command={pkg.transport.url} />
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Run command</p>
+                        <InstallCommand command={getInstallCommand(pkg)} />
+                      </div>
+                    )}
                   </div>
-                  <InstallCommand command={getInstallCommand(pkg)} />
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}

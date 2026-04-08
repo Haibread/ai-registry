@@ -3,9 +3,10 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge, statusVariant, visibilityVariant } from "@/components/ui/badge"
+import { StatusBadge, VisibilityBadge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FilterBar } from "@/components/ui/filter-bar"
+import { FilterBarSkeleton } from "@/components/ui/filter-bar-skeleton"
 import { getApiClient } from "@/lib/api-client"
 import { formatDate } from "@/lib/utils"
 
@@ -53,7 +54,9 @@ export default async function AdminMCPPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">MCP Servers</h1>
-          <p className="text-muted-foreground mt-1">{servers.length} entries</p>
+          <p className="text-muted-foreground mt-1">
+            {servers.length}{data?.total_count && data.total_count > servers.length ? ` of ${data.total_count}` : ""} entr{servers.length !== 1 ? "ies" : "y"}
+          </p>
         </div>
         <Button asChild>
           <Link href="/admin/mcp/new" className="flex items-center gap-1.5">
@@ -62,7 +65,7 @@ export default async function AdminMCPPage({
         </Button>
       </div>
 
-      <Suspense>
+      <Suspense fallback={<FilterBarSkeleton />}>
         <FilterBar
           q={q}
           namespace={namespace}
@@ -101,10 +104,10 @@ export default async function AdminMCPPage({
                     {s.namespace}/{s.slug}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
+                    <StatusBadge status={s.status} />
                   </TableCell>
                   <TableCell>
-                    <Badge variant={visibilityVariant(s.visibility)}>{s.visibility}</Badge>
+                    <VisibilityBadge visibility={s.visibility} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(s.updated_at)}</TableCell>
                   <TableCell>

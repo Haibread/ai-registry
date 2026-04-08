@@ -17,11 +17,24 @@ export function formatDate(iso: string): string {
   })
 }
 
+/** Returns true for transport types that connect to a remote URL rather than running a local process. */
+export function isRemoteTransport(type: string): boolean {
+  return type === "sse" || type === "http" || type === "streamable_http"
+}
+
 /**
- * Derive the primary install command for a package entry.
- * Returns a ready-to-paste shell snippet.
+ * Derive the primary install / connect command for a package entry.
+ *
+ * For URL-based transports (SSE, HTTP, Streamable HTTP) the relevant artifact
+ * is the endpoint URL, not a package install command.  For stdio transports
+ * the artifact is the shell command to run the server locally.
  */
 export function getInstallCommand(pkg: PackageEntry): string {
+  // Remote transports — the thing you paste into your MCP client is the URL
+  if (isRemoteTransport(pkg.transport.type) && pkg.transport.url) {
+    return pkg.transport.url
+  }
+
   const id = pkg.identifier
   switch (pkg.registryType.toLowerCase()) {
     case "npm":
@@ -29,6 +42,7 @@ export function getInstallCommand(pkg: PackageEntry): string {
     case "pip":
     case "pypi":
       return `pip install ${id}`
+    case "oci":
     case "docker":
       return `docker run ${id}`
     case "gem":

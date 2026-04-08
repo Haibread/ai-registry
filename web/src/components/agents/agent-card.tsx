@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { ExternalLink, Braces, Cpu } from "lucide-react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Badge, statusVariant } from "@/components/ui/badge"
+import { Badge, StatusBadge } from "@/components/ui/badge"
 import { formatDate } from "@/lib/utils"
 import type { components } from "@/lib/schema"
 
@@ -13,53 +13,40 @@ interface AgentCardProps {
 
 export function AgentCard({ agent }: AgentCardProps) {
   const lv = agent.latest_version
+  const href = `/agents/${agent.namespace}/${agent.slug}`
 
   return (
-    <Card className="flex flex-col hover:shadow-md transition-shadow">
+    <Card className="flex flex-col hover:shadow-md transition-shadow group relative">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base leading-snug">
             <Link
-              href={`/agents/${agent.namespace}/${agent.slug}`}
-              className="hover:text-primary transition-colors"
+              href={href}
+              className="hover:text-primary transition-colors after:absolute after:inset-0 after:content-['']"
             >
               {agent.name}
             </Link>
           </CardTitle>
-          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end relative z-10">
             {lv && (
               <Badge variant="outline" className="text-[11px] font-mono">
                 v{lv.version}
               </Badge>
             )}
-            <Badge variant={statusVariant(agent.status)} className="text-[11px]">
-              {agent.status}
-            </Badge>
+            <StatusBadge status={agent.status} className="text-[11px]" />
           </div>
         </div>
         <div className="text-xs text-muted-foreground font-mono">
           {agent.namespace}/{agent.slug}
         </div>
 
-        {/* Skills count + I/O modes */}
-        {lv && (
+        {/* Skills count only — reduce badge noise */}
+        {lv?.skills && lv.skills.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
-            {lv.skills && lv.skills.length > 0 && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex items-center gap-1">
-                <Cpu className="h-2.5 w-2.5" />
-                {lv.skills.length} skill{lv.skills.length !== 1 ? "s" : ""}
-              </Badge>
-            )}
-            {lv.default_input_modes?.map((m) => (
-              <Badge key={`in-${m}`} variant="secondary" className="text-[10px] px-1.5 py-0">
-                ↓ {m}
-              </Badge>
-            ))}
-            {lv.default_output_modes?.map((m) => (
-              <Badge key={`out-${m}`} variant="secondary" className="text-[10px] px-1.5 py-0">
-                ↑ {m}
-              </Badge>
-            ))}
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex items-center gap-1">
+              <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
+              {lv.skills.length} skill{lv.skills.length !== 1 ? "s" : ""}
+            </Badge>
           </div>
         )}
       </CardHeader>
@@ -80,7 +67,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         </CardContent>
       )}
 
-      <CardFooter className="pt-3 border-t flex items-center justify-between text-xs text-muted-foreground">
+      <CardFooter className="pt-3 border-t flex items-center justify-between text-xs text-muted-foreground relative z-10">
         <span>{formatDate(agent.created_at)}</span>
         <div className="flex items-center gap-2">
           <a
@@ -88,8 +75,9 @@ export function AgentCard({ agent }: AgentCardProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 hover:text-foreground transition-colors"
+            aria-label="View JSON API response"
           >
-            <Braces className="h-3.5 w-3.5" />
+            <Braces className="h-3.5 w-3.5" aria-hidden="true" />
             JSON
           </a>
           <a
@@ -97,8 +85,9 @@ export function AgentCard({ agent }: AgentCardProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 hover:text-foreground transition-colors"
+            aria-label="View A2A agent card"
           >
-            <ExternalLink className="h-3.5 w-3.5" />
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             A2A card
           </a>
         </div>

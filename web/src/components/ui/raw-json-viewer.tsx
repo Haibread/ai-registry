@@ -46,8 +46,9 @@ export function RawJsonViewer({ data, title = "Raw JSON", defaultOpen = false }:
             size="sm"
             className="h-7 px-2 text-xs"
             onClick={(e) => { e.stopPropagation(); copy() }}
+            aria-label={copied ? "Copied to clipboard" : "Copy JSON to clipboard"}
           >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
             <span className="ml-1">{copied ? "Copied" : "Copy"}</span>
           </Button>
         )}

@@ -1,9 +1,11 @@
 import type { Metadata } from "next"
 import { Suspense } from "react"
+import { Server } from "lucide-react"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { ServerCard } from "@/components/mcp/server-card"
 import { FilterBar } from "@/components/ui/filter-bar"
+import { FilterBarSkeleton } from "@/components/ui/filter-bar-skeleton"
 import { Button } from "@/components/ui/button"
 import { getPublicClient } from "@/lib/api-client"
 
@@ -56,7 +58,7 @@ export default async function MCPPage({
           </p>
         </div>
 
-        <Suspense>
+        <Suspense fallback={<FilterBarSkeleton />}>
           <FilterBar
             q={q}
             namespace={namespace}
@@ -67,17 +69,30 @@ export default async function MCPPage({
         </Suspense>
 
         {servers.length === 0 ? (
-          <p className="text-muted-foreground py-12 text-center">
-            {q || namespace || status
-              ? "No servers match your filters."
-              : "No public MCP servers yet."}
-          </p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {servers.map((s) => (
-              <ServerCard key={s.id} server={s} />
-            ))}
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <Server className="h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
+            <p className="text-muted-foreground font-medium">
+              {q || namespace || status
+                ? "No servers match your filters."
+                : "No public MCP servers yet."}
+            </p>
+            {(q || namespace || status) && (
+              <Button variant="outline" size="sm" asChild>
+                <a href="/mcp">Clear filters</a>
+              </Button>
+            )}
           </div>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Showing {servers.length}{data?.total_count && data.total_count > servers.length ? ` of ${data.total_count}` : ""} server{servers.length !== 1 ? "s" : ""}
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {servers.map((s) => (
+                <ServerCard key={s.id} server={s} />
+              ))}
+            </div>
+          </>
         )}
 
         {data?.next_cursor && (

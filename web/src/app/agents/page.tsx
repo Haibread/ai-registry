@@ -1,9 +1,11 @@
 import type { Metadata } from "next"
 import { Suspense } from "react"
+import { Bot } from "lucide-react"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { AgentCard } from "@/components/agents/agent-card"
 import { FilterBar } from "@/components/ui/filter-bar"
+import { FilterBarSkeleton } from "@/components/ui/filter-bar-skeleton"
 import { Button } from "@/components/ui/button"
 import { getPublicClient } from "@/lib/api-client"
 
@@ -56,7 +58,7 @@ export default async function AgentsPage({
           </p>
         </div>
 
-        <Suspense>
+        <Suspense fallback={<FilterBarSkeleton />}>
           <FilterBar
             q={q}
             namespace={namespace}
@@ -67,17 +69,30 @@ export default async function AgentsPage({
         </Suspense>
 
         {agents.length === 0 ? (
-          <p className="text-muted-foreground py-12 text-center">
-            {q || namespace || status
-              ? "No agents match your filters."
-              : "No public agents yet."}
-          </p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {agents.map((a) => (
-              <AgentCard key={a.id} agent={a} />
-            ))}
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <Bot className="h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
+            <p className="text-muted-foreground font-medium">
+              {q || namespace || status
+                ? "No agents match your filters."
+                : "No public agents yet."}
+            </p>
+            {(q || namespace || status) && (
+              <Button variant="outline" size="sm" asChild>
+                <a href="/agents">Clear filters</a>
+              </Button>
+            )}
           </div>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Showing {agents.length}{data?.total_count && data.total_count > agents.length ? ` of ${data.total_count}` : ""} agent{agents.length !== 1 ? "s" : ""}
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {agents.map((a) => (
+                <AgentCard key={a.id} agent={a} />
+              ))}
+            </div>
+          </>
         )}
 
         {data?.next_cursor && (

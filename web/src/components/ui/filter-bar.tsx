@@ -122,10 +122,11 @@ export function FilterBar({
   // Cleanup on unmount.
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
 
-  const hasFilters = q || namespace || searchParams.get("status") || searchParams.get("visibility")
+  const hasFilters = !!(q || namespace || searchParams.get("status") || searchParams.get("visibility"))
 
   return (
     // The form still works as a GET form when JS is unavailable.
+    // Hidden inputs carry existing params so the fallback preserves them.
     <form
       className="flex flex-wrap gap-2 items-center"
       onSubmit={(e) => {
@@ -135,7 +136,7 @@ export function FilterBar({
     >
       {/* Full-text search */}
       <div className="relative flex-1 min-w-[200px] max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
         <Input
           name="q"
           value={q}
@@ -146,6 +147,7 @@ export function FilterBar({
           placeholder={searchPlaceholder}
           className="pl-9"
           autoComplete="off"
+          aria-label="Search"
         />
       </div>
 
@@ -194,24 +196,24 @@ export function FilterBar({
         </select>
       )}
 
-      {/* Clear — only shown when something is active */}
-      {hasFilters && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="shrink-0 gap-1.5"
-          onClick={() => {
-            setQ("")
-            setNamespace("")
-            router.replace(pathname)
-          }}
-          aria-label="Clear all filters"
-        >
-          <X className="h-3.5 w-3.5" />
-          Clear
-        </Button>
-      )}
+      {/* Clear — always visible; disabled + muted when no filters are active */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="shrink-0 gap-1.5"
+        onClick={() => {
+          setQ("")
+          setNamespace("")
+          router.replace(pathname)
+        }}
+        aria-label="Clear all filters"
+        disabled={!hasFilters}
+        aria-disabled={!hasFilters}
+      >
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
+        Clear
+      </Button>
     </form>
   )
 }

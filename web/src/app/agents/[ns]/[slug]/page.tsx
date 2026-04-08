@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ArrowLeft, ExternalLink, Cpu, Shield } from "lucide-react"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
-import { Badge, statusVariant, visibilityVariant } from "@/components/ui/badge"
+import { Badge, StatusBadge, VisibilityBadge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
@@ -40,22 +40,26 @@ export default async function AgentPage({ params }: Props) {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-8 max-w-3xl space-y-6">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/agents" className="flex items-center gap-1">
-            <ArrowLeft className="h-4 w-4" /> Back
+        {/* Breadcrumb */}
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Link href="/agents" className="flex items-center gap-1 hover:text-foreground transition-colors">
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            Agents
           </Link>
-        </Button>
+          <span aria-hidden="true">/</span>
+          <span className="font-mono text-foreground">{data.namespace}/{data.slug}</span>
+        </nav>
 
         {/* Title row */}
         <div className="space-y-2">
           <div className="flex items-start gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold flex-1">{data.name}</h1>
+            <h1 className="text-3xl font-bold flex-1">{data.name}</h1>
             <div className="flex gap-2 flex-wrap">
               {lv && (
                 <Badge variant="outline" className="font-mono">v{lv.version}</Badge>
               )}
-              <Badge variant={statusVariant(data.status)}>{data.status}</Badge>
-              <Badge variant={visibilityVariant(data.visibility)}>{data.visibility}</Badge>
+              <StatusBadge status={data.status} />
+              <VisibilityBadge visibility={data.visibility} />
             </div>
           </div>
           <p className="text-sm text-muted-foreground font-mono">
@@ -145,8 +149,8 @@ export default async function AgentPage({ params }: Props) {
         {/* Skills grid */}
         {lv?.skills && lv.skills.length > 0 && (
           <div className="space-y-3">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Cpu className="h-4 w-4" /> Skills
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Cpu className="h-4 w-4" aria-hidden="true" /> Skills
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
               {lv.skills.map((skill: AgentSkill) => (

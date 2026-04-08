@@ -116,9 +116,11 @@ describe("FilterBar — rendering", () => {
 // ── Clear button ──────────────────────────────────────────────────────────────
 
 describe("FilterBar — Clear button", () => {
-  it("is hidden when no filters are active", () => {
+  it("is always visible but disabled when no filters are active", () => {
     render(<FilterBar statusOptions={[]} />)
-    expect(screen.queryByRole("button", { name: /clear/i })).not.toBeInTheDocument()
+    const btn = screen.getByRole("button", { name: /clear/i })
+    expect(btn).toBeInTheDocument()
+    expect(btn).toBeDisabled()
   })
 
   it("is shown when URL param q is set", () => {
