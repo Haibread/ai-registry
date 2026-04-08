@@ -83,6 +83,7 @@ func run() error {
 		AuthConf: authpkg.Config{
 			OIDCIssuer: cfg.Auth.OIDCIssuer,
 		},
+		CORSOrigins: cfg.HTTP.CORSOrigins,
 	})
 	srv := registryhttp.NewServer(handler, registryhttp.ServerConfig{
 		Addr:         cfg.HTTP.Addr,

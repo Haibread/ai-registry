@@ -4,6 +4,7 @@ package http
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -19,10 +20,11 @@ import (
 
 // RouterDeps bundles the dependencies injected into the router.
 type RouterDeps struct {
-	Logger   *slog.Logger
-	DB       *store.DB
-	Metrics  *observability.Metrics
-	AuthConf auth.Config
+	Logger      *slog.Logger
+	DB          *store.DB
+	Metrics     *observability.Metrics
+	AuthConf    auth.Config
+	CORSOrigins []string
 }
 
 // NewRouter builds and returns the chi router with all middleware and routes.
@@ -43,6 +45,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 
 	// ── Core middleware ───────────────────────────────────────────────────────
+	r.Use(middleware.CORS(deps.CORSOrigins))
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(deps.Logger))
@@ -51,7 +54,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	// ── System endpoints ──────────────────────────────────────────────────────
 	r.Get("/healthz", handlers.Healthz)
 	r.Get("/readyz", handlers.Readyz(deps.DB))
-	r.Get("/metrics", promhttp.Handler().ServeHTTP)
+	r.With(auth.RequireAdmin).Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/openapi.yaml", handlers.OpenAPISpec)
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
@@ -70,29 +73,30 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", cardH.PerAgentCard)
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
+	publicRL := middleware.RateLimit(100, time.Minute)
 	r.Route("/api/v1", func(r chi.Router) {
 
 		// Publishers
 		r.Route("/publishers", func(r chi.Router) {
-			r.Get("/", pubH.ListPublishers)
+			r.With(publicRL).Get("/", pubH.ListPublishers)
 			r.With(auth.RequireAdmin).Post("/", pubH.CreatePublisher)
-			r.Get("/{slug}", pubH.GetPublisher)
+			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
 		})
 
 		// MCP servers
 		r.Route("/mcp/servers", func(r chi.Router) {
-			r.Get("/", mcpH.ListServers)
+			r.With(publicRL).Get("/", mcpH.ListServers)
 			r.With(auth.RequireAdmin).Post("/", mcpH.CreateServer)
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
-				r.Get("/", mcpH.GetServer)
+				r.With(publicRL).Get("/", mcpH.GetServer)
 				r.With(auth.RequireAdmin).Post("/deprecate", mcpH.DeprecateServer)
 				r.With(auth.RequireAdmin).Post("/visibility", mcpH.SetVisibility)
 
 				r.Route("/versions", func(r chi.Router) {
-					r.Get("/", mcpH.ListVersions)
+					r.With(publicRL).Get("/", mcpH.ListVersions)
 					r.With(auth.RequireAdmin).Post("/", mcpH.CreateVersion)
-					r.Get("/{version}", mcpH.GetVersion)
+					r.With(publicRL).Get("/{version}", mcpH.GetVersion)
 					r.With(auth.RequireAdmin).Post("/{version}/publish", mcpH.PublishVersion)
 				})
 			})
@@ -100,18 +104,18 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 		// Agents
 		r.Route("/agents", func(r chi.Router) {
-			r.Get("/", agentH.ListAgents)
+			r.With(publicRL).Get("/", agentH.ListAgents)
 			r.With(auth.RequireAdmin).Post("/", agentH.CreateAgent)
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
-				r.Get("/", agentH.GetAgent)
+				r.With(publicRL).Get("/", agentH.GetAgent)
 				r.With(auth.RequireAdmin).Post("/deprecate", agentH.DeprecateAgent)
 				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
 
 				r.Route("/versions", func(r chi.Router) {
-					r.Get("/", agentH.ListVersions)
+					r.With(publicRL).Get("/", agentH.ListVersions)
 					r.With(auth.RequireAdmin).Post("/", agentH.CreateVersion)
-					r.Get("/{version}", agentH.GetVersion)
+					r.With(publicRL).Get("/{version}", agentH.GetVersion)
 					r.With(auth.RequireAdmin).Post("/{version}/publish", agentH.PublishVersion)
 				})
 			})

@@ -275,6 +275,104 @@ func TestAuthenticate_ValidJWT_WrongIssuer(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Expired / missing-exp JWT tests
+// ---------------------------------------------------------------------------
+
+// signJWTWithTimes signs a JWT with explicit iat and exp values.
+// Pass exp = 0 to omit the exp field entirely.
+func signJWTWithTimes(t *testing.T, priv *rsa.PrivateKey, kid, issuer string, roles []string, iat, exp int64) string {
+	t.Helper()
+	claims := jwt.MapClaims{
+		"iss": issuer,
+		"sub": "user-123",
+		"iat": iat,
+		"realm_access": map[string]interface{}{
+			"roles": roles,
+		},
+	}
+	if exp != 0 {
+		claims["exp"] = exp
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tok.Header["kid"] = kid
+
+	signed, err := tok.SignedString(priv)
+	if err != nil {
+		t.Fatalf("signing JWT: %v", err)
+	}
+	return signed
+}
+
+func TestAuthenticate_ExpiredJWT(t *testing.T) {
+	priv := generateTestKey(t)
+	const kid = "k1"
+	const issuer = "http://keycloak/realms/test"
+
+	jwksSrv := newFakeJWKSServer(t, priv, kid)
+	defer jwksSrv.Close()
+
+	v := buildValidator(t, jwksSrv.URL, issuer)
+
+	// Token with exp 1 hour in the past
+	expiredAt := time.Now().Add(-time.Hour).Unix()
+	token := signJWTWithTimes(t, priv, kid, issuer, []string{"admin"}, time.Now().Unix(), expiredAt)
+
+	var capturedCtx context.Context
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedCtx = r.Context()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	v.Authenticate(next).ServeHTTP(rec, req)
+
+	// Authenticate must NOT block; next is still called
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	// But no claims should be in context
+	if claims, ok := auth.ClaimsFromContext(capturedCtx); ok && claims != nil {
+		t.Error("expected no claims for expired JWT")
+	}
+}
+
+func TestAuthenticate_MissingExp(t *testing.T) {
+	priv := generateTestKey(t)
+	const kid = "k1"
+	const issuer = "http://keycloak/realms/test"
+
+	jwksSrv := newFakeJWKSServer(t, priv, kid)
+	defer jwksSrv.Close()
+
+	v := buildValidator(t, jwksSrv.URL, issuer)
+
+	// Token without exp field (exp=0 means omit in signJWTWithTimes)
+	token := signJWTWithTimes(t, priv, kid, issuer, []string{"admin"}, time.Now().Unix(), 0)
+
+	var capturedCtx context.Context
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedCtx = r.Context()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	v.Authenticate(next).ServeHTTP(rec, req)
+
+	// Authenticate must NOT block
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	// But no claims (golang-jwt rejects missing exp by default)
+	if claims, ok := auth.ClaimsFromContext(capturedCtx); ok && claims != nil {
+		t.Error("expected no claims for JWT missing exp field")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // bearerToken – tested indirectly via Authenticate
 // ---------------------------------------------------------------------------
 

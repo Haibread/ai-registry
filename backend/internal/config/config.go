@@ -78,7 +78,7 @@ func Load() (*Config, error) {
 			Level: envString("LOG_LEVEL", "info"),
 		},
 		Auth: AuthConfig{
-			OIDCIssuer: envString("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry"),
+			OIDCIssuer: envString("OIDC_ISSUER", ""),
 		},
 	}
 
@@ -91,6 +91,9 @@ func Load() (*Config, error) {
 func (c *Config) validate() error {
 	if c.Database.URL == "" {
 		return fmt.Errorf("DATABASE_URL is required")
+	}
+	if c.Auth.OIDCIssuer == "" {
+		return fmt.Errorf("OIDC_ISSUER is required")
 	}
 	return nil
 }

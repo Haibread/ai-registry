@@ -8,6 +8,7 @@ import (
 
 func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -38,6 +39,7 @@ func TestLoad_Defaults(t *testing.T) {
 
 func TestLoad_EnvOverrides(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
 	t.Setenv("HTTP_ADDR", ":9090")
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("OTEL_SERVICE_NAME", "my-service")
@@ -70,6 +72,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 
 func TestLoad_MissingDatabaseURL(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
 
 	_, err := config.Load()
 	if err == nil {
@@ -77,8 +80,29 @@ func TestLoad_MissingDatabaseURL(t *testing.T) {
 	}
 }
 
+func TestLoad_MissingOIDCIssuer(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "")
+
+	_, err := config.Load()
+	if err == nil {
+		t.Error("expected error when OIDC_ISSUER is empty, got nil")
+	}
+}
+
+func TestLoad_ValidConfig(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "https://auth.example.com/realms/test")
+
+	_, err := config.Load()
+	if err != nil {
+		t.Errorf("expected no error for valid config, got %v", err)
+	}
+}
+
 func TestLoad_CORSOrigins(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
 	t.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000, http://localhost:3001")
 
 	cfg, err := config.Load()

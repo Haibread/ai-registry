@@ -44,7 +44,7 @@ func (v *Validator) Authenticate(next http.Handler) http.Handler {
 			}
 			kid, _ := t.Header["kid"].(string)
 			return v.jwks.GetKey(r.Context(), kid)
-		}, jwt.WithIssuedAt(), jwt.WithIssuer(v.issuer))
+		}, jwt.WithIssuedAt(), jwt.WithIssuer(v.issuer), jwt.WithExpirationRequired())
 
 		if err != nil {
 			next.ServeHTTP(w, r)
