@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "API Keys" }
 
 export default function AdminApiKeysPage() {
   return (
-    <div className="space-y-4 max-w-xl">
+    <div className="space-y-4 max-w-xl mx-auto">
       <h1 className="text-2xl font-bold">API Keys</h1>
 
       <Card>

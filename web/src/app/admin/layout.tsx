@@ -1,7 +1,7 @@
-import { headers } from "next/headers"
 import { auth } from "@/auth"
 import { AdminSidebar } from "@/components/layout/admin-sidebar"
 import { AutoSignOut } from "@/components/auth/auto-sign-out"
+import { ThemeToggle } from "@/components/layout/theme-toggle"
 import Link from "next/link"
 import { signOut } from "@/auth"
 import { Button } from "@/components/ui/button"
@@ -16,9 +16,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return <AutoSignOut />
   }
 
-  const headersList = await headers()
-  const pathname = headersList.get("x-invoke-path") ?? ""
-
   return (
     <div className="flex min-h-screen flex-col">
       {/* Admin top bar */}
@@ -32,6 +29,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <span className="text-muted-foreground text-sm">/</span>
         <span className="text-sm font-medium">Admin</span>
         <div className="ml-auto flex items-center gap-3">
+          <ThemeToggle />
           <span className="text-sm text-muted-foreground hidden sm:block">
             {session?.user?.email}
           </span>
@@ -49,7 +47,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </header>
 
       <div className="flex flex-1">
-        <AdminSidebar pathname={pathname} />
+        <AdminSidebar />
         <main className="flex-1 p-6 overflow-auto">{children}</main>
       </div>
     </div>

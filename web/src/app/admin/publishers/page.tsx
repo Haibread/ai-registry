@@ -14,7 +14,7 @@ export default async function AdminPublishersPage() {
   const publishers = data?.items ?? []
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Publishers</h1>

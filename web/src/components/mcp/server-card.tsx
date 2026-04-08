@@ -18,10 +18,10 @@ export function ServerCard({ server }: ServerCardProps) {
   // Show at most one ecosystem badge to avoid visual noise
   const ecosystem = lv?.packages?.[0] ? ecosystemLabel(lv.packages[0].registryType) : null
 
-  // For non-stdio transports, surface the endpoint URL on the card
-  const endpointUrl = lv?.packages?.find(
-    p => isRemoteTransport(p.transport.type) && p.transport.url
-  )?.transport.url ?? null
+  // For non-stdio transports, surface the transport type + endpoint URL on the card
+  const remotePkg = lv?.packages?.find(p => isRemoteTransport(p.transport.type) && p.transport.url) ?? null
+  const endpointUrl = remotePkg?.transport.url ?? null
+  const transportType = remotePkg?.transport.type ?? null
 
   return (
     <Card className="flex flex-col hover:shadow-md transition-shadow group relative">
@@ -73,11 +73,18 @@ export function ServerCard({ server }: ServerCardProps) {
 
       {endpointUrl && (
         <CardContent className="pt-0 pb-3">
-          <div className="flex items-center gap-1.5 rounded bg-muted/60 px-2 py-1.5 min-w-0">
-            <Link2 className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />
-            <span className="text-[11px] font-mono text-muted-foreground truncate" title={endpointUrl}>
-              {endpointUrl}
-            </span>
+          <div className="flex items-center gap-2 min-w-0">
+            {transportType && (
+              <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-sans font-semibold text-primary/80">
+                {transportType}
+              </span>
+            )}
+            <div className="flex items-center gap-1.5 rounded bg-muted/60 px-2 py-1.5 min-w-0 flex-1">
+              <Link2 className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />
+              <span className="text-[11px] font-mono text-muted-foreground truncate" title={endpointUrl}>
+                {endpointUrl}
+              </span>
+            </div>
           </div>
         </CardContent>
       )}

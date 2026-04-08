@@ -40,7 +40,7 @@ export default async function AdminPublisherPage({ params }: Props) {
   const agents = agentsRes.data?.items ?? []
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Link href="/admin/publishers" className="flex items-center gap-1 hover:text-foreground transition-colors">
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />

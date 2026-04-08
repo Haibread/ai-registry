@@ -55,7 +55,7 @@ export default async function AdminMCPServerPage({ params }: Props) {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-3xl mx-auto">
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Link href="/admin/mcp" className="flex items-center gap-1 hover:text-foreground transition-colors">
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />

@@ -46,7 +46,7 @@ export function NewAgentForm({ publishers }: Props) {
   const [authScheme, setAuthScheme] = useState("")
 
   return (
-    <div className="space-y-6 max-w-lg">
+    <div className="space-y-6 max-w-lg mx-auto">
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Link href="/admin/agents" className="flex items-center gap-1 hover:text-foreground transition-colors">
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />

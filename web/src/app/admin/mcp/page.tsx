@@ -50,7 +50,7 @@ export default async function AdminMCPPage({
   if (data?.next_cursor) nextParams.set("cursor", data.next_cursor)
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">MCP Servers</h1>

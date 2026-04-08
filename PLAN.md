@@ -176,11 +176,40 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
   visibility toggle, API-key management.
 - Generated TS API client from OpenAPI (openapi-typescript + openapi-fetch).
 
+**TODO — Backend (missing endpoints):**
+- [ ] `PATCH /api/v1/mcp/servers/{ns}/{slug}` — edit MCP server metadata
+- [ ] `DELETE /api/v1/mcp/servers/{ns}/{slug}` — delete MCP server
+- [ ] `PATCH /api/v1/agents/{ns}/{slug}` — edit agent metadata
+- [ ] `DELETE /api/v1/agents/{ns}/{slug}` — delete agent
+- [ ] `PATCH /api/v1/publishers/{slug}` — edit publisher
+- [ ] `DELETE /api/v1/publishers/{slug}` — delete publisher
+- [ ] `GET /api/v1/users`, `PATCH /api/v1/users/{sub}` — user & role management
+- [ ] Update `/api/openapi.yaml` to reflect all current endpoints
+
+**TODO — Admin UI (missing features):**
+- [ ] Edit form for MCP servers (`/admin/mcp/[ns]/[slug]/edit`)
+- [ ] Edit form for agents (`/admin/agents/[ns]/[slug]/edit`)
+- [ ] Edit form for publishers (`/admin/publishers/[slug]/edit`)
+- [ ] Delete actions for servers, agents, and publishers (with confirmation)
+- [ ] Users & roles management page (`/admin/users`)
+
+**TODO — Public UI (missing features):**
+- [ ] Search bar wired to `?q=` on `/mcp` and `/agents` list pages
+- [ ] Cursor-based pagination controls on list pages
+
 ### Phase 5 — Hardening
-- Rate limiting, CORS, audit log table (`who did what when`).
-- Pagination cursors, full-text search (Postgres `tsvector`).
+- Rate limiting ✅, CORS ✅, audit log ✅.
+- Pagination cursors ✅, full-text search ✅ (Postgres `tsvector`).
 - E2E tests (Playwright) for admin flows.
 - Deployment manifests: docker-compose prod profile + Helm chart for k8s.
+
+**TODO — Phase 5:**
+- [ ] `POST /api/v1/api-keys`, `DELETE /api/v1/api-keys/{id}` — hashed API keys (per-publisher, machine-to-machine)
+- [ ] API-key auth middleware (JWT-first, fallback to API-key lookup)
+- [ ] Admin UI: API keys management page (`/admin/api-keys`)
+- [ ] E2E tests with Playwright covering admin create / publish / deprecate flows
+- [ ] Docker Compose prod profile (`deploy/docker-compose.prod.yml`)
+- [ ] Helm chart (`deploy/helm/`)
 
 ### Phase 6 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
