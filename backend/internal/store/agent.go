@@ -22,6 +22,8 @@ type AgentRow struct {
 type ListAgentsParams struct {
 	PublicOnly bool
 	Namespace  string
+	Status     string // filter by status: "draft" | "published" | "deprecated" | "" (all)
+	Visibility string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query      string
 	Limit      int32
 	Cursor     string
@@ -40,6 +42,15 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, e
 	if p.PublicOnly {
 		whereClause += fmt.Sprintf(" AND a.visibility = $%d", argN)
 		args = append(args, "public")
+		argN++
+	} else if p.Visibility != "" {
+		whereClause += fmt.Sprintf(" AND a.visibility = $%d", argN)
+		args = append(args, p.Visibility)
+		argN++
+	}
+	if p.Status != "" {
+		whereClause += fmt.Sprintf(" AND a.status = $%d", argN)
+		args = append(args, p.Status)
 		argN++
 	}
 	if p.Namespace != "" {

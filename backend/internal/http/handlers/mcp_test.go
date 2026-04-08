@@ -578,3 +578,106 @@ func TestMCPHandler_DeprecateServer_NotPublished(t *testing.T) {
 		t.Errorf("status = %d, want 409", rec.Code)
 	}
 }
+
+// ─── Status / Visibility filter tests ──────────────────────────────────────
+
+func TestMCPHandler_List_FilterByStatus(t *testing.T) {
+	resetTables(t)
+
+	// Seed two servers that will be promoted to published, one left draft.
+	seedMCPServer(t, "fst-ns1", "fst-draft")
+	seedMCPServerPublished(t, "fst-ns2", "fst-pub-1")
+	seedMCPServerPublished(t, "fst-ns3", "fst-pub-2")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers?status=published", nil)
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			Slug   string `json:"slug"`
+			Status string `json:"status"`
+		} `json:"items"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if len(body.Items) != 2 {
+		t.Errorf("status=published: got %d items, want 2", len(body.Items))
+	}
+	for _, item := range body.Items {
+		if item.Status != "published" {
+			t.Errorf("expected status=published, got %q for slug %q", item.Status, item.Slug)
+		}
+	}
+}
+
+func TestMCPHandler_List_FilterByVisibility(t *testing.T) {
+	resetTables(t)
+
+	// Seed one private (default) and one public server.
+	seedMCPServer(t, "fvis-ns1", "fvis-private")
+	seedMCPServerPublic(t, "fvis-ns2", "fvis-public")
+
+	// Admin request with visibility=private filter.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers?visibility=private", nil)
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			Slug       string `json:"slug"`
+			Visibility string `json:"visibility"`
+		} `json:"items"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if len(body.Items) != 1 {
+		t.Errorf("visibility=private: got %d items, want 1", len(body.Items))
+	}
+	if len(body.Items) > 0 && body.Items[0].Slug != "fvis-private" {
+		t.Errorf("visibility=private: slug=%q, want fvis-private", body.Items[0].Slug)
+	}
+}
+
+func TestMCPHandler_List_InvalidFilterIgnored(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "inv-ns1", "inv-srv-1")
+	seedMCPServer(t, "inv-ns2", "inv-srv-2")
+
+	// Invalid status and visibility values should be silently ignored,
+	// returning all entries visible to an admin.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers?status=badvalue&visibility=garbage", nil)
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []any `json:"items"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if len(body.Items) != 2 {
+		t.Errorf("invalid filters ignored: got %d items, want 2", len(body.Items))
+	}
+}
+
+// seedMCPServerPublished creates an MCP server and sets its status to published via SQL.
+func seedMCPServerPublished(t *testing.T, ns, slug string) {
+	t.Helper()
+	seedMCPServer(t, ns, slug)
+	srv, err := testDB.GetMCPServer(context.Background(), ns, slug, false)
+	if err != nil {
+		t.Fatalf("GetMCPServer: %v", err)
+	}
+	if _, err := testDB.Pool.Exec(context.Background(), "UPDATE mcp_servers SET status=$1 WHERE id=$2", "published", srv.ID); err != nil {
+		t.Fatalf("seedMCPServerPublished: %v", err)
+	}
+}

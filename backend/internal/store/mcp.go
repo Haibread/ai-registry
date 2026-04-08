@@ -26,6 +26,8 @@ var ErrImmutable = errors.New("published versions are immutable")
 type ListMCPServersParams struct {
 	PublicOnly bool   // when true, only visibility='public' rows are returned
 	Namespace  string // filter by publisher slug (optional)
+	Status     string // filter by status: "draft" | "published" | "deprecated" | "" (all)
+	Visibility string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query      string // full-text search term (optional)
 	Limit      int32
 	Cursor     string // opaque cursor (created_at::text + "," + id)
@@ -49,6 +51,16 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	if p.PublicOnly {
 		whereClause += fmt.Sprintf(" AND s.visibility = $%d", argN)
 		args = append(args, "public")
+		argN++
+	} else if p.Visibility != "" {
+		// Admin-only explicit visibility filter (ignored when PublicOnly forces public)
+		whereClause += fmt.Sprintf(" AND s.visibility = $%d", argN)
+		args = append(args, p.Visibility)
+		argN++
+	}
+	if p.Status != "" {
+		whereClause += fmt.Sprintf(" AND s.status = $%d", argN)
+		args = append(args, p.Status)
 		argN++
 	}
 	if p.Namespace != "" {

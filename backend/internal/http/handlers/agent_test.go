@@ -590,3 +590,101 @@ func TestAgentHandler_DeprecateAgent_NotPublished(t *testing.T) {
 		t.Errorf("status = %d, want 409", rec.Code)
 	}
 }
+
+// ─── Status / Visibility filter tests ──────────────────────────────────────
+
+func TestAgentHandler_List_FilterByStatus(t *testing.T) {
+	resetTables(t)
+
+	seedAgent(t, "agfst-ns1", "agfst-draft")
+	seedAgentPublished(t, "agfst-ns2", "agfst-pub-1")
+	seedAgentPublished(t, "agfst-ns3", "agfst-pub-2")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents?status=published", nil)
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			Slug   string `json:"slug"`
+			Status string `json:"status"`
+		} `json:"items"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if len(body.Items) != 2 {
+		t.Errorf("status=published: got %d items, want 2", len(body.Items))
+	}
+	for _, item := range body.Items {
+		if item.Status != "published" {
+			t.Errorf("expected status=published, got %q for slug %q", item.Status, item.Slug)
+		}
+	}
+}
+
+func TestAgentHandler_List_FilterByVisibility(t *testing.T) {
+	resetTables(t)
+
+	seedAgent(t, "agfvis-ns1", "agfvis-private")
+	seedAgentPublic(t, "agfvis-ns2", "agfvis-public")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents?visibility=private", nil)
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			Slug       string `json:"slug"`
+			Visibility string `json:"visibility"`
+		} `json:"items"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if len(body.Items) != 1 {
+		t.Errorf("visibility=private: got %d items, want 1", len(body.Items))
+	}
+	if len(body.Items) > 0 && body.Items[0].Slug != "agfvis-private" {
+		t.Errorf("visibility=private: slug=%q, want agfvis-private", body.Items[0].Slug)
+	}
+}
+
+func TestAgentHandler_List_InvalidFilterIgnored(t *testing.T) {
+	resetTables(t)
+	seedAgent(t, "aginv-ns1", "aginv-ag-1")
+	seedAgent(t, "aginv-ns2", "aginv-ag-2")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents?status=badvalue&visibility=garbage", nil)
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []any `json:"items"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if len(body.Items) != 2 {
+		t.Errorf("invalid filters ignored: got %d items, want 2", len(body.Items))
+	}
+}
+
+// seedAgentPublished creates an agent and promotes its status to published via SQL.
+func seedAgentPublished(t *testing.T, ns, slug string) {
+	t.Helper()
+	seedAgent(t, ns, slug)
+	ag, err := testDB.GetAgent(context.Background(), ns, slug, false)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if _, err := testDB.Pool.Exec(context.Background(), "UPDATE agents SET status=$1 WHERE id=$2", "published", ag.ID); err != nil {
+		t.Fatalf("seedAgentPublished: %v", err)
+	}
+}

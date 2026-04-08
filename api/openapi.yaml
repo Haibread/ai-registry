@@ -148,7 +148,7 @@ paths:
   /api/v1/mcp/servers:
     get:
       operationId: listMCPServers
-      summary: List MCP servers (public entries only)
+      summary: List MCP servers
       tags: [mcp]
       parameters:
         - $ref: "#/components/parameters/LimitParam"
@@ -163,6 +163,18 @@ paths:
           description: Filter by publisher slug
           schema:
             type: string
+        - name: status
+          in: query
+          description: Filter by lifecycle status
+          schema:
+            type: string
+            enum: [draft, published, deprecated]
+        - name: visibility
+          in: query
+          description: Filter by visibility (admin only — public requests always see public entries only)
+          schema:
+            type: string
+            enum: [public, private]
       responses:
         "200":
           description: Paginated list of MCP servers
@@ -284,15 +296,33 @@ paths:
   /api/v1/agents:
     get:
       operationId: listAgents
-      summary: List agents (public entries only)
+      summary: List agents
       tags: [agents]
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
         - name: q
           in: query
+          description: Full-text search query
           schema:
             type: string
+        - name: namespace
+          in: query
+          description: Filter by publisher slug
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by lifecycle status
+          schema:
+            type: string
+            enum: [draft, published, deprecated]
+        - name: visibility
+          in: query
+          description: Filter by visibility (admin only)
+          schema:
+            type: string
+            enum: [public, private]
       responses:
         "200":
           description: Paginated list of agents

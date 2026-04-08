@@ -9,13 +9,13 @@ export const metadata: Metadata = { title: "Admin Dashboard" }
 
 export default async function AdminDashboardPage() {
   const api = await getApiClient()
-  const { data, error, response } = await api.GET("/api/v1/stats")
+  const { data, response } = await api.GET("/api/v1/stats")
 
   // Surface auth/connectivity errors so they're visible during development.
   // In production these would go to an error boundary, but a banner is enough.
   const statsError =
-    !data && (error != null || (response && response.status !== 200))
-      ? `Failed to load stats (HTTP ${response?.status ?? "?"}) — check backend connectivity and Keycloak token claims.`
+    !data && response && response.status !== 200
+      ? `Failed to load stats (HTTP ${response.status}) — check backend connectivity and Keycloak token claims.`
       : null
 
   const stats = [

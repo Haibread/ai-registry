@@ -402,3 +402,131 @@ func TestDeprecateAgent_BadID(t *testing.T) {
 		t.Errorf("expected ErrNotFound for bad ID, got %v", err)
 	}
 }
+
+func TestListAgents_FilterByStatus(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "ag-status-ns", "Agent Status NS")
+
+	ag1, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-status-draft", Name: "Draft Agent"})
+	ag2, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-status-published", Name: "Published Agent"})
+	ag3, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-status-deprecated", Name: "Deprecated Agent"})
+
+	if _, err := sharedDB.Pool.Exec(ctx, "UPDATE agents SET status=$1 WHERE id=$2", "published", ag2.ID); err != nil {
+		t.Fatalf("setting published status: %v", err)
+	}
+	if _, err := sharedDB.Pool.Exec(ctx, "UPDATE agents SET status=$1 WHERE id=$2", "deprecated", ag3.ID); err != nil {
+		t.Fatalf("setting deprecated status: %v", err)
+	}
+	_ = ag1 // stays draft
+
+	for _, tc := range []struct {
+		status string
+		want   int
+		slug   string
+	}{
+		{"draft", 1, "ag-status-draft"},
+		{"published", 1, "ag-status-published"},
+		{"deprecated", 1, "ag-status-deprecated"},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Status: tc.status, Limit: 20})
+			if err != nil {
+				t.Fatalf("ListAgents(status=%s): %v", tc.status, err)
+			}
+			if len(rows) != tc.want {
+				t.Errorf("status=%s: got %d rows, want %d", tc.status, len(rows), tc.want)
+			}
+			if len(rows) > 0 && rows[0].Slug != tc.slug {
+				t.Errorf("status=%s: slug=%q, want %q", tc.status, rows[0].Slug, tc.slug)
+			}
+		})
+	}
+}
+
+func TestListAgents_FilterByVisibility(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "ag-vis-filter-ns", "Agent Vis Filter NS")
+
+	ag1, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-vf-public-1", Name: "Public Agent 1"})
+	ag2, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-vf-public-2", Name: "Public Agent 2"})
+	_, _ = sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-vf-private", Name: "Private Agent"})
+
+	for _, id := range []string{ag1.ID, ag2.ID} {
+		if _, err := sharedDB.Pool.Exec(ctx, "UPDATE agents SET visibility=$1 WHERE id=$2", "public", id); err != nil {
+			t.Fatalf("setting visibility: %v", err)
+		}
+	}
+
+	pubRows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Visibility: "public", Limit: 20})
+	if err != nil {
+		t.Fatalf("ListAgents(visibility=public): %v", err)
+	}
+	if len(pubRows) != 2 {
+		t.Errorf("visibility=public: got %d rows, want 2", len(pubRows))
+	}
+	for _, r := range pubRows {
+		if r.Visibility != "public" {
+			t.Errorf("expected public visibility, got %q for slug %q", r.Visibility, r.Slug)
+		}
+	}
+
+	privRows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Visibility: "private", Limit: 20})
+	if err != nil {
+		t.Fatalf("ListAgents(visibility=private): %v", err)
+	}
+	if len(privRows) != 1 {
+		t.Errorf("visibility=private: got %d rows, want 1", len(privRows))
+	}
+	if len(privRows) > 0 && privRows[0].Slug != "ag-vf-private" {
+		t.Errorf("visibility=private: slug=%q, want ag-vf-private", privRows[0].Slug)
+	}
+}
+
+func TestListAgents_FilterCombined(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pub1 := insertPublisher(t, "ag-comb-ns1", "Agent Combined NS1")
+	pub2 := insertPublisher(t, "ag-comb-ns2", "Agent Combined NS2")
+
+	// ns1: one public+published, one public+draft, one private+published
+	agA, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pub1, Slug: "ag-comb-a", Name: "Comb A"})
+	agB, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pub1, Slug: "ag-comb-b", Name: "Comb B"})
+	agC, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pub1, Slug: "ag-comb-c", Name: "Comb C"})
+	// ns2: one public+published
+	agD, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pub2, Slug: "ag-comb-d", Name: "Comb D"})
+
+	type update struct{ id, col, val string }
+	for _, u := range []update{
+		{agA.ID, "visibility", "public"},
+		{agA.ID, "status", "published"},
+		{agB.ID, "visibility", "public"},
+		// agB stays draft
+		{agC.ID, "status", "published"},
+		// agC stays private
+		{agD.ID, "visibility", "public"},
+		{agD.ID, "status", "published"},
+	} {
+		if _, err := sharedDB.Pool.Exec(ctx, "UPDATE agents SET "+u.col+"=$1 WHERE id=$2", u.val, u.id); err != nil {
+			t.Fatalf("update %s=%s on %s: %v", u.col, u.val, u.id, err)
+		}
+	}
+
+	// namespace=ag-comb-ns1 + status=published + visibility=public => only agA
+	rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
+		Namespace:  "ag-comb-ns1",
+		Status:     "published",
+		Visibility: "public",
+		Limit:      20,
+	})
+	if err != nil {
+		t.Fatalf("ListAgents(combined): %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("combined filter: got %d rows, want 1", len(rows))
+	}
+	if len(rows) > 0 && rows[0].Slug != "ag-comb-a" {
+		t.Errorf("combined filter: slug=%q, want ag-comb-a", rows[0].Slug)
+	}
+}

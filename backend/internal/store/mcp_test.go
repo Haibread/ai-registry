@@ -490,3 +490,136 @@ func TestDecodeCursor_Malformed(t *testing.T) {
 		})
 	}
 }
+
+func TestListMCPServers_FilterByStatus(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "status-ns", "Status NS")
+
+	// Create three servers; default status is draft.
+	srv1, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "status-draft", Name: "Draft Server"})
+	srv2, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "status-published", Name: "Published Server"})
+	srv3, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "status-deprecated", Name: "Deprecated Server"})
+
+	// Promote srv2 to published and srv3 to deprecated via direct SQL.
+	if _, err := sharedDB.Pool.Exec(ctx, "UPDATE mcp_servers SET status=$1 WHERE id=$2", "published", srv2.ID); err != nil {
+		t.Fatalf("setting published status: %v", err)
+	}
+	if _, err := sharedDB.Pool.Exec(ctx, "UPDATE mcp_servers SET status=$1 WHERE id=$2", "deprecated", srv3.ID); err != nil {
+		t.Fatalf("setting deprecated status: %v", err)
+	}
+	_ = srv1 // srv1 stays draft
+
+	for _, tc := range []struct {
+		status string
+		want   int
+		slug   string
+	}{
+		{"draft", 1, "status-draft"},
+		{"published", 1, "status-published"},
+		{"deprecated", 1, "status-deprecated"},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Status: tc.status, Limit: 20})
+			if err != nil {
+				t.Fatalf("ListMCPServers(status=%s): %v", tc.status, err)
+			}
+			if len(rows) != tc.want {
+				t.Errorf("status=%s: got %d rows, want %d", tc.status, len(rows), tc.want)
+			}
+			if len(rows) > 0 && rows[0].Slug != tc.slug {
+				t.Errorf("status=%s: slug=%q, want %q", tc.status, rows[0].Slug, tc.slug)
+			}
+		})
+	}
+}
+
+func TestListMCPServers_FilterByVisibility(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "vis-filter-ns", "Vis Filter NS")
+
+	srv1, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "vf-public-1", Name: "Public 1"})
+	srv2, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "vf-public-2", Name: "Public 2"})
+	_, _ = sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "vf-private", Name: "Private"})
+
+	// Make srv1 and srv2 public.
+	for _, id := range []string{srv1.ID, srv2.ID} {
+		if _, err := sharedDB.Pool.Exec(ctx, "UPDATE mcp_servers SET visibility=$1 WHERE id=$2", "public", id); err != nil {
+			t.Fatalf("setting visibility: %v", err)
+		}
+	}
+
+	// Filter by public (PublicOnly=false so we use the Visibility field).
+	pubRows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Visibility: "public", Limit: 20})
+	if err != nil {
+		t.Fatalf("ListMCPServers(visibility=public): %v", err)
+	}
+	if len(pubRows) != 2 {
+		t.Errorf("visibility=public: got %d rows, want 2", len(pubRows))
+	}
+	for _, r := range pubRows {
+		if r.Visibility != "public" {
+			t.Errorf("expected public visibility, got %q for slug %q", r.Visibility, r.Slug)
+		}
+	}
+
+	// Filter by private.
+	privRows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Visibility: "private", Limit: 20})
+	if err != nil {
+		t.Fatalf("ListMCPServers(visibility=private): %v", err)
+	}
+	if len(privRows) != 1 {
+		t.Errorf("visibility=private: got %d rows, want 1", len(privRows))
+	}
+	if len(privRows) > 0 && privRows[0].Slug != "vf-private" {
+		t.Errorf("visibility=private: slug=%q, want vf-private", privRows[0].Slug)
+	}
+}
+
+func TestListMCPServers_FilterCombined(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pub1 := insertPublisher(t, "comb-ns1", "Combined NS1")
+	pub2 := insertPublisher(t, "comb-ns2", "Combined NS2")
+
+	// ns1: one public+published, one public+draft, one private+published
+	srvA, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pub1, Slug: "comb-a", Name: "Comb A"})
+	srvB, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pub1, Slug: "comb-b", Name: "Comb B"})
+	srvC, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pub1, Slug: "comb-c", Name: "Comb C"})
+	// ns2: one public+published
+	srvD, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pub2, Slug: "comb-d", Name: "Comb D"})
+
+	type update struct{ id, col, val string }
+	for _, u := range []update{
+		{srvA.ID, "visibility", "public"},
+		{srvA.ID, "status", "published"},
+		{srvB.ID, "visibility", "public"},
+		// srvB stays draft
+		{srvC.ID, "status", "published"},
+		// srvC stays private
+		{srvD.ID, "visibility", "public"},
+		{srvD.ID, "status", "published"},
+	} {
+		if _, err := sharedDB.Pool.Exec(ctx, "UPDATE mcp_servers SET "+u.col+"=$1 WHERE id=$2", u.val, u.id); err != nil {
+			t.Fatalf("update %s=%s on %s: %v", u.col, u.val, u.id, err)
+		}
+	}
+
+	// namespace=comb-ns1 + status=published + visibility=public => only srvA
+	rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+		Namespace:  "comb-ns1",
+		Status:     "published",
+		Visibility: "public",
+		Limit:      20,
+	})
+	if err != nil {
+		t.Fatalf("ListMCPServers(combined): %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("combined filter: got %d rows, want 1", len(rows))
+	}
+	if len(rows) > 0 && rows[0].Slug != "comb-a" {
+		t.Errorf("combined filter: slug=%q, want comb-a", rows[0].Slug)
+	}
+}

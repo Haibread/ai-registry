@@ -1,9 +1,9 @@
 import type { Metadata } from "next"
-import { Search } from "lucide-react"
+import { Suspense } from "react"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { AgentCard } from "@/components/agents/agent-card"
-import { Input } from "@/components/ui/input"
+import { FilterBar } from "@/components/ui/filter-bar"
 import { Button } from "@/components/ui/button"
 import { getPublicClient } from "@/lib/api-client"
 
@@ -12,16 +12,38 @@ export const metadata: Metadata = { title: "Agents" }
 export default async function AgentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; cursor?: string }>
+  searchParams: Promise<{
+    q?: string
+    cursor?: string
+    namespace?: string
+    status?: string
+  }>
 }) {
-  const { q, cursor } = await searchParams
+  const { q, cursor, namespace, status } = await searchParams
   const api = getPublicClient()
   const result = await api
-    .GET("/api/v1/agents", { params: { query: { q, cursor, limit: 20 } } })
-    .catch(() => ({ data: undefined, error: undefined }))
+    .GET("/api/v1/agents", {
+      params: {
+        query: {
+          q,
+          cursor,
+          limit: 20,
+          namespace,
+          status: status as "draft" | "published" | "deprecated" | undefined,
+        },
+      },
+    })
+    .catch(() => ({ data: undefined }))
 
   const { data } = result
   const agents = data?.items ?? []
+
+  // Build next-page URL preserving all active filters.
+  const nextParams = new URLSearchParams()
+  if (q) nextParams.set("q", q)
+  if (namespace) nextParams.set("namespace", namespace)
+  if (status) nextParams.set("status", status)
+  if (data?.next_cursor) nextParams.set("cursor", data.next_cursor)
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -34,24 +56,21 @@ export default async function AgentsPage({
           </p>
         </div>
 
-        <form className="flex gap-2 max-w-sm">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input name="q" defaultValue={q} placeholder="Search agents…" className="pl-9" />
-          </div>
-          <Button type="submit" variant="secondary">
-            Search
-          </Button>
-          {q && (
-            <Button type="submit" variant="ghost" name="q" value="">
-              Clear
-            </Button>
-          )}
-        </form>
+        <Suspense>
+          <FilterBar
+            q={q}
+            namespace={namespace}
+            status={status}
+            statusOptions={["published", "deprecated"]}
+            searchPlaceholder="Search agents…"
+          />
+        </Suspense>
 
         {agents.length === 0 ? (
           <p className="text-muted-foreground py-12 text-center">
-            {q ? `No results for "${q}"` : "No public agents yet."}
+            {q || namespace || status
+              ? "No agents match your filters."
+              : "No public agents yet."}
           </p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -64,9 +83,7 @@ export default async function AgentsPage({
         {data?.next_cursor && (
           <div className="flex justify-center">
             <Button variant="outline" asChild>
-              <a href={`/agents?cursor=${data.next_cursor}${q ? `&q=${encodeURIComponent(q)}` : ""}`}>
-                Load more
-              </a>
+              <a href={`/agents?${nextParams.toString()}`}>Load more</a>
             </Button>
           </div>
         )}

@@ -35,9 +35,21 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Validate optional enum filters — silently ignore unknown values.
+	status := r.URL.Query().Get("status")
+	if status != "draft" && status != "published" && status != "deprecated" {
+		status = ""
+	}
+	visibility := r.URL.Query().Get("visibility")
+	if visibility != "public" && visibility != "private" {
+		visibility = ""
+	}
+
 	rows, err := h.db.ListAgents(r.Context(), store.ListAgentsParams{
 		PublicOnly: !auth.IsAdminFromContext(r.Context()),
 		Namespace:  r.URL.Query().Get("namespace"),
+		Status:     status,
+		Visibility: visibility,
 		Query:      r.URL.Query().Get("q"),
 		Limit:      limit + 1,
 		Cursor:     r.URL.Query().Get("cursor"),

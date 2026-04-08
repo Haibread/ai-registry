@@ -1,18 +1,52 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge, statusVariant, visibilityVariant } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { FilterBar } from "@/components/ui/filter-bar"
 import { getApiClient } from "@/lib/api-client"
 import { formatDate } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "MCP Servers" }
 
-export default async function AdminMCPPage() {
+const PAGE_LIMIT = 50
+
+export default async function AdminMCPPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    q?: string
+    namespace?: string
+    status?: string
+    visibility?: string
+    cursor?: string
+  }>
+}) {
+  const { q, namespace, status, visibility, cursor } = await searchParams
   const api = await getApiClient()
-  const { data } = await api.GET("/api/v1/mcp/servers", { params: { query: { limit: 100 } } })
+  const { data } = await api.GET("/api/v1/mcp/servers", {
+    params: {
+      query: {
+        limit: PAGE_LIMIT,
+        q,
+        namespace,
+        cursor,
+        status: status as "draft" | "published" | "deprecated" | undefined,
+        visibility: visibility as "public" | "private" | undefined,
+      },
+    },
+  })
   const servers = data?.items ?? []
+
+  // Build next-page URL preserving all active filters.
+  const nextParams = new URLSearchParams()
+  if (q) nextParams.set("q", q)
+  if (namespace) nextParams.set("namespace", namespace)
+  if (status) nextParams.set("status", status)
+  if (visibility) nextParams.set("visibility", visibility)
+  if (data?.next_cursor) nextParams.set("cursor", data.next_cursor)
 
   return (
     <div className="space-y-4 max-w-5xl">
@@ -28,43 +62,69 @@ export default async function AdminMCPPage() {
         </Button>
       </div>
 
+      <Suspense>
+        <FilterBar
+          q={q}
+          namespace={namespace}
+          status={status}
+          visibility={visibility}
+          statusOptions={["draft", "published", "deprecated"]}
+          showVisibility
+          searchPlaceholder="Search servers…"
+        />
+      </Suspense>
+
       {servers.length === 0 ? (
-        <p className="text-muted-foreground py-8 text-center">No MCP servers yet.</p>
+        <p className="text-muted-foreground py-8 text-center">
+          {q || namespace || status || visibility
+            ? "No servers match your filters."
+            : "No MCP servers yet."}
+        </p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Namespace / Slug</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Visibility</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {servers.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell className="font-medium">{s.name}</TableCell>
-                <TableCell className="font-mono text-sm text-muted-foreground">
-                  {s.namespace}/{s.slug}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={visibilityVariant(s.visibility)}>{s.visibility}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{formatDate(s.updated_at)}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={`/admin/mcp/${s.namespace}/${s.slug}`}>Manage</Link>
-                  </Button>
-                </TableCell>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Namespace / Slug</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Visibility</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {servers.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell className="font-mono text-sm text-muted-foreground">
+                    {s.namespace}/{s.slug}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={visibilityVariant(s.visibility)}>{s.visibility}</Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{formatDate(s.updated_at)}</TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/admin/mcp/${s.namespace}/${s.slug}`}>Manage</Link>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {data?.next_cursor && (
+            <div className="flex justify-center pt-2">
+              <Button variant="outline" asChild>
+                <a href={`/admin/mcp?${nextParams.toString()}`}>Load more</a>
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
