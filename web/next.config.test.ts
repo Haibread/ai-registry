@@ -1,21 +1,22 @@
 /**
  * next.config.test.ts
  *
- * Verifies the Next.js rewrite rules that proxy well-known paths to the backend.
+ * Verifies the Next.js rewrite rules that proxy backend paths through the
+ * Next.js server.  Without these rules:
  *
- * These rules are the sole reason /.well-known/agent-card.json and
- * /agents/:ns/:slug/.well-known/agent-card.json return data instead of 404.
- * If they are removed or mis-typed, the agent card endpoints silently break
- * because Next.js would intercept the request and return 404 before the
- * backend is ever contacted.
+ *   • The "JSON" buttons on MCP-server and agent cards return 404 because
+ *     /api/v1/… has no file-system handler in Next.js.
+ *   • /.well-known/agent-card.json and the per-agent variant return 404
+ *     because Next.js would match its own [ns]/[slug] page instead.
+ *   • /v0/… MCP wire-format endpoints are unreachable from the same origin.
  *
  * The config exports a plain object whose `rewrites` property is an async
- * function — we can call it directly without spinning up a Next.js server.
+ * function — we call it directly without spinning up a Next.js server.
  */
 
 // @vitest-environment node
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, afterEach } from "vitest"
 import nextConfig from "./next.config"
 
 type Rewrite = { source: string; destination: string }
@@ -45,6 +46,54 @@ describe("next.config rewrites", () => {
     }
   })
 
+  // ── REST API proxy (/api/v1/*) ─────────────────────────────────────────────
+
+  describe("/api/v1 proxy rewrite", () => {
+    it("has a rewrite rule for /api/v1/:path*", async () => {
+      const rewrites = await getRewrites()
+      const rule = rewrites.find((r) => r.source === "/api/v1/:path*")
+      expect(rule, "missing rewrite for /api/v1 — JSON buttons on cards will 404").toBeDefined()
+    })
+
+    it("destination proxies /api/v1/:path* to the backend", async () => {
+      const rewrites = await getRewrites()
+      const rule = rewrites.find((r) => r.source === "/api/v1/:path*")!
+      expect(rule.destination).toContain("/api/v1/")
+      expect(rule.destination).toContain(":path*")
+    })
+
+    it("destination is an absolute URL (has scheme)", async () => {
+      const rewrites = await getRewrites()
+      const rule = rewrites.find((r) => r.source === "/api/v1/:path*")!
+      expect(rule.destination).toMatch(/^https?:\/\//)
+    })
+  })
+
+  // ── MCP wire-format proxy (/v0/*) ──────────────────────────────────────────
+
+  describe("/v0 proxy rewrite", () => {
+    it("has a rewrite rule for /v0/:path*", async () => {
+      const rewrites = await getRewrites()
+      const rule = rewrites.find((r) => r.source === "/v0/:path*")
+      expect(rule, "missing rewrite for /v0 — MCP wire-format endpoints unreachable from same origin").toBeDefined()
+    })
+
+    it("destination proxies /v0/:path* to the backend", async () => {
+      const rewrites = await getRewrites()
+      const rule = rewrites.find((r) => r.source === "/v0/:path*")!
+      expect(rule.destination).toContain("/v0/")
+      expect(rule.destination).toContain(":path*")
+    })
+
+    it("destination is an absolute URL (has scheme)", async () => {
+      const rewrites = await getRewrites()
+      const rule = rewrites.find((r) => r.source === "/v0/:path*")!
+      expect(rule.destination).toMatch(/^https?:\/\//)
+    })
+  })
+
+  // ── Per-agent A2A card ─────────────────────────────────────────────────────
+
   describe("per-agent card rewrite", () => {
     it("has a rewrite rule for /agents/:namespace/:slug/.well-known/agent-card.json", async () => {
       const rewrites = await getRewrites()
@@ -64,15 +113,16 @@ describe("next.config rewrites", () => {
       expect(rule.destination).toContain("/.well-known/agent-card.json")
     })
 
-    it("destination points to the API_URL backend (default localhost:8081)", async () => {
+    it("destination is an absolute URL pointing to the backend", async () => {
       const rewrites = await getRewrites()
       const rule = rewrites.find(
         (r) => r.source === "/agents/:namespace/:slug/.well-known/agent-card.json"
       )!
-      // Default API_URL — the module was already imported so we check the shape
       expect(rule.destination).toMatch(/^https?:\/\//)
     })
   })
+
+  // ── Global registry agent card ─────────────────────────────────────────────
 
   describe("global registry agent card rewrite", () => {
     it("has a rewrite rule for /.well-known/agent-card.json", async () => {
@@ -88,6 +138,8 @@ describe("next.config rewrites", () => {
     })
   })
 
+  // ── MCP OAuth protected-resource metadata ──────────────────────────────────
+
   describe("MCP OAuth protected-resource rewrite", () => {
     it("has a rewrite rule for /.well-known/oauth-protected-resource", async () => {
       const rewrites = await getRewrites()
@@ -102,10 +154,13 @@ describe("next.config rewrites", () => {
     })
   })
 
+  // ── Completeness ───────────────────────────────────────────────────────────
+
   describe("completeness", () => {
-    it("has exactly 3 rewrite rules — one per well-known path", async () => {
+    it("has exactly 5 rewrite rules", async () => {
       const rewrites = await getRewrites()
-      expect(rewrites).toHaveLength(3)
+      // /api/v1/:path*, /v0/:path*, per-agent card, global card, oauth-protected-resource
+      expect(rewrites).toHaveLength(5)
     })
 
     it("all destinations are absolute URLs pointing to the same backend", async () => {
@@ -113,8 +168,7 @@ describe("next.config rewrites", () => {
       const origins = new Set(
         rewrites.map((r) => {
           try {
-            // Strip the path — keep only scheme+host to verify they all target the same backend
-            const url = new URL(r.destination.replace(/:[\w]+/g, "placeholder"))
+            const url = new URL(r.destination.replace(/:[\w]+|\*/g, "placeholder"))
             return url.origin
           } catch {
             return r.destination
