@@ -68,37 +68,9 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
 	}
 
-	type responseItem struct {
-		ID          string `json:"id"`
-		Namespace   string `json:"namespace"`
-		Slug        string `json:"slug"`
-		Name        string `json:"name"`
-		Description string `json:"description,omitempty"`
-		HomepageURL string `json:"homepage_url,omitempty"`
-		RepoURL     string `json:"repo_url,omitempty"`
-		License     string `json:"license,omitempty"`
-		Visibility  string `json:"visibility"`
-		Status      string `json:"status"`
-		CreatedAt   string `json:"created_at"`
-		UpdatedAt   string `json:"updated_at"`
-	}
-
-	items := make([]responseItem, 0, len(rows))
-	for _, r := range rows {
-		items = append(items, responseItem{
-			ID:          r.ID,
-			Namespace:   r.Namespace,
-			Slug:        r.Slug,
-			Name:        r.Name,
-			Description: r.Description,
-			HomepageURL: r.HomepageURL,
-			RepoURL:     r.RepoURL,
-			License:     r.License,
-			Visibility:  string(r.Visibility),
-			Status:      string(r.Status),
-			CreatedAt:   r.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			UpdatedAt:   r.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		})
+	items := make([]map[string]any, 0, len(rows))
+	for i := range rows {
+		items = append(items, serverToResponse(&rows[i]))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -124,7 +96,7 @@ func (h *MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, serverToResponse(srv, nil))
+	writeJSON(w, http.StatusOK, serverToResponse(srv))
 }
 
 // ── POST /api/v1/mcp/servers ──────────────────────────────────────────────
@@ -398,23 +370,29 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 
 // ── helper ────────────────────────────────────────────────────────────────
 
-func serverToResponse(srv *store.MCPServerRow, ver *domain.MCPServerVersion) map[string]any {
+func serverToResponse(srv *store.MCPServerRow) map[string]any {
 	m := map[string]any{
-		"id":          srv.ID,
-		"namespace":   srv.Namespace,
-		"slug":        srv.Slug,
-		"name":        srv.Name,
-		"description": srv.Description,
+		"id":           srv.ID,
+		"namespace":    srv.Namespace,
+		"slug":         srv.Slug,
+		"name":         srv.Name,
+		"description":  srv.Description,
 		"homepage_url": srv.HomepageURL,
-		"repo_url":    srv.RepoURL,
-		"license":     srv.License,
-		"visibility":  string(srv.Visibility),
-		"status":      string(srv.Status),
-		"created_at":  srv.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		"updated_at":  srv.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"repo_url":     srv.RepoURL,
+		"license":      srv.License,
+		"visibility":   string(srv.Visibility),
+		"status":       string(srv.Status),
+		"created_at":   srv.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"updated_at":   srv.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
-	if ver != nil {
-		m["latest_version"] = ver
+	if lv := srv.LatestVersion; lv != nil {
+		m["latest_version"] = map[string]any{
+			"version":          lv.Version,
+			"runtime":          string(lv.Runtime),
+			"protocol_version": lv.ProtocolVersion,
+			"packages":         lv.Packages,
+			"published_at":     lv.PublishedAt,
+		}
 	}
 	return m
 }

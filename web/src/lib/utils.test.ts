@@ -8,7 +8,14 @@
 // @vitest-environment node
 
 import { describe, it, expect } from "vitest"
-import { cn, formatDate } from "./utils"
+import { cn, formatDate, getInstallCommand, ecosystemLabel } from "./utils"
+import type { components } from "@/lib/schema"
+
+type PackageEntry = components["schemas"]["PackageEntry"]
+
+function makePkg(registryType: string, identifier: string, version = "1.0.0"): PackageEntry {
+  return { registryType, identifier, version, transport: { type: "stdio" } }
+}
 
 // ── cn ────────────────────────────────────────────────────────────────────────
 
@@ -87,5 +94,65 @@ describe("formatDate", () => {
     for (const d of dates) {
       expect(formatDate(d).length).toBeGreaterThan(0)
     }
+  })
+})
+
+// ── getInstallCommand ─────────────────────────────────────────────────────────
+
+describe("getInstallCommand", () => {
+  it("npm → npx -y <id>", () => {
+    expect(getInstallCommand(makePkg("npm", "@modelcontextprotocol/server-filesystem"))).toBe(
+      "npx -y @modelcontextprotocol/server-filesystem"
+    )
+  })
+
+  it("pip → pip install <id>", () => {
+    expect(getInstallCommand(makePkg("pip", "mcp-server-git"))).toBe("pip install mcp-server-git")
+  })
+
+  it("pypi → pip install <id>", () => {
+    expect(getInstallCommand(makePkg("pypi", "mcp-server-git"))).toBe("pip install mcp-server-git")
+  })
+
+  it("docker → docker run <id>", () => {
+    expect(getInstallCommand(makePkg("docker", "ghcr.io/acme/my-mcp"))).toBe(
+      "docker run ghcr.io/acme/my-mcp"
+    )
+  })
+
+  it("gem → gem install <id>", () => {
+    expect(getInstallCommand(makePkg("gem", "my-mcp-server"))).toBe("gem install my-mcp-server")
+  })
+
+  it("go → go install <id>", () => {
+    expect(getInstallCommand(makePkg("go", "github.com/acme/mcp-server@latest"))).toBe(
+      "go install github.com/acme/mcp-server@latest"
+    )
+  })
+
+  it("unknown registryType → falls back to identifier", () => {
+    expect(getInstallCommand(makePkg("custom", "my-identifier"))).toBe("my-identifier")
+  })
+
+  it("is case-insensitive for registryType", () => {
+    expect(getInstallCommand(makePkg("NPM", "some-pkg"))).toBe("npx -y some-pkg")
+    expect(getInstallCommand(makePkg("PyPI", "some-pkg"))).toBe("pip install some-pkg")
+    expect(getInstallCommand(makePkg("Docker", "some/image"))).toBe("docker run some/image")
+  })
+})
+
+// ── ecosystemLabel ────────────────────────────────────────────────────────────
+
+describe("ecosystemLabel", () => {
+  it("npm → npm", () => { expect(ecosystemLabel("npm")).toBe("npm") })
+  it("pip → pip", () => { expect(ecosystemLabel("pip")).toBe("pip") })
+  it("pypi → pip", () => { expect(ecosystemLabel("pypi")).toBe("pip") })
+  it("docker → docker", () => { expect(ecosystemLabel("docker")).toBe("docker") })
+  it("gem → gem", () => { expect(ecosystemLabel("gem")).toBe("gem") })
+  it("go → go", () => { expect(ecosystemLabel("go")).toBe("go") })
+  it("unknown → returns as-is", () => { expect(ecosystemLabel("cargo")).toBe("cargo") })
+  it("is case-insensitive", () => {
+    expect(ecosystemLabel("NPM")).toBe("npm")
+    expect(ecosystemLabel("DOCKER")).toBe("docker")
   })
 })

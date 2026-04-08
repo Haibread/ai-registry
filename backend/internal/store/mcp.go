@@ -22,6 +22,16 @@ var ErrConflict = errors.New("conflict")
 // ErrImmutable is returned when a mutation is attempted on a published version.
 var ErrImmutable = errors.New("published versions are immutable")
 
+// LatestMCPVersion is a summary of the most recently published version,
+// embedded inline in list and detail responses.
+type LatestMCPVersion struct {
+	Version         string
+	Runtime         domain.Runtime
+	ProtocolVersion string
+	Packages        json.RawMessage
+	PublishedAt     *time.Time
+}
+
 // ListMCPServersParams controls filtering and pagination for ListMCPServers.
 type ListMCPServersParams struct {
 	PublicOnly bool   // when true, only visibility='public' rows are returned
@@ -36,6 +46,7 @@ type ListMCPServersParams struct {
 // MCPServerRow is a flat projection used by list queries (includes namespace).
 type MCPServerRow struct {
 	domain.MCPServer
+	LatestVersion *LatestMCPVersion
 }
 
 // ListMCPServers returns a page of MCP server rows.
@@ -103,9 +114,17 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	q := fmt.Sprintf(`
 		SELECT s.id, pub.slug AS namespace, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
-		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at
+		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
+		LEFT JOIN LATERAL (
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.published_at
+		    FROM mcp_server_versions v
+		    WHERE v.server_id = s.id AND v.published_at IS NOT NULL
+		    ORDER BY v.published_at DESC
+		    LIMIT 1
+		) lv ON true
 		%s
 		%s
 		LIMIT $%d`, whereClause, orderClause, argN)
@@ -119,12 +138,29 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	var result []MCPServerRow
 	for rows.Next() {
 		var r MCPServerRow
+		var (
+			lvVersion     *string
+			lvRuntime     *string
+			lvProto       *string
+			lvPackages    []byte
+			lvPublishedAt *time.Time
+		)
 		if err := rows.Scan(
 			&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 			&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 			&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning mcp server row: %w", err)
+		}
+		if lvVersion != nil {
+			r.LatestVersion = &LatestMCPVersion{
+				Version:         *lvVersion,
+				Runtime:         domain.Runtime(*lvRuntime),
+				ProtocolVersion: *lvProto,
+				Packages:        json.RawMessage(lvPackages),
+				PublishedAt:     lvPublishedAt,
+			}
 		}
 		result = append(result, r)
 	}
@@ -137,9 +173,17 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 	q := `
 		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
-		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at
+		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
+		LEFT JOIN LATERAL (
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.published_at
+		    FROM mcp_server_versions v
+		    WHERE v.server_id = s.id AND v.published_at IS NOT NULL
+		    ORDER BY v.published_at DESC
+		    LIMIT 1
+		) lv ON true
 		WHERE pub.slug = $1 AND s.slug = $2`
 	args := []any{namespace, slug}
 	if publicOnly {
@@ -147,16 +191,33 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 	}
 
 	var r MCPServerRow
+	var (
+		lvVersion     *string
+		lvRuntime     *string
+		lvProto       *string
+		lvPackages    []byte
+		lvPublishedAt *time.Time
+	)
 	err := db.Pool.QueryRow(ctx, q, args...).Scan(
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 		&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("getting mcp server: %w", err)
+	}
+	if lvVersion != nil {
+		r.LatestVersion = &LatestMCPVersion{
+			Version:         *lvVersion,
+			Runtime:         domain.Runtime(*lvRuntime),
+			ProtocolVersion: *lvProto,
+			Packages:        json.RawMessage(lvPackages),
+			PublishedAt:     lvPublishedAt,
+		}
 	}
 	return &r, nil
 }
@@ -166,22 +227,47 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 	q := `
 		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
-		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at
+		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
+		LEFT JOIN LATERAL (
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.published_at
+		    FROM mcp_server_versions v
+		    WHERE v.server_id = s.id AND v.published_at IS NOT NULL
+		    ORDER BY v.published_at DESC
+		    LIMIT 1
+		) lv ON true
 		WHERE s.id = $1`
 
 	var r MCPServerRow
+	var (
+		lvVersion     *string
+		lvRuntime     *string
+		lvProto       *string
+		lvPackages    []byte
+		lvPublishedAt *time.Time
+	)
 	err := db.Pool.QueryRow(ctx, q, id).Scan(
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 		&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("getting mcp server by id: %w", err)
+	}
+	if lvVersion != nil {
+		r.LatestVersion = &LatestMCPVersion{
+			Version:         *lvVersion,
+			Runtime:         domain.Runtime(*lvRuntime),
+			ProtocolVersion: *lvProto,
+			Packages:        json.RawMessage(lvPackages),
+			PublishedAt:     lvPublishedAt,
+		}
 	}
 	return &r, nil
 }

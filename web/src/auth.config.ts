@@ -9,11 +9,11 @@ export const authConfig = {
   },
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
-      const isLoggedIn = !!auth?.user
       const isAdminRoute = nextUrl.pathname.startsWith("/admin")
       if (isAdminRoute) {
+        // Reject if not logged in OR if the Keycloak token could not be refreshed.
         // Returning false triggers a redirect to the signIn page.
-        return isLoggedIn
+        return !!auth?.user && auth.error !== "RefreshAccessTokenError"
       }
       return true
     },

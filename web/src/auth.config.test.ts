@@ -23,12 +23,16 @@ const authorized = authConfig.callbacks!.authorized!
 function makeArgs({
   loggedIn,
   pathname,
+  tokenError,
 }: {
   loggedIn: boolean
   pathname: string
+  tokenError?: "RefreshAccessTokenError"
 }): Parameters<typeof authorized>[0] {
   return {
-    auth: loggedIn ? ({ user: { name: "Test" } } as never) : null,
+    auth: loggedIn
+      ? ({ user: { name: "Test" }, error: tokenError } as never)
+      : null,
     request: { nextUrl: { pathname } } as never,
   }
 }
@@ -73,6 +77,31 @@ describe("authConfig.authorized — admin route protection", () => {
         `expected true for authenticated ${pathname}`
       ).toBe(true)
     }
+  })
+})
+
+describe("authConfig.authorized — token refresh failure", () => {
+  it("blocks access to /admin when refresh token is expired (RefreshAccessTokenError)", () => {
+    expect(
+      authorized(makeArgs({ loggedIn: true, pathname: "/admin", tokenError: "RefreshAccessTokenError" }))
+    ).toBe(false)
+  })
+
+  it("blocks access to /admin sub-paths when refresh token is expired", () => {
+    const adminPaths = ["/admin/mcp", "/admin/agents", "/admin/publishers"]
+    for (const pathname of adminPaths) {
+      expect(
+        authorized(makeArgs({ loggedIn: true, pathname, tokenError: "RefreshAccessTokenError" })),
+        `expected false for ${pathname} with expired token`
+      ).toBe(false)
+    }
+  })
+
+  it("does not block public routes when refresh token is expired", () => {
+    // A public page should still be accessible even if the Keycloak token is gone
+    expect(
+      authorized(makeArgs({ loggedIn: true, pathname: "/mcp", tokenError: "RefreshAccessTokenError" }))
+    ).toBe(true)
   })
 })
 

@@ -622,6 +622,99 @@ components:
         total_count:
           type: integer
 
+    PackageTransport:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [stdio, http, sse, streamable_http]
+        url:
+          type: string
+
+    PackageEntry:
+      type: object
+      required: [registryType, identifier, version, transport]
+      properties:
+        registryType:
+          type: string
+        registryBaseUrl:
+          type: string
+        identifier:
+          type: string
+        version:
+          type: string
+        transport:
+          $ref: "#/components/schemas/PackageTransport"
+
+    MCPServerLatestVersion:
+      type: object
+      required: [version, runtime, protocol_version]
+      properties:
+        version:
+          type: string
+        runtime:
+          type: string
+          enum: [stdio, http, sse, streamable_http]
+        protocol_version:
+          type: string
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageEntry"
+        published_at:
+          type: string
+          format: date-time
+
+    AgentSkill:
+      type: object
+      required: [id, name, description, tags]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        examples:
+          type: array
+          items:
+            type: string
+
+    AgentLatestVersion:
+      type: object
+      required: [version, endpoint_url]
+      properties:
+        version:
+          type: string
+        endpoint_url:
+          type: string
+        skills:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSkill"
+        default_input_modes:
+          type: array
+          items:
+            type: string
+        default_output_modes:
+          type: array
+          items:
+            type: string
+        authentication:
+          type: array
+          items:
+            type: object
+        protocol_version:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+
     MCPServer:
       type: object
       required: [id, namespace, slug, name, visibility, status, created_at, updated_at]
@@ -654,6 +747,8 @@ components:
         updated_at:
           type: string
           format: date-time
+        latest_version:
+          $ref: "#/components/schemas/MCPServerLatestVersion"
 
     CreateMCPServerRequest:
       type: object
@@ -714,6 +809,8 @@ components:
         updated_at:
           type: string
           format: date-time
+        latest_version:
+          $ref: "#/components/schemas/AgentLatestVersion"
 
     CreateAgentRequest:
       type: object

@@ -66,31 +66,9 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
 	}
 
-	type item struct {
-		ID          string `json:"id"`
-		Namespace   string `json:"namespace"`
-		Slug        string `json:"slug"`
-		Name        string `json:"name"`
-		Description string `json:"description,omitempty"`
-		Visibility  string `json:"visibility"`
-		Status      string `json:"status"`
-		CreatedAt   string `json:"created_at"`
-		UpdatedAt   string `json:"updated_at"`
-	}
-
-	items := make([]item, 0, len(rows))
-	for _, r := range rows {
-		items = append(items, item{
-			ID:          r.ID,
-			Namespace:   r.Namespace,
-			Slug:        r.Slug,
-			Name:        r.Name,
-			Description: r.Description,
-			Visibility:  string(r.Visibility),
-			Status:      string(r.Status),
-			CreatedAt:   r.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			UpdatedAt:   r.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		})
+	items := make([]map[string]any, 0, len(rows))
+	for i := range rows {
+		items = append(items, agentToResponse(&rows[i]))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -116,7 +94,7 @@ func (h *AgentHandlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, agent)
+	writeJSON(w, http.StatusOK, agentToResponse(agent))
 }
 
 // ── POST /api/v1/agents ───────────────────────────────────────────────────
@@ -389,4 +367,33 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deprecated"})
+}
+
+// ── helper ────────────────────────────────────────────────────────────────
+
+func agentToResponse(a *store.AgentRow) map[string]any {
+	m := map[string]any{
+		"id":          a.ID,
+		"namespace":   a.Namespace,
+		"slug":        a.Slug,
+		"name":        a.Name,
+		"description": a.Description,
+		"visibility":  string(a.Visibility),
+		"status":      string(a.Status),
+		"created_at":  a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"updated_at":  a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if lv := a.LatestVersion; lv != nil {
+		m["latest_version"] = map[string]any{
+			"version":              lv.Version,
+			"endpoint_url":         lv.EndpointURL,
+			"skills":               lv.Skills,
+			"default_input_modes":  lv.DefaultInputModes,
+			"default_output_modes": lv.DefaultOutputModes,
+			"authentication":       lv.Authentication,
+			"protocol_version":     lv.ProtocolVersion,
+			"published_at":         lv.PublishedAt,
+		}
+	}
+	return m
 }
