@@ -326,7 +326,7 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       published_at, released_at
+		       status, published_at, released_at
 		FROM mcp_server_versions
 		WHERE server_id = $1
 		ORDER BY released_at DESC`, serverID)
@@ -351,7 +351,7 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string)
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       published_at, released_at
+		       status, published_at, released_at
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND version = $2`, serverID, version)
 
@@ -370,7 +370,7 @@ func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       published_at, released_at
+		       status, published_at, released_at
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -516,9 +516,41 @@ func scanVersion(s interface {
 		&v.ID, &v.ServerID, &v.Version, &v.Runtime,
 		&v.Packages, &v.Capabilities,
 		&v.ProtocolVersion, &v.Checksum, &v.Signature,
-		&v.PublishedAt, &v.ReleasedAt,
+		&v.Status, &v.PublishedAt, &v.ReleasedAt,
 	)
 	return v, err
+}
+
+// SetMCPServerStatus updates the lifecycle status of an MCP server.
+// Allowed values: published (active), deprecated.
+// Returns ErrNotFound if the server does not exist.
+func (db *DB) SetMCPServerStatus(ctx context.Context, serverID string, status domain.Status) error {
+	tag, err := db.Pool.Exec(ctx,
+		`UPDATE mcp_servers SET status=$1, updated_at=now() WHERE id=$2`,
+		status, serverID)
+	if err != nil {
+		return fmt.Errorf("setting mcp server status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetMCPVersionStatus updates the per-version status for a specific server version.
+// Allowed values: active, deprecated, deleted.
+// Returns ErrNotFound if the version does not exist.
+func (db *DB) SetMCPVersionStatus(ctx context.Context, serverID, version string, status domain.VersionStatus) error {
+	tag, err := db.Pool.Exec(ctx,
+		`UPDATE mcp_server_versions SET status=$1 WHERE server_id=$2 AND version=$3`,
+		status, serverID, version)
+	if err != nil {
+		return fmt.Errorf("setting mcp version status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // decodeCursor splits a cursor string into (time, id).

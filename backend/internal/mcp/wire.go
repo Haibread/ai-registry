@@ -48,9 +48,11 @@ type ServerMeta struct {
 
 // OfficialMeta is our registry's metadata block inside _meta.
 type OfficialMeta struct {
-	Status      string    `json:"status"`
-	PublishedAt time.Time `json:"publishedAt"`
-	IsLatest    bool      `json:"isLatest"`
+	Status        string    `json:"status"`
+	PublishedAt   time.Time `json:"publishedAt"`
+	UpdatedAt     time.Time `json:"updatedAt,omitempty"`
+	StatusMessage string    `json:"statusMessage,omitempty"`
+	IsLatest      bool      `json:"isLatest"`
 }
 
 // ---- Detail response -----------------------------------------------------
@@ -73,15 +75,11 @@ type ServerDetail struct {
 	Meta         ServerMeta      `json:"_meta"`
 }
 
-// ---- Publish request ------------------------------------------------------
+// ---- Publish request/response --------------------------------------------
 
 // PublishRequest is the body accepted by POST /v0/publish.
+// Per spec, the body IS the ServerDetail directly (no wrapper object).
 type PublishRequest struct {
-	Server PublishServerPayload `json:"server"`
-}
-
-// PublishServerPayload holds the fields required to create/update a server version.
-type PublishServerPayload struct {
 	Name            string          `json:"name"`        // "{namespace}/{slug}"
 	Description     string          `json:"description"`
 	Version         string          `json:"version"`
@@ -91,7 +89,49 @@ type PublishServerPayload struct {
 	Repository      *Repository     `json:"repository,omitempty"`
 }
 
+// ServerResponse is the publish response body: { server: ServerDetail }.
+// Matches the spec's ServerResponse shape.
+type ServerResponse struct {
+	Server ServerDetail `json:"server"`
+}
+
+// ---- Version list/detail -------------------------------------------------
+
+// VersionEntry is one item in a versions list.
+type VersionEntry struct {
+	Version     string          `json:"version"`
+	Packages    json.RawMessage `json:"packages,omitempty"`
+	PublishedAt *time.Time      `json:"publishedAt,omitempty"`
+	Status      string          `json:"status"`
+}
+
+// VersionListResponse is the wire format for GET /v0/servers/{name}/versions.
+type VersionListResponse struct {
+	Versions []VersionEntry `json:"versions"`
+}
+
+// ---- Status PATCH --------------------------------------------------------
+
+// StatusPatchRequest is the body for PATCH status endpoints.
+type StatusPatchRequest struct {
+	Status string `json:"status"` // active | deprecated | deleted
+}
+
 // ---- Conversion helpers --------------------------------------------------
+
+// mapServerStatus converts our internal domain status to the MCP spec status enum.
+// Spec enum: active | deprecated | deleted
+func mapServerStatus(s domain.Status) string {
+	switch s {
+	case domain.StatusPublished:
+		return "active"
+	case domain.StatusDeprecated:
+		return "deprecated"
+	default:
+		// draft maps to "draft" — not in the spec enum but we expose it for completeness
+		return string(s)
+	}
+}
 
 // ToServerEntry converts an MCPServerRow and its latest published version
 // into an MCP wire-format ServerEntry.
@@ -102,8 +142,9 @@ func ToServerEntry(srv store.MCPServerRow, ver *domain.MCPServerVersion, isLates
 		Description: srv.Description,
 		Meta: ServerMeta{
 			Official: OfficialMeta{
-				Status:   string(srv.Status),
-				IsLatest: isLatest,
+				Status:    mapServerStatus(srv.Status),
+				UpdatedAt: srv.UpdatedAt,
+				IsLatest:  isLatest,
 			},
 		},
 	}
@@ -127,8 +168,9 @@ func ToServerDetail(srv store.MCPServerRow, ver *domain.MCPServerVersion) Server
 		WebsiteURL:  srv.HomepageURL,
 		Meta: ServerMeta{
 			Official: OfficialMeta{
-				Status:   string(srv.Status),
-				IsLatest: true,
+				Status:    mapServerStatus(srv.Status),
+				UpdatedAt: srv.UpdatedAt,
+				IsLatest:  true,
 			},
 		},
 	}
@@ -144,6 +186,20 @@ func ToServerDetail(srv store.MCPServerRow, ver *domain.MCPServerVersion) Server
 		d.Repository = repoFromURL(srv.RepoURL)
 	}
 	return d
+}
+
+// ToVersionEntry converts a domain MCPServerVersion into a wire-format VersionEntry.
+func ToVersionEntry(ver domain.MCPServerVersion) VersionEntry {
+	status := string(ver.Status)
+	if status == "" {
+		status = "active"
+	}
+	return VersionEntry{
+		Version:     ver.Version,
+		Packages:    ver.Packages,
+		PublishedAt: ver.PublishedAt,
+		Status:      status,
+	}
 }
 
 func repoFromURL(u string) *Repository {

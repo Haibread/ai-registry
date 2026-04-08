@@ -26,6 +26,12 @@ func NewV0MCPHandlers(db *store.DB, audit store.AuditLogger) *V0MCPHandlers {
 	return &V0MCPHandlers{db: db, audit: audit}
 }
 
+// writeV0Error writes a spec-compliant error response for v0 routes.
+// Spec: { "error": "<message>" }
+func writeV0Error(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
+}
+
 // ── GET /v0/servers ───────────────────────────────────────────────────────
 
 func (h *V0MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
@@ -37,14 +43,20 @@ func (h *V0MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Accept both "search" (spec) and "q" (legacy) as the search parameter.
+	query := r.URL.Query().Get("search")
+	if query == "" {
+		query = r.URL.Query().Get("q")
+	}
+
 	rows, err := h.db.ListMCPServers(r.Context(), store.ListMCPServersParams{
 		PublicOnly: true,
-		Query:      r.URL.Query().Get("q"),
+		Query:      query,
 		Limit:      limit + 1,
 		Cursor:     r.URL.Query().Get("cursor"),
 	})
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", "failed to list servers", r.URL.Path)
+		writeV0Error(w, http.StatusInternalServerError, "failed to list servers")
 		return
 	}
 
@@ -78,15 +90,15 @@ func (h *V0MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 
 	srv, err := h.db.GetMCPServerByID(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found", "server not found", r.URL.Path)
+		writeV0Error(w, http.StatusNotFound, "server not found")
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if srv.Visibility != domain.VisibilityPublic {
-		writeProblem(w, http.StatusNotFound, "not-found", "server not found", r.URL.Path)
+		writeV0Error(w, http.StatusNotFound, "server not found")
 		return
 	}
 
@@ -96,33 +108,240 @@ func (h *V0MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ── POST /v0/publish ──────────────────────────────────────────────────────
+// ── GET /v0/servers/{namespace}/{slug} ───────────────────────────────────
 
-func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
-	var body mcpwire.PublishRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+// GetServerByName serves GET /v0/servers/{namespace}/{slug} — lookup by name.
+// This is the spec-preferred lookup method (by "namespace/slug" name).
+func (h *V0MCPHandlers) GetServerByName(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, true)
+	if errors.Is(err, store.ErrNotFound) {
+		writeV0Error(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	p := body.Server
+	ver, _ := h.db.GetLatestPublishedVersion(r.Context(), srv.ID)
+	writeJSON(w, http.StatusOK, mcpwire.DetailResponse{
+		Server: mcpwire.ToServerDetail(*srv, ver),
+	})
+}
+
+// ── GET /v0/servers/{namespace}/{slug}/versions ──────────────────────────
+
+// ListServerVersions serves GET /v0/servers/{namespace}/{slug}/versions.
+func (h *V0MCPHandlers) ListServerVersions(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, true)
+	if errors.Is(err, store.ErrNotFound) {
+		writeV0Error(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	vers, err := h.db.ListMCPServerVersions(r.Context(), srv.ID)
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, "failed to list versions")
+		return
+	}
+
+	entries := make([]mcpwire.VersionEntry, 0, len(vers))
+	for _, v := range vers {
+		if v.PublishedAt != nil { // only expose published versions
+			entries = append(entries, mcpwire.ToVersionEntry(v))
+		}
+	}
+
+	writeJSON(w, http.StatusOK, mcpwire.VersionListResponse{Versions: entries})
+}
+
+// ── GET /v0/servers/{namespace}/{slug}/versions/{version} ────────────────
+
+// GetServerVersion serves GET /v0/servers/{namespace}/{slug}/versions/{version}.
+func (h *V0MCPHandlers) GetServerVersion(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+	version := chi.URLParam(r, "version")
+
+	srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, true)
+	if errors.Is(err, store.ErrNotFound) {
+		writeV0Error(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	ver, err := h.db.GetMCPServerVersion(r.Context(), srv.ID, version)
+	if errors.Is(err, store.ErrNotFound) {
+		writeV0Error(w, http.StatusNotFound, "version not found")
+		return
+	}
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if ver.PublishedAt == nil {
+		writeV0Error(w, http.StatusNotFound, "version not found")
+		return
+	}
+
+	// Return as a full ServerDetail with the specific version's data.
+	d := mcpwire.ToServerDetail(*srv, ver)
+	writeJSON(w, http.StatusOK, mcpwire.DetailResponse{Server: d})
+}
+
+// ── PATCH /v0/servers/{namespace}/{slug}/status ──────────────────────────
+
+// PatchServerStatus serves PATCH /v0/servers/{namespace}/{slug}/status.
+// Sets status across the server: active (→ published) | deprecated | deleted (→ private).
+func (h *V0MCPHandlers) PatchServerStatus(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	var body mcpwire.StatusPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeV0Error(w, http.StatusUnprocessableEntity, "invalid JSON body")
+		return
+	}
+
+	// Map spec status values to domain status.
+	var domainStatus domain.Status
+	switch body.Status {
+	case "active":
+		domainStatus = domain.StatusPublished
+	case "deprecated":
+		domainStatus = domain.StatusDeprecated
+	case "deleted":
+		// We model "deleted" as setting visibility to private.
+		srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, false)
+		if errors.Is(err, store.ErrNotFound) {
+			writeV0Error(w, http.StatusNotFound, "server not found")
+			return
+		}
+		if err != nil {
+			writeV0Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := h.db.SetMCPServerVisibility(r.Context(), srv.ID, domain.VisibilityPrivate); err != nil {
+			writeV0Error(w, http.StatusInternalServerError, "failed to delete server")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	default:
+		writeV0Error(w, http.StatusUnprocessableEntity, "status must be one of: active, deprecated, deleted")
+		return
+	}
+
+	srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		writeV0Error(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if err := h.db.SetMCPServerStatus(r.Context(), srv.ID, domainStatus); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeV0Error(w, http.StatusNotFound, "server not found")
+			return
+		}
+		writeV0Error(w, http.StatusInternalServerError, "failed to update status")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── PATCH /v0/servers/{namespace}/{slug}/versions/{version}/status ────────
+
+// PatchVersionStatus serves PATCH /v0/servers/{namespace}/{slug}/versions/{version}/status.
+// Sets status on a single version: active | deprecated | deleted.
+func (h *V0MCPHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+	version := chi.URLParam(r, "version")
+
+	var body mcpwire.StatusPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeV0Error(w, http.StatusUnprocessableEntity, "invalid JSON body")
+		return
+	}
+
+	validStatuses := map[string]bool{"active": true, "deprecated": true, "deleted": true}
+	if !validStatuses[body.Status] {
+		writeV0Error(w, http.StatusUnprocessableEntity, "status must be one of: active, deprecated, deleted")
+		return
+	}
+
+	srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		writeV0Error(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if err := h.db.SetMCPVersionStatus(r.Context(), srv.ID, version, domain.VersionStatus(body.Status)); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeV0Error(w, http.StatusNotFound, "version not found")
+			return
+		}
+		writeV0Error(w, http.StatusInternalServerError, "failed to update version status")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── POST /v0/publish ──────────────────────────────────────────────────────
+
+func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
+	// Per spec, body IS the ServerDetail directly (no wrapper object).
+	var p mcpwire.PublishRequest
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeV0Error(w, http.StatusUnprocessableEntity, "invalid JSON body")
+		return
+	}
+
+	// Required fields: name, version, protocolVersion, description.
 	if p.Name == "" || p.Version == "" || p.ProtocolVersion == "" {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
-			"server.name, server.version, and server.protocolVersion are required", r.URL.Path)
+		writeV0Error(w, http.StatusUnprocessableEntity,
+			"name, version, and protocolVersion are required")
+		return
+	}
+	if p.Description == "" {
+		writeV0Error(w, http.StatusUnprocessableEntity,
+			"description is required (1-100 chars)")
+		return
+	}
+
+	// Validate name pattern: ^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$
+	if err := domain.ValidateServerName(p.Name); err != nil {
+		writeV0Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 
 	// Parse namespace/slug from the MCP name field.
 	parts := strings.SplitN(p.Name, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
-			"server.name must be in the format 'namespace/slug'", r.URL.Path)
-		return
-	}
 	namespace, slug := parts[0], parts[1]
 
 	if err := domain.ValidatePackages(p.Packages); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		writeV0Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 
@@ -132,12 +351,12 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 		// Auto-create the server if publisher exists.
 		publisherID, pubErr := h.db.GetPublisherBySlug(r.Context(), namespace)
 		if errors.Is(pubErr, store.ErrNotFound) {
-			writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
-				"publisher '"+namespace+"' does not exist", r.URL.Path)
+			writeV0Error(w, http.StatusUnprocessableEntity,
+				"publisher '"+namespace+"' does not exist")
 			return
 		}
 		if pubErr != nil {
-			writeProblem(w, http.StatusInternalServerError, "internal", pubErr.Error(), r.URL.Path)
+			writeV0Error(w, http.StatusInternalServerError, pubErr.Error())
 			return
 		}
 		repoURL := ""
@@ -152,7 +371,7 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 			RepoURL:     repoURL,
 		})
 		if createErr != nil {
-			writeProblem(w, http.StatusInternalServerError, "internal", createErr.Error(), r.URL.Path)
+			writeV0Error(w, http.StatusInternalServerError, createErr.Error())
 			return
 		}
 		srv = &store.MCPServerRow{MCPServer: *newSrv}
@@ -165,7 +384,7 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	} else if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -182,17 +401,17 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 		ProtocolVersion: p.ProtocolVersion,
 	})
 	if errors.Is(err, store.ErrConflict) {
-		writeProblem(w, http.StatusConflict, "conflict",
-			"version '"+p.Version+"' already exists for "+p.Name, r.URL.Path)
+		writeV0Error(w, http.StatusConflict,
+			"version '"+p.Version+"' already exists for "+p.Name)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if err := h.db.PublishMCPServerVersion(r.Context(), srv.ID, ver.Version); err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -204,8 +423,18 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]string{
-		"message": "Server " + p.Name + " version " + p.Version + " published successfully.",
+	// Re-fetch the version to get the published_at timestamp.
+	publishedVer, _ := h.db.GetMCPServerVersion(r.Context(), srv.ID, ver.Version)
+
+	// Re-fetch the server to get updated status/timestamps.
+	updatedSrv, _ := h.db.GetMCPServer(r.Context(), namespace, slug, false)
+	if updatedSrv == nil {
+		updatedSrv = srv
+	}
+
+	// Spec: respond with 200 + the ServerResponse shape.
+	writeJSON(w, http.StatusOK, mcpwire.ServerResponse{
+		Server: mcpwire.ToServerDetail(*updatedSrv, publishedVer),
 	})
 }
 

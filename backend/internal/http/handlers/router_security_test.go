@@ -121,6 +121,10 @@ func buildSecureRouter(t *testing.T) (http.Handler, func([]string) string) {
 
 	r.Route("/v0", func(r chi.Router) {
 		r.With(auth.RequireAdmin).Post("/publish", v0H.Publish)
+		r.Route("/servers/{namespace}/{slug}", func(r chi.Router) {
+			r.With(auth.RequireAdmin).Patch("/status", v0H.PatchServerStatus)
+			r.With(auth.RequireAdmin).Patch("/versions/{version}/status", v0H.PatchVersionStatus)
+		})
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -184,6 +188,8 @@ func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 		{http.MethodGet, "/api/v1/audit"},
 		{http.MethodGet, "/metrics"},
 		{http.MethodPost, "/v0/publish"},
+		{http.MethodPatch, "/v0/servers/ns/slug/status"},
+		{http.MethodPatch, "/v0/servers/ns/slug/versions/1.0.0/status"},
 	}
 
 	for _, route := range routes {

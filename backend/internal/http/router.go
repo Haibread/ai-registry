@@ -66,6 +66,18 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Route("/v0", func(r chi.Router) {
 		r.Get("/servers", v0H.ListServers)
 		r.Get("/servers/{id}", v0H.GetServer)
+
+		// Name-based routes (spec-preferred: namespace/slug path)
+		r.Route("/servers/{namespace}/{slug}", func(r chi.Router) {
+			r.Get("/", v0H.GetServerByName)
+			r.With(auth.RequireAdmin).Patch("/status", v0H.PatchServerStatus)
+			r.Route("/versions", func(r chi.Router) {
+				r.Get("/", v0H.ListServerVersions)
+				r.Get("/{version}", v0H.GetServerVersion)
+				r.With(auth.RequireAdmin).Patch("/{version}/status", v0H.PatchVersionStatus)
+			})
+		})
+
 		r.With(auth.RequireAdmin).Post("/publish", v0H.Publish)
 	})
 
