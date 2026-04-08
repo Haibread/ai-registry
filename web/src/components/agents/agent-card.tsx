@@ -1,6 +1,6 @@
 import Link from "next/link"
-import { ExternalLink, Braces, Cpu } from "lucide-react"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { ExternalLink, Braces, Cpu, Link2 } from "lucide-react"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge, StatusBadge } from "@/components/ui/badge"
 import { formatDate } from "@/lib/utils"
 import type { components } from "@/lib/schema"
@@ -53,17 +53,20 @@ export function AgentCard({ agent }: AgentCardProps) {
 
       {agent.description && (
         <CardContent className="pb-3 flex-1">
-          <CardDescription className="line-clamp-2 text-sm">
+          <p className="line-clamp-2 text-sm text-foreground/80">
             {agent.description}
-          </CardDescription>
+          </p>
         </CardContent>
       )}
 
       {lv?.endpoint_url && (
-        <CardContent className="pt-0 pb-2">
-          <p className="text-xs text-muted-foreground font-mono truncate" title={lv.endpoint_url}>
-            {lv.endpoint_url}
-          </p>
+        <CardContent className="pt-0 pb-3">
+          <div className="flex items-center gap-1.5 rounded bg-muted/60 px-2 py-1.5 min-w-0">
+            <Link2 className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />
+            <span className="text-[11px] font-mono text-muted-foreground truncate" title={lv.endpoint_url}>
+              {lv.endpoint_url}
+            </span>
+          </div>
         </CardContent>
       )}
 

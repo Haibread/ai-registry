@@ -20,7 +20,11 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { ns, slug } = await params
-  return { title: `${ns}/${slug} — Agent` }
+  const api = await getApiClient()
+  const { data } = await api.GET("/api/v1/agents/{namespace}/{slug}", {
+    params: { path: { namespace: ns, slug } },
+  })
+  return { title: data ? `${data.name} — Agent` : `${ns}/${slug}` }
 }
 
 export default async function AdminAgentPage({ params }: Props) {

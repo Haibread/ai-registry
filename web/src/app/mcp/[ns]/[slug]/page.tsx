@@ -18,7 +18,11 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { ns, slug } = await params
-  return { title: `${ns}/${slug}` }
+  const api = getPublicClient()
+  const { data } = await api.GET("/api/v1/mcp/servers/{namespace}/{slug}", {
+    params: { path: { namespace: ns, slug } },
+  })
+  return { title: data ? `${data.name} — MCP Server` : `${ns}/${slug}` }
 }
 
 export default async function MCPServerPage({ params }: Props) {

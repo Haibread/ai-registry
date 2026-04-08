@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { Plus, CheckCircle2, Circle } from "lucide-react"
+import { Plus, CheckCircle2, Circle, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getApiClient } from "@/lib/api-client"
@@ -18,17 +18,26 @@ export default async function AdminPublishersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Publishers</h1>
-          <p className="text-muted-foreground mt-1">{publishers.length} total</p>
+          <p className="text-muted-foreground mt-1">
+            {publishers.length} {publishers.length === 1 ? "publisher" : "publishers"}
+          </p>
         </div>
         <Button asChild>
           <Link href="/admin/publishers/new" className="flex items-center gap-1.5">
-            <Plus className="h-4 w-4" /> New Publisher
+            <Plus className="h-4 w-4" aria-hidden="true" /> New Publisher
           </Link>
         </Button>
       </div>
 
       {publishers.length === 0 ? (
-        <p className="text-muted-foreground py-8 text-center">No publishers yet.</p>
+        <div className="flex flex-col items-center gap-3 py-16 text-center">
+          <Building2 className="h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
+          <p className="text-muted-foreground font-medium">No publishers yet.</p>
+          <p className="text-sm text-muted-foreground">Publishers are namespaces for MCP servers and agents.</p>
+          <Button asChild size="sm">
+            <Link href="/admin/publishers/new">Create your first publisher</Link>
+          </Button>
+        </div>
       ) : (
         <Table>
           <TableHeader>
@@ -38,6 +47,7 @@ export default async function AdminPublishersPage() {
               <TableHead>Contact</TableHead>
               <TableHead>Verified</TableHead>
               <TableHead>Created</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -48,12 +58,17 @@ export default async function AdminPublishersPage() {
                 <TableCell className="text-muted-foreground">{p.contact ?? "—"}</TableCell>
                 <TableCell>
                   {p.verified ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <CheckCircle2 className="h-4 w-4 text-green-600" aria-label="Verified" />
                   ) : (
-                    <Circle className="h-4 w-4 text-muted-foreground" />
+                    <Circle className="h-4 w-4 text-muted-foreground" aria-label="Unverified" />
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">{formatDate(p.created_at)}</TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href={`/admin/publishers/${p.slug}`}>Manage</Link>
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -8,13 +8,14 @@
 // @vitest-environment node
 
 import { describe, it, expect } from "vitest"
-import { cn, formatDate, getInstallCommand, ecosystemLabel } from "./utils"
+import { cn, formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from "./utils"
 import type { components } from "@/lib/schema"
 
 type PackageEntry = components["schemas"]["PackageEntry"]
+type Transport = components["schemas"]["PackageTransport"]
 
-function makePkg(registryType: string, identifier: string, version = "1.0.0"): PackageEntry {
-  return { registryType, identifier, version, transport: { type: "stdio" } }
+function makePkg(registryType: string, identifier: string, version = "1.0.0", transport: Transport = { type: "stdio" }): PackageEntry {
+  return { registryType, identifier, version, transport }
 }
 
 // ── cn ────────────────────────────────────────────────────────────────────────
@@ -134,11 +135,47 @@ describe("getInstallCommand", () => {
     expect(getInstallCommand(makePkg("custom", "my-identifier"))).toBe("my-identifier")
   })
 
+  it("oci → docker run <id>", () => {
+    expect(getInstallCommand(makePkg("oci", "ghcr.io/acme/mcp-server"))).toBe(
+      "docker run ghcr.io/acme/mcp-server"
+    )
+  })
+
   it("is case-insensitive for registryType", () => {
     expect(getInstallCommand(makePkg("NPM", "some-pkg"))).toBe("npx -y some-pkg")
     expect(getInstallCommand(makePkg("PyPI", "some-pkg"))).toBe("pip install some-pkg")
     expect(getInstallCommand(makePkg("Docker", "some/image"))).toBe("docker run some/image")
   })
+
+  it("SSE transport with URL → returns the endpoint URL", () => {
+    const pkg = makePkg("npm", "@acme/mcp", "1.0.0", { type: "sse", url: "https://api.acme.com/mcp/sse" })
+    expect(getInstallCommand(pkg)).toBe("https://api.acme.com/mcp/sse")
+  })
+
+  it("HTTP transport with URL → returns the endpoint URL", () => {
+    const pkg = makePkg("npm", "@acme/mcp", "1.0.0", { type: "http", url: "https://api.acme.com/mcp" })
+    expect(getInstallCommand(pkg)).toBe("https://api.acme.com/mcp")
+  })
+
+  it("streamable_http transport with URL → returns the endpoint URL", () => {
+    const pkg = makePkg("npm", "@acme/mcp", "1.0.0", { type: "streamable_http", url: "https://api.acme.com/mcp/stream" })
+    expect(getInstallCommand(pkg)).toBe("https://api.acme.com/mcp/stream")
+  })
+
+  it("remote transport without URL → falls back to registry install command", () => {
+    const pkg = makePkg("npm", "@acme/mcp", "1.0.0", { type: "sse" })
+    expect(getInstallCommand(pkg)).toBe("npx -y @acme/mcp")
+  })
+})
+
+// ── isRemoteTransport ─────────────────────────────────────────────────────────
+
+describe("isRemoteTransport", () => {
+  it("stdio → false", () => { expect(isRemoteTransport("stdio")).toBe(false) })
+  it("sse → true",   () => { expect(isRemoteTransport("sse")).toBe(true) })
+  it("http → true",  () => { expect(isRemoteTransport("http")).toBe(true) })
+  it("streamable_http → true", () => { expect(isRemoteTransport("streamable_http")).toBe(true) })
+  it("unknown type → false",   () => { expect(isRemoteTransport("unknown")).toBe(false) })
 })
 
 // ── ecosystemLabel ────────────────────────────────────────────────────────────
