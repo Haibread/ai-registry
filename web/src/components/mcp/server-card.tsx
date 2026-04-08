@@ -71,26 +71,26 @@ export function ServerCard({ server }: ServerCardProps) {
 
       <CardFooter className="pt-3 border-t flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{formatDate(server.created_at)}</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {server.license && <span>{server.license}</span>}
           <a
             href={`/api/v1/mcp/servers/${server.namespace}/${server.slug}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
-            aria-label="Raw JSON"
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
           >
             <Braces className="h-3.5 w-3.5" />
+            JSON
           </a>
           {server.repo_url && (
             <a
               href={server.repo_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-              aria-label="Repository"
+              className="flex items-center gap-1 hover:text-foreground transition-colors"
             >
               <GitFork className="h-3.5 w-3.5" />
+              Repo
             </a>
           )}
           {server.homepage_url && (
@@ -98,10 +98,10 @@ export function ServerCard({ server }: ServerCardProps) {
               href={server.homepage_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-              aria-label="Homepage"
+              className="flex items-center gap-1 hover:text-foreground transition-colors"
             >
               <ExternalLink className="h-3.5 w-3.5" />
+              Docs
             </a>
           )}
         </div>

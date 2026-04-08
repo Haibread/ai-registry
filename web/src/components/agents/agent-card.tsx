@@ -87,10 +87,10 @@ export function AgentCard({ agent }: AgentCardProps) {
             href={`/api/v1/agents/${agent.namespace}/${agent.slug}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
-            aria-label="Raw JSON"
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
           >
             <Braces className="h-3.5 w-3.5" />
+            JSON
           </a>
           <a
             href={`/agents/${agent.namespace}/${agent.slug}/.well-known/agent-card.json`}
