@@ -1,12 +1,21 @@
 import { headers } from "next/headers"
 import { auth } from "@/auth"
 import { AdminSidebar } from "@/components/layout/admin-sidebar"
+import { AutoSignOut } from "@/components/auth/auto-sign-out"
 import Link from "next/link"
 import { signOut } from "@/auth"
 import { Button } from "@/components/ui/button"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
+
+  // Belt-and-suspenders: the middleware already redirects for RefreshAccessTokenError
+  // on page navigations, but if the session somehow degrades between middleware and
+  // layout render we must not leave the user stuck on a broken admin shell.
+  if (!session || session.error === "RefreshAccessTokenError") {
+    return <AutoSignOut />
+  }
+
   const headersList = await headers()
   const pathname = headersList.get("x-invoke-path") ?? ""
 
