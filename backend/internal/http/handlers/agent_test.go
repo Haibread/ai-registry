@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -686,5 +687,36 @@ func seedAgentPublished(t *testing.T, ns, slug string) {
 	}
 	if _, err := testDB.Pool.Exec(context.Background(), "UPDATE agents SET status=$1 WHERE id=$2", "published", ag.ID); err != nil {
 		t.Fatalf("seedAgentPublished: %v", err)
+	}
+}
+
+func TestAgentHandler_ListAgents_TotalCount(t *testing.T) {
+	resetTables(t)
+	// Seed 3 agents visible to admin.
+	for i := range 3 {
+		seedAgent(t, "atc-pub", fmt.Sprintf("atc-ag-%d", i))
+	}
+
+	// Ask for page of 2 — items should have 2, but total_count should be 3.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents?limit=2", nil)
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Items      []any `json:"items"`
+		TotalCount int   `json:"total_count"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Errorf("items length: got %d, want 2", len(body.Items))
+	}
+	if body.TotalCount != 3 {
+		t.Errorf("total_count: got %d, want 3", body.TotalCount)
 	}
 }

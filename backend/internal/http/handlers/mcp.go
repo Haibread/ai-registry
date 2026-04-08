@@ -55,7 +55,7 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 		Cursor:     r.URL.Query().Get("cursor"),
 	}
 
-	rows, err := h.db.ListMCPServers(r.Context(), p)
+	rows, total, err := h.db.ListMCPServers(r.Context(), p)
 	if err != nil {
 		writeProblem(w, http.StatusInternalServerError, "internal", "failed to list servers", r.URL.Path)
 		return
@@ -76,6 +76,7 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":       items,
 		"next_cursor": nextCursor,
+		"total_count": total,
 	})
 }
 

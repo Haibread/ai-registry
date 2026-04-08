@@ -45,7 +45,7 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		visibility = ""
 	}
 
-	rows, err := h.db.ListAgents(r.Context(), store.ListAgentsParams{
+	rows, total, err := h.db.ListAgents(r.Context(), store.ListAgentsParams{
 		PublicOnly: !auth.IsAdminFromContext(r.Context()),
 		Namespace:  r.URL.Query().Get("namespace"),
 		Status:     status,
@@ -74,6 +74,7 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":       items,
 		"next_cursor": nextCursor,
+		"total_count": total,
 	})
 }
 

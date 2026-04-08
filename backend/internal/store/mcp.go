@@ -52,59 +52,86 @@ type MCPServerRow struct {
 	LatestVersion *LatestMCPVersion
 }
 
-// ListMCPServers returns a page of MCP server rows.
-func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCPServerRow, error) {
+// ListMCPServers returns a page of MCP server rows and the total count of
+// rows that match the filters (before pagination).
+func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCPServerRow, int, error) {
 	if p.Limit <= 0 || p.Limit > 100 {
 		p.Limit = 20
 	}
 
 	args := []any{}
 	argN := 1
+	// countArgN tracks the arg index for the separate COUNT query, which uses
+	// the same filter args but without the cursor and without ORDER-BY args.
+	countArgN := 1
 
-	whereClause := "WHERE 1=1"
+	// filterWhere / filterArgs hold conditions shared between the main query and
+	// the COUNT query.  Cursor args are added to the main query only.
+	filterWhere := "WHERE 1=1"
+	filterArgs := []any{}
+
 	if p.PublicOnly {
-		whereClause += fmt.Sprintf(" AND s.visibility = $%d", argN)
-		args = append(args, "public")
+		filterWhere += fmt.Sprintf(" AND s.visibility = $%d", argN)
+		filterArgs = append(filterArgs, "public")
 		argN++
+		countArgN++
 	} else if p.Visibility != "" {
 		// Admin-only explicit visibility filter (ignored when PublicOnly forces public)
-		whereClause += fmt.Sprintf(" AND s.visibility = $%d", argN)
-		args = append(args, p.Visibility)
+		filterWhere += fmt.Sprintf(" AND s.visibility = $%d", argN)
+		filterArgs = append(filterArgs, p.Visibility)
 		argN++
+		countArgN++
 	}
 	if p.Status != "" {
-		whereClause += fmt.Sprintf(" AND s.status = $%d", argN)
-		args = append(args, p.Status)
+		filterWhere += fmt.Sprintf(" AND s.status = $%d", argN)
+		filterArgs = append(filterArgs, p.Status)
 		argN++
+		countArgN++
 	} else if !p.IncludeDeleted {
 		// By default, exclude deleted servers.
-		whereClause += fmt.Sprintf(" AND s.status != $%d", argN)
-		args = append(args, "deleted")
+		filterWhere += fmt.Sprintf(" AND s.status != $%d", argN)
+		filterArgs = append(filterArgs, "deleted")
 		argN++
+		countArgN++
 	}
 	if p.Namespace != "" {
-		whereClause += fmt.Sprintf(" AND pub.slug = $%d", argN)
-		args = append(args, p.Namespace)
+		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
+		filterArgs = append(filterArgs, p.Namespace)
 		argN++
+		countArgN++
 	}
 	if p.UpdatedSince != nil {
-		whereClause += fmt.Sprintf(" AND s.updated_at > $%d", argN)
-		args = append(args, *p.UpdatedSince)
+		filterWhere += fmt.Sprintf(" AND s.updated_at > $%d", argN)
+		filterArgs = append(filterArgs, *p.UpdatedSince)
 		argN++
+		countArgN++
 	}
+
 	// When searching, use the generated search_vector index and rank results.
 	// Cursor pagination is skipped for ranked searches (rank is not a stable
 	// column for keyset pagination).
 	hasQuery := p.Query != ""
 	if hasQuery {
-		whereClause += fmt.Sprintf(
+		filterWhere += fmt.Sprintf(
 			" AND s.search_vector @@ plainto_tsquery('english', $%d)",
 			argN,
 		)
-		args = append(args, p.Query)
+		filterArgs = append(filterArgs, p.Query)
 		argN++
-	} else if p.Cursor != "" {
-		// Keyset pagination only when not searching (DESC ordering)
+		countArgN++
+	}
+
+	// Snapshot filterArgs before adding cursor / ORDER-BY args so the COUNT
+	// query can reuse just the filter portion.
+	countArgs := make([]any, len(filterArgs))
+	copy(countArgs, filterArgs)
+
+	// Main query args start from the filter args.
+	args = append(args, filterArgs...)
+
+	// Cursor (keyset pagination) — added to the main query only.
+	whereClause := filterWhere
+	if !hasQuery && p.Cursor != "" {
 		at, id, err := decodeCursor(p.Cursor)
 		if err == nil {
 			whereClause += fmt.Sprintf(" AND (s.created_at, s.id) < ($%d, $%d)", argN, argN+1)
@@ -128,12 +155,19 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	// the lateral join is narrowed to that exact version, and we require lv
 	// to be non-NULL (i.e. the server must have that version published).
 	lateralVersionCond := "v.published_at IS NOT NULL"
+	lateralCountCond := lateralVersionCond // same for count unless overridden below
 	if p.VersionFilter != "" && p.VersionFilter != "latest" {
+		// Main query arg
 		lateralVersionCond += fmt.Sprintf(" AND v.version = $%d", argN)
 		args = append(args, p.VersionFilter)
 		argN++
+		// Count query arg (uses countArgN for its own numbering)
+		lateralCountCond += fmt.Sprintf(" AND v.version = $%d", countArgN)
+		countArgs = append(countArgs, p.VersionFilter)
+		countArgN++
 		// Only include servers that actually have this version.
 		whereClause += " AND lv.version IS NOT NULL"
+		filterWhere += " AND lv.version IS NOT NULL" // also for count query
 	}
 
 	args = append(args, p.Limit)
@@ -157,7 +191,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("listing mcp servers: %w", err)
+		return nil, 0, fmt.Errorf("listing mcp servers: %w", err)
 	}
 	defer rows.Close()
 
@@ -177,7 +211,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 			&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
 			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
 		); err != nil {
-			return nil, fmt.Errorf("scanning mcp server row: %w", err)
+			return nil, 0, fmt.Errorf("scanning mcp server row: %w", err)
 		}
 		if lvVersion != nil {
 			r.LatestVersion = &LatestMCPVersion{
@@ -190,7 +224,31 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		}
 		result = append(result, r)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// Separate COUNT query using the same filter conditions but without
+	// cursor / ORDER-BY so it reflects the full matching set.
+	countQ := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM mcp_servers s
+		JOIN publishers pub ON pub.id = s.publisher_id
+		LEFT JOIN LATERAL (
+		    SELECT v.version
+		    FROM mcp_server_versions v
+		    WHERE v.server_id = s.id AND %s
+		    ORDER BY v.published_at DESC
+		    LIMIT 1
+		) lv ON true
+		%s`, lateralCountCond, filterWhere)
+
+	var total int
+	if err := db.Pool.QueryRow(ctx, countQ, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("counting mcp servers: %w", err)
+	}
+
+	return result, total, nil
 }
 
 // GetMCPServer retrieves a single MCP server by namespace and slug.

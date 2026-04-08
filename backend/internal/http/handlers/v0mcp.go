@@ -74,7 +74,7 @@ func (h *V0MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 		params.VersionFilter = vf
 	}
 
-	rows, err := h.db.ListMCPServers(r.Context(), params)
+	rows, _, err := h.db.ListMCPServers(r.Context(), params)
 	if err != nil {
 		writeV0Error(w, http.StatusInternalServerError, "failed to list servers")
 		return

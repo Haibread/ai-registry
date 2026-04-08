@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/haibread/ai-registry/internal/domain"
@@ -206,7 +207,7 @@ func TestListAgents_Filtering(t *testing.T) {
 	})
 
 	// PublicOnly=true should return only public entries.
-	rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{PublicOnly: true, Limit: 20})
+	rows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{PublicOnly: true, Limit: 20})
 	if err != nil {
 		t.Fatalf("ListAgents: %v", err)
 	}
@@ -217,7 +218,7 @@ func TestListAgents_Filtering(t *testing.T) {
 	}
 
 	// Namespace filter.
-	rows2, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Namespace: "agent-filter-ns1", Limit: 20})
+	rows2, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Namespace: "agent-filter-ns1", Limit: 20})
 	if err != nil {
 		t.Fatalf("ListAgents with namespace: %v", err)
 	}
@@ -350,7 +351,7 @@ func TestListAgents_SearchQuery(t *testing.T) {
 		Description: "Completely different beta description",
 	})
 
-	rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
+	rows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
 		Query: "alpha", Limit: 20,
 	})
 	if err != nil {
@@ -377,7 +378,7 @@ func TestListAgents_NamespaceFilter(t *testing.T) {
 		PublisherID: pub2, Slug: "agent-in-ns2", Name: "Agent In NS2",
 	})
 
-	rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
+	rows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
 		Namespace: "ansfilt-ns1", Limit: 20,
 	})
 	if err != nil {
@@ -430,7 +431,7 @@ func TestListAgents_FilterByStatus(t *testing.T) {
 		{"deprecated", 1, "ag-status-deprecated"},
 	} {
 		t.Run(tc.status, func(t *testing.T) {
-			rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Status: tc.status, Limit: 20})
+			rows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Status: tc.status, Limit: 20})
 			if err != nil {
 				t.Fatalf("ListAgents(status=%s): %v", tc.status, err)
 			}
@@ -459,7 +460,7 @@ func TestListAgents_FilterByVisibility(t *testing.T) {
 		}
 	}
 
-	pubRows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Visibility: "public", Limit: 20})
+	pubRows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Visibility: "public", Limit: 20})
 	if err != nil {
 		t.Fatalf("ListAgents(visibility=public): %v", err)
 	}
@@ -472,7 +473,7 @@ func TestListAgents_FilterByVisibility(t *testing.T) {
 		}
 	}
 
-	privRows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Visibility: "private", Limit: 20})
+	privRows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Visibility: "private", Limit: 20})
 	if err != nil {
 		t.Fatalf("ListAgents(visibility=private): %v", err)
 	}
@@ -514,7 +515,7 @@ func TestListAgents_FilterCombined(t *testing.T) {
 	}
 
 	// namespace=ag-comb-ns1 + status=published + visibility=public => only agA
-	rows, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
+	rows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
 		Namespace:  "ag-comb-ns1",
 		Status:     "published",
 		Visibility: "public",
@@ -528,5 +529,42 @@ func TestListAgents_FilterCombined(t *testing.T) {
 	}
 	if len(rows) > 0 && rows[0].Slug != "ag-comb-a" {
 		t.Errorf("combined filter: slug=%q, want ag-comb-a", rows[0].Slug)
+	}
+}
+
+func TestListAgents_TotalCount(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "atc-ns", "AgentTotalCount NS")
+
+	// Create 3 agents.
+	for i := range 3 {
+		sharedDB.CreateAgent(ctx, store.CreateAgentParams{ //nolint:errcheck
+			PublisherID: pubID,
+			Slug:        fmt.Sprintf("atc-ag-%d", i),
+			Name:        fmt.Sprintf("AgentTotalCount %d", i),
+		})
+	}
+
+	// Request page of 2 — should return 2 rows but total_count = 3.
+	rows, total, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListAgents: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Errorf("page size: got %d rows, want 2", len(rows))
+	}
+	if total != 3 {
+		t.Errorf("total_count: got %d, want 3", total)
+	}
+
+	// Second page — total_count must still reflect the full set.
+	cursor := store.EncodeCursor(rows[len(rows)-1].CreatedAt, rows[len(rows)-1].ID)
+	_, total2, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Limit: 2, Cursor: cursor})
+	if err != nil {
+		t.Fatalf("ListAgents page 2: %v", err)
+	}
+	if total2 != 3 {
+		t.Errorf("total_count page 2: got %d, want 3", total2)
 	}
 }

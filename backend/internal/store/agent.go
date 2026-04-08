@@ -43,44 +43,57 @@ type ListAgentsParams struct {
 	Cursor     string
 }
 
-// ListAgents returns a paginated list of agents.
-func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, error) {
+// ListAgents returns a paginated list of agents and the total count of rows
+// that match the filters (before pagination).
+func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, int, error) {
 	if p.Limit <= 0 || p.Limit > 100 {
 		p.Limit = 20
 	}
 
 	args := []any{}
 	argN := 1
-	whereClause := "WHERE 1=1"
+	filterWhere := "WHERE 1=1"
+	filterArgs := []any{}
 
 	if p.PublicOnly {
-		whereClause += fmt.Sprintf(" AND a.visibility = $%d", argN)
-		args = append(args, "public")
+		filterWhere += fmt.Sprintf(" AND a.visibility = $%d", argN)
+		filterArgs = append(filterArgs, "public")
 		argN++
 	} else if p.Visibility != "" {
-		whereClause += fmt.Sprintf(" AND a.visibility = $%d", argN)
-		args = append(args, p.Visibility)
+		filterWhere += fmt.Sprintf(" AND a.visibility = $%d", argN)
+		filterArgs = append(filterArgs, p.Visibility)
 		argN++
 	}
 	if p.Status != "" {
-		whereClause += fmt.Sprintf(" AND a.status = $%d", argN)
-		args = append(args, p.Status)
+		filterWhere += fmt.Sprintf(" AND a.status = $%d", argN)
+		filterArgs = append(filterArgs, p.Status)
 		argN++
 	}
 	if p.Namespace != "" {
-		whereClause += fmt.Sprintf(" AND pub.slug = $%d", argN)
-		args = append(args, p.Namespace)
+		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
+		filterArgs = append(filterArgs, p.Namespace)
 		argN++
 	}
 	hasQuery := p.Query != ""
 	if hasQuery {
-		whereClause += fmt.Sprintf(
+		filterWhere += fmt.Sprintf(
 			" AND a.search_vector @@ plainto_tsquery('english', $%d)",
 			argN,
 		)
-		args = append(args, p.Query)
+		filterArgs = append(filterArgs, p.Query)
 		argN++
-	} else if p.Cursor != "" {
+	}
+
+	// Snapshot filterArgs before cursor / ORDER-BY args so the COUNT query
+	// can reuse just the filter portion.
+	countArgs := make([]any, len(filterArgs))
+	copy(countArgs, filterArgs)
+
+	args = append(args, filterArgs...)
+
+	// Cursor (keyset pagination) — added to the main query only.
+	whereClause := filterWhere
+	if !hasQuery && p.Cursor != "" {
 		at, id, err := decodeCursor(p.Cursor)
 		if err == nil {
 			whereClause += fmt.Sprintf(" AND (a.created_at, a.id) < ($%d, $%d)", argN, argN+1)
@@ -121,7 +134,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, e
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("listing agents: %w", err)
+		return nil, 0, fmt.Errorf("listing agents: %w", err)
 	}
 	defer rows.Close()
 
@@ -144,7 +157,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, e
 			&lavVersion, &lavEndpoint, &lavSkills, &lavInputModes,
 			&lavOutputModes, &lavAuth, &lavProto, &lavPublishedAt,
 		); err != nil {
-			return nil, fmt.Errorf("scanning agent row: %w", err)
+			return nil, 0, fmt.Errorf("scanning agent row: %w", err)
 		}
 		if lavVersion != nil {
 			r.LatestVersion = &LatestAgentVersion{
@@ -160,7 +173,24 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, e
 		}
 		result = append(result, r)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// Separate COUNT query using the same filter conditions but without
+	// cursor / ORDER-BY so it reflects the full matching set.
+	countQ := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM agents a
+		JOIN publishers pub ON pub.id = a.publisher_id
+		%s`, filterWhere)
+
+	var total int
+	if err := db.Pool.QueryRow(ctx, countQ, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("counting agents: %w", err)
+	}
+
+	return result, total, nil
 }
 
 // GetAgent retrieves a single agent by namespace and slug.

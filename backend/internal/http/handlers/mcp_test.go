@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -679,5 +680,36 @@ func seedMCPServerPublished(t *testing.T, ns, slug string) {
 	}
 	if _, err := testDB.Pool.Exec(context.Background(), "UPDATE mcp_servers SET status=$1 WHERE id=$2", "published", srv.ID); err != nil {
 		t.Fatalf("seedMCPServerPublished: %v", err)
+	}
+}
+
+func TestMCPHandler_ListServers_TotalCount(t *testing.T) {
+	resetTables(t)
+	// Seed 3 servers visible to admin.
+	for i := range 3 {
+		seedMCPServer(t, "tc-pub", fmt.Sprintf("tc-srv-%d", i))
+	}
+
+	// Ask for page of 2 — items should have 2, but total_count should be 3.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers?limit=2", nil)
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Items      []any `json:"items"`
+		TotalCount int   `json:"total_count"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Errorf("items length: got %d, want 2", len(body.Items))
+	}
+	if body.TotalCount != 3 {
+		t.Errorf("total_count: got %d, want 3", body.TotalCount)
 	}
 }

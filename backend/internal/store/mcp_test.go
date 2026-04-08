@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -159,7 +160,7 @@ func TestListMCPServers_Filtering(t *testing.T) {
 	})
 
 	// PublicOnly=true should return only public entries.
-	rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{PublicOnly: true, Limit: 20})
+	rows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{PublicOnly: true, Limit: 20})
 	if err != nil {
 		t.Fatalf("ListMCPServers: %v", err)
 	}
@@ -170,7 +171,7 @@ func TestListMCPServers_Filtering(t *testing.T) {
 	}
 
 	// Namespace filter.
-	rows2, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Namespace: "ns1", Limit: 20})
+	rows2, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Namespace: "ns1", Limit: 20})
 	if err != nil {
 		t.Fatalf("ListMCPServers with namespace: %v", err)
 	}
@@ -378,7 +379,7 @@ func TestListMCPServers_SearchQuery(t *testing.T) {
 		Description: "Completely different beta description",
 	})
 
-	rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+	rows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
 		Query: "alpha", Limit: 20,
 	})
 	if err != nil {
@@ -405,7 +406,7 @@ func TestListMCPServers_NamespaceFilter(t *testing.T) {
 		PublisherID: pub2, Slug: "srv-in-ns2", Name: "Server In NS2",
 	})
 
-	rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+	rows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
 		Namespace: "nsfilt-ns1", Limit: 20,
 	})
 	if err != nil {
@@ -480,7 +481,7 @@ func TestDecodeCursor_Malformed(t *testing.T) {
 			// `if err == nil` guard. We just verify no panic and a valid (empty) result.
 			resetDB(t)
 			ctx := context.Background()
-			_, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+			_, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
 				Cursor: tc.cursor,
 				Limit:  5,
 			})
@@ -520,7 +521,7 @@ func TestListMCPServers_FilterByStatus(t *testing.T) {
 		{"deprecated", 1, "status-deprecated"},
 	} {
 		t.Run(tc.status, func(t *testing.T) {
-			rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Status: tc.status, Limit: 20})
+			rows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Status: tc.status, Limit: 20})
 			if err != nil {
 				t.Fatalf("ListMCPServers(status=%s): %v", tc.status, err)
 			}
@@ -551,7 +552,7 @@ func TestListMCPServers_FilterByVisibility(t *testing.T) {
 	}
 
 	// Filter by public (PublicOnly=false so we use the Visibility field).
-	pubRows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Visibility: "public", Limit: 20})
+	pubRows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Visibility: "public", Limit: 20})
 	if err != nil {
 		t.Fatalf("ListMCPServers(visibility=public): %v", err)
 	}
@@ -565,7 +566,7 @@ func TestListMCPServers_FilterByVisibility(t *testing.T) {
 	}
 
 	// Filter by private.
-	privRows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Visibility: "private", Limit: 20})
+	privRows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Visibility: "private", Limit: 20})
 	if err != nil {
 		t.Fatalf("ListMCPServers(visibility=private): %v", err)
 	}
@@ -607,7 +608,7 @@ func TestListMCPServers_FilterCombined(t *testing.T) {
 	}
 
 	// namespace=comb-ns1 + status=published + visibility=public => only srvA
-	rows, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+	rows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
 		Namespace:  "comb-ns1",
 		Status:     "published",
 		Visibility: "public",
@@ -621,5 +622,42 @@ func TestListMCPServers_FilterCombined(t *testing.T) {
 	}
 	if len(rows) > 0 && rows[0].Slug != "comb-a" {
 		t.Errorf("combined filter: slug=%q, want comb-a", rows[0].Slug)
+	}
+}
+
+func TestListMCPServers_TotalCount(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "tc-ns", "TotalCount NS")
+
+	// Create 3 servers.
+	for i := range 3 {
+		sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{ //nolint:errcheck
+			PublisherID: pubID,
+			Slug:        fmt.Sprintf("tc-srv-%d", i),
+			Name:        fmt.Sprintf("TotalCount Server %d", i),
+		})
+	}
+
+	// Request page of 2 — should return 2 rows but total_count = 3.
+	rows, total, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListMCPServers: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Errorf("page size: got %d rows, want 2", len(rows))
+	}
+	if total != 3 {
+		t.Errorf("total_count: got %d, want 3", total)
+	}
+
+	// Request with cursor (second page) — total_count must still be 3.
+	cursor := store.EncodeCursor(rows[len(rows)-1].CreatedAt, rows[len(rows)-1].ID)
+	_, total2, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Limit: 2, Cursor: cursor})
+	if err != nil {
+		t.Fatalf("ListMCPServers page 2: %v", err)
+	}
+	if total2 != 3 {
+		t.Errorf("total_count page 2: got %d, want 3", total2)
 	}
 }
