@@ -58,8 +58,12 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		Limit:      limit + 1,
 		Cursor:     r.URL.Query().Get("cursor"),
 	})
+	if errors.Is(err, store.ErrInvalidCursor) {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid cursor", r.URL.Path)
+		return
+	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", "failed to list agents", r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -96,7 +100,7 @@ func (h *AgentHandlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, agentToResponse(agent))
@@ -111,13 +115,22 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if body.Namespace == "" || body.Slug == "" || body.Name == "" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"namespace, slug, and name are required", r.URL.Path)
+		return
+	}
+	if err := domain.ValidateSlug(body.Namespace); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			fmt.Sprintf("namespace: %s", err), r.URL.Path)
+		return
+	}
+	if err := domain.ValidateSlug(body.Slug); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			fmt.Sprintf("slug: %s", err), r.URL.Path)
 		return
 	}
 
@@ -128,7 +141,7 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -144,16 +157,15 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionAgentCreated, ResourceType: "agent",
-			ResourceID: agent.ID, ResourceNS: body.Namespace, ResourceSlug: body.Slug,
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionAgentCreated, ResourceType: "agent",
+		ResourceID: agent.ID, ResourceNS: body.Namespace, ResourceSlug: body.Slug,
+	})
 	if h.metrics != nil {
 		h.metrics.AgentsTotal.Add(r.Context(), 1)
 	}
@@ -174,13 +186,13 @@ func (h *AgentHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
 	versions, err := h.db.ListAgentVersions(r.Context(), agent.ID)
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"items": versions})
@@ -201,7 +213,7 @@ func (h *AgentHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -212,7 +224,7 @@ func (h *AgentHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, v)
@@ -231,7 +243,7 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -248,8 +260,7 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		IconURL            string          `json:"icon_url"`
 		ProtocolVersion    string          `json:"protocol_version"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if body.Version == "" || body.EndpointURL == "" {
@@ -289,17 +300,16 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionAgentVersionCreated, ResourceType: "agent",
-			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
-			Metadata: map[string]any{"version": body.Version},
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionAgentVersionCreated, ResourceType: "agent",
+		ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+		Metadata: map[string]any{"version": body.Version},
+	})
 	writeJSON(w, r, http.StatusCreated, v)
 }
 
@@ -317,7 +327,7 @@ func (h *AgentHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -330,17 +340,16 @@ func (h *AgentHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("version '%s' is already published", ver), r.URL.Path)
 		return
 	} else if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionAgentVersionPublished, ResourceType: "agent",
-			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
-			Metadata: map[string]any{"version": ver},
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionAgentVersionPublished, ResourceType: "agent",
+		ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+		Metadata: map[string]any{"version": ver},
+	})
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "published"})
 }
 
@@ -357,7 +366,7 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -366,16 +375,15 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("agent '%s/%s' is not in published status", ns, slug), r.URL.Path)
 		return
 	} else if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionAgentDeprecated, ResourceType: "agent",
-			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionAgentDeprecated, ResourceType: "agent",
+		ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+	})
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deprecated"})
 }
 
@@ -392,8 +400,7 @@ func (h *AgentHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 		Status        string `json:"status"`
 		StatusMessage string `json:"statusMessage"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 
@@ -416,7 +423,7 @@ func (h *AgentHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -426,24 +433,23 @@ func (h *AgentHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 			fmt.Sprintf("version '%s' does not exist", ver), r.URL.Path)
 		return
 	} else if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
 	v, err := h.db.GetAgentVersion(r.Context(), agent.ID, ver)
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionAgentVersionPublished, ResourceType: "agent",
-			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
-			Metadata: map[string]any{"version": ver, "status": body.Status},
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionAgentVersionPublished, ResourceType: "agent",
+		ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+		Metadata: map[string]any{"version": ver, "status": body.Status},
+	})
 	writeJSON(w, r, http.StatusOK, v)
 }
 

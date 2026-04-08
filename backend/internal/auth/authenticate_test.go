@@ -141,9 +141,9 @@ func TestAuthenticate_GarbageToken(t *testing.T) {
 
 	v := buildValidator(t, jwksSrv.URL, issuer)
 
-	var capturedCtx context.Context
+	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedCtx = r.Context()
+		nextCalled = true
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -152,15 +152,12 @@ func TestAuthenticate_GarbageToken(t *testing.T) {
 	rec := httptest.NewRecorder()
 	v.Authenticate(next).ServeHTTP(rec, req)
 
-	// Authenticate must NOT block; it calls next even on bad tokens.
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", rec.Code)
+	// A present-but-invalid token must return 401 and never call next.
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
-	if claims, ok := auth.ClaimsFromContext(capturedCtx); ok && claims != nil {
-		t.Error("expected no claims in context for garbage token")
-	}
-	if auth.IsAdminFromContext(capturedCtx) {
-		t.Error("expected isAdmin=false for garbage token")
+	if nextCalled {
+		t.Error("next handler must not be called when token is invalid")
 	}
 }
 
@@ -253,9 +250,9 @@ func TestAuthenticate_ValidJWT_WrongIssuer(t *testing.T) {
 	// Token signed with the right key but a different issuer.
 	token := signJWT(t, priv, kid, tokenIssuer, []string{"admin"})
 
-	var capturedCtx context.Context
+	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedCtx = r.Context()
+		nextCalled = true
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -264,13 +261,12 @@ func TestAuthenticate_ValidJWT_WrongIssuer(t *testing.T) {
 	rec := httptest.NewRecorder()
 	v.Authenticate(next).ServeHTTP(rec, req)
 
-	// Next is still called (Authenticate doesn't block).
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", rec.Code)
+	// A token with the wrong issuer is invalid — must return 401.
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
-	// But no claims should be set due to issuer mismatch.
-	if claims, ok := auth.ClaimsFromContext(capturedCtx); ok && claims != nil {
-		t.Error("expected no claims for wrong-issuer JWT")
+	if nextCalled {
+		t.Error("next handler must not be called for wrong-issuer JWT")
 	}
 }
 
@@ -313,13 +309,13 @@ func TestAuthenticate_ExpiredJWT(t *testing.T) {
 
 	v := buildValidator(t, jwksSrv.URL, issuer)
 
-	// Token with exp 1 hour in the past
+	// Token with exp 1 hour in the past.
 	expiredAt := time.Now().Add(-time.Hour).Unix()
 	token := signJWTWithTimes(t, priv, kid, issuer, []string{"admin"}, time.Now().Unix(), expiredAt)
 
-	var capturedCtx context.Context
+	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedCtx = r.Context()
+		nextCalled = true
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -328,13 +324,12 @@ func TestAuthenticate_ExpiredJWT(t *testing.T) {
 	rec := httptest.NewRecorder()
 	v.Authenticate(next).ServeHTTP(rec, req)
 
-	// Authenticate must NOT block; next is still called
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", rec.Code)
+	// Expired tokens are invalid — must return 401.
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
-	// But no claims should be in context
-	if claims, ok := auth.ClaimsFromContext(capturedCtx); ok && claims != nil {
-		t.Error("expected no claims for expired JWT")
+	if nextCalled {
+		t.Error("next handler must not be called for expired JWT")
 	}
 }
 
@@ -348,12 +343,12 @@ func TestAuthenticate_MissingExp(t *testing.T) {
 
 	v := buildValidator(t, jwksSrv.URL, issuer)
 
-	// Token without exp field (exp=0 means omit in signJWTWithTimes)
+	// Token without exp field (exp=0 means omit in signJWTWithTimes).
 	token := signJWTWithTimes(t, priv, kid, issuer, []string{"admin"}, time.Now().Unix(), 0)
 
-	var capturedCtx context.Context
+	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedCtx = r.Context()
+		nextCalled = true
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -362,13 +357,13 @@ func TestAuthenticate_MissingExp(t *testing.T) {
 	rec := httptest.NewRecorder()
 	v.Authenticate(next).ServeHTTP(rec, req)
 
-	// Authenticate must NOT block
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", rec.Code)
+	// golang-jwt rejects tokens without exp when WithExpirationRequired() is used.
+	// Must return 401.
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
-	// But no claims (golang-jwt rejects missing exp by default)
-	if claims, ok := auth.ClaimsFromContext(capturedCtx); ok && claims != nil {
-		t.Error("expected no claims for JWT missing exp field")
+	if nextCalled {
+		t.Error("next handler must not be called for JWT missing exp field")
 	}
 }
 

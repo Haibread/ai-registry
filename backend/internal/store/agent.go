@@ -98,11 +98,12 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	whereClause := filterWhere
 	if !hasQuery && p.Cursor != "" {
 		at, id, err := decodeCursor(p.Cursor)
-		if err == nil {
-			whereClause += fmt.Sprintf(" AND (a.created_at, a.id) < ($%d, $%d)", argN, argN+1)
-			args = append(args, at, id)
-			argN += 2
+		if err != nil {
+			return nil, 0, ErrInvalidCursor
 		}
+		whereClause += fmt.Sprintf(" AND (a.created_at, a.id) < ($%d, $%d)", argN, argN+1)
+		args = append(args, at, id)
+		argN += 2
 	}
 
 	orderClause := "ORDER BY a.created_at DESC, a.id DESC"

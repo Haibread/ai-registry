@@ -101,6 +101,20 @@ type Transport struct {
 	Type string `json:"type"`
 }
 
+// slugRe matches valid registry slugs: lowercase alphanumeric and hyphens,
+// 1-63 characters, not starting or ending with a hyphen.
+var slugRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?$`)
+
+// ValidateSlug checks that s is a valid registry slug (namespace or slug field).
+// Rules: lowercase alphanumeric with hyphens, 1-63 characters,
+// must start and end with an alphanumeric character.
+func ValidateSlug(s string) error {
+	if !slugRe.MatchString(s) {
+		return fmt.Errorf("%q is not a valid slug (use lowercase letters, digits, and hyphens; max 63 chars)", s)
+	}
+	return nil
+}
+
 // serverNameRe matches valid MCP server names: namespace/slug.
 // Spec pattern: ^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$
 var serverNameRe = regexp.MustCompile(`^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$`)

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
@@ -74,7 +72,7 @@ func (h *PublisherHandlers) GetPublisher(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, pub)
@@ -88,13 +86,17 @@ func (h *PublisherHandlers) CreatePublisher(w http.ResponseWriter, r *http.Reque
 		Name    string `json:"name"`
 		Contact string `json:"contact"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if body.Slug == "" || body.Name == "" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"slug and name are required", r.URL.Path)
+		return
+	}
+	if err := domain.ValidateSlug(body.Slug); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			fmt.Sprintf("slug: %s", err), r.URL.Path)
 		return
 	}
 
@@ -109,16 +111,15 @@ func (h *PublisherHandlers) CreatePublisher(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionPublisherCreated, ResourceType: "publisher",
-			ResourceID: pub.ID, ResourceSlug: pub.Slug,
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionPublisherCreated, ResourceType: "publisher",
+		ResourceID: pub.ID, ResourceSlug: pub.Slug,
+	})
 	writeJSON(w, r, http.StatusCreated, pub)
 }

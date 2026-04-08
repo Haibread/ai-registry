@@ -60,8 +60,12 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, total, err := h.db.ListMCPServers(r.Context(), p)
+	if errors.Is(err, store.ErrInvalidCursor) {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid cursor", r.URL.Path)
+		return
+	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", "failed to list servers", r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -98,7 +102,7 @@ func (h *MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, serverToResponse(srv))
@@ -116,13 +120,22 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		RepoURL     string `json:"repo_url"`
 		License     string `json:"license"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if body.Namespace == "" || body.Slug == "" || body.Name == "" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"namespace, slug, and name are required", r.URL.Path)
+		return
+	}
+	if err := domain.ValidateSlug(body.Namespace); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			fmt.Sprintf("namespace: %s", err), r.URL.Path)
+		return
+	}
+	if err := domain.ValidateSlug(body.Slug); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			fmt.Sprintf("slug: %s", err), r.URL.Path)
 		return
 	}
 
@@ -133,7 +146,7 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -152,16 +165,15 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionMCPServerCreated, ResourceType: "mcp_server",
-			ResourceID: srv.ID, ResourceNS: body.Namespace, ResourceSlug: body.Slug,
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionMCPServerCreated, ResourceType: "mcp_server",
+		ResourceID: srv.ID, ResourceNS: body.Namespace, ResourceSlug: body.Slug,
+	})
 	if h.metrics != nil {
 		h.metrics.MCPServersTotal.Add(r.Context(), 1)
 	}
@@ -182,13 +194,13 @@ func (h *MCPHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
 	versions, err := h.db.ListMCPServerVersions(r.Context(), srv.ID)
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"items": versions})
@@ -209,7 +221,7 @@ func (h *MCPHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -220,7 +232,7 @@ func (h *MCPHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, v)
@@ -239,7 +251,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -252,8 +264,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Checksum        string          `json:"checksum"`
 		Signature       string          `json:"signature"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if body.Version == "" || body.Runtime == "" || body.ProtocolVersion == "" {
@@ -286,17 +297,16 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionMCPVersionCreated, ResourceType: "mcp_server",
-			ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
-			Metadata: map[string]any{"version": body.Version},
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionMCPVersionCreated, ResourceType: "mcp_server",
+		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+		Metadata: map[string]any{"version": body.Version},
+	})
 	writeJSON(w, r, http.StatusCreated, v)
 }
 
@@ -314,7 +324,7 @@ func (h *MCPHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -327,17 +337,16 @@ func (h *MCPHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("version '%s' is already published", ver), r.URL.Path)
 		return
 	} else if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionMCPVersionPublished, ResourceType: "mcp_server",
-			ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
-			Metadata: map[string]any{"version": ver},
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionMCPVersionPublished, ResourceType: "mcp_server",
+		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+		Metadata: map[string]any{"version": ver},
+	})
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "published"})
 }
 
@@ -354,7 +363,7 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -363,16 +372,15 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("server '%s/%s' is not in published status", ns, slug), r.URL.Path)
 		return
 	} else if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject, ActorEmail: claims.Email,
-			Action: domain.ActionMCPServerDeprecated, ResourceType: "mcp_server",
-			ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionMCPServerDeprecated, ResourceType: "mcp_server",
+		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+	})
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deprecated"})
 }
 

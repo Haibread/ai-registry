@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -75,6 +77,16 @@ func run() error {
 	}
 	logger.Info("migrations complete")
 
+	// ── Trusted proxy ─────────────────────────────────────────────────────────
+	var trustedProxy *net.IPNet
+	if cidr := cfg.HTTP.TrustedProxyCIDR; cidr != "" {
+		_, trustedProxy, err = net.ParseCIDR(cidr)
+		if err != nil {
+			return fmt.Errorf("invalid TRUSTED_PROXY_CIDR %q: %w", cidr, err)
+		}
+		logger.Info("trusted proxy configured", slog.String("cidr", cidr))
+	}
+
 	// ── HTTP server ──────────────────────────────────────────────────────────
 	handler := registryhttp.NewRouter(registryhttp.RouterDeps{
 		Logger:  logger,
@@ -83,7 +95,8 @@ func run() error {
 		AuthConf: authpkg.Config{
 			OIDCIssuer: cfg.Auth.OIDCIssuer,
 		},
-		CORSOrigins: cfg.HTTP.CORSOrigins,
+		CORSOrigins:  cfg.HTTP.CORSOrigins,
+		TrustedProxy: trustedProxy,
 	})
 	srv := registryhttp.NewServer(handler, registryhttp.ServerConfig{
 		Addr:         cfg.HTTP.Addr,

@@ -3,6 +3,7 @@ package http
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -20,11 +21,15 @@ import (
 
 // RouterDeps bundles the dependencies injected into the router.
 type RouterDeps struct {
-	Logger      *slog.Logger
-	DB          *store.DB
-	Metrics     *observability.Metrics
-	AuthConf    auth.Config
-	CORSOrigins []string
+	Logger       *slog.Logger
+	DB           *store.DB
+	Metrics      *observability.Metrics
+	AuthConf     auth.Config
+	CORSOrigins  []string
+	// TrustedProxy, when non-nil, is the CIDR from which X-Forwarded-For
+	// headers are trusted for client IP extraction in rate limiting.
+	// Set via TRUSTED_PROXY_CIDR env var. Leave nil when not behind a proxy.
+	TrustedProxy *net.IPNet
 }
 
 // NewRouter builds and returns the chi router with all middleware and routes.
@@ -45,10 +50,13 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 
 	// ── Core middleware ───────────────────────────────────────────────────────
+	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.CORS(deps.CORSOrigins))
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(deps.Logger, deps.Metrics))
+	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MiB
+	r.Use(middleware.RequireJSONBody)
 	r.Use(validator.Authenticate) // parse JWT when present; never blocks
 
 	// ── System endpoints ──────────────────────────────────────────────────────
@@ -89,7 +97,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", cardH.PerAgentCard)
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
-	publicRL := middleware.RateLimit(100, time.Minute, deps.Metrics)
+	publicRL := middleware.RateLimit(100, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
 
 		// Publishers

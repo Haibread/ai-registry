@@ -22,6 +22,9 @@ var ErrConflict = errors.New("conflict")
 // ErrImmutable is returned when a mutation is attempted on a published version.
 var ErrImmutable = errors.New("published versions are immutable")
 
+// ErrInvalidCursor is returned when the pagination cursor cannot be decoded.
+var ErrInvalidCursor = errors.New("invalid cursor")
+
 // LatestMCPVersion is a summary of the most recently published version,
 // embedded inline in list and detail responses.
 type LatestMCPVersion struct {
@@ -136,11 +139,12 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	whereClause := filterWhere
 	if !hasQuery && p.Cursor != "" {
 		at, id, err := decodeCursor(p.Cursor)
-		if err == nil {
-			whereClause += fmt.Sprintf(" AND (s.created_at, s.id) < ($%d, $%d)", argN, argN+1)
-			args = append(args, at, id)
-			argN += 2
+		if err != nil {
+			return nil, 0, ErrInvalidCursor
 		}
+		whereClause += fmt.Sprintf(" AND (s.created_at, s.id) < ($%d, $%d)", argN, argN+1)
+		args = append(args, at, id)
+		argN += 2
 	}
 
 	orderClause := "ORDER BY s.created_at DESC, s.id DESC"

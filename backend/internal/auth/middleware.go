@@ -49,7 +49,11 @@ func (v *Validator) Authenticate(next http.Handler) http.Handler {
 		}, jwt.WithIssuedAt(), jwt.WithIssuer(v.issuer), jwt.WithExpirationRequired())
 
 		if err != nil {
-			next.ServeHTTP(w, r)
+			// A token was provided but is invalid (expired, bad signature, etc.).
+			// Return 401 rather than silently treating it as unauthenticated,
+			// so clients with broken tokens get immediate diagnostic feedback.
+			problem.Write(w, http.StatusUnauthorized, "unauthorized",
+				"Invalid or expired bearer token", r.URL.Path)
 			return
 		}
 

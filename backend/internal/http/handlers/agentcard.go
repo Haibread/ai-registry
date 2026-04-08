@@ -38,7 +38,7 @@ func (h *AgentCardHandlers) PerAgentCard(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
@@ -49,14 +49,13 @@ func (h *AgentCardHandlers) PerAgentCard(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
 	card, err := agents.GenerateCard(*agent, ver)
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal",
-			fmt.Sprintf("failed to generate agent card: %s", err.Error()), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 

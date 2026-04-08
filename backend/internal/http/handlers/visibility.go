@@ -1,14 +1,12 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
@@ -22,8 +20,7 @@ func (h *MCPHandlers) SetVisibility(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Visibility string `json:"visibility"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if body.Visibility != "public" && body.Visibility != "private" {
@@ -39,27 +36,26 @@ func (h *MCPHandlers) SetVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
 	if err := h.db.SetMCPServerVisibility(r.Context(), srv.ID, domain.Visibility(body.Visibility)); err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject,
-			ActorEmail:   claims.Email,
-			Action:       domain.ActionMCPServerVisibility,
-			ResourceType: "mcp_server",
-			ResourceID:   srv.ID,
-			ResourceNS:   ns,
-			ResourceSlug: slug,
-			Metadata:     map[string]any{"visibility": body.Visibility},
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject,
+		ActorEmail:   email,
+		Action:       domain.ActionMCPServerVisibility,
+		ResourceType: "mcp_server",
+		ResourceID:   srv.ID,
+		ResourceNS:   ns,
+		ResourceSlug: slug,
+		Metadata:     map[string]any{"visibility": body.Visibility},
+	})
 
 	writeJSON(w, r, http.StatusOK, map[string]string{"visibility": body.Visibility})
 }
@@ -72,8 +68,7 @@ func (h *AgentHandlers) SetVisibility(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Visibility string `json:"visibility"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if body.Visibility != "public" && body.Visibility != "private" {
@@ -89,27 +84,26 @@ func (h *AgentHandlers) SetVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
 	if err := h.db.SetAgentVisibility(r.Context(), agent.ID, domain.Visibility(body.Visibility)); err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		internalError(w, r, err)
 		return
 	}
 
-	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
-		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
-			ActorSubject: claims.Subject,
-			ActorEmail:   claims.Email,
-			Action:       domain.ActionAgentVisibility,
-			ResourceType: "agent",
-			ResourceID:   agent.ID,
-			ResourceNS:   ns,
-			ResourceSlug: slug,
-			Metadata:     map[string]any{"visibility": body.Visibility},
-		})
-	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject,
+		ActorEmail:   email,
+		Action:       domain.ActionAgentVisibility,
+		ResourceType: "agent",
+		ResourceID:   agent.ID,
+		ResourceNS:   ns,
+		ResourceSlug: slug,
+		Metadata:     map[string]any{"visibility": body.Visibility},
+	})
 
 	writeJSON(w, r, http.StatusOK, map[string]string{"visibility": body.Visibility})
 }

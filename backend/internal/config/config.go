@@ -27,11 +27,16 @@ type AuthConfig struct {
 
 // HTTPConfig holds HTTP server settings.
 type HTTPConfig struct {
-	Addr            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	IdleTimeout     time.Duration
-	CORSOrigins     []string
+	Addr             string
+	ReadTimeout      time.Duration
+	WriteTimeout     time.Duration
+	IdleTimeout      time.Duration
+	CORSOrigins      []string
+	// TrustedProxyCIDR is the optional CIDR (e.g. "10.0.0.0/8") of the
+	// reverse proxy in front of this server. When set, X-Forwarded-For is
+	// trusted for rate-limiting IP extraction. Parsed and stored as a string;
+	// the caller parses it into *net.IPNet via net.ParseCIDR.
+	TrustedProxyCIDR string
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -58,11 +63,12 @@ type LogConfig struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		HTTP: HTTPConfig{
-			Addr:         envString("HTTP_ADDR", ":8081"),
-			ReadTimeout:  envDuration("HTTP_READ_TIMEOUT", 30*time.Second),
-			WriteTimeout: envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:  envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
-			CORSOrigins:  envStringSlice("CORS_ALLOWED_ORIGINS", nil),
+			Addr:             envString("HTTP_ADDR", ":8081"),
+			ReadTimeout:      envDuration("HTTP_READ_TIMEOUT", 30*time.Second),
+			WriteTimeout:     envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
+			IdleTimeout:      envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
+			CORSOrigins:      envStringSlice("CORS_ALLOWED_ORIGINS", nil),
+			TrustedProxyCIDR: envString("TRUSTED_PROXY_CIDR", ""),
 		},
 		Database: DatabaseConfig{
 			URL:      envString("DATABASE_URL", ""),

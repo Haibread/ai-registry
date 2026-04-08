@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,6 +33,12 @@ func NewV0MCPHandlers(db *store.DB, audit store.AuditLogger) *V0MCPHandlers {
 // Spec: { "error": "<message>" }
 func writeV0Error(w http.ResponseWriter, r *http.Request, status int, message string) {
 	writeJSON(w, r, status, map[string]string{"error": message})
+}
+
+// v0InternalError logs err and returns a generic 500 for v0 routes.
+func v0InternalError(w http.ResponseWriter, r *http.Request, err error) {
+	slog.ErrorContext(r.Context(), "internal error", slog.String("err", err.Error()))
+	writeV0Error(w, r, http.StatusInternalServerError, "an internal error occurred")
 }
 
 // ── GET /v0/servers ───────────────────────────────────────────────────────
@@ -115,7 +122,7 @@ func (h *V0MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 	if srv.Visibility != domain.VisibilityPublic {
@@ -140,7 +147,7 @@ func (h *V0MCPHandlers) GetServerByName(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 
@@ -162,7 +169,7 @@ func (h *V0MCPHandlers) ListServerVersions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 
@@ -216,7 +223,7 @@ func (h *V0MCPHandlers) GetServerVersion(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 
@@ -231,7 +238,7 @@ func (h *V0MCPHandlers) GetServerVersion(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 	if ver.PublishedAt == nil {
@@ -273,7 +280,7 @@ func (h *V0MCPHandlers) PatchServerStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 
@@ -369,7 +376,7 @@ func (h *V0MCPHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 
@@ -463,7 +470,7 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if pubErr != nil {
-			writeV0Error(w, r, http.StatusInternalServerError, pubErr.Error())
+			v0InternalError(w, r, pubErr)
 			return
 		}
 		repoURL := ""
@@ -478,7 +485,7 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 			RepoURL:     repoURL,
 		})
 		if createErr != nil {
-			writeV0Error(w, r, http.StatusInternalServerError, createErr.Error())
+			v0InternalError(w, r, createErr)
 			return
 		}
 		srv = &store.MCPServerRow{MCPServer: *newSrv}
@@ -491,7 +498,7 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	} else if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 
@@ -513,12 +520,12 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 
 	if err := h.db.PublishMCPServerVersion(r.Context(), srv.ID, ver.Version); err != nil {
-		writeV0Error(w, r, http.StatusInternalServerError, err.Error())
+		v0InternalError(w, r, err)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
