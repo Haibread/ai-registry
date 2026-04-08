@@ -23,6 +23,7 @@ const (
 	StatusDraft      Status = "draft"
 	StatusPublished  Status = "published"
 	StatusDeprecated Status = "deprecated"
+	StatusDeleted    Status = "deleted"
 )
 
 // Runtime is the transport mechanism of an MCP server version.
@@ -74,6 +75,8 @@ type MCPServerVersion struct {
 	Checksum        string
 	Signature       string
 	Status          VersionStatus // active | deprecated | deleted
+	StatusMessage   string
+	StatusChangedAt time.Time
 	PublishedAt     *time.Time
 	ReleasedAt      time.Time
 }

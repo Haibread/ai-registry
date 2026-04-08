@@ -23,8 +23,12 @@ func newV0MCPRouter() *chi.Mux {
 		r.Get("/", h.GetServerByName)
 		r.Patch("/status", h.PatchServerStatus)
 		r.Get("/versions", h.ListServerVersions)
-		r.Get("/versions/{version}", h.GetServerVersion)
-		r.Patch("/versions/{version}/status", h.PatchVersionStatus)
+		r.Route("/versions/{version}", func(r chi.Router) {
+			r.Get("/", h.GetServerVersion)
+			r.Put("/", h.UpdateServerVersion)
+			r.Delete("/", h.DeleteServerVersion)
+			r.Patch("/status", h.PatchVersionStatus)
+		})
 	})
 	r.Post("/v0/publish", h.Publish)
 	return r
@@ -93,23 +97,21 @@ func TestV0MCPHandler_ListServers_OnlyPublic(t *testing.T) {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 
-	var body struct {
-		Servers []struct {
-			Name string `json:"name"`
-		} `json:"servers"`
-		Metadata struct {
-			Count int `json:"count"`
-		} `json:"metadata"`
-	}
+	var body map[string]any
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
-	if body.Metadata.Count != 1 {
-		t.Errorf("count = %d, want 1 (only public)", body.Metadata.Count)
+	meta := body["metadata"].(map[string]any)
+	count := int(meta["count"].(float64))
+	if count != 1 {
+		t.Errorf("count = %d, want 1 (only public)", count)
 	}
-	if len(body.Servers) != 1 {
-		t.Fatalf("servers len = %d, want 1", len(body.Servers))
+	servers := body["servers"].([]any)
+	if len(servers) != 1 {
+		t.Fatalf("servers len = %d, want 1", len(servers))
 	}
-	if body.Servers[0].Name != "v0-pub-ns/public-srv" {
-		t.Errorf("name = %q, want v0-pub-ns/public-srv", body.Servers[0].Name)
+	entry := servers[0].(map[string]any)
+	server := entry["server"].(map[string]any)
+	if server["name"] != "v0-pub-ns/public-srv" {
+		t.Errorf("name = %q, want v0-pub-ns/public-srv", server["name"])
 	}
 }
 
@@ -199,8 +201,7 @@ func TestV0MCPHandler_GetServer_StatusIsActive(t *testing.T) {
 
 	var body map[string]any
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
-	server := body["server"].(map[string]any)
-	meta := server["_meta"].(map[string]any)
+	meta := body["_meta"].(map[string]any)
 	official := meta["io.modelcontextprotocol.registry/official"].(map[string]any)
 	if official["status"] != "active" {
 		t.Errorf("status = %q, want \"active\"", official["status"])
@@ -306,21 +307,21 @@ func TestV0MCPHandler_ListServerVersions(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
-	var body struct {
-		Versions []struct {
-			Version string `json:"version"`
-			Status  string `json:"status"`
-		} `json:"versions"`
-	}
+	var body map[string]any
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
-	if len(body.Versions) != 1 {
-		t.Fatalf("versions len = %d, want 1", len(body.Versions))
+	servers, ok := body["servers"].([]any)
+	if !ok || len(servers) == 0 {
+		t.Fatalf("expected servers array with at least 1 item; got %v", body["servers"])
 	}
-	if body.Versions[0].Version != "1.0.0" {
-		t.Errorf("version = %q, want 1.0.0", body.Versions[0].Version)
+	entry := servers[0].(map[string]any)
+	server := entry["server"].(map[string]any)
+	if server["version"] != "1.0.0" {
+		t.Errorf("version = %q, want 1.0.0", server["version"])
 	}
-	if body.Versions[0].Status != "active" {
-		t.Errorf("status = %q, want active", body.Versions[0].Status)
+	entryMeta := entry["_meta"].(map[string]any)
+	official := entryMeta["io.modelcontextprotocol.registry/official"].(map[string]any)
+	if official["status"] != "active" {
+		t.Errorf("status = %q, want active", official["status"])
 	}
 }
 
@@ -386,8 +387,14 @@ func TestV0MCPHandler_PatchServerStatus_Deprecate(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newV0MCPRouter().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	// Response should be AllVersionsStatusResponse
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp) //nolint:errcheck
+	if _, ok := resp["updatedCount"]; !ok {
+		t.Errorf("response missing 'updatedCount'; got keys: %v", mapKeys(resp))
 	}
 }
 
@@ -421,8 +428,17 @@ func TestV0MCPHandler_PatchVersionStatus_Deprecate(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newV0MCPRouter().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	// Response should be a ServerResponse with server + _meta
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp) //nolint:errcheck
+	if _, ok := resp["server"]; !ok {
+		t.Errorf("response missing 'server' key; got keys: %v", mapKeys(resp))
+	}
+	if _, ok := resp["_meta"]; !ok {
+		t.Errorf("response missing '_meta' key; got keys: %v", mapKeys(resp))
 	}
 }
 

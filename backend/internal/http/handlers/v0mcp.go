@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -49,12 +50,31 @@ func (h *V0MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 		query = r.URL.Query().Get("q")
 	}
 
-	rows, err := h.db.ListMCPServers(r.Context(), store.ListMCPServersParams{
+	params := store.ListMCPServersParams{
 		PublicOnly: true,
 		Query:      query,
 		Limit:      limit + 1,
 		Cursor:     r.URL.Query().Get("cursor"),
-	})
+	}
+
+	// updated_since filter (RFC 3339)
+	if us := r.URL.Query().Get("updated_since"); us != "" {
+		if t, err := time.Parse(time.RFC3339, us); err == nil {
+			params.UpdatedSince = &t
+		}
+	}
+
+	// include_deleted filter
+	if r.URL.Query().Get("include_deleted") == "true" {
+		params.IncludeDeleted = true
+	}
+
+	// version filter: "latest" (default behaviour) or exact semver
+	if vf := r.URL.Query().Get("version"); vf != "" {
+		params.VersionFilter = vf
+	}
+
+	rows, err := h.db.ListMCPServers(r.Context(), params)
 	if err != nil {
 		writeV0Error(w, http.StatusInternalServerError, "failed to list servers")
 		return
@@ -67,10 +87,10 @@ func (h *V0MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
 	}
 
-	entries := make([]mcpwire.ServerEntry, 0, len(rows))
+	entries := make([]mcpwire.ServerResponse, 0, len(rows))
 	for _, row := range rows {
 		ver, _ := h.db.GetLatestPublishedVersion(r.Context(), row.ID)
-		entries = append(entries, mcpwire.ToServerEntry(row, ver, true))
+		entries = append(entries, mcpwire.ToServerResponse(row, ver, true))
 	}
 
 	writeJSON(w, http.StatusOK, mcpwire.ListResponse{
@@ -84,7 +104,7 @@ func (h *V0MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 
 // ── GET /v0/servers/{id} ──────────────────────────────────────────────────
 
-// V0GetServer serves GET /v0/servers/{id} where {id} is the MCP server ULID.
+// GetServer serves GET /v0/servers/{id} where {id} is the MCP server ULID.
 func (h *V0MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -103,15 +123,12 @@ func (h *V0MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ver, _ := h.db.GetLatestPublishedVersion(r.Context(), srv.ID)
-	writeJSON(w, http.StatusOK, mcpwire.DetailResponse{
-		Server: mcpwire.ToServerDetail(*srv, ver),
-	})
+	writeJSON(w, http.StatusOK, mcpwire.ToServerResponse(*srv, ver, true))
 }
 
 // ── GET /v0/servers/{namespace}/{slug} ───────────────────────────────────
 
 // GetServerByName serves GET /v0/servers/{namespace}/{slug} — lookup by name.
-// This is the spec-preferred lookup method (by "namespace/slug" name).
 func (h *V0MCPHandlers) GetServerByName(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
@@ -127,14 +144,13 @@ func (h *V0MCPHandlers) GetServerByName(w http.ResponseWriter, r *http.Request) 
 	}
 
 	ver, _ := h.db.GetLatestPublishedVersion(r.Context(), srv.ID)
-	writeJSON(w, http.StatusOK, mcpwire.DetailResponse{
-		Server: mcpwire.ToServerDetail(*srv, ver),
-	})
+	writeJSON(w, http.StatusOK, mcpwire.ToServerResponse(*srv, ver, true))
 }
 
 // ── GET /v0/servers/{namespace}/{slug}/versions ──────────────────────────
 
 // ListServerVersions serves GET /v0/servers/{namespace}/{slug}/versions.
+// Returns a ListResponse (ServerList shape) where each item is a ServerResponse.
 func (h *V0MCPHandlers) ListServerVersions(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
@@ -155,19 +171,39 @@ func (h *V0MCPHandlers) ListServerVersions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	entries := make([]mcpwire.VersionEntry, 0, len(vers))
-	for _, v := range vers {
-		if v.PublishedAt != nil { // only expose published versions
-			entries = append(entries, mcpwire.ToVersionEntry(v))
+	// Find the latest published version.
+	var latestVer *domain.MCPServerVersion
+	for i := range vers {
+		if vers[i].PublishedAt != nil {
+			if latestVer == nil || vers[i].PublishedAt.After(*latestVer.PublishedAt) {
+				v := vers[i]
+				latestVer = &v
+			}
 		}
 	}
 
-	writeJSON(w, http.StatusOK, mcpwire.VersionListResponse{Versions: entries})
+	entries := make([]mcpwire.ServerResponse, 0, len(vers))
+	for i := range vers {
+		v := vers[i]
+		if v.PublishedAt == nil {
+			continue // only expose published versions
+		}
+		isLatest := latestVer != nil && v.Version == latestVer.Version
+		entries = append(entries, mcpwire.ToServerResponse(*srv, &v, isLatest))
+	}
+
+	writeJSON(w, http.StatusOK, mcpwire.ListResponse{
+		Servers: entries,
+		Metadata: mcpwire.ListMetadata{
+			Count: len(entries),
+		},
+	})
 }
 
 // ── GET /v0/servers/{namespace}/{slug}/versions/{version} ────────────────
 
 // GetServerVersion serves GET /v0/servers/{namespace}/{slug}/versions/{version}.
+// Supports version == "latest" to get the latest published version.
 func (h *V0MCPHandlers) GetServerVersion(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
@@ -183,7 +219,12 @@ func (h *V0MCPHandlers) GetServerVersion(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	ver, err := h.db.GetMCPServerVersion(r.Context(), srv.ID, version)
+	var ver *domain.MCPServerVersion
+	if version == "latest" {
+		ver, err = h.db.GetLatestPublishedVersion(r.Context(), srv.ID)
+	} else {
+		ver, err = h.db.GetMCPServerVersion(r.Context(), srv.ID, version)
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeV0Error(w, http.StatusNotFound, "version not found")
 		return
@@ -197,83 +238,21 @@ func (h *V0MCPHandlers) GetServerVersion(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Return as a full ServerDetail with the specific version's data.
-	d := mcpwire.ToServerDetail(*srv, ver)
-	writeJSON(w, http.StatusOK, mcpwire.DetailResponse{Server: d})
+	// Check if this is the latest version.
+	latestVer, _ := h.db.GetLatestPublishedVersion(r.Context(), srv.ID)
+	isLatest := latestVer != nil && latestVer.Version == ver.Version
+
+	writeJSON(w, http.StatusOK, mcpwire.ToServerResponse(*srv, ver, isLatest))
 }
 
 // ── PATCH /v0/servers/{namespace}/{slug}/status ──────────────────────────
 
 // PatchServerStatus serves PATCH /v0/servers/{namespace}/{slug}/status.
-// Sets status across the server: active (→ published) | deprecated | deleted (→ private).
+// Sets status across all published versions.
+// Returns 200 AllVersionsStatusResponse.
 func (h *V0MCPHandlers) PatchServerStatus(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
-
-	var body mcpwire.StatusPatchRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeV0Error(w, http.StatusUnprocessableEntity, "invalid JSON body")
-		return
-	}
-
-	// Map spec status values to domain status.
-	var domainStatus domain.Status
-	switch body.Status {
-	case "active":
-		domainStatus = domain.StatusPublished
-	case "deprecated":
-		domainStatus = domain.StatusDeprecated
-	case "deleted":
-		// We model "deleted" as setting visibility to private.
-		srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, false)
-		if errors.Is(err, store.ErrNotFound) {
-			writeV0Error(w, http.StatusNotFound, "server not found")
-			return
-		}
-		if err != nil {
-			writeV0Error(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if err := h.db.SetMCPServerVisibility(r.Context(), srv.ID, domain.VisibilityPrivate); err != nil {
-			writeV0Error(w, http.StatusInternalServerError, "failed to delete server")
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	default:
-		writeV0Error(w, http.StatusUnprocessableEntity, "status must be one of: active, deprecated, deleted")
-		return
-	}
-
-	srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, false)
-	if errors.Is(err, store.ErrNotFound) {
-		writeV0Error(w, http.StatusNotFound, "server not found")
-		return
-	}
-	if err != nil {
-		writeV0Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	if err := h.db.SetMCPServerStatus(r.Context(), srv.ID, domainStatus); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeV0Error(w, http.StatusNotFound, "server not found")
-			return
-		}
-		writeV0Error(w, http.StatusInternalServerError, "failed to update status")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ── PATCH /v0/servers/{namespace}/{slug}/versions/{version}/status ────────
-
-// PatchVersionStatus serves PATCH /v0/servers/{namespace}/{slug}/versions/{version}/status.
-// Sets status on a single version: active | deprecated | deleted.
-func (h *V0MCPHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Request) {
-	namespace := chi.URLParam(r, "namespace")
-	slug := chi.URLParam(r, "slug")
-	version := chi.URLParam(r, "version")
 
 	var body mcpwire.StatusPatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -297,7 +276,103 @@ func (h *V0MCPHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.db.SetMCPVersionStatus(r.Context(), srv.ID, version, domain.VersionStatus(body.Status)); err != nil {
+	// Map spec status to domain status.
+	var domainStatus domain.Status
+	var domainVersionStatus domain.VersionStatus
+	switch body.Status {
+	case "active":
+		domainStatus = domain.StatusPublished
+		domainVersionStatus = domain.VersionStatusActive
+	case "deprecated":
+		domainStatus = domain.StatusDeprecated
+		domainVersionStatus = domain.VersionStatusDeprecated
+	case "deleted":
+		domainStatus = domain.StatusDeleted
+		domainVersionStatus = domain.VersionStatusDeleted
+	}
+
+	// Update server-level status.
+	if err := h.db.SetMCPServerStatus(r.Context(), srv.ID, domainStatus); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeV0Error(w, http.StatusNotFound, "server not found")
+			return
+		}
+		writeV0Error(w, http.StatusInternalServerError, "failed to update status")
+		return
+	}
+
+	// Update all published versions' status atomically.
+	updatedVersions, err := h.db.SetAllVersionsStatus(r.Context(), srv.ID, domainVersionStatus, body.StatusMessage)
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, "failed to update versions status")
+		return
+	}
+
+	// Re-fetch server to get updated timestamps.
+	updatedSrv, _ := h.db.GetMCPServer(r.Context(), namespace, slug, false)
+	if updatedSrv == nil {
+		updatedSrv = srv
+	}
+
+	responses := make([]mcpwire.ServerResponse, 0, len(updatedVersions))
+	// Find the latest version.
+	var latestVer *domain.MCPServerVersion
+	for i := range updatedVersions {
+		v := updatedVersions[i]
+		if v.PublishedAt != nil && (latestVer == nil || v.PublishedAt.After(*latestVer.PublishedAt)) {
+			latestVer = &v
+		}
+	}
+	for i := range updatedVersions {
+		v := updatedVersions[i]
+		isLatest := latestVer != nil && v.Version == latestVer.Version
+		responses = append(responses, mcpwire.ToServerResponse(*updatedSrv, &v, isLatest))
+	}
+
+	writeJSON(w, http.StatusOK, mcpwire.AllVersionsStatusResponse{
+		UpdatedCount: len(updatedVersions),
+		Servers:      responses,
+	})
+}
+
+// ── PATCH /v0/servers/{namespace}/{slug}/versions/{version}/status ────────
+
+// PatchVersionStatus serves PATCH /v0/servers/{namespace}/{slug}/versions/{version}/status.
+// Returns 200 ServerResponse.
+func (h *V0MCPHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Request) {
+	namespace := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+	version := chi.URLParam(r, "version")
+
+	var body mcpwire.StatusPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeV0Error(w, http.StatusUnprocessableEntity, "invalid JSON body")
+		return
+	}
+
+	validStatuses := map[string]bool{"active": true, "deprecated": true, "deleted": true}
+	if !validStatuses[body.Status] {
+		writeV0Error(w, http.StatusUnprocessableEntity, "status must be one of: active, deprecated, deleted")
+		return
+	}
+
+	// statusMessage must not be set when status is active.
+	if body.Status == "active" && body.StatusMessage != "" {
+		writeV0Error(w, http.StatusUnprocessableEntity, "statusMessage must not be set when status is active")
+		return
+	}
+
+	srv, err := h.db.GetMCPServer(r.Context(), namespace, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		writeV0Error(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if err := h.db.SetMCPVersionStatus(r.Context(), srv.ID, version, domain.VersionStatus(body.Status), body.StatusMessage); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeV0Error(w, http.StatusNotFound, "version not found")
 			return
@@ -305,7 +380,38 @@ func (h *V0MCPHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 		writeV0Error(w, http.StatusInternalServerError, "failed to update version status")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	// Re-fetch the version and server to build the response.
+	ver, err := h.db.GetMCPServerVersion(r.Context(), srv.ID, version)
+	if err != nil {
+		writeV0Error(w, http.StatusInternalServerError, "failed to fetch updated version")
+		return
+	}
+
+	latestVer, _ := h.db.GetLatestPublishedVersion(r.Context(), srv.ID)
+	isLatest := latestVer != nil && latestVer.Version == ver.Version
+
+	// Re-fetch server to get updated timestamps.
+	updatedSrv, _ := h.db.GetMCPServer(r.Context(), namespace, slug, false)
+	if updatedSrv == nil {
+		updatedSrv = srv
+	}
+
+	writeJSON(w, http.StatusOK, mcpwire.ToServerResponse(*updatedSrv, ver, isLatest))
+}
+
+// ── PUT /v0/servers/{namespace}/{slug}/versions/{version} ─────────────────
+
+// UpdateServerVersion is a stub that returns 501.
+func (h *V0MCPHandlers) UpdateServerVersion(w http.ResponseWriter, r *http.Request) {
+	writeV0Error(w, http.StatusNotImplemented, "UpdateServerVersion not yet implemented")
+}
+
+// ── DELETE /v0/servers/{namespace}/{slug}/versions/{version} ──────────────
+
+// DeleteServerVersion is a stub that returns 501.
+func (h *V0MCPHandlers) DeleteServerVersion(w http.ResponseWriter, r *http.Request) {
+	writeV0Error(w, http.StatusNotImplemented, "DeleteServerVersion not yet implemented")
 }
 
 // ── POST /v0/publish ──────────────────────────────────────────────────────
@@ -433,9 +539,7 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Spec: respond with 200 + the ServerResponse shape.
-	writeJSON(w, http.StatusOK, mcpwire.ServerResponse{
-		Server: mcpwire.ToServerDetail(*updatedSrv, publishedVer),
-	})
+	writeJSON(w, http.StatusOK, mcpwire.ToServerResponse(*updatedSrv, publishedVer, true))
 }
 
 // deriveRuntime returns a Runtime based on the first package entry's transport type.

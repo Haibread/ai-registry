@@ -123,7 +123,11 @@ func buildSecureRouter(t *testing.T) (http.Handler, func([]string) string) {
 		r.With(auth.RequireAdmin).Post("/publish", v0H.Publish)
 		r.Route("/servers/{namespace}/{slug}", func(r chi.Router) {
 			r.With(auth.RequireAdmin).Patch("/status", v0H.PatchServerStatus)
-			r.With(auth.RequireAdmin).Patch("/versions/{version}/status", v0H.PatchVersionStatus)
+			r.Route("/versions/{version}", func(r chi.Router) {
+				r.With(auth.RequireAdmin).Put("/", v0H.UpdateServerVersion)
+				r.With(auth.RequireAdmin).Delete("/", v0H.DeleteServerVersion)
+				r.With(auth.RequireAdmin).Patch("/status", v0H.PatchVersionStatus)
+			})
 		})
 	})
 
@@ -190,6 +194,8 @@ func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 		{http.MethodPost, "/v0/publish"},
 		{http.MethodPatch, "/v0/servers/ns/slug/status"},
 		{http.MethodPatch, "/v0/servers/ns/slug/versions/1.0.0/status"},
+		{http.MethodPut, "/v0/servers/ns/slug/versions/1.0.0/"},
+		{http.MethodDelete, "/v0/servers/ns/slug/versions/1.0.0/"},
 	}
 
 	for _, route := range routes {

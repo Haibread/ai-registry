@@ -73,8 +73,12 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.With(auth.RequireAdmin).Patch("/status", v0H.PatchServerStatus)
 			r.Route("/versions", func(r chi.Router) {
 				r.Get("/", v0H.ListServerVersions)
-				r.Get("/{version}", v0H.GetServerVersion)
-				r.With(auth.RequireAdmin).Patch("/{version}/status", v0H.PatchVersionStatus)
+				r.Route("/{version}", func(r chi.Router) {
+					r.Get("/", v0H.GetServerVersion)
+					r.With(auth.RequireAdmin).Put("/", v0H.UpdateServerVersion)
+					r.With(auth.RequireAdmin).Delete("/", v0H.DeleteServerVersion)
+					r.With(auth.RequireAdmin).Patch("/status", v0H.PatchVersionStatus)
+				})
 			})
 		})
 

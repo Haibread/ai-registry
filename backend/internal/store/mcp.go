@@ -34,13 +34,16 @@ type LatestMCPVersion struct {
 
 // ListMCPServersParams controls filtering and pagination for ListMCPServers.
 type ListMCPServersParams struct {
-	PublicOnly bool   // when true, only visibility='public' rows are returned
-	Namespace  string // filter by publisher slug (optional)
-	Status     string // filter by status: "draft" | "published" | "deprecated" | "" (all)
-	Visibility string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
-	Query      string // full-text search term (optional)
-	Limit      int32
-	Cursor     string // opaque cursor (created_at::text + "," + id)
+	PublicOnly     bool       // when true, only visibility='public' rows are returned
+	Namespace      string     // filter by publisher slug (optional)
+	Status         string     // filter by status: "draft" | "published" | "deprecated" | "" (all)
+	Visibility     string     // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
+	Query          string     // full-text search term (optional)
+	Limit          int32
+	Cursor         string     // opaque cursor (created_at::text + "," + id)
+	UpdatedSince   *time.Time // when non-nil, only rows updated after this time
+	IncludeDeleted bool       // when true, include servers with status='deleted'
+	VersionFilter  string     // when non-empty, filter to servers with this published version ("latest" = default latest-version behaviour)
 }
 
 // MCPServerRow is a flat projection used by list queries (includes namespace).
@@ -73,10 +76,20 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		whereClause += fmt.Sprintf(" AND s.status = $%d", argN)
 		args = append(args, p.Status)
 		argN++
+	} else if !p.IncludeDeleted {
+		// By default, exclude deleted servers.
+		whereClause += fmt.Sprintf(" AND s.status != $%d", argN)
+		args = append(args, "deleted")
+		argN++
 	}
 	if p.Namespace != "" {
 		whereClause += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		args = append(args, p.Namespace)
+		argN++
+	}
+	if p.UpdatedSince != nil {
+		whereClause += fmt.Sprintf(" AND s.updated_at > $%d", argN)
+		args = append(args, *p.UpdatedSince)
 		argN++
 	}
 	// When searching, use the generated search_vector index and rank results.
@@ -110,6 +123,19 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		argN++
 	}
 
+	// Build the lateral join for latest/specific version.
+	// When VersionFilter is a specific semver (not "latest" and not empty),
+	// the lateral join is narrowed to that exact version, and we require lv
+	// to be non-NULL (i.e. the server must have that version published).
+	lateralVersionCond := "v.published_at IS NOT NULL"
+	if p.VersionFilter != "" && p.VersionFilter != "latest" {
+		lateralVersionCond += fmt.Sprintf(" AND v.version = $%d", argN)
+		args = append(args, p.VersionFilter)
+		argN++
+		// Only include servers that actually have this version.
+		whereClause += " AND lv.version IS NOT NULL"
+	}
+
 	args = append(args, p.Limit)
 	q := fmt.Sprintf(`
 		SELECT s.id, pub.slug AS namespace, s.publisher_id, s.slug, s.name,
@@ -121,13 +147,13 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		LEFT JOIN LATERAL (
 		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.published_at
 		    FROM mcp_server_versions v
-		    WHERE v.server_id = s.id AND v.published_at IS NOT NULL
+		    WHERE v.server_id = s.id AND %s
 		    ORDER BY v.published_at DESC
 		    LIMIT 1
 		) lv ON true
 		%s
 		%s
-		LIMIT $%d`, whereClause, orderClause, argN)
+		LIMIT $%d`, lateralVersionCond, whereClause, orderClause, argN)
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
@@ -326,7 +352,7 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, released_at
+		       status, published_at, released_at, coalesce(status_message,''), status_changed_at
 		FROM mcp_server_versions
 		WHERE server_id = $1
 		ORDER BY released_at DESC`, serverID)
@@ -351,7 +377,7 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string)
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, released_at
+		       status, published_at, released_at, coalesce(status_message,''), status_changed_at
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND version = $2`, serverID, version)
 
@@ -370,7 +396,7 @@ func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, released_at
+		       status, published_at, released_at, coalesce(status_message,''), status_changed_at
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -508,6 +534,8 @@ func (db *DB) GetPublisherBySlug(ctx context.Context, slug string) (id string, e
 }
 
 // scanVersion scans one mcp_server_versions row from any pgx scanner.
+// Column order must match SELECT: id, server_id, version, runtime, packages, capabilities,
+// protocol_version, checksum, signature, status, published_at, released_at, status_message, status_changed_at
 func scanVersion(s interface {
 	Scan(...any) error
 }) (domain.MCPServerVersion, error) {
@@ -517,6 +545,7 @@ func scanVersion(s interface {
 		&v.Packages, &v.Capabilities,
 		&v.ProtocolVersion, &v.Checksum, &v.Signature,
 		&v.Status, &v.PublishedAt, &v.ReleasedAt,
+		&v.StatusMessage, &v.StatusChangedAt,
 	)
 	return v, err
 }
@@ -540,10 +569,10 @@ func (db *DB) SetMCPServerStatus(ctx context.Context, serverID string, status do
 // SetMCPVersionStatus updates the per-version status for a specific server version.
 // Allowed values: active, deprecated, deleted.
 // Returns ErrNotFound if the version does not exist.
-func (db *DB) SetMCPVersionStatus(ctx context.Context, serverID, version string, status domain.VersionStatus) error {
+func (db *DB) SetMCPVersionStatus(ctx context.Context, serverID, version string, status domain.VersionStatus, statusMessage string) error {
 	tag, err := db.Pool.Exec(ctx,
-		`UPDATE mcp_server_versions SET status=$1 WHERE server_id=$2 AND version=$3`,
-		status, serverID, version)
+		`UPDATE mcp_server_versions SET status=$1, status_message=$2, status_changed_at=now() WHERE server_id=$3 AND version=$4`,
+		status, statusMessage, serverID, version)
 	if err != nil {
 		return fmt.Errorf("setting mcp version status: %w", err)
 	}
@@ -551,6 +580,33 @@ func (db *DB) SetMCPVersionStatus(ctx context.Context, serverID, version string,
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SetAllVersionsStatus updates the status of all published versions of a server atomically.
+// Returns the updated versions.
+func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status domain.VersionStatus, statusMessage string) ([]domain.MCPServerVersion, error) {
+	rows, err := db.Pool.Query(ctx, `
+		UPDATE mcp_server_versions
+		SET status=$1, status_message=$2, status_changed_at=now()
+		WHERE server_id=$3 AND published_at IS NOT NULL
+		RETURNING id, server_id, version, runtime, packages, capabilities,
+		          protocol_version, coalesce(checksum,''), coalesce(signature,''),
+		          status, published_at, released_at, coalesce(status_message,''), status_changed_at`,
+		status, statusMessage, serverID)
+	if err != nil {
+		return nil, fmt.Errorf("setting all versions status: %w", err)
+	}
+	defer rows.Close()
+
+	var result []domain.MCPServerVersion
+	for rows.Next() {
+		v, err := scanVersion(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning updated version: %w", err)
+		}
+		result = append(result, v)
+	}
+	return result, rows.Err()
 }
 
 // decodeCursor splits a cursor string into (time, id).

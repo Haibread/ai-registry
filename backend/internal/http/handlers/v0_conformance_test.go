@@ -162,7 +162,12 @@ func TestV0Conformance_ListServers_EntryNameFormat(t *testing.T) {
 	}
 
 	entry := servers[0].(map[string]any)
-	name, ok := entry["name"].(string)
+	// Each list item is a ServerResponse: { server: {...}, _meta: {...} }
+	serverObj, ok := entry["server"].(map[string]any)
+	if !ok {
+		t.Fatalf("server list entry missing 'server' object; got %T", entry["server"])
+	}
+	name, ok := serverObj["name"].(string)
 	if !ok || name == "" {
 		t.Fatal("server entry missing 'name' string field")
 	}
@@ -185,6 +190,7 @@ func TestV0Conformance_ListServers_EntryMetaShape(t *testing.T) {
 	servers := body["servers"].([]any)
 	entry := servers[0].(map[string]any)
 
+	// Each list item is a ServerResponse: { server: {...}, _meta: {...} }
 	meta, ok := entry["_meta"].(map[string]any)
 	if !ok {
 		t.Fatalf("server entry missing '_meta' object; got %T", entry["_meta"])
@@ -218,6 +224,7 @@ func TestV0Conformance_ListServers_StatusEnumIsActive(t *testing.T) {
 	body := decodeJSON(t, rec.Body)
 	servers := body["servers"].([]any)
 	entry := servers[0].(map[string]any)
+	// _meta is at the ServerResponse level (not inside server object)
 	meta := entry["_meta"].(map[string]any)
 	official := meta["io.modelcontextprotocol.registry/official"].(map[string]any)
 
@@ -248,28 +255,165 @@ func TestV0Conformance_ListServers_SearchParamName(t *testing.T) {
 }
 
 // Spec: GET /v0.1/servers supports "updated_since" (RFC 3339 date-time) filter.
-// CONFORMANCE GAP: "updated_since" parameter is not implemented.
+// Only servers with updated_at > updated_since are returned.
 func TestV0Conformance_ListServers_UpdatedSinceParam(t *testing.T) {
-	t.Skip("CONFORMANCE GAP: 'updated_since' query parameter not implemented. " +
-		"Spec: filter results to servers updated after the given RFC 3339 timestamp.")
+	resetTables(t)
+
+	// Create server A before the filter timestamp.
+	seedConformanceServer(t, "conf-us-ns1", "server-a", "1.0.0")
+
+	// Let the DB clock advance by sleeping briefly, then record time T.
+	time.Sleep(10 * time.Millisecond)
+	filterTime := time.Now().UTC()
+	time.Sleep(10 * time.Millisecond)
+
+	// Create server B after the filter timestamp.
+	seedConformanceServer(t, "conf-us-ns2", "server-b", "1.0.0")
+
+	// Query with updated_since=T — only server B should appear.
+	req := httptest.NewRequest(http.MethodGet,
+		"/v0/servers?updated_since="+filterTime.Format(time.RFC3339Nano), nil)
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("updated_since request: status = %d, want 200", rec.Code)
+	}
+	body := decodeJSON(t, rec.Body)
+	servers := body["servers"].([]any)
+
+	if len(servers) != 1 {
+		t.Fatalf("updated_since filter: got %d servers, want 1 (server-b only)", len(servers))
+	}
+	entry := servers[0].(map[string]any)
+	serverObj, ok := entry["server"].(map[string]any)
+	if !ok {
+		t.Fatalf("list entry missing 'server' object; got %T", entry["server"])
+	}
+	name, _ := serverObj["name"].(string)
+	if !strings.Contains(name, "server-b") {
+		t.Errorf("updated_since returned wrong server: got %q, want conf-us-ns2/server-b", name)
+	}
 }
 
-// Spec: GET /v0.1/servers supports "include_deleted=true" to include deleted servers.
-// CONFORMANCE GAP: we have no "deleted" status — our model uses draft/published/deprecated.
-// The spec's "deleted" state is closer to a soft-delete with tombstone semantics.
+// Spec: GET /v0.1/servers supports "include_deleted=true" to include servers
+// with status=deleted. By default, deleted servers are excluded.
 func TestV0Conformance_ListServers_IncludeDeletedParam(t *testing.T) {
-	t.Skip("CONFORMANCE GAP: 'include_deleted' parameter not implemented. " +
-		"Spec: when include_deleted=true, include servers with status=deleted. " +
-		"Fix: add a 'deleted' status to the domain model or map deprecation to deleted.")
+	resetTables(t)
+
+	const ns, slug = "conf-del-ns", "del-srv"
+	seedConformanceServer(t, ns, slug, "1.0.0")
+
+	// Mark the server as deleted via PATCH /status.
+	patchBody, _ := json.Marshal(map[string]string{"status": "deleted"})
+	patchReq := httptest.NewRequest(http.MethodPatch,
+		"/v0/servers/"+ns+"/"+slug+"/status",
+		bytes.NewBuffer(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchRec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("PATCH status to deleted failed: %d %s", patchRec.Code, patchRec.Body.String())
+	}
+
+	// Default list must NOT include the deleted server.
+	req := httptest.NewRequest(http.MethodGet, "/v0/servers", nil)
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+	body := decodeJSON(t, rec.Body)
+	for _, s := range body["servers"].([]any) {
+		entry := s.(map[string]any)
+		serverObj := entry["server"].(map[string]any)
+		if strings.Contains(serverObj["name"].(string), slug) {
+			t.Error("deleted server must NOT appear in default list (no include_deleted)")
+		}
+	}
+
+	// With include_deleted=true the deleted server MUST appear.
+	req2 := httptest.NewRequest(http.MethodGet, "/v0/servers?include_deleted=true", nil)
+	rec2 := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec2, req2)
+	body2 := decodeJSON(t, rec2.Body)
+	found := false
+	for _, s := range body2["servers"].([]any) {
+		entry := s.(map[string]any)
+		serverObj := entry["server"].(map[string]any)
+		if strings.Contains(serverObj["name"].(string), slug) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("deleted server MUST appear when include_deleted=true")
+	}
 }
 
-// Spec: GET /v0.1/servers supports "version=latest" to filter to only the
-// latest version of each server.
-// CONFORMANCE GAP: "version" query parameter not implemented.
+// Spec: GET /v0.1/servers supports a "version" query parameter.
+// version=latest returns each server's most-recently-published version (default
+// behaviour). version=<semver> returns only servers that have that exact version
+// published, and shows that version's data.
 func TestV0Conformance_ListServers_VersionParam(t *testing.T) {
-	t.Skip("CONFORMANCE GAP: 'version' query parameter not implemented. " +
-		"Spec: version=latest returns only entries where isLatest=true; " +
-		"version=<semver> returns entries matching that exact version.")
+	resetTables(t)
+
+	// Seed server A with only version 1.0.0.
+	seedConformanceServer(t, "conf-vf-ns1", "srv-a", "1.0.0")
+	// Seed server B with version 2.0.0.
+	seedConformanceServer(t, "conf-vf-ns2", "srv-b", "2.0.0")
+
+	// version=latest: both servers appear (spec default; isLatest=true for all).
+	req := httptest.NewRequest(http.MethodGet, "/v0/servers?version=latest", nil)
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("version=latest: status = %d, want 200", rec.Code)
+	}
+	body := decodeJSON(t, rec.Body)
+	if len(body["servers"].([]any)) < 2 {
+		t.Errorf("version=latest: expected ≥2 servers, got %d", len(body["servers"].([]any)))
+	}
+
+	// version=1.0.0: only server A should appear.
+	req2 := httptest.NewRequest(http.MethodGet, "/v0/servers?version=1.0.0", nil)
+	rec2 := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("version=1.0.0: status = %d, want 200", rec2.Code)
+	}
+	body2 := decodeJSON(t, rec2.Body)
+	servers2 := body2["servers"].([]any)
+	if len(servers2) != 1 {
+		t.Fatalf("version=1.0.0: got %d servers, want 1 (srv-a only)", len(servers2))
+	}
+	entry := servers2[0].(map[string]any)
+	serverObj := entry["server"].(map[string]any)
+	if serverObj["version"] != "1.0.0" {
+		t.Errorf("version=1.0.0 filter returned wrong version: %q", serverObj["version"])
+	}
+
+	// version=2.0.0: only server B should appear.
+	req3 := httptest.NewRequest(http.MethodGet, "/v0/servers?version=2.0.0", nil)
+	rec3 := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("version=2.0.0: status = %d, want 200", rec3.Code)
+	}
+	body3 := decodeJSON(t, rec3.Body)
+	servers3 := body3["servers"].([]any)
+	if len(servers3) != 1 {
+		t.Fatalf("version=2.0.0: got %d servers, want 1 (srv-b only)", len(servers3))
+	}
+
+	// version=9.9.9: no servers match — must return empty array, not 404.
+	req4 := httptest.NewRequest(http.MethodGet, "/v0/servers?version=9.9.9", nil)
+	rec4 := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec4, req4)
+	if rec4.Code != http.StatusOK {
+		t.Fatalf("version=9.9.9: status = %d, want 200", rec4.Code)
+	}
+	body4 := decodeJSON(t, rec4.Body)
+	if len(body4["servers"].([]any)) != 0 {
+		t.Errorf("version=9.9.9: expected 0 servers, got %d", len(body4["servers"].([]any)))
+	}
 }
 
 // Spec: cursor-based pagination: nextCursor in metadata enables fetching the next page.
@@ -383,11 +527,11 @@ func TestV0Conformance_GetServer_MetaShape(t *testing.T) {
 	newV0MCPRouter().ServeHTTP(rec, req)
 
 	body := decodeJSON(t, rec.Body)
-	server := body["server"].(map[string]any)
 
-	meta, ok := server["_meta"].(map[string]any)
+	// _meta is at the top response level, not inside server
+	meta, ok := body["_meta"].(map[string]any)
 	if !ok {
-		t.Fatalf("server missing '_meta' object; got %T", server["_meta"])
+		t.Fatalf("response missing top-level '_meta' object; got %T", body["_meta"])
 	}
 	if _, ok := meta["io.modelcontextprotocol.registry/official"]; !ok {
 		t.Errorf("'_meta' missing 'io.modelcontextprotocol.registry/official'; got keys: %v", mapKeys(meta))
@@ -427,11 +571,12 @@ func TestV0Conformance_ListVersionsByServerName(t *testing.T) {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeJSON(t, rec.Body)
-	versions, ok := body["versions"].([]any)
+	// Versions list now uses ServerList shape: { servers: [...], metadata: {...} }
+	servers, ok := body["servers"].([]any)
 	if !ok {
-		t.Fatalf("response missing 'versions' array; got %T", body["versions"])
+		t.Fatalf("response missing 'servers' array; got %T", body["servers"])
 	}
-	if len(versions) == 0 {
+	if len(servers) == 0 {
 		t.Error("expected at least one version for a published server")
 	}
 }
@@ -642,6 +787,7 @@ func TestV0Conformance_Publish_HappyPath(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Spec: PATCH /v0.1/servers/{serverName}/status updates all versions' status.
+// Returns 200 AllVersionsStatusResponse.
 func TestV0Conformance_PatchServerStatus(t *testing.T) {
 	resetTables(t)
 	seedConformanceServer(t, "conf-patch-ns", "patch-srv", "1.0.0")
@@ -653,12 +799,17 @@ func TestV0Conformance_PatchServerStatus(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newV0MCPRouter().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeJSON(t, rec.Body)
+	if _, ok := resp["updatedCount"]; !ok {
+		t.Error("PATCH server status response missing 'updatedCount'")
 	}
 }
 
 // Spec: PATCH /v0.1/servers/{serverName}/versions/{version}/status updates one version.
+// Returns 200 ServerResponse.
 func TestV0Conformance_PatchVersionStatus(t *testing.T) {
 	resetTables(t)
 	seedConformanceServer(t, "conf-pvs-ns", "pvs-srv", "1.0.0")
@@ -671,8 +822,15 @@ func TestV0Conformance_PatchVersionStatus(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newV0MCPRouter().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeJSON(t, rec.Body)
+	if _, ok := resp["server"]; !ok {
+		t.Error("PATCH version status response missing 'server'")
+	}
+	if _, ok := resp["_meta"]; !ok {
+		t.Error("PATCH version status response missing '_meta'")
 	}
 }
 
@@ -737,8 +895,8 @@ func TestV0Conformance_GetServer_PublishedAtIsRFC3339(t *testing.T) {
 	newV0MCPRouter().ServeHTTP(rec, req)
 
 	body := decodeJSON(t, rec.Body)
-	server := body["server"].(map[string]any)
-	meta := server["_meta"].(map[string]any)
+	// _meta is at the top response level
+	meta := body["_meta"].(map[string]any)
 	official := meta["io.modelcontextprotocol.registry/official"].(map[string]any)
 
 	publishedAt, ok := official["publishedAt"].(string)
@@ -792,6 +950,216 @@ func TestV0Conformance_GetServer_PackageShape(t *testing.T) {
 		if _, ok := pkg[required]; !ok {
 			t.Errorf("package missing required field %q", required)
 		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// statusMessage and statusChangedAt
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Spec: _meta.official.statusMessage is included in the response when set on a
+// deprecated or deleted version.
+func TestV0Conformance_PatchVersionStatus_StatusMessageStoredAndReturned(t *testing.T) {
+	resetTables(t)
+	seedConformanceServer(t, "conf-sm-ns", "sm-srv", "1.0.0")
+
+	const wantMsg = "deprecated: use v2 instead"
+	body, _ := json.Marshal(map[string]string{
+		"status":        "deprecated",
+		"statusMessage": wantMsg,
+	})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/v0/servers/conf-sm-ns/sm-srv/versions/1.0.0/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH version status: status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+
+	resp := decodeJSON(t, rec.Body)
+	meta := resp["_meta"].(map[string]any)
+	official := meta["io.modelcontextprotocol.registry/official"].(map[string]any)
+
+	gotMsg, _ := official["statusMessage"].(string)
+	if gotMsg != wantMsg {
+		t.Errorf("statusMessage = %q, want %q", gotMsg, wantMsg)
+	}
+}
+
+// Spec: statusMessage must NOT be accepted when status is "active".
+func TestV0Conformance_PatchVersionStatus_StatusMessageRejectedForActive(t *testing.T) {
+	resetTables(t)
+	seedConformanceServer(t, "conf-sma-ns", "sma-srv", "1.0.0")
+
+	body, _ := json.Marshal(map[string]string{
+		"status":        "active",
+		"statusMessage": "this must be rejected",
+	})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/v0/servers/conf-sma-ns/sma-srv/versions/1.0.0/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422 when statusMessage is set with status=active", rec.Code)
+	}
+}
+
+// Spec: _meta.official.statusChangedAt is present after a status change.
+func TestV0Conformance_PatchVersionStatus_StatusChangedAtPresent(t *testing.T) {
+	resetTables(t)
+	seedConformanceServer(t, "conf-sca-ns", "sca-srv", "1.0.0")
+
+	body, _ := json.Marshal(map[string]string{"status": "deprecated"})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/v0/servers/conf-sca-ns/sca-srv/versions/1.0.0/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH version status: status = %d", rec.Code)
+	}
+
+	resp := decodeJSON(t, rec.Body)
+	meta := resp["_meta"].(map[string]any)
+	official := meta["io.modelcontextprotocol.registry/official"].(map[string]any)
+
+	sca, ok := official["statusChangedAt"].(string)
+	if !ok || sca == "" {
+		t.Fatal("_meta.official.statusChangedAt must be present and non-empty after a status change")
+	}
+	if _, err := time.Parse(time.RFC3339, sca); err != nil {
+		if _, err2 := time.Parse(time.RFC3339Nano, sca); err2 != nil {
+			t.Errorf("statusChangedAt = %q is not a valid RFC 3339 timestamp", sca)
+		}
+	}
+}
+
+// Spec: AllVersionsStatusResponse.servers contains the updated ServerResponse
+// items with the new status reflected in _meta.
+func TestV0Conformance_PatchServerStatus_ServersContainUpdatedStatus(t *testing.T) {
+	resetTables(t)
+	seedConformanceServer(t, "conf-pss-ns", "pss-srv", "1.0.0")
+
+	body, _ := json.Marshal(map[string]string{"status": "deprecated"})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/v0/servers/conf-pss-ns/pss-srv/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH server status: status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+
+	resp := decodeJSON(t, rec.Body)
+
+	updatedCount, ok := resp["updatedCount"].(float64)
+	if !ok {
+		t.Fatal("response missing 'updatedCount' field")
+	}
+	if int(updatedCount) < 1 {
+		t.Errorf("updatedCount = %d, want ≥1", int(updatedCount))
+	}
+
+	servers, ok := resp["servers"].([]any)
+	if !ok {
+		t.Fatal("AllVersionsStatusResponse missing 'servers' array")
+	}
+	if len(servers) == 0 {
+		t.Fatal("AllVersionsStatusResponse.servers must not be empty after update")
+	}
+
+	entry := servers[0].(map[string]any)
+	meta, ok := entry["_meta"].(map[string]any)
+	if !ok {
+		t.Fatal("server entry in AllVersionsStatusResponse missing '_meta'")
+	}
+	official := meta["io.modelcontextprotocol.registry/official"].(map[string]any)
+	if official["status"] != "deprecated" {
+		t.Errorf("_meta.official.status = %q, want deprecated", official["status"])
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT and DELETE — spec optional, our implementation returns 501
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Spec: PUT /v0.1/servers/{serverName}/versions/{version} is optional.
+// Our implementation MUST return 501 Not Implemented (not 404 or 405).
+func TestV0Conformance_PutServerVersion_Returns501(t *testing.T) {
+	resetTables(t)
+	seedConformanceServer(t, "conf-put-ns", "put-srv", "1.0.0")
+
+	body, _ := json.Marshal(map[string]string{"description": "updated"})
+	req := httptest.NewRequest(http.MethodPut,
+		"/v0/servers/conf-put-ns/put-srv/versions/1.0.0/",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Errorf("PUT version: status = %d, want 501 Not Implemented", rec.Code)
+	}
+}
+
+// Spec: DELETE /v0.1/servers/{serverName}/versions/{version} is optional.
+// Our implementation MUST return 501 Not Implemented (not 404 or 405).
+func TestV0Conformance_DeleteServerVersion_Returns501(t *testing.T) {
+	resetTables(t)
+	seedConformanceServer(t, "conf-del2-ns", "del2-srv", "1.0.0")
+
+	req := httptest.NewRequest(http.MethodDelete,
+		"/v0/servers/conf-del2-ns/del2-srv/versions/1.0.0/", nil)
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Errorf("DELETE version: status = %d, want 501 Not Implemented", rec.Code)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /v0/servers/{namespace}/{slug}/versions/latest
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Spec: version="latest" is a special value that resolves to the most-recently
+// published version of a server.
+func TestV0Conformance_GetServerVersion_LatestAlias(t *testing.T) {
+	resetTables(t)
+	seedConformanceServer(t, "conf-lat-ns", "lat-srv", "1.0.0")
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/v0/servers/conf-lat-ns/lat-srv/versions/latest/", nil)
+	rec := httptest.NewRecorder()
+	newV0MCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET versions/latest: status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	body := decodeJSON(t, rec.Body)
+	if _, ok := body["server"]; !ok {
+		t.Fatal("versions/latest response missing 'server' key")
+	}
+	server := body["server"].(map[string]any)
+	if server["version"] != "1.0.0" {
+		t.Errorf("versions/latest returned version %q, want 1.0.0", server["version"])
+	}
+	// isLatest must be true.
+	meta := body["_meta"].(map[string]any)
+	official := meta["io.modelcontextprotocol.registry/official"].(map[string]any)
+	isLatest, _ := official["isLatest"].(bool)
+	if !isLatest {
+		t.Error("versions/latest: _meta.official.isLatest must be true")
 	}
 }
 
