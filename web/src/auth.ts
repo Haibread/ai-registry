@@ -88,7 +88,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       session.accessToken = token.accessToken as string | undefined
       // Propagate any token error to the session so the UI can react.
-      session.error = token.error as string | undefined
+      session.error = token.error as "RefreshAccessTokenError" | undefined
       return session
     },
   },
