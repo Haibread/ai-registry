@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/haibread/ai-registry/internal/problem"
 )
 
 type contextKey string
@@ -63,12 +65,12 @@ func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := ClaimsFromContext(r.Context())
 		if !ok || claims == nil {
-			writeProblem(w, http.StatusUnauthorized, "unauthorized",
+			problem.Write(w, http.StatusUnauthorized, "unauthorized",
 				"Missing or invalid bearer token", r.URL.Path)
 			return
 		}
 		if !claims.IsAdmin() {
-			writeProblem(w, http.StatusForbidden, "forbidden",
+			problem.Write(w, http.StatusForbidden, "forbidden",
 				"Insufficient permissions: registry:admin role required", r.URL.Path)
 			return
 		}

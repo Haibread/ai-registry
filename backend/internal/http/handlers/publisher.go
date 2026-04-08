@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
+	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
@@ -39,7 +41,7 @@ func (h *PublisherHandlers) ListPublishers(w http.ResponseWriter, r *http.Reques
 		Cursor: r.URL.Query().Get("cursor"),
 	})
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", "failed to list publishers", r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", "failed to list publishers", r.URL.Path)
 		return
 	}
 
@@ -54,7 +56,7 @@ func (h *PublisherHandlers) ListPublishers(w http.ResponseWriter, r *http.Reques
 		rows = []store.Publisher{}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(w, r, http.StatusOK, map[string]any{
 		"items":       rows,
 		"next_cursor": nextCursor,
 	})
@@ -67,15 +69,15 @@ func (h *PublisherHandlers) GetPublisher(w http.ResponseWriter, r *http.Request)
 
 	pub, err := h.db.GetPublisher(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"publisher '"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("publisher '%s' does not exist", slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, pub)
+	writeJSON(w, r, http.StatusOK, pub)
 }
 
 // ── POST /api/v1/publishers ───────────────────────────────────────────────────
@@ -87,11 +89,11 @@ func (h *PublisherHandlers) CreatePublisher(w http.ResponseWriter, r *http.Reque
 		Contact string `json:"contact"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
 		return
 	}
 	if body.Slug == "" || body.Name == "" {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"slug and name are required", r.URL.Path)
 		return
 	}
@@ -102,12 +104,12 @@ func (h *PublisherHandlers) CreatePublisher(w http.ResponseWriter, r *http.Reque
 		Contact: body.Contact,
 	})
 	if errors.Is(err, store.ErrConflict) {
-		writeProblem(w, http.StatusConflict, "conflict",
-			"publisher '"+body.Slug+"' already exists", r.URL.Path)
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("publisher '%s' already exists", body.Slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
@@ -118,5 +120,5 @@ func (h *PublisherHandlers) CreatePublisher(w http.ResponseWriter, r *http.Reque
 			ResourceID: pub.ID, ResourceSlug: pub.Slug,
 		})
 	}
-	writeJSON(w, http.StatusCreated, pub)
+	writeJSON(w, r, http.StatusCreated, pub)
 }

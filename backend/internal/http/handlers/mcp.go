@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -10,18 +11,21 @@ import (
 
 	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
+	"github.com/haibread/ai-registry/internal/observability"
+	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
 // MCPHandlers holds dependencies for MCP registry HTTP handlers.
 type MCPHandlers struct {
-	db    *store.DB
-	audit store.AuditLogger
+	db      *store.DB
+	audit   store.AuditLogger
+	metrics *observability.Metrics
 }
 
-// NewMCPHandlers creates an MCPHandlers with the given store and audit logger.
-func NewMCPHandlers(db *store.DB, audit store.AuditLogger) *MCPHandlers {
-	return &MCPHandlers{db: db, audit: audit}
+// NewMCPHandlers creates an MCPHandlers with the given store, audit logger, and metrics.
+func NewMCPHandlers(db *store.DB, audit store.AuditLogger, metrics *observability.Metrics) *MCPHandlers {
+	return &MCPHandlers{db: db, audit: audit, metrics: metrics}
 }
 
 // ── GET /api/v1/mcp/servers ───────────────────────────────────────────────
@@ -57,7 +61,7 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 
 	rows, total, err := h.db.ListMCPServers(r.Context(), p)
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", "failed to list servers", r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", "failed to list servers", r.URL.Path)
 		return
 	}
 
@@ -73,7 +77,7 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 		items = append(items, serverToResponse(&rows[i]))
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(w, r, http.StatusOK, map[string]any{
 		"items":       items,
 		"next_cursor": nextCursor,
 		"total_count": total,
@@ -89,15 +93,15 @@ func (h *MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"MCP server '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, serverToResponse(srv))
+	writeJSON(w, r, http.StatusOK, serverToResponse(srv))
 }
 
 // ── POST /api/v1/mcp/servers ──────────────────────────────────────────────
@@ -113,23 +117,23 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		License     string `json:"license"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
 		return
 	}
 	if body.Namespace == "" || body.Slug == "" || body.Name == "" {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"namespace, slug, and name are required", r.URL.Path)
 		return
 	}
 
 	publisherID, err := h.db.GetPublisherBySlug(r.Context(), body.Namespace)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
-			"publisher '"+body.Namespace+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			fmt.Sprintf("publisher '%s' does not exist", body.Namespace), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
@@ -143,12 +147,12 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		License:     body.License,
 	})
 	if errors.Is(err, store.ErrConflict) {
-		writeProblem(w, http.StatusConflict, "conflict",
-			"MCP server '"+body.Namespace+"/"+body.Slug+"' already exists", r.URL.Path)
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("MCP server '%s/%s' already exists", body.Namespace, body.Slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -158,7 +162,10 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 			ResourceID: srv.ID, ResourceNS: body.Namespace, ResourceSlug: body.Slug,
 		})
 	}
-	writeJSON(w, http.StatusCreated, srv)
+	if h.metrics != nil {
+		h.metrics.MCPServersTotal.Add(r.Context(), 1)
+	}
+	writeJSON(w, r, http.StatusCreated, srv)
 }
 
 // ── GET /api/v1/mcp/servers/{namespace}/{slug}/versions ───────────────────
@@ -170,21 +177,21 @@ func (h *MCPHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"MCP server '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	versions, err := h.db.ListMCPServerVersions(r.Context(), srv.ID)
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": versions})
+	writeJSON(w, r, http.StatusOK, map[string]any{"items": versions})
 }
 
 // ── GET /api/v1/mcp/servers/{namespace}/{slug}/versions/{version} ─────────
@@ -197,26 +204,26 @@ func (h *MCPHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"MCP server '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	v, err := h.db.GetMCPServerVersion(r.Context(), srv.ID, ver)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"version '"+ver+"' does not exist for "+ns+"/"+slug, r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("version '%s' does not exist for %s/%s", ver, ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, v)
+	writeJSON(w, r, http.StatusOK, v)
 }
 
 // ── POST /api/v1/mcp/servers/{namespace}/{slug}/versions ──────────────────
@@ -227,12 +234,12 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, false)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"MCP server '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
@@ -246,20 +253,20 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Signature       string          `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
 		return
 	}
 	if body.Version == "" || body.Runtime == "" || body.ProtocolVersion == "" {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"version, runtime, and protocol_version are required", r.URL.Path)
 		return
 	}
 	if err := domain.ValidatePackages(body.Packages); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
 	if err := domain.ValidateCapabilities(body.Capabilities); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
 
@@ -274,12 +281,12 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Signature:       body.Signature,
 	})
 	if errors.Is(err, store.ErrConflict) {
-		writeProblem(w, http.StatusConflict, "conflict",
-			"version '"+body.Version+"' already exists for "+ns+"/"+slug, r.URL.Path)
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("version '%s' already exists for %s/%s", body.Version, ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -290,7 +297,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 			Metadata: map[string]any{"version": body.Version},
 		})
 	}
-	writeJSON(w, http.StatusCreated, v)
+	writeJSON(w, r, http.StatusCreated, v)
 }
 
 // ── POST /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}:publish ─
@@ -302,25 +309,25 @@ func (h *MCPHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, false)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"MCP server '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	if err := h.db.PublishMCPServerVersion(r.Context(), srv.ID, ver); errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"version '"+ver+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("version '%s' does not exist", ver), r.URL.Path)
 		return
 	} else if errors.Is(err, store.ErrImmutable) {
-		writeProblem(w, http.StatusConflict, "immutable",
-			"version '"+ver+"' is already published", r.URL.Path)
+		problem.Write(w, http.StatusConflict, "immutable",
+			fmt.Sprintf("version '%s' is already published", ver), r.URL.Path)
 		return
 	} else if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -331,7 +338,7 @@ func (h *MCPHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 			Metadata: map[string]any{"version": ver},
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "published"})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "published"})
 }
 
 // ── POST /api/v1/mcp/servers/{namespace}/{slug}:deprecate ─────────────────
@@ -342,21 +349,21 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, false)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"MCP server '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	if err := h.db.DeprecateMCPServer(r.Context(), srv.ID); errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusConflict, "conflict",
-			"server '"+ns+"/"+slug+"' is not in published status", r.URL.Path)
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("server '%s/%s' is not in published status", ns, slug), r.URL.Path)
 		return
 	} else if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -366,7 +373,7 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 			ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deprecated"})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deprecated"})
 }
 
 // ── helper ────────────────────────────────────────────────────────────────

@@ -16,14 +16,14 @@ const (
 	VisibilityPublic  Visibility = "public"
 )
 
-// Status represents the lifecycle state of a registry entry.
-type Status string
+// ServerStatus represents the lifecycle state of a registry entry.
+type ServerStatus string
 
 const (
-	StatusDraft      Status = "draft"
-	StatusPublished  Status = "published"
-	StatusDeprecated Status = "deprecated"
-	StatusDeleted    Status = "deleted"
+	StatusDraft      ServerStatus = "draft"
+	StatusPublished  ServerStatus = "published"
+	StatusDeprecated ServerStatus = "deprecated"
+	StatusDeleted    ServerStatus = "deleted"
 )
 
 // Runtime is the transport mechanism of an MCP server version.
@@ -48,7 +48,7 @@ type MCPServer struct {
 	RepoURL     string
 	License     string
 	Visibility  Visibility
-	Status      Status
+	Status      ServerStatus
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

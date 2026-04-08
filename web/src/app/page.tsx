@@ -51,22 +51,22 @@ export default async function HomePage() {
           <div className="container grid grid-cols-2 gap-4 max-w-sm mx-auto">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-center gap-2">
                   <Server className="h-4 w-4" /> MCP Servers
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{mcpTotal}</p>
+                <p className="text-3xl font-bold text-center">{mcpTotal}</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-center gap-2">
                   <Bot className="h-4 w-4" /> Agents
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{agentsTotal}</p>
+                <p className="text-3xl font-bold text-center">{agentsTotal}</p>
               </CardContent>
             </Card>
           </div>

@@ -34,13 +34,13 @@ func NewRouter(deps RouterDeps) http.Handler {
 	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
-	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB)
+	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)
 	v0H := handlers.NewV0MCPHandlers(deps.DB, deps.DB)
-	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB)
+	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB, deps.Metrics)
 	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
-	cardH := handlers.NewAgentCardHandlers(deps.DB)
+	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger)
 
 	r := chi.NewRouter()
 
@@ -48,7 +48,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Use(middleware.CORS(deps.CORSOrigins))
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RequestLogger(deps.Logger))
+	r.Use(middleware.RequestLogger(deps.Logger, deps.Metrics))
 	r.Use(validator.Authenticate) // parse JWT when present; never blocks
 
 	// ── System endpoints ──────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	// ── Well-known endpoints ──────────────────────────────────────────────────
 	r.Get("/.well-known/oauth-protected-resource", handlers.OAuthProtectedResource)
 	// Global registry agent card (makes the registry a first-class A2A citizen)
-	r.Get("/.well-known/agent-card.json", handlers.GlobalAgentCard)
+	r.Get("/.well-known/agent-card.json", cardH.GlobalAgentCard)
 
 	// ── MCP registry wire-format compat layer ─────────────────────────────────
 	r.Route("/v0", func(r chi.Router) {
@@ -89,7 +89,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", cardH.PerAgentCard)
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
-	publicRL := middleware.RateLimit(100, time.Minute)
+	publicRL := middleware.RateLimit(100, time.Minute, deps.Metrics)
 	r.Route("/api/v1", func(r chi.Router) {
 
 		// Publishers
@@ -133,6 +133,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 					r.With(auth.RequireAdmin).Post("/", agentH.CreateVersion)
 					r.With(publicRL).Get("/{version}", agentH.GetVersion)
 					r.With(auth.RequireAdmin).Post("/{version}/publish", agentH.PublishVersion)
+					r.With(auth.RequireAdmin).Patch("/{version}/status", agentH.PatchVersionStatus)
 				})
 			})
 		})

@@ -15,7 +15,7 @@ func TestRequestLogger_LogsRequest(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	handler := middleware.RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := middleware.RequestLogger(logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("hello"))
 	}))
@@ -43,7 +43,7 @@ func TestRequestLogger_LogsStatusCode(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	handler := middleware.RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := middleware.RequestLogger(logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 
@@ -62,7 +62,7 @@ func TestRequestLogger_ImplicitStatus200(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	handler := middleware.RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := middleware.RequestLogger(logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// No explicit WriteHeader — body write implies 200.
 		_, _ = w.Write([]byte("ok"))
 	}))
@@ -82,7 +82,7 @@ func TestRequestLogger_LogsByteCount(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	responseBody := "hello world"
-	handler := middleware.RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := middleware.RequestLogger(logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(responseBody))
 	}))
 
@@ -103,7 +103,7 @@ func TestRequestLogger_WithRequestID(t *testing.T) {
 
 	// Chain RequestID + RequestLogger so the request_id field is populated.
 	handler := middleware.RequestID(
-		middleware.RequestLogger(logger)(
+		middleware.RequestLogger(logger, nil)(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}),

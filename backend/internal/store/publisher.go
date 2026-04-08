@@ -38,6 +38,9 @@ type CreatePublisherParams struct {
 
 // ListPublishers returns a page of publishers ordered by created_at DESC.
 func (db *DB) ListPublishers(ctx context.Context, p ListPublishersParams) ([]Publisher, error) {
+	ctx, span := startSpan(ctx, "ListPublishers")
+	defer span.End()
+
 	if p.Limit <= 0 || p.Limit > 100 {
 		p.Limit = 20
 	}
@@ -63,6 +66,7 @@ func (db *DB) ListPublishers(ctx context.Context, p ListPublishersParams) ([]Pub
 		ORDER BY created_at DESC, id DESC
 		LIMIT $%d`, where, argN), args...)
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("listing publishers: %w", err)
 	}
 	defer rows.Close()
@@ -72,15 +76,23 @@ func (db *DB) ListPublishers(ctx context.Context, p ListPublishersParams) ([]Pub
 		var pub Publisher
 		if err := rows.Scan(&pub.ID, &pub.Slug, &pub.Name, &pub.Contact,
 			&pub.Verified, &pub.CreatedAt, &pub.UpdatedAt); err != nil {
+			recordErr(span, err)
 			return nil, fmt.Errorf("scanning publisher: %w", err)
 		}
 		result = append(result, pub)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return result, nil
 }
 
 // GetPublisher returns a single publisher by slug.
 func (db *DB) GetPublisher(ctx context.Context, slug string) (*Publisher, error) {
+	ctx, span := startSpan(ctx, "GetPublisher")
+	defer span.End()
+
 	var pub Publisher
 	err := db.Pool.QueryRow(ctx, `
 		SELECT id, slug, name, coalesce(contact,''), verified, created_at, updated_at
@@ -88,9 +100,11 @@ func (db *DB) GetPublisher(ctx context.Context, slug string) (*Publisher, error)
 		Scan(&pub.ID, &pub.Slug, &pub.Name, &pub.Contact,
 			&pub.Verified, &pub.CreatedAt, &pub.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting publisher: %w", err)
 	}
 	return &pub, nil
@@ -99,6 +113,9 @@ func (db *DB) GetPublisher(ctx context.Context, slug string) (*Publisher, error)
 // CreatePublisher inserts a new publisher row.
 // Returns ErrConflict if the slug already exists.
 func (db *DB) CreatePublisher(ctx context.Context, p CreatePublisherParams) (*Publisher, error) {
+	ctx, span := startSpan(ctx, "CreatePublisher")
+	defer span.End()
+
 	id := NewULID()
 	now := time.Now().UTC()
 
@@ -110,8 +127,10 @@ func (db *DB) CreatePublisher(ctx context.Context, p CreatePublisherParams) (*Pu
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			recordErr(span, ErrConflict)
 			return nil, ErrConflict
 		}
+		recordErr(span, err)
 		return nil, fmt.Errorf("creating publisher: %w", err)
 	}
 
@@ -128,12 +147,17 @@ func (db *DB) CreatePublisher(ctx context.Context, p CreatePublisherParams) (*Pu
 
 // SetPublisherVerified updates the verified flag on a publisher.
 func (db *DB) SetPublisherVerified(ctx context.Context, id string, verified bool) error {
+	ctx, span := startSpan(ctx, "SetPublisherVerified")
+	defer span.End()
+
 	tag, err := db.Pool.Exec(ctx,
 		`UPDATE publishers SET verified=$1, updated_at=NOW() WHERE id=$2`, verified, id)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("updating publisher verified: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
 	return nil

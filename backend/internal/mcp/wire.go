@@ -105,7 +105,7 @@ type AllVersionsStatusResponse struct {
 
 // mapServerStatus converts our internal domain status to the MCP spec status enum.
 // Spec enum: active | deprecated | deleted | draft
-func mapServerStatus(s domain.Status) string {
+func mapServerStatus(s domain.ServerStatus) string {
 	switch s {
 	case domain.StatusPublished:
 		return "active"

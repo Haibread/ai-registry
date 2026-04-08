@@ -18,7 +18,7 @@ func OAuthProtectedResource(w http.ResponseWriter, r *http.Request) {
 		issuer = "http://keycloak:8080/realms/registry"
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(w, r, http.StatusOK, map[string]any{
 		"resource":              resource,
 		"authorization_servers": []string{issuer},
 		"bearer_methods_supported": []string{"header"},

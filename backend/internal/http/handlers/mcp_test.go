@@ -20,7 +20,7 @@ import (
 var validPackages = json.RawMessage(`[{"registryType":"npm","identifier":"@test/pkg","version":"1.0.0","transport":{"type":"stdio"}}]`)
 
 func newMCPRouter() *chi.Mux {
-	h := handlers.NewMCPHandlers(testDB, testDB)
+	h := handlers.NewMCPHandlers(testDB, testDB, nil)
 	r := chi.NewRouter()
 	r.Get("/api/v1/mcp/servers", h.ListServers)
 	r.Post("/api/v1/mcp/servers", h.CreateServer)

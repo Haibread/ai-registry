@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
@@ -22,8 +23,8 @@ func NewStatsHandlers(db *store.DB) *StatsHandlers {
 func (h *StatsHandlers) GetStats(w http.ResponseWriter, r *http.Request) {
 	counts, err := h.db.GetRegistryCounts(r.Context())
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", "failed to fetch stats", r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", "failed to fetch stats", r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, counts)
+	writeJSON(w, r, http.StatusOK, counts)
 }

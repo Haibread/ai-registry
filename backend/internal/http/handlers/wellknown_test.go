@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,9 +13,10 @@ import (
 )
 
 func newWellKnownRouter() *chi.Mux {
+	cardH := handlers.NewAgentCardHandlers(nil, slog.Default())
 	r := chi.NewRouter()
 	r.Get("/.well-known/oauth-protected-resource", handlers.OAuthProtectedResource)
-	r.Get("/.well-known/agent-card.json", handlers.GlobalAgentCard)
+	r.Get("/.well-known/agent-card.json", cardH.GlobalAgentCard)
 	return r
 }
 
@@ -49,6 +51,8 @@ func TestOAuthProtectedResource_ContentType(t *testing.T) {
 }
 
 func TestGlobalAgentCard_ResponseShape(t *testing.T) {
+	t.Setenv("PUBLIC_BASE_URL", "https://registry.example.com")
+
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
 	newWellKnownRouter().ServeHTTP(rec, req)
@@ -64,5 +68,17 @@ func TestGlobalAgentCard_ResponseShape(t *testing.T) {
 	// A2A agent card must have at minimum a name field
 	if _, ok := body["name"]; !ok {
 		t.Error("agent card missing 'name' field")
+	}
+}
+
+func TestGlobalAgentCard_MissingBaseURL(t *testing.T) {
+	t.Setenv("PUBLIC_BASE_URL", "")
+
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/agent-card.json", nil)
+	rec := httptest.NewRecorder()
+	newWellKnownRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 when PUBLIC_BASE_URL unset", rec.Code)
 	}
 }

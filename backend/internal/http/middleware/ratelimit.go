@@ -7,25 +7,28 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/haibread/ai-registry/internal/observability"
 )
 
 type bucket struct {
-	count     int
+	count       int
 	windowStart time.Time
 }
 
 type rateLimiter struct {
-	mu      sync.Mutex
-	buckets map[string]*bucket
-	max     int
-	window  time.Duration
+	mu       sync.Mutex
+	buckets  map[string]*bucket
+	max      int
+	window   time.Duration
 	reqCount int
 }
 
 // RateLimit returns middleware that limits each unique IP to max requests per window.
 // When the limit is exceeded it writes 429 Too Many Requests with a Retry-After header.
 // Cleanup of stale entries happens lazily on every 100th request (amortized O(1)).
-func RateLimit(max int, window time.Duration) func(http.Handler) http.Handler {
+// If metrics is non-nil, each rejection increments registry.ratelimit.hits.
+func RateLimit(max int, window time.Duration, metrics *observability.Metrics) func(http.Handler) http.Handler {
 	rl := &rateLimiter{
 		buckets: make(map[string]*bucket),
 		max:     max,
@@ -66,6 +69,9 @@ func RateLimit(max int, window time.Duration) func(http.Handler) http.Handler {
 					retryAfter = 1
 				}
 				rl.mu.Unlock()
+				if metrics != nil {
+					metrics.RateLimitHits.Add(r.Context(), 1)
+				}
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 				return

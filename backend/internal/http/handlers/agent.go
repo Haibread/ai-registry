@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -10,18 +11,21 @@ import (
 
 	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
+	"github.com/haibread/ai-registry/internal/observability"
+	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
 // AgentHandlers holds dependencies for agent registry HTTP handlers.
 type AgentHandlers struct {
-	db    *store.DB
-	audit store.AuditLogger
+	db      *store.DB
+	audit   store.AuditLogger
+	metrics *observability.Metrics
 }
 
-// NewAgentHandlers creates AgentHandlers with the given store and audit logger.
-func NewAgentHandlers(db *store.DB, audit store.AuditLogger) *AgentHandlers {
-	return &AgentHandlers{db: db, audit: audit}
+// NewAgentHandlers creates AgentHandlers with the given store, audit logger, and metrics.
+func NewAgentHandlers(db *store.DB, audit store.AuditLogger, metrics *observability.Metrics) *AgentHandlers {
+	return &AgentHandlers{db: db, audit: audit, metrics: metrics}
 }
 
 // ── GET /api/v1/agents ────────────────────────────────────────────────────
@@ -55,7 +59,7 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		Cursor:     r.URL.Query().Get("cursor"),
 	})
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", "failed to list agents", r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", "failed to list agents", r.URL.Path)
 		return
 	}
 
@@ -71,7 +75,7 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		items = append(items, agentToResponse(&rows[i]))
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(w, r, http.StatusOK, map[string]any{
 		"items":       items,
 		"next_cursor": nextCursor,
 		"total_count": total,
@@ -87,15 +91,15 @@ func (h *AgentHandlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"agent '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, agentToResponse(agent))
+	writeJSON(w, r, http.StatusOK, agentToResponse(agent))
 }
 
 // ── POST /api/v1/agents ───────────────────────────────────────────────────
@@ -108,23 +112,23 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
 		return
 	}
 	if body.Namespace == "" || body.Slug == "" || body.Name == "" {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"namespace, slug, and name are required", r.URL.Path)
 		return
 	}
 
 	publisherID, err := h.db.GetPublisherBySlug(r.Context(), body.Namespace)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
-			"publisher '"+body.Namespace+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			fmt.Sprintf("publisher '%s' does not exist", body.Namespace), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
@@ -135,12 +139,12 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Description: body.Description,
 	})
 	if errors.Is(err, store.ErrConflict) {
-		writeProblem(w, http.StatusConflict, "conflict",
-			"agent '"+body.Namespace+"/"+body.Slug+"' already exists", r.URL.Path)
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("agent '%s/%s' already exists", body.Namespace, body.Slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -150,7 +154,10 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			ResourceID: agent.ID, ResourceNS: body.Namespace, ResourceSlug: body.Slug,
 		})
 	}
-	writeJSON(w, http.StatusCreated, agent)
+	if h.metrics != nil {
+		h.metrics.AgentsTotal.Add(r.Context(), 1)
+	}
+	writeJSON(w, r, http.StatusCreated, agent)
 }
 
 // ── GET /api/v1/agents/{namespace}/{slug}/versions ────────────────────────
@@ -162,21 +169,21 @@ func (h *AgentHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"agent '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	versions, err := h.db.ListAgentVersions(r.Context(), agent.ID)
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": versions})
+	writeJSON(w, r, http.StatusOK, map[string]any{"items": versions})
 }
 
 // ── GET /api/v1/agents/{namespace}/{slug}/versions/{version} ──────────────
@@ -189,26 +196,26 @@ func (h *AgentHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"agent '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	v, err := h.db.GetAgentVersion(r.Context(), agent.ID, ver)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"version '"+ver+"' does not exist for "+ns+"/"+slug, r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("version '%s' does not exist for %s/%s", ver, ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
-	writeJSON(w, http.StatusOK, v)
+	writeJSON(w, r, http.StatusOK, v)
 }
 
 // ── POST /api/v1/agents/{namespace}/{slug}/versions ───────────────────────
@@ -219,12 +226,12 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, false)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"agent '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
@@ -242,11 +249,11 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		ProtocolVersion    string          `json:"protocol_version"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
 		return
 	}
 	if body.Version == "" || body.EndpointURL == "" {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error",
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"version and endpoint_url are required", r.URL.Path)
 		return
 	}
@@ -254,11 +261,11 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		body.ProtocolVersion = domain.A2AProtocolVersion
 	}
 	if err := domain.ValidateSkills(body.Skills); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
 	if err := domain.ValidateAuthentication(body.Authentication); err != nil {
-		writeProblem(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
 
@@ -277,12 +284,12 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		ProtocolVersion:    body.ProtocolVersion,
 	})
 	if errors.Is(err, store.ErrConflict) {
-		writeProblem(w, http.StatusConflict, "conflict",
-			"version '"+body.Version+"' already exists for "+ns+"/"+slug, r.URL.Path)
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("version '%s' already exists for %s/%s", body.Version, ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -293,7 +300,7 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 			Metadata: map[string]any{"version": body.Version},
 		})
 	}
-	writeJSON(w, http.StatusCreated, v)
+	writeJSON(w, r, http.StatusCreated, v)
 }
 
 // ── POST /api/v1/agents/{namespace}/{slug}/versions/{version}/publish ─────
@@ -305,23 +312,25 @@ func (h *AgentHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, false)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"agent '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	if err := h.db.PublishAgentVersion(r.Context(), agent.ID, ver); errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found", "version '"+ver+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("version '%s' does not exist", ver), r.URL.Path)
 		return
 	} else if errors.Is(err, store.ErrImmutable) {
-		writeProblem(w, http.StatusConflict, "immutable", "version '"+ver+"' is already published", r.URL.Path)
+		problem.Write(w, http.StatusConflict, "immutable",
+			fmt.Sprintf("version '%s' is already published", ver), r.URL.Path)
 		return
 	} else if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -332,7 +341,7 @@ func (h *AgentHandlers) PublishVersion(w http.ResponseWriter, r *http.Request) {
 			Metadata: map[string]any{"version": ver},
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "published"})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "published"})
 }
 
 // ── POST /api/v1/agents/{namespace}/{slug}/deprecate ──────────────────────
@@ -343,21 +352,21 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, false)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"agent '"+ns+"/"+slug+"' does not exist", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	if err := h.db.DeprecateAgent(r.Context(), agent.ID); errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusConflict, "conflict",
-			"agent '"+ns+"/"+slug+"' is not in published status", r.URL.Path)
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("agent '%s/%s' is not in published status", ns, slug), r.URL.Path)
 		return
 	} else if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
@@ -367,7 +376,75 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deprecated"})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deprecated"})
+}
+
+// ── PATCH /api/v1/agents/{namespace}/{slug}/versions/{version}/status ────────
+
+// PatchVersionStatus updates the lifecycle status of a specific agent version.
+// Body: { "status": "active"|"deprecated"|"deleted", "statusMessage": "..." }
+func (h *AgentHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+	ver := chi.URLParam(r, "version")
+
+	var body struct {
+		Status        string `json:"status"`
+		StatusMessage string `json:"statusMessage"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+		return
+	}
+
+	validStatuses := map[string]bool{"active": true, "deprecated": true, "deleted": true}
+	if !validStatuses[body.Status] {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			"status must be one of: active, deprecated, deleted", r.URL.Path)
+		return
+	}
+	if body.Status == "active" && body.StatusMessage != "" {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			"statusMessage must not be set when status is active", r.URL.Path)
+		return
+	}
+
+	agent, err := h.db.GetAgent(r.Context(), ns, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		return
+	}
+
+	domainStatus := domain.VersionStatus(body.Status)
+	if err := h.db.SetAgentVersionStatus(r.Context(), agent.ID, ver, domainStatus, body.StatusMessage); errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("version '%s' does not exist", ver), r.URL.Path)
+		return
+	} else if err != nil {
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		return
+	}
+
+	v, err := h.db.GetAgentVersion(r.Context(), agent.ID, ver)
+	if err != nil {
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		return
+	}
+
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+			ActorSubject: claims.Subject, ActorEmail: claims.Email,
+			Action: domain.ActionAgentVersionPublished, ResourceType: "agent",
+			ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+			Metadata: map[string]any{"version": ver, "status": body.Status},
+		})
+	}
+	writeJSON(w, r, http.StatusOK, v)
 }
 
 // ── helper ────────────────────────────────────────────────────────────────

@@ -55,6 +55,9 @@ type MCPServerRow struct {
 // ListMCPServers returns a page of MCP server rows and the total count of
 // rows that match the filters (before pagination).
 func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCPServerRow, int, error) {
+	ctx, span := startSpan(ctx, "ListMCPServers")
+	defer span.End()
+
 	if p.Limit <= 0 || p.Limit > 100 {
 		p.Limit = 20
 	}
@@ -191,6 +194,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
+		recordErr(span, err)
 		return nil, 0, fmt.Errorf("listing mcp servers: %w", err)
 	}
 	defer rows.Close()
@@ -211,6 +215,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 			&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
 			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
 		); err != nil {
+			recordErr(span, err)
 			return nil, 0, fmt.Errorf("scanning mcp server row: %w", err)
 		}
 		if lvVersion != nil {
@@ -225,6 +230,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		result = append(result, r)
 	}
 	if err := rows.Err(); err != nil {
+		recordErr(span, err)
 		return nil, 0, err
 	}
 
@@ -245,6 +251,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 
 	var total int
 	if err := db.Pool.QueryRow(ctx, countQ, countArgs...).Scan(&total); err != nil {
+		recordErr(span, err)
 		return nil, 0, fmt.Errorf("counting mcp servers: %w", err)
 	}
 
@@ -254,6 +261,9 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 // GetMCPServer retrieves a single MCP server by namespace and slug.
 // Returns ErrNotFound if no matching row exists.
 func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOnly bool) (*MCPServerRow, error) {
+	ctx, span := startSpan(ctx, "GetMCPServer")
+	defer span.End()
+
 	q := `
 		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
@@ -289,9 +299,11 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting mcp server: %w", err)
 	}
 	if lvVersion != nil {
@@ -308,6 +320,9 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 
 // GetMCPServerByID retrieves an MCP server by its ULID.
 func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, error) {
+	ctx, span := startSpan(ctx, "GetMCPServerByID")
+	defer span.End()
+
 	q := `
 		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
@@ -339,9 +354,11 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting mcp server by id: %w", err)
 	}
 	if lvVersion != nil {
@@ -370,6 +387,9 @@ type CreateMCPServerParams struct {
 // CreateMCPServer inserts a new MCP server row (draft, private by default).
 // Returns ErrConflict if the (publisher_id, slug) pair already exists.
 func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*domain.MCPServer, error) {
+	ctx, span := startSpan(ctx, "CreateMCPServer")
+	defer span.End()
+
 	id := NewULID()
 	now := time.Now().UTC()
 
@@ -384,8 +404,10 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			recordErr(span, ErrConflict)
 			return nil, ErrConflict
 		}
+		recordErr(span, err)
 		return nil, fmt.Errorf("creating mcp server: %w", err)
 	}
 
@@ -407,6 +429,9 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 
 // ListMCPServerVersions returns all versions for a given server ID, ordered by released_at.
 func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]domain.MCPServerVersion, error) {
+	ctx, span := startSpan(ctx, "ListMCPServerVersions")
+	defer span.End()
+
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
@@ -415,6 +440,7 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 		WHERE server_id = $1
 		ORDER BY released_at DESC`, serverID)
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("listing mcp server versions: %w", err)
 	}
 	defer rows.Close()
@@ -423,15 +449,23 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 	for rows.Next() {
 		v, err := scanVersion(rows)
 		if err != nil {
+			recordErr(span, err)
 			return nil, err
 		}
 		result = append(result, v)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return result, nil
 }
 
 // GetMCPServerVersion retrieves a specific version by server ID and semver string.
 func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string) (*domain.MCPServerVersion, error) {
+	ctx, span := startSpan(ctx, "GetMCPServerVersion")
+	defer span.End()
+
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
@@ -441,9 +475,11 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string)
 
 	v, err := scanVersion(row)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting mcp server version: %w", err)
 	}
 	return &v, nil
@@ -451,6 +487,9 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string)
 
 // GetLatestPublishedVersion returns the most recently published version for a server.
 func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*domain.MCPServerVersion, error) {
+	ctx, span := startSpan(ctx, "GetLatestPublishedVersion")
+	defer span.End()
+
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
@@ -462,9 +501,11 @@ func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*
 
 	v, err := scanVersion(row)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting latest published version: %w", err)
 	}
 	return &v, nil
@@ -485,6 +526,9 @@ type CreateMCPServerVersionParams struct {
 // CreateMCPServerVersion inserts a new draft version.
 // Returns ErrConflict if the (server_id, version) pair already exists.
 func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersionParams) (*domain.MCPServerVersion, error) {
+	ctx, span := startSpan(ctx, "CreateMCPServerVersion")
+	defer span.End()
+
 	if len(p.Capabilities) == 0 {
 		p.Capabilities = json.RawMessage("{}")
 	}
@@ -503,8 +547,10 @@ func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersi
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			recordErr(span, ErrConflict)
 			return nil, ErrConflict
 		}
+		recordErr(span, err)
 		return nil, fmt.Errorf("creating mcp server version: %w", err)
 	}
 
@@ -526,6 +572,9 @@ func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersi
 // immutable. Returns ErrNotFound if version doesn't exist, ErrImmutable if
 // already published.
 func (db *DB) PublishMCPServerVersion(ctx context.Context, serverID, version string) error {
+	ctx, span := startSpan(ctx, "PublishMCPServerVersion")
+	defer span.End()
+
 	now := time.Now().UTC()
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE mcp_server_versions
@@ -533,6 +582,7 @@ func (db *DB) PublishMCPServerVersion(ctx context.Context, serverID, version str
 		WHERE server_id = $2 AND version = $3 AND published_at IS NULL`,
 		now, serverID, version)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("publishing version: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
@@ -543,8 +593,10 @@ func (db *DB) PublishMCPServerVersion(ctx context.Context, serverID, version str
 			serverID, version,
 		).Scan(&publishedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
+			recordErr(span, ErrNotFound)
 			return ErrNotFound
 		}
+		recordErr(span, ErrImmutable)
 		return ErrImmutable
 	}
 	// After publish, promote the server status to 'published' if it was draft.
@@ -556,13 +608,18 @@ func (db *DB) PublishMCPServerVersion(ctx context.Context, serverID, version str
 
 // DeprecateMCPServer marks an MCP server as deprecated.
 func (db *DB) DeprecateMCPServer(ctx context.Context, serverID string) error {
+	ctx, span := startSpan(ctx, "DeprecateMCPServer")
+	defer span.End()
+
 	tag, err := db.Pool.Exec(ctx,
 		`UPDATE mcp_servers SET status='deprecated', updated_at=now() WHERE id=$1 AND status='published'`,
 		serverID)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("deprecating mcp server: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
 	return nil
@@ -570,13 +627,18 @@ func (db *DB) DeprecateMCPServer(ctx context.Context, serverID string) error {
 
 // SetMCPServerVisibility sets the visibility of an MCP server.
 func (db *DB) SetMCPServerVisibility(ctx context.Context, serverID string, vis domain.Visibility) error {
+	ctx, span := startSpan(ctx, "SetMCPServerVisibility")
+	defer span.End()
+
 	tag, err := db.Pool.Exec(ctx,
 		`UPDATE mcp_servers SET visibility=$1, updated_at=now() WHERE id=$2`,
 		vis, serverID)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("setting visibility: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
 	return nil
@@ -584,9 +646,16 @@ func (db *DB) SetMCPServerVisibility(ctx context.Context, serverID string, vis d
 
 // GetPublisherBySlug returns a publisher ID and name for a given slug.
 func (db *DB) GetPublisherBySlug(ctx context.Context, slug string) (id string, err error) {
+	ctx, span := startSpan(ctx, "GetPublisherBySlug")
+	defer span.End()
+
 	err = db.Pool.QueryRow(ctx, `SELECT id FROM publishers WHERE slug=$1`, slug).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return "", ErrNotFound
+	}
+	if err != nil {
+		recordErr(span, err)
 	}
 	return id, err
 }
@@ -611,14 +680,19 @@ func scanVersion(s interface {
 // SetMCPServerStatus updates the lifecycle status of an MCP server.
 // Allowed values: published (active), deprecated.
 // Returns ErrNotFound if the server does not exist.
-func (db *DB) SetMCPServerStatus(ctx context.Context, serverID string, status domain.Status) error {
+func (db *DB) SetMCPServerStatus(ctx context.Context, serverID string, status domain.ServerStatus) error {
+	ctx, span := startSpan(ctx, "SetMCPServerStatus")
+	defer span.End()
+
 	tag, err := db.Pool.Exec(ctx,
 		`UPDATE mcp_servers SET status=$1, updated_at=now() WHERE id=$2`,
 		status, serverID)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("setting mcp server status: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
 	return nil
@@ -628,13 +702,18 @@ func (db *DB) SetMCPServerStatus(ctx context.Context, serverID string, status do
 // Allowed values: active, deprecated, deleted.
 // Returns ErrNotFound if the version does not exist.
 func (db *DB) SetMCPVersionStatus(ctx context.Context, serverID, version string, status domain.VersionStatus, statusMessage string) error {
+	ctx, span := startSpan(ctx, "SetMCPVersionStatus")
+	defer span.End()
+
 	tag, err := db.Pool.Exec(ctx,
 		`UPDATE mcp_server_versions SET status=$1, status_message=$2, status_changed_at=now() WHERE server_id=$3 AND version=$4`,
 		status, statusMessage, serverID, version)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("setting mcp version status: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
 	return nil
@@ -643,6 +722,9 @@ func (db *DB) SetMCPVersionStatus(ctx context.Context, serverID, version string,
 // SetAllVersionsStatus updates the status of all published versions of a server atomically.
 // Returns the updated versions.
 func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status domain.VersionStatus, statusMessage string) ([]domain.MCPServerVersion, error) {
+	ctx, span := startSpan(ctx, "SetAllVersionsStatus")
+	defer span.End()
+
 	rows, err := db.Pool.Query(ctx, `
 		UPDATE mcp_server_versions
 		SET status=$1, status_message=$2, status_changed_at=now()
@@ -652,6 +734,7 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 		          status, published_at, released_at, coalesce(status_message,''), status_changed_at`,
 		status, statusMessage, serverID)
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("setting all versions status: %w", err)
 	}
 	defer rows.Close()
@@ -660,11 +743,16 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 	for rows.Next() {
 		v, err := scanVersion(rows)
 		if err != nil {
+			recordErr(span, err)
 			return nil, fmt.Errorf("scanning updated version: %w", err)
 		}
 		result = append(result, v)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return result, nil
 }
 
 // decodeCursor splits a cursor string into (time, id).

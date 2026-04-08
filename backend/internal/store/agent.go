@@ -46,6 +46,9 @@ type ListAgentsParams struct {
 // ListAgents returns a paginated list of agents and the total count of rows
 // that match the filters (before pagination).
 func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, int, error) {
+	ctx, span := startSpan(ctx, "ListAgents")
+	defer span.End()
+
 	if p.Limit <= 0 || p.Limit > 100 {
 		p.Limit = 20
 	}
@@ -134,6 +137,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
+		recordErr(span, err)
 		return nil, 0, fmt.Errorf("listing agents: %w", err)
 	}
 	defer rows.Close()
@@ -157,6 +161,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 			&lavVersion, &lavEndpoint, &lavSkills, &lavInputModes,
 			&lavOutputModes, &lavAuth, &lavProto, &lavPublishedAt,
 		); err != nil {
+			recordErr(span, err)
 			return nil, 0, fmt.Errorf("scanning agent row: %w", err)
 		}
 		if lavVersion != nil {
@@ -174,6 +179,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		result = append(result, r)
 	}
 	if err := rows.Err(); err != nil {
+		recordErr(span, err)
 		return nil, 0, err
 	}
 
@@ -187,6 +193,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 
 	var total int
 	if err := db.Pool.QueryRow(ctx, countQ, countArgs...).Scan(&total); err != nil {
+		recordErr(span, err)
 		return nil, 0, fmt.Errorf("counting agents: %w", err)
 	}
 
@@ -195,6 +202,9 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 
 // GetAgent retrieves a single agent by namespace and slug.
 func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly bool) (*AgentRow, error) {
+	ctx, span := startSpan(ctx, "GetAgent")
+	defer span.End()
+
 	q := `
 		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
 		       coalesce(a.description,''), a.visibility, a.status, a.created_at, a.updated_at,
@@ -234,9 +244,11 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 		&lavOutputModes, &lavAuth, &lavProto, &lavPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting agent: %w", err)
 	}
 	if lavVersion != nil {
@@ -264,6 +276,9 @@ type CreateAgentParams struct {
 
 // CreateAgent inserts a new agent (draft, private by default).
 func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Agent, error) {
+	ctx, span := startSpan(ctx, "CreateAgent")
+	defer span.End()
+
 	id := NewULID()
 	now := time.Now().UTC()
 
@@ -275,8 +290,10 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			recordErr(span, ErrConflict)
 			return nil, ErrConflict
 		}
+		recordErr(span, err)
 		return nil, fmt.Errorf("creating agent: %w", err)
 	}
 
@@ -295,15 +312,19 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 
 // ListAgentVersions returns all versions for a given agent ID.
 func (db *DB) ListAgentVersions(ctx context.Context, agentID string) ([]domain.AgentVersion, error) {
+	ctx, span := startSpan(ctx, "ListAgentVersions")
+	defer span.End()
+
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, published_at, released_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, released_at
 		FROM agent_versions
 		WHERE agent_id = $1
 		ORDER BY released_at DESC`, agentID)
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("listing agent versions: %w", err)
 	}
 	defer rows.Close()
@@ -312,28 +333,38 @@ func (db *DB) ListAgentVersions(ctx context.Context, agentID string) ([]domain.A
 	for rows.Next() {
 		v, err := scanAgentVersion(rows)
 		if err != nil {
+			recordErr(span, err)
 			return nil, err
 		}
 		result = append(result, v)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return result, nil
 }
 
 // GetAgentVersion retrieves a specific version by agent ID and semver string.
 func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string) (*domain.AgentVersion, error) {
+	ctx, span := startSpan(ctx, "GetAgentVersion")
+	defer span.End()
+
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, published_at, released_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, released_at
 		FROM agent_versions
 		WHERE agent_id = $1 AND version = $2`, agentID, version)
 
 	v, err := scanAgentVersion(row)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting agent version: %w", err)
 	}
 	return &v, nil
@@ -341,11 +372,14 @@ func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string) (*do
 
 // GetLatestPublishedAgentVersion returns the most recently published version for an agent.
 func (db *DB) GetLatestPublishedAgentVersion(ctx context.Context, agentID string) (*domain.AgentVersion, error) {
+	ctx, span := startSpan(ctx, "GetLatestPublishedAgentVersion")
+	defer span.End()
+
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, published_at, released_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, released_at
 		FROM agent_versions
 		WHERE agent_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -353,9 +387,11 @@ func (db *DB) GetLatestPublishedAgentVersion(ctx context.Context, agentID string
 
 	v, err := scanAgentVersion(row)
 	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting latest published agent version: %w", err)
 	}
 	return &v, nil
@@ -379,6 +415,9 @@ type CreateAgentVersionParams struct {
 
 // CreateAgentVersion inserts a new draft agent version.
 func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams) (*domain.AgentVersion, error) {
+	ctx, span := startSpan(ctx, "CreateAgentVersion")
+	defer span.End()
+
 	if len(p.Capabilities) == 0 {
 		p.Capabilities = json.RawMessage("{}")
 	}
@@ -409,8 +448,10 @@ func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			recordErr(span, ErrConflict)
 			return nil, ErrConflict
 		}
+		recordErr(span, err)
 		return nil, fmt.Errorf("creating agent version: %w", err)
 	}
 
@@ -428,12 +469,17 @@ func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams
 		DocumentationURL:   p.DocumentationURL,
 		IconURL:            p.IconURL,
 		ProtocolVersion:    p.ProtocolVersion,
+		Status:             domain.VersionStatusActive,
+		StatusChangedAt:    now,
 		ReleasedAt:         now,
 	}, nil
 }
 
 // PublishAgentVersion sets published_at on a draft version.
 func (db *DB) PublishAgentVersion(ctx context.Context, agentID, version string) error {
+	ctx, span := startSpan(ctx, "PublishAgentVersion")
+	defer span.End()
+
 	now := time.Now().UTC()
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE agent_versions
@@ -441,6 +487,7 @@ func (db *DB) PublishAgentVersion(ctx context.Context, agentID, version string) 
 		WHERE agent_id = $2 AND version = $3 AND published_at IS NULL`,
 		now, agentID, version)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("publishing agent version: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
@@ -450,8 +497,10 @@ func (db *DB) PublishAgentVersion(ctx context.Context, agentID, version string) 
 			agentID, version,
 		).Scan(&publishedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
+			recordErr(span, ErrNotFound)
 			return ErrNotFound
 		}
+		recordErr(span, ErrImmutable)
 		return ErrImmutable
 	}
 	_, _ = db.Pool.Exec(ctx,
@@ -462,13 +511,18 @@ func (db *DB) PublishAgentVersion(ctx context.Context, agentID, version string) 
 
 // DeprecateAgent marks an agent as deprecated.
 func (db *DB) DeprecateAgent(ctx context.Context, agentID string) error {
+	ctx, span := startSpan(ctx, "DeprecateAgent")
+	defer span.End()
+
 	tag, err := db.Pool.Exec(ctx,
 		`UPDATE agents SET status='deprecated', updated_at=now() WHERE id=$1 AND status='published'`,
 		agentID)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("deprecating agent: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
 	return nil
@@ -476,15 +530,80 @@ func (db *DB) DeprecateAgent(ctx context.Context, agentID string) error {
 
 // SetAgentVisibility sets the visibility of an agent.
 func (db *DB) SetAgentVisibility(ctx context.Context, agentID string, vis domain.Visibility) error {
+	ctx, span := startSpan(ctx, "SetAgentVisibility")
+	defer span.End()
+
 	tag, err := db.Pool.Exec(ctx,
 		`UPDATE agents SET visibility=$1, updated_at=now() WHERE id=$2`, vis, agentID)
 	if err != nil {
+		recordErr(span, err)
 		return fmt.Errorf("setting agent visibility: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SetAgentVersionStatus updates the lifecycle status of a specific agent version.
+// statusMessage is optional and should be empty when status is "active".
+func (db *DB) SetAgentVersionStatus(ctx context.Context, agentID, version string, status domain.VersionStatus, statusMessage string) error {
+	ctx, span := startSpan(ctx, "SetAgentVersionStatus")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agent_versions
+		SET status=$1, status_message=$2, status_changed_at=now()
+		WHERE agent_id=$3 AND version=$4`,
+		status, statusMessage, agentID, version)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("setting agent version status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAllAgentVersionsStatus updates the lifecycle status on all published versions of
+// an agent atomically. Returns the updated versions.
+func (db *DB) SetAllAgentVersionsStatus(ctx context.Context, agentID string, status domain.VersionStatus, statusMessage string) ([]domain.AgentVersion, error) {
+	ctx, span := startSpan(ctx, "SetAllAgentVersionsStatus")
+	defer span.End()
+
+	rows, err := db.Pool.Query(ctx, `
+		UPDATE agent_versions
+		SET status=$1, status_message=$2, status_changed_at=now()
+		WHERE agent_id=$3 AND published_at IS NOT NULL
+		RETURNING id, agent_id, version, endpoint_url, skills, capabilities, authentication,
+		          default_input_modes, default_output_modes, provider,
+		          coalesce(documentation_url,''), coalesce(icon_url,''),
+		          protocol_version, status, coalesce(status_message,''), status_changed_at,
+		          published_at, released_at`,
+		status, statusMessage, agentID)
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("setting all agent versions status: %w", err)
+	}
+	defer rows.Close()
+
+	var result []domain.AgentVersion
+	for rows.Next() {
+		v, err := scanAgentVersion(rows)
+		if err != nil {
+			recordErr(span, err)
+			return nil, err
+		}
+		result = append(result, v)
+	}
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return result, nil
 }
 
 func scanAgentVersion(s interface{ Scan(...any) error }) (domain.AgentVersion, error) {
@@ -494,7 +613,8 @@ func scanAgentVersion(s interface{ Scan(...any) error }) (domain.AgentVersion, e
 		&v.Skills, &v.Capabilities, &v.Authentication,
 		&v.DefaultInputModes, &v.DefaultOutputModes, &v.Provider,
 		&v.DocumentationURL, &v.IconURL,
-		&v.ProtocolVersion, &v.PublishedAt, &v.ReleasedAt,
+		&v.ProtocolVersion, &v.Status, &v.StatusMessage, &v.StatusChangedAt,
+		&v.PublishedAt, &v.ReleasedAt,
 	)
 	return v, err
 }

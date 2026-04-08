@@ -27,7 +27,7 @@ type Agent struct {
 	Name        string
 	Description string
 	Visibility  Visibility
-	Status      Status
+	Status      ServerStatus
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -48,6 +48,9 @@ type AgentVersion struct {
 	DocumentationURL   string
 	IconURL            string
 	ProtocolVersion    string
+	Status             VersionStatus // active | deprecated | deleted
+	StatusMessage      string
+	StatusChangedAt    time.Time
 	PublishedAt        *time.Time
 	ReleasedAt         time.Time
 }

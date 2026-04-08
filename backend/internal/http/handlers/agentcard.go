@@ -2,23 +2,27 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/haibread/ai-registry/internal/agents"
+	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
 // AgentCardHandlers serves A2A Agent Card endpoints.
 type AgentCardHandlers struct {
-	db *store.DB
+	db     *store.DB
+	logger *slog.Logger
 }
 
 // NewAgentCardHandlers creates AgentCardHandlers.
-func NewAgentCardHandlers(db *store.DB) *AgentCardHandlers {
-	return &AgentCardHandlers{db: db}
+func NewAgentCardHandlers(db *store.DB, logger *slog.Logger) *AgentCardHandlers {
+	return &AgentCardHandlers{db: db, logger: logger}
 }
 
 // PerAgentCard serves GET /agents/{namespace}/{slug}/.well-known/agent-card.json
@@ -29,42 +33,51 @@ func (h *AgentCardHandlers) PerAgentCard(w http.ResponseWriter, r *http.Request)
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, true) // public only
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"agent '"+ns+"/"+slug+"' does not exist or is not public", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist or is not public", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	ver, err := h.db.GetLatestPublishedAgentVersion(r.Context(), agent.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		writeProblem(w, http.StatusNotFound, "not-found",
-			"agent '"+ns+"/"+slug+"' has no published version", r.URL.Path)
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' has no published version", ns, slug), r.URL.Path)
 		return
 	}
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal", err.Error(), r.URL.Path)
 		return
 	}
 
 	card, err := agents.GenerateCard(*agent, ver)
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal",
-			"failed to generate agent card: "+err.Error(), r.URL.Path)
+		problem.Write(w, http.StatusInternalServerError, "internal",
+			fmt.Sprintf("failed to generate agent card: %s", err.Error()), r.URL.Path)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, card)
+	writeJSON(w, r, http.StatusOK, card)
 }
 
 // GlobalAgentCard serves GET /.well-known/agent-card.json for the registry itself.
 // Makes the registry a first-class A2A citizen.
-func GlobalAgentCard(w http.ResponseWriter, r *http.Request) {
+//
+// PUBLIC_BASE_URL must be set in production. If it is unset, this handler
+// returns HTTP 500 so misconfigured deployments fail loudly rather than
+// silently advertising a localhost URL to external consumers.
+func (h *AgentCardHandlers) GlobalAgentCard(w http.ResponseWriter, r *http.Request) {
 	baseURL := os.Getenv("PUBLIC_BASE_URL")
 	if baseURL == "" {
-		baseURL = "http://localhost:8081"
+		h.logger.ErrorContext(r.Context(),
+			"PUBLIC_BASE_URL is not set; cannot generate a valid global agent card",
+		)
+		problem.Write(w, http.StatusInternalServerError, "misconfiguration",
+			"PUBLIC_BASE_URL environment variable is not set", r.URL.Path)
+		return
 	}
-	writeJSON(w, http.StatusOK, agents.RegistryCard(baseURL))
+	writeJSON(w, r, http.StatusOK, agents.RegistryCard(baseURL))
 }

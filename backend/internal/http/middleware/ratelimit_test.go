@@ -10,7 +10,7 @@ import (
 )
 
 func TestRateLimit_WithinLimit(t *testing.T) {
-	handler := middleware.RateLimit(5, time.Minute)(okHandler())
+	handler := middleware.RateLimit(5, time.Minute, nil)(okHandler())
 
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -24,7 +24,7 @@ func TestRateLimit_WithinLimit(t *testing.T) {
 }
 
 func TestRateLimit_ExceedsLimit(t *testing.T) {
-	handler := middleware.RateLimit(3, time.Minute)(okHandler())
+	handler := middleware.RateLimit(3, time.Minute, nil)(okHandler())
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -49,7 +49,7 @@ func TestRateLimit_ExceedsLimit(t *testing.T) {
 func TestRateLimit_WindowReset(t *testing.T) {
 	// Use a very short window to test reset behaviour
 	window := 50 * time.Millisecond
-	handler := middleware.RateLimit(2, window)(okHandler())
+	handler := middleware.RateLimit(2, window, nil)(okHandler())
 
 	// Use up the limit
 	for i := 0; i < 2; i++ {
@@ -82,7 +82,7 @@ func TestRateLimit_WindowReset(t *testing.T) {
 }
 
 func TestRateLimit_XForwardedFor(t *testing.T) {
-	handler := middleware.RateLimit(2, time.Minute)(okHandler())
+	handler := middleware.RateLimit(2, time.Minute, nil)(okHandler())
 
 	// Use up the limit for the XFF IP
 	for i := 0; i < 2; i++ {
@@ -114,7 +114,7 @@ func TestRateLimit_XForwardedFor(t *testing.T) {
 }
 
 func TestRateLimit_DifferentIPsIndependent(t *testing.T) {
-	handler := middleware.RateLimit(2, time.Minute)(okHandler())
+	handler := middleware.RateLimit(2, time.Minute, nil)(okHandler())
 
 	// IP1 uses up its limit
 	for i := 0; i < 2; i++ {
@@ -144,7 +144,7 @@ func TestRateLimit_DifferentIPsIndependent(t *testing.T) {
 }
 
 func TestRateLimit_RetryAfterHeader(t *testing.T) {
-	handler := middleware.RateLimit(1, time.Minute)(okHandler())
+	handler := middleware.RateLimit(1, time.Minute, nil)(okHandler())
 
 	// Use up limit
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

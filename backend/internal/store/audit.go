@@ -29,6 +29,9 @@ type ListAuditParams struct {
 // LogAuditEvent inserts a single audit record. Errors are logged but not
 // returned — callers must not fail their main request if audit logging fails.
 func (db *DB) LogAuditEvent(ctx context.Context, e domain.AuditEvent) {
+	ctx, span := startSpan(ctx, "LogAuditEvent")
+	defer span.End()
+
 	id := NewULID()
 	if e.ID != "" {
 		id = e.ID
@@ -58,6 +61,7 @@ func (db *DB) LogAuditEvent(ctx context.Context, e domain.AuditEvent) {
 		metaJSON,
 	)
 	if err != nil {
+		recordErr(span, err)
 		slog.Error("failed to write audit event",
 			"action", e.Action,
 			"resource_id", e.ResourceID,
@@ -68,6 +72,9 @@ func (db *DB) LogAuditEvent(ctx context.Context, e domain.AuditEvent) {
 
 // ListAuditEvents returns a page of audit records, newest first.
 func (db *DB) ListAuditEvents(ctx context.Context, p ListAuditParams) ([]domain.AuditEvent, error) {
+	ctx, span := startSpan(ctx, "ListAuditEvents")
+	defer span.End()
+
 	if p.Limit <= 0 || p.Limit > 100 {
 		p.Limit = 50
 	}
@@ -113,6 +120,7 @@ func (db *DB) ListAuditEvents(ctx context.Context, p ListAuditParams) ([]domain.
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("listing audit events: %w", err)
 	}
 	defer rows.Close()
@@ -127,6 +135,7 @@ func (db *DB) ListAuditEvents(ctx context.Context, p ListAuditParams) ([]domain.
 			&e.ResourceType, &e.ResourceID, &e.ResourceNS, &e.ResourceSlug,
 			&metaRaw, &e.CreatedAt,
 		); err != nil {
+			recordErr(span, err)
 			return nil, fmt.Errorf("scanning audit row: %w", err)
 		}
 		e.Action = domain.AuditAction(action)
@@ -135,7 +144,11 @@ func (db *DB) ListAuditEvents(ctx context.Context, p ListAuditParams) ([]domain.
 		}
 		result = append(result, e)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return result, nil
 }
 
 // EncodeCursorFromTime builds a cursor from a timestamp and ID (for audit log

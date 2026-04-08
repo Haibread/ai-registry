@@ -15,6 +15,9 @@ type RegistryCounts struct {
 // GetRegistryCounts returns the total row count for each resource table.
 // Counts include all visibility and status values (admin view).
 func (db *DB) GetRegistryCounts(ctx context.Context) (*RegistryCounts, error) {
+	ctx, span := startSpan(ctx, "GetRegistryCounts")
+	defer span.End()
+
 	row := db.Pool.QueryRow(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM mcp_servers)::int,
@@ -24,6 +27,7 @@ func (db *DB) GetRegistryCounts(ctx context.Context) (*RegistryCounts, error) {
 
 	var c RegistryCounts
 	if err := row.Scan(&c.MCPServers, &c.Agents, &c.Publishers); err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("getting registry counts: %w", err)
 	}
 	return &c, nil

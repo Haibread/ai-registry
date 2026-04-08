@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +15,7 @@ import (
 )
 
 func newAgentCardRouter() *chi.Mux {
-	h := handlers.NewAgentCardHandlers(testDB)
+	h := handlers.NewAgentCardHandlers(testDB, slog.Default())
 	r := chi.NewRouter()
 	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", h.PerAgentCard)
 	return r

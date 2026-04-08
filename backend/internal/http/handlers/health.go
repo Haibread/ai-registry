@@ -4,6 +4,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
@@ -16,7 +17,7 @@ type Pinger interface {
 // Healthz handles GET /healthz (liveness probe).
 // It always returns 200 OK; if the process is alive, the service is live.
 func Healthz(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // Readyz returns a handler for GET /readyz (readiness probe).
@@ -24,18 +25,21 @@ func Healthz(w http.ResponseWriter, r *http.Request) {
 func Readyz(db Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(r.Context()); err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{
 				"status": "unavailable",
 				"error":  err.Error(),
 			})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.ErrorContext(r.Context(), "writeJSON: failed to encode response",
+			slog.String("err", err.Error()))
+	}
 }

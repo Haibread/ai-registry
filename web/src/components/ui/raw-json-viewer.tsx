@@ -25,10 +25,12 @@ export function RawJsonViewer({ data, title = "Raw JSON", defaultOpen = false }:
 
   return (
     <div className="border rounded-md overflow-hidden">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setOpen((v) => !v) }}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors cursor-pointer select-none"
       >
         <span className="flex items-center gap-2">
           {open ? (
@@ -49,7 +51,7 @@ export function RawJsonViewer({ data, title = "Raw JSON", defaultOpen = false }:
             <span className="ml-1">{copied ? "Copied" : "Copy"}</span>
           </Button>
         )}
-      </button>
+      </div>
 
       {open && (
         <pre className={cn(

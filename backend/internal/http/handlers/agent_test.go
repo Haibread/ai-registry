@@ -20,7 +20,7 @@ import (
 var validSkills = json.RawMessage(`[{"id":"s1","name":"Search","description":"Searches things","tags":["search"]}]`)
 
 func newAgentRouter() *chi.Mux {
-	h := handlers.NewAgentHandlers(testDB, testDB)
+	h := handlers.NewAgentHandlers(testDB, testDB, nil)
 	r := chi.NewRouter()
 	r.Get("/api/v1/agents", h.ListAgents)
 	r.Post("/api/v1/agents", h.CreateAgent)
