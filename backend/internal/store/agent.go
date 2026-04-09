@@ -77,13 +77,14 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		filterArgs = append(filterArgs, p.Namespace)
 		argN++
 	}
-	hasQuery := p.Query != ""
+	tsQuery := prefixTSQuery(p.Query)
+	hasQuery := tsQuery != ""
 	if hasQuery {
 		filterWhere += fmt.Sprintf(
-			" AND a.search_vector @@ plainto_tsquery('english', $%d)",
+			" AND a.search_vector @@ to_tsquery('english', $%d)",
 			argN,
 		)
-		filterArgs = append(filterArgs, p.Query)
+		filterArgs = append(filterArgs, tsQuery)
 		argN++
 	}
 
@@ -109,10 +110,10 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	orderClause := "ORDER BY a.created_at DESC, a.id DESC"
 	if hasQuery {
 		orderClause = fmt.Sprintf(
-			"ORDER BY ts_rank(a.search_vector, plainto_tsquery('english', $%d)) DESC, a.created_at DESC",
+			"ORDER BY ts_rank(a.search_vector, to_tsquery('english', $%d)) DESC, a.created_at DESC",
 			argN,
 		)
-		args = append(args, p.Query)
+		args = append(args, tsQuery)
 		argN++
 	}
 

@@ -116,13 +116,14 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	// When searching, use the generated search_vector index and rank results.
 	// Cursor pagination is skipped for ranked searches (rank is not a stable
 	// column for keyset pagination).
-	hasQuery := p.Query != ""
+	tsQuery := prefixTSQuery(p.Query)
+	hasQuery := tsQuery != ""
 	if hasQuery {
 		filterWhere += fmt.Sprintf(
-			" AND s.search_vector @@ plainto_tsquery('english', $%d)",
+			" AND s.search_vector @@ to_tsquery('english', $%d)",
 			argN,
 		)
-		filterArgs = append(filterArgs, p.Query)
+		filterArgs = append(filterArgs, tsQuery)
 		argN++
 		countArgN++
 	}
@@ -150,10 +151,10 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	orderClause := "ORDER BY s.created_at DESC, s.id DESC"
 	if hasQuery {
 		orderClause = fmt.Sprintf(
-			"ORDER BY ts_rank(s.search_vector, plainto_tsquery('english', $%d)) DESC, s.created_at DESC",
+			"ORDER BY ts_rank(s.search_vector, to_tsquery('english', $%d)) DESC, s.created_at DESC",
 			argN,
 		)
-		args = append(args, p.Query)
+		args = append(args, tsQuery)
 		argN++
 	}
 

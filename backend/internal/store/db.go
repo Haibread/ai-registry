@@ -4,6 +4,8 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,4 +45,35 @@ func (db *DB) Ping(ctx context.Context) error {
 // Close releases all connections in the pool.
 func (db *DB) Close() {
 	db.Pool.Close()
+}
+
+// prefixTSQuery converts a raw user query string into a PostgreSQL tsquery
+// that matches each word as a prefix, enabling live-search-as-you-type.
+// For example "test ser" becomes "test:* & ser:*".
+//
+// tsquery special characters (! | & ( ) : ') are stripped before splitting
+// so the input is safe to pass directly to to_tsquery().
+func prefixTSQuery(raw string) string {
+	// Strip tsquery operator characters to prevent injection / syntax errors.
+	clean := strings.Map(func(r rune) rune {
+		switch r {
+		case '!', '|', '&', '(', ')', ':', '\'', '<', '>':
+			return ' '
+		}
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, raw)
+
+	var terms []string
+	for _, word := range strings.Fields(clean) {
+		if word != "" {
+			terms = append(terms, word+":*")
+		}
+	}
+	if len(terms) == 0 {
+		return ""
+	}
+	return strings.Join(terms, " & ")
 }
