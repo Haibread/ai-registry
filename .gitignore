@@ -13,18 +13,19 @@ backend/bin/
 backend/dist/
 backend/tmp/
 
-# ── Next.js / Node ────────────────────────────────────────────────────────────
+# ── Vite / Node ───────────────────────────────────────────────────────────────
 web/node_modules/
 web/.next/
 web/out/
 web/.env.local
 web/.env.*.local
 
+# Vite build output (Docker build generates this; keep the .gitkeep placeholder)
+web/dist/**
+!web/dist/.gitkeep
+
 # Generated OpenAPI types (regenerated via `npm run generate`)
 web/src/lib/schema.d.ts
-
-# Next.js auto-generated file (committed only if you customise it)
-web/next-env.d.ts
 
 # ── Environment / secrets ─────────────────────────────────────────────────────
 .env

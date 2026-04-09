@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Multi-stage build: compile in the Go toolchain image, ship in distroless.
+# Multi-stage build: compile in the Go toolchain image, ship in alpine.
 
 # ── Build stage ──────────────────────────────────────────────────────────────
 FROM golang:1.25-alpine AS builder
@@ -17,11 +17,17 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags="-s -w" -o /out/seed   ./cmd/seed
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.21
+
+# wget is used by the Docker healthcheck in docker-compose.
+RUN apk add --no-cache wget && \
+    addgroup -S -g 1001 appgroup && \
+    adduser -S -u 1001 -G appgroup appuser
 
 COPY --from=builder /out/server /server
 COPY --from=builder /out/seed   /seed
 
+USER appuser
 EXPOSE 8081
 
 ENTRYPOINT ["/server"]

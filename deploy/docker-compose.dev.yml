@@ -1,12 +1,13 @@
 name: ai-registry-dev
 
-# Development stack — Next.js runs in dev mode with hot reload.
+# Development stack — Vite dev server with hot reload.
 #
 # Usage (from the deploy/ directory):
 #   docker compose -f docker-compose.dev.yml up -d
 #
 # The web service mounts ../web directly into the container and runs
-# `next dev`, so any file save is picked up immediately.
+# `vite dev`, so any file save is picked up immediately.
+# Vite proxies /api/* and /v0/* to the backend (configured in vite.config.ts).
 # All other services are identical to the production compose.
 
 services:
@@ -53,8 +54,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8081/readyz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
 
-  # ── Seed (one-shot, runs after backend is up) ───────────────────────────────
+  # ── Seed (one-shot, runs after backend is ready and migrations are done) ────
   seed:
     build:
       context: ../backend
@@ -64,17 +71,16 @@ services:
     env_file: .env
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
 
-  # ── Web (Next.js dev server with hot reload) ─────────────────────────────────
+  # ── Web (Vite dev server with hot reload) ───────────────────────────────────
   web:
     image: node:22-alpine
     restart: unless-stopped
     working_dir: /app
     # Install deps on first start (node_modules volume persists across restarts),
-    # then launch the dev server.
-    # Wait for Keycloak's realm endpoint before starting Next.js.
-    # wget is available in Alpine and uses the Docker-internal hostname.
+    # then launch the Vite dev server.
+    # Wait for Keycloak's realm endpoint before starting.
     command: >
       sh -c "
         echo 'Waiting for Keycloak...' &&
@@ -83,19 +89,18 @@ services:
         done &&
         echo 'Keycloak ready.' &&
         npm install &&
-        npm run dev
+        npm run dev -- --host
       "
     environment:
+      # Vite proxies /api/* to backend (see vite.config.ts), so API_URL is only
+      # needed by the Vite proxy, not baked into the bundle.
       API_URL: http://backend:8081
-      AUTH_SECRET: "${AUTH_SECRET:-dev-secret-replace-in-production}"
-      AUTH_KEYCLOAK_ID: "${AUTH_KEYCLOAK_ID:-ai-registry-web}"
-      AUTH_KEYCLOAK_SECRET: "${AUTH_KEYCLOAK_SECRET:-}"
-      AUTH_KEYCLOAK_ISSUER: "${AUTH_KEYCLOAK_ISSUER:-http://keycloak:8080/realms/ai-registry}"
-      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
+      # VITE_* vars are exposed to the browser bundle at runtime in dev mode.
+      VITE_OIDC_ISSUER: "${VITE_OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}"
+      VITE_OIDC_CLIENT_ID: "${VITE_OIDC_CLIENT_ID:-ai-registry-web}"
       NODE_ENV: development
       # Polling is required for inotify to work through Docker volume mounts
       # on Linux and WSL2. Has no effect on macOS (native fsevents are used).
-      WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       # Mount source so edits hot-reload without rebuilding the image.

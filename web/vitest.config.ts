@@ -18,7 +18,7 @@ export default defineConfig({
         "src/test/**",
         "src/**/*.d.ts",
         "src/lib/schema.d.ts",
-        "src/app/**", // Server Components tested via E2E
+        "src/pages/**", // Pages tested via E2E
       ],
     },
   },

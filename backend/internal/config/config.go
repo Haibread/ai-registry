@@ -20,9 +20,15 @@ type Config struct {
 
 // AuthConfig holds OIDC/Keycloak settings.
 type AuthConfig struct {
-	// OIDCIssuer is the full Keycloak realm issuer URL, e.g.
-	// http://keycloak:8080/realms/registry
+	// OIDCIssuer is the issuer URL that appears in JWT `iss` claims.
+	// For browser-based SPAs this is the external URL, e.g.
+	// http://localhost:8080/realms/ai-registry
 	OIDCIssuer string
+
+	// OIDCJWKSUrl overrides the JWKS fetch URL. Set this to the internal
+	// Docker hostname when the backend cannot reach the external issuer URL,
+	// e.g. http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs
+	OIDCJWKSUrl string
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -84,7 +90,8 @@ func Load() (*Config, error) {
 			Level: envString("LOG_LEVEL", "info"),
 		},
 		Auth: AuthConfig{
-			OIDCIssuer: envString("OIDC_ISSUER", ""),
+			OIDCIssuer:  envString("OIDC_ISSUER", ""),
+			OIDCJWKSUrl: envString("OIDC_JWKS_URL", ""),
 		},
 	}
 

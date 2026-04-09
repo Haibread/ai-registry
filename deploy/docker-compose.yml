@@ -50,8 +50,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8081/readyz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
 
-  # ── Seed (one-shot, runs after backend is up) ───────────────────────────────
+  # ── Seed (one-shot, runs after backend is ready and migrations are done) ────
   seed:
     build:
       context: ../backend
@@ -61,23 +67,19 @@ services:
     env_file: .env
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
 
-  # ── Web (Next.js) ────────────────────────────────────────────────────────────
+  # ── Web (Vite SPA served by nginx) ──────────────────────────────────────────
   web:
     build:
       context: ..
       dockerfile: web/Dockerfile
+      args:
+        VITE_OIDC_ISSUER: "${VITE_OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}"
+        VITE_OIDC_CLIENT_ID: "${VITE_OIDC_CLIENT_ID:-ai-registry-web}"
     restart: unless-stopped
-    environment:
-      API_URL: http://backend:8081
-      AUTH_SECRET: "${AUTH_SECRET}"
-      AUTH_KEYCLOAK_ID: "${AUTH_KEYCLOAK_ID:-ai-registry-web}"
-      AUTH_KEYCLOAK_SECRET: "${AUTH_KEYCLOAK_SECRET}"
-      AUTH_KEYCLOAK_ISSUER: "${AUTH_KEYCLOAK_ISSUER:-http://keycloak:8080/realms/ai-registry}"
-      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
     ports:
-      - "3000:3000"
+      - "3000:80"
     depends_on:
       backend:
         condition: service_started

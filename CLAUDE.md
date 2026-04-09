@@ -37,10 +37,14 @@ A centralized registry for AI ecosystem artifacts:
   `golang-migrate` for schema migrations.
 - **Auth**: OAuth2 / OIDC (external IdP, Keycloak in dev via docker-compose).
   JWT access tokens validated via JWKS. MCP-compatible. Also supports hashed
-  API keys for machine-to-machine admin operations.
-- **Frontend**: Next.js (App Router) + TypeScript + shadcn/ui + Tailwind.
-  One Next.js app with a public section and an `/admin` section guarded by
-  OIDC (NextAuth / Auth.js).
+  API keys for machine-to-machine admin operations. Frontend uses `oidc-client-ts`
+  as a PKCE public client (no client secret; no NextAuth/Auth.js).
+- **Frontend**: Vite + React Router v7 + TanStack Query v5 + TypeScript +
+  shadcn/ui + Tailwind. A pure SPA served as static files from nginx. Public
+  section for browsing; `/admin` section guarded by a `<RequireAuth>` wrapper.
+  Auth is a PKCE OAuth2 public client via `oidc-client-ts` (no client secret).
+  Theme switching via a local `ThemeProvider` (no next-themes). Pages live
+  in `src/pages/`.
 - **OpenAPI**: hand-written OpenAPI 3.1 spec is the source of truth; server
   types and TS client are generated from it.
 - **Dev infra**: docker-compose for Postgres + Keycloak + backend + web.
@@ -67,7 +71,7 @@ A centralized registry for AI ecosystem artifacts:
     /domain/          # entities, validation
     /observability/   # OTel setup: tracer, meter, logger providers
   /migrations/        # SQL migrations
-/web/                 # Next.js app (user + admin UI)
+/web/                 # Vite + React SPA (user + admin UI; nginx in prod)
 /deploy/              # docker-compose, env examples
 /deploy/helm/         # Helm chart for k8s
 /docs/                # architecture notes, ADRs

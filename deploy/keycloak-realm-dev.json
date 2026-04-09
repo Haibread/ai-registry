@@ -9,7 +9,6 @@
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
-
   "roles": {
     "realm": [
       {
@@ -21,23 +20,21 @@
       }
     ]
   },
-
   "clients": [
     {
       "clientId": "ai-registry-web",
       "name": "AI Registry Web",
-      "description": "Next.js web application (public + admin UI)",
+      "description": "AI Registry Web (Vite SPA \u2014 public PKCE client)",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
-      "secret": "change-me-in-production",
       "redirectUris": [
-        "http://localhost:3000/api/auth/callback/keycloak",
+        "http://localhost:3000/auth/callback",
         "http://localhost:3000/*"
       ],
       "webOrigins": [
         "http://localhost:3000"
       ],
-      "publicClient": false,
+      "publicClient": true,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -69,12 +66,15 @@
             "jsonType.label": "String"
           }
         }
-      ]
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
     },
     {
       "clientId": "ai-registry-backend",
       "name": "AI Registry Backend",
-      "description": "Resource server — validates tokens issued to the web client",
+      "description": "Resource server \u2014 validates tokens issued to the web client",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "change-me-in-production",
@@ -107,7 +107,6 @@
       ]
     }
   ],
-
   "users": [
     {
       "username": "admin@example.com",
@@ -123,7 +122,9 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["admin"],
+      "realmRoles": [
+        "admin"
+      ],
       "clientRoles": {}
     },
     {
@@ -144,21 +145,17 @@
       "clientRoles": {}
     }
   ],
-
   "smtpServer": {},
-
   "loginTheme": "keycloak",
   "accountTheme": "keycloak",
   "adminTheme": "keycloak",
   "emailTheme": "keycloak",
-
   "defaultSignatureAlgorithm": "RS256",
   "accessTokenLifespan": 300,
   "accessTokenLifespanForImplicitFlow": 900,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
   "offlineSessionIdleTimeout": 2592000,
-
   "scopeMappings": [],
   "clientScopeMappings": {}
 }
