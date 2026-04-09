@@ -7,7 +7,7 @@ import { DeprecateButton } from '@/components/admin/deprecate-button'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
-import { getAuthClient } from '@/lib/api-client'
+import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
 import type { components } from '@/lib/schema'
@@ -20,7 +20,7 @@ export default function AdminAgentDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const api = getAuthClient(accessToken ?? '')
+  const api = useAuthClient()
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-agent-detail', ns, slug],
     queryFn: () => api.GET('/api/v1/agents/{namespace}/{slug}', {
@@ -36,8 +36,7 @@ export default function AdminAgentDetail() {
 
   const visibilityMutation = useMutation({
     mutationFn: async (newVisibility: 'public' | 'private') => {
-      const client = getAuthClient(accessToken!)
-      await client.POST('/api/v1/agents/{namespace}/{slug}/visibility', {
+      await api.POST('/api/v1/agents/{namespace}/{slug}/visibility', {
         params: { path: { namespace: ns!, slug: slug! } },
         body: { visibility: newVisibility },
       })
@@ -47,8 +46,7 @@ export default function AdminAgentDetail() {
 
   const deprecateMutation = useMutation({
     mutationFn: async () => {
-      const client = getAuthClient(accessToken!)
-      await client.POST('/api/v1/agents/{namespace}/{slug}/deprecate', {
+      await api.POST('/api/v1/agents/{namespace}/{slug}/deprecate', {
         params: { path: { namespace: ns!, slug: slug! } },
       })
     },

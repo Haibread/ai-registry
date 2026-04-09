@@ -17,6 +17,7 @@ interface AuthState {
   accessToken: string | undefined
   login: () => void
   logout: () => void
+  clearSession: () => Promise<void>
   userManager: UserManager
 }
 
@@ -49,6 +50,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = () => userManager.signinRedirect()
   const logout = () => userManager.signoutRedirect()
+  // Clears the local session without a Keycloak redirect — used when the
+  // server returns 401 (expired or revoked token).
+  const clearSession = () => userManager.removeUser()
 
   return (
     <AuthContext.Provider value={{
@@ -57,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       accessToken: user?.access_token,
       login,
       logout,
+      clearSession,
       userManager,
     }}>
       {children}

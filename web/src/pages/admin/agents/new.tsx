@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { getAuthClient } from '@/lib/api-client'
+import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
 
 const AUTH_SCHEME_OPTIONS = [
@@ -35,14 +35,14 @@ const MODE_VALUES = ['text/plain', 'application/json', 'image/png', 'text/csv'] 
 type CreateError = { step?: string; message: string }
 
 export default function AdminAgentNew() {
-  const { accessToken } = useAuth()
+  const { accessToken, clearSession } = useAuth()
   const navigate = useNavigate()
 
   const [namespace, setNamespace] = useState('')
   const [authScheme, setAuthScheme] = useState('')
   const [formError, setFormError] = useState<CreateError | null>(null)
 
-  const api = getAuthClient(accessToken ?? '')
+  const api = useAuthClient()
 
   const { data: publishersData } = useQuery({
     queryKey: ['publishers'],
@@ -62,10 +62,8 @@ export default function AdminAgentNew() {
         throw { step: undefined, message: 'Namespace, slug, and name are required.' }
       }
 
-      const client = getAuthClient(accessToken!)
-
       // Step 1: Create agent
-      const { data: agent, error: agentError } = await client.POST('/api/v1/agents', {
+      const { data: agent, error: agentError } = await api.POST('/api/v1/agents', {
         body: {
           namespace: ns,
           slug,
@@ -105,7 +103,7 @@ export default function AdminAgentNew() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken ?? ''}`,
         },
         body: JSON.stringify({
           version,
@@ -118,16 +116,18 @@ export default function AdminAgentNew() {
         }),
       })
       if (!versionRes.ok) {
+        if (versionRes.status === 401) { await clearSession(); return { namespace: ns, slug } }
         let msg = `Failed to create version (HTTP ${versionRes.status}).`
         try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch {}
         throw { step: 'version', message: msg }
       }
 
       if (formData.get('publish') === 'on') {
-        await fetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
+        const publishRes = await fetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${accessToken ?? ''}` },
         })
+        if (publishRes.status === 401) { await clearSession(); return { namespace: ns, slug } }
       }
 
       return { namespace: ns, slug }

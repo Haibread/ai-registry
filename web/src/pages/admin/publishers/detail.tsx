@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/ui/badge'
-import { getAuthClient } from '@/lib/api-client'
+import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
 
@@ -15,7 +15,7 @@ export default function AdminPublisherDetail() {
   const { accessToken } = useAuth()
   const navigate = useNavigate()
 
-  const api = getAuthClient(accessToken ?? '')
+  const api = useAuthClient()
 
   const { data: publisher, isLoading, isError } = useQuery({
     queryKey: ['admin-publisher', slug],

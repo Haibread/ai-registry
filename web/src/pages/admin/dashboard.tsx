@@ -5,13 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { getAuthClient } from '@/lib/api-client'
+import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
 
 export default function AdminDashboard() {
   const { accessToken } = useAuth()
-  const api = getAuthClient(accessToken ?? '')
+  const api = useAuthClient()
 
   const { data: statsData, isError: statsError } = useQuery({
     queryKey: ['admin-stats'],

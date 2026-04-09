@@ -31,18 +31,18 @@ function renderWithRouter(authState: ReturnType<typeof useAuth>, initialPath = '
 
 describe('RequireAuth', () => {
   it('shows spinner while loading', () => {
-    renderWithRouter({ isLoading: true, accessToken: undefined, login: mockLogin, logout: vi.fn(), user: null, userManager: {} as never })
+    renderWithRouter({ isLoading: true, accessToken: undefined, login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never })
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
 
   it('shows redirect message and calls login when not authenticated', () => {
-    renderWithRouter({ isLoading: false, accessToken: undefined, login: mockLogin, logout: vi.fn(), user: null, userManager: {} as never })
+    renderWithRouter({ isLoading: false, accessToken: undefined, login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never })
     expect(mockLogin).toHaveBeenCalled()
     expect(screen.getByText(/redirecting/i)).toBeInTheDocument()
   })
 
   it('renders children when authenticated', () => {
-    renderWithRouter({ isLoading: false, accessToken: 'tok-abc', login: mockLogin, logout: vi.fn(), user: null, userManager: {} as never })
+    renderWithRouter({ isLoading: false, accessToken: 'tok-abc', login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never })
     expect(screen.getByText('Admin content')).toBeInTheDocument()
   })
 })

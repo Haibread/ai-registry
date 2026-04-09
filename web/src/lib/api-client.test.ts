@@ -1,6 +1,11 @@
 // @vitest-environment node
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// AuthContext uses window.location at module level; stub it out so the node
+// environment doesn't crash when api-client.ts imports it.
+vi.mock('@/auth/AuthContext', () => ({ useAuth: vi.fn() }))
+
 import { getPublicClient, getAuthClient } from './api-client'
 
 describe('getPublicClient', () => {

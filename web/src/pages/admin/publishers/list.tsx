@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom'
 import { Plus, CheckCircle2, Circle, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getAuthClient } from '@/lib/api-client'
+import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
 
 export default function AdminPublisherList() {
   const { accessToken } = useAuth()
-  const api = getAuthClient(accessToken ?? '')
+  const api = useAuthClient()
 
   const { data } = useQuery({
     queryKey: ['admin-publishers'],

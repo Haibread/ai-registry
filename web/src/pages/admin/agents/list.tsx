@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { FilterBar } from '@/components/ui/filter-bar'
-import { getAuthClient } from '@/lib/api-client'
+import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
 
@@ -13,14 +13,13 @@ const PAGE_LIMIT = 50
 
 export default function AdminAgentList() {
   const { accessToken } = useAuth()
+  const api = useAuthClient()
   const [searchParams] = useSearchParams()
   const q = searchParams.get('q') ?? undefined
   const namespace = searchParams.get('namespace') ?? undefined
   const status = searchParams.get('status') ?? undefined
   const visibility = searchParams.get('visibility') ?? undefined
   const cursor = searchParams.get('cursor') ?? undefined
-
-  const api = getAuthClient(accessToken ?? '')
   const { data } = useQuery({
     queryKey: ['admin-agents', { q, namespace, status, visibility, cursor }],
     queryFn: () => api.GET('/api/v1/agents', {

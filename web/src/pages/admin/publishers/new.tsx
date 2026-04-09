@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { getAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
+import { useAuthClient } from '@/lib/api-client'
 
 export default function AdminPublisherNew() {
-  const { accessToken } = useAuth()
+  const api = useAuthClient()
   const navigate = useNavigate()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -23,8 +22,7 @@ export default function AdminPublisherNew() {
         throw new Error('Slug and name are required.')
       }
 
-      const client = getAuthClient(accessToken!)
-      const { error } = await client.POST('/api/v1/publishers', {
+      const { error } = await api.POST('/api/v1/publishers', {
         body: {
           slug,
           name,

@@ -7,7 +7,7 @@ import { DeprecateButton } from '@/components/admin/deprecate-button'
 import { Separator } from '@/components/ui/separator'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
 import { InstallCommand } from '@/components/ui/install-command'
-import { getAuthClient } from '@/lib/api-client'
+import { useAuthClient } from '@/lib/api-client'
 import { formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
 
@@ -17,7 +17,7 @@ export default function AdminMCPDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const api = getAuthClient(accessToken ?? '')
+  const api = useAuthClient()
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-mcp-detail', ns, slug],
     queryFn: () => api.GET('/api/v1/mcp/servers/{namespace}/{slug}', {
@@ -33,8 +33,7 @@ export default function AdminMCPDetail() {
 
   const visibilityMutation = useMutation({
     mutationFn: async (newVisibility: 'public' | 'private') => {
-      const client = getAuthClient(accessToken!)
-      await client.POST('/api/v1/mcp/servers/{namespace}/{slug}/visibility', {
+      await api.POST('/api/v1/mcp/servers/{namespace}/{slug}/visibility', {
         params: { path: { namespace: ns!, slug: slug! } },
         body: { visibility: newVisibility },
       })
@@ -44,8 +43,7 @@ export default function AdminMCPDetail() {
 
   const deprecateMutation = useMutation({
     mutationFn: async () => {
-      const client = getAuthClient(accessToken!)
-      await client.POST('/api/v1/mcp/servers/{namespace}/{slug}/deprecate', {
+      await api.POST('/api/v1/mcp/servers/{namespace}/{slug}/deprecate', {
         params: { path: { namespace: ns!, slug: slug! } },
       })
     },
