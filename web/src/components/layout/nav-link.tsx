@@ -1,29 +1,25 @@
-"use client"
-
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import { Link, useLocation } from 'react-router-dom'
+import { cn } from '@/lib/utils'
 
 interface NavLinkProps {
-  href: string
+  to: string
   children: React.ReactNode
   className?: string
-  /** If true, only matches exact path; otherwise prefix-matches */
   exact?: boolean
 }
 
-export function NavLink({ href, children, className, exact = false }: NavLinkProps) {
-  const pathname = usePathname()
-  const isActive = exact ? pathname === href : pathname.startsWith(href)
+export function NavLink({ to, children, className, exact = false }: NavLinkProps) {
+  const { pathname } = useLocation()
+  const isActive = exact ? pathname === to : pathname.startsWith(to)
 
   return (
     <Link
-      href={href}
+      to={to}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
         isActive
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          ? 'bg-accent text-accent-foreground'
+          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
         className
       )}
     >

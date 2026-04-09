@@ -1,11 +1,11 @@
-import Link from "next/link"
-import { ExternalLink, Braces, Cpu, Link2 } from "lucide-react"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge, StatusBadge } from "@/components/ui/badge"
-import { formatDate } from "@/lib/utils"
-import type { components } from "@/lib/schema"
+import { Link } from 'react-router-dom'
+import { ExternalLink, Braces, Cpu, Link2 } from 'lucide-react'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge, StatusBadge } from '@/components/ui/badge'
+import { formatDate } from '@/lib/utils'
+import type { components } from '@/lib/schema'
 
-type Agent = components["schemas"]["Agent"]
+type Agent = components['schemas']['Agent']
 
 interface AgentCardProps {
   agent: Agent
@@ -13,7 +13,7 @@ interface AgentCardProps {
 
 export function AgentCard({ agent }: AgentCardProps) {
   const lv = agent.latest_version
-  const href = `/agents/${agent.namespace}/${agent.slug}`
+  const to = `/agents/${agent.namespace}/${agent.slug}`
 
   return (
     <Card className="flex flex-col hover:shadow-md transition-shadow group relative">
@@ -21,7 +21,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base leading-snug">
             <Link
-              href={href}
+              to={to}
               className="hover:text-primary transition-colors after:absolute after:inset-0 after:content-['']"
             >
               {agent.name}
@@ -45,7 +45,7 @@ export function AgentCard({ agent }: AgentCardProps) {
           <div className="flex flex-wrap gap-1 pt-1">
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex items-center gap-1">
               <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
-              {lv.skills.length} skill{lv.skills.length !== 1 ? "s" : ""}
+              {lv.skills.length} skill{lv.skills.length !== 1 ? 's' : ''}
             </Badge>
           </div>
         )}

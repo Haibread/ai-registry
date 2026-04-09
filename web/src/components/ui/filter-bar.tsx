@@ -1,5 +1,3 @@
-"use client"
-
 /**
  * FilterBar — live filtering without a submit button.
  *
@@ -7,11 +5,9 @@
  * Text inputs are debounced (300 ms) so the URL only updates after the user
  * stops typing, avoiding a request on every keystroke.
  *
- * URL params are updated with router.replace() so the browser back button
- * skips intermediate filter states (only the final value is recorded in
- * history).
- *
- * Falls back gracefully to a standard GET form when JS is unavailable.
+ * URL params are updated with navigate(..., { replace: true }) so the browser
+ * back button skips intermediate filter states (only the final value is
+ * recorded in history).
  *
  * Usage:
  *   <FilterBar
@@ -25,11 +21,11 @@
  *   />
  */
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { useCallback, useEffect, useRef, useState } from "react"
-import { Search, X } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { useNavigate, useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Search, X } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 interface FilterBarProps {
   q?: string
@@ -42,42 +38,39 @@ interface FilterBarProps {
 }
 
 const selectClass =
-  "h-9 rounded-md border border-input bg-background px-3 text-sm " +
-  "text-foreground shadow-xs transition-colors focus-visible:outline-hidden " +
-  "focus-visible:ring-1 focus-visible:ring-ring min-w-[130px]"
+  'h-9 rounded-md border border-input bg-background px-3 text-sm ' +
+  'text-foreground shadow-xs transition-colors focus-visible:outline-hidden ' +
+  'focus-visible:ring-1 focus-visible:ring-ring min-w-[130px]'
 
 const DEBOUNCE_MS = 300
 
 export function FilterBar({
-  q: initialQ = "",
-  namespace: initialNamespace = "",
-  status: initialStatus = "",
-  visibility: initialVisibility = "",
+  q: initialQ = '',
+  namespace: initialNamespace = '',
+  status: initialStatus = '',
+  visibility: initialVisibility = '',
   statusOptions,
   showVisibility = false,
-  searchPlaceholder = "Search…",
+  searchPlaceholder = 'Search…',
 }: FilterBarProps) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const navigate = useNavigate()
+  const { pathname, search } = useLocation()
+  const searchParams = new URLSearchParams(search)
 
-  // Derive initial state from the URL (source of truth), falling back to props
-  // for the first server-side render where searchParams may not yet reflect the
-  // URL (Next.js hydration). After hydration, URL always wins.
-  const [q, setQ] = useState(() => searchParams.get("q") ?? initialQ)
+  // Derive initial state from the URL (source of truth), falling back to props.
+  const [q, setQ] = useState(() => searchParams.get('q') ?? initialQ)
   const [namespace, setNamespace] = useState(
-    () => searchParams.get("namespace") ?? initialNamespace
+    () => searchParams.get('namespace') ?? initialNamespace
   )
 
   // Keep local text state in sync when the URL changes externally (browser
-  // back/forward). Selects read directly from searchParams so they don't need
-  // this treatment. setState in effect is intentional here: we're syncing
-  // React state FROM an external system (URL), which is the documented use case.
+  // back/forward).
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    setQ(searchParams.get("q") ?? "")
-    setNamespace(searchParams.get("namespace") ?? "")
-  }, [searchParams])
+    const p = new URLSearchParams(search)
+    setQ(p.get('q') ?? '')
+    setNamespace(p.get('namespace') ?? '')
+  }, [search])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Debounce timer ref — shared across q and namespace.
@@ -87,9 +80,9 @@ export function FilterBar({
    *  Keys with empty string values are removed so the URL stays clean. */
   const buildParams = useCallback(
     (overrides: Record<string, string>) => {
-      const p = new URLSearchParams(searchParams.toString())
+      const p = new URLSearchParams(search)
       // Always reset cursor when any filter changes.
-      p.delete("cursor")
+      p.delete('cursor')
       for (const [key, value] of Object.entries(overrides)) {
         if (value) {
           p.set(key, value)
@@ -99,16 +92,16 @@ export function FilterBar({
       }
       return p
     },
-    [searchParams]
+    [search]
   )
 
   /** Navigate immediately — used for selects. */
   const applyNow = useCallback(
     (overrides: Record<string, string>) => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
-      router.replace(`${pathname}?${buildParams(overrides).toString()}`)
+      navigate(`${pathname}?${buildParams(overrides).toString()}`, { replace: true })
     },
-    [router, pathname, buildParams]
+    [navigate, pathname, buildParams]
   )
 
   /** Navigate after DEBOUNCE_MS — used for text inputs. */
@@ -116,20 +109,21 @@ export function FilterBar({
     (overrides: Record<string, string>) => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
-        router.replace(`${pathname}?${buildParams(overrides).toString()}`)
+        navigate(`${pathname}?${buildParams(overrides).toString()}`, { replace: true })
       }, DEBOUNCE_MS)
     },
-    [router, pathname, buildParams]
+    [navigate, pathname, buildParams]
   )
 
   // Cleanup on unmount.
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
 
-  const hasFilters = !!(q || namespace || searchParams.get("status") || searchParams.get("visibility"))
+  const currentStatus = searchParams.get('status') ?? ''
+  const currentVisibility = searchParams.get('visibility') ?? ''
+  const hasFilters = !!(q || namespace || currentStatus || currentVisibility)
 
   return (
     // The form still works as a GET form when JS is unavailable.
-    // Hidden inputs carry existing params so the fallback preserves them.
     <form
       className="flex flex-wrap gap-2 items-center"
       onSubmit={(e) => {
@@ -171,7 +165,7 @@ export function FilterBar({
       {/* Status — instant */}
       <select
         name="status"
-        value={searchParams.get("status") ?? ""}
+        value={currentStatus}
         onChange={(e) => applyNow({ status: e.target.value })}
         className={selectClass}
         aria-label="Filter by status"
@@ -188,7 +182,7 @@ export function FilterBar({
       {showVisibility && (
         <select
           name="visibility"
-          value={searchParams.get("visibility") ?? ""}
+          value={currentVisibility}
           onChange={(e) => applyNow({ visibility: e.target.value })}
           className={selectClass}
           aria-label="Filter by visibility"
@@ -206,9 +200,9 @@ export function FilterBar({
         size="sm"
         className="shrink-0 gap-1.5"
         onClick={() => {
-          setQ("")
-          setNamespace("")
-          router.replace(pathname)
+          setQ('')
+          setNamespace('')
+          navigate(pathname, { replace: true })
         }}
         aria-label="Clear all filters"
         disabled={!hasFilters}

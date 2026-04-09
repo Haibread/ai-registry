@@ -1,11 +1,11 @@
-import Link from "next/link"
-import { ExternalLink, GitFork, Braces, Link2 } from "lucide-react"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge, StatusBadge } from "@/components/ui/badge"
-import { formatDate, ecosystemLabel, isRemoteTransport } from "@/lib/utils"
-import type { components } from "@/lib/schema"
+import { Link } from 'react-router-dom'
+import { ExternalLink, GitFork, Braces, Link2 } from 'lucide-react'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge, StatusBadge } from '@/components/ui/badge'
+import { formatDate, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
+import type { components } from '@/lib/schema'
 
-type MCPServer = components["schemas"]["MCPServer"]
+type MCPServer = components['schemas']['MCPServer']
 
 interface ServerCardProps {
   server: MCPServer
@@ -13,7 +13,7 @@ interface ServerCardProps {
 
 export function ServerCard({ server }: ServerCardProps) {
   const lv = server.latest_version
-  const href = `/mcp/${server.namespace}/${server.slug}`
+  const to = `/mcp/${server.namespace}/${server.slug}`
 
   // Show at most one ecosystem badge to avoid visual noise
   const ecosystem = lv?.packages?.[0] ? ecosystemLabel(lv.packages[0].registryType) : null
@@ -29,7 +29,7 @@ export function ServerCard({ server }: ServerCardProps) {
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base leading-snug">
             <Link
-              href={href}
+              to={to}
               className="hover:text-primary transition-colors after:absolute after:inset-0 after:content-['']"
             >
               {server.name}

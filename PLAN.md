@@ -124,8 +124,8 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
     authorization server.
   - Accept `resource` parameter per RFC 8707.
   - Require PKCE on any OAuth flow we initiate.
-- Admin UI uses Auth.js (NextAuth) with the same IdP; session stores the
-  access token used for API calls.
+- Admin UI uses `oidc-client-ts` (PKCE public client) with the same IdP;
+  access token stored in React context and passed as Bearer on API calls.
 - Public GETs are unauthenticated by default; feature flag to require auth.
 - **API-key auth**: alongside OIDC, support static API keys for
   machine-to-machine admin operations (CI/CD publish pipelines). API keys are
@@ -165,16 +165,17 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - `authentication` scheme allowlist: Bearer, ApiKey, OAuth2, OpenIdConnect.
 - Integration tests (testcontainers, shared container) + unit tests for card generation and validation.
 
-### Phase 4 — Web app (Next.js)
-- Next.js App Router + shadcn/ui blocks (minimal) + Tailwind.
+### Phase 4 — Web app (Vite + React SPA) ✅
+- Vite + React Router v7 + TanStack Query v5 + shadcn/ui + Tailwind.
   Build from shadcn/ui primitives: sidebar layout, data tables, cards, forms.
   No third-party admin template — keep it lean and fully controlled.
-- Public routes: `/`, `/mcp`, `/mcp/[ns]/[slug]`, `/agents`,
-  `/agents/[ns]/[slug]`. Clean card-grid layout with search/filter bar.
-- Admin routes: `/admin/*` guarded by Auth.js (OIDC). Sidebar nav, data
-  tables with inline actions, forms for publisher / MCP server / agent CRUD,
-  visibility toggle, API-key management.
+- Public routes: `/`, `/mcp`, `/mcp/:ns/:slug`, `/agents`,
+  `/agents/:ns/:slug`. Clean card-grid layout with search/filter bar.
+- Admin routes: `/admin/*` guarded by `<RequireAuth>` (oidc-client-ts PKCE).
+  Sidebar nav, data tables with inline actions, forms for publisher / MCP
+  server / agent CRUD, visibility toggle, API-key management.
 - Generated TS API client from OpenAPI (openapi-typescript + openapi-fetch).
+- Note: originally planned as Next.js; migrated to Vite SPA in Phase 6.
 
 **TODO — Backend (missing endpoints):**
 - [ ] `PATCH /api/v1/mcp/servers/{ns}/{slug}` — edit MCP server metadata
@@ -211,7 +212,101 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - [ ] Docker Compose prod profile (`deploy/docker-compose.prod.yml`)
 - [ ] Helm chart (`deploy/helm/`)
 
-### Phase 6 — Later
+### Phase 6 — Migrate web app from Next.js → Vite + React SPA ✅ COMPLETED
+
+Migration is done. The web app is now a plain Vite + React SPA served by nginx.
+
+Next.js is overkill: there is no SEO requirement, no static generation need, and
+SSR adds complexity (hydration bugs, double fetches, Server Actions, middleware)
+without meaningful benefit. The target stack is **Vite + React Router + TanStack
+Query** — a plain SPA served as static files from nginx.
+
+#### What stays the same
+- All UI components (Radix UI, shadcn/ui, Tailwind CSS, Lucide)
+- `openapi-fetch` / `openapi-typescript` generated client
+- `next-themes` (framework-agnostic)
+- All page structure and visual design
+
+#### What changes
+
+| Area | Before (Next.js) | After (Vite + React) |
+|------|-----------------|----------------------|
+| Routing | App Router file-based | React Router v7 |
+| Data fetching | Server Components + `getPublicClient` | `useQuery` (TanStack Query) |
+| Auth | NextAuth.js + middleware | `oidc-client-ts` + React context |
+| Admin guard | `proxy.ts` middleware | `<RequireAuth>` wrapper component |
+| Mutations | Server Actions | `useMutation` + `fetch` |
+| Page metadata | `export const metadata` | `<title>` via React Router future flag or `react-helmet-async` |
+| Dev proxy | `next.config.ts` rewrites | Vite `server.proxy` config |
+| Production serving | Node.js (`next start`) | nginx static file server |
+| Docker image | `node:22-alpine` + standalone Next.js | `nginx:alpine` (static files only) |
+
+#### Step-by-step plan
+
+**Step 1 — Scaffold** ✅
+- [x] Vite + React + TypeScript project in `web/`
+- [x] Tailwind CSS v4, postcss, tsconfig configured
+- [x] `src/components/ui/`, `src/lib/` migrated (no Next.js deps)
+- [x] Installed: `react-router-dom`, `@tanstack/react-query`, `oidc-client-ts`, `openapi-fetch`, `lucide-react`
+- [x] Vite proxy for `/api/v1/*`, `/v0/*`, `/.well-known/*` → backend
+- [x] `openapi-typescript` regenerated `schema.d.ts`
+
+**Step 2 — Auth** ✅
+- [x] `AuthProvider` in `src/auth/AuthContext.tsx` using `oidc-client-ts` `UserManager` with PKCE
+- [x] `AuthCallback` component at `/auth/callback`
+- [x] `accessToken`, `isAuthenticated`, `login()`, `logout()` exposed via context
+- [x] `<RequireAuth>` component redirects to Keycloak if not authenticated
+- [x] `automaticSilentRenew: true` for refresh
+- [x] `AUTH_KEYCLOAK_SECRET` removed — public OIDC client, no secret needed
+
+**Step 3 — API client** ✅
+- [x] Single `useApiClient()` hook (public: no headers; authed: Bearer token)
+- [x] All admin pages use `useApiClient()` + `useQuery` / `useMutation`
+- [x] Server Actions replaced with `useMutation` + `fetch`
+
+**Step 4 — Routing** ✅
+- [x] React Router v7 `createBrowserRouter` in `src/main.tsx`
+- [x] All routes defined (public, admin, auth callback)
+
+**Step 5 — Convert pages** ✅
+- [x] All pages converted to client components with `useQuery`
+- [x] `next/link` → `react-router-dom` `<Link to=...>`
+- [x] `usePathname`/`useRouter`/`useSearchParams` → React Router equivalents
+- [x] `notFound()` / `redirect()` replaced with React Router primitives
+
+**Step 6 — Production build** ✅
+- [x] `web/nginx.conf` with `try_files $uri /index.html` + backend proxy blocks
+- [x] `web/Dockerfile`: `node:22-alpine` build stage → `nginx:alpine` serve stage
+- [x] `AUTH_SECRET`, `AUTH_KEYCLOAK_SECRET`, `NEXTAUTH_URL` removed from docker-compose
+- [x] `VITE_OIDC_ISSUER`, `VITE_OIDC_CLIENT_ID` added as build args
+
+**Step 7 — Cleanup** ✅
+- [x] Old Next.js `src/app/` directory removed
+- [x] `next`, `next-auth`, `next-themes` removed from `package.json`
+- [x] `CLAUDE.md` updated to reflect new stack
+- [x] `PLAN.md` updated (this section)
+
+#### Environment variable changes
+
+| Variable | Before | After |
+|----------|--------|-------|
+| `AUTH_SECRET` | Required | Removed |
+| `AUTH_KEYCLOAK_ID` | Required | → `VITE_KEYCLOAK_CLIENT_ID` |
+| `AUTH_KEYCLOAK_SECRET` | Required | **Removed** (public OIDC client) |
+| `AUTH_KEYCLOAK_ISSUER` | Required | → `VITE_KEYCLOAK_ISSUER` |
+| `NEXTAUTH_URL` | Required | Removed |
+| `API_URL` | Build-time + runtime | Nginx config (runtime only) |
+
+#### Key risks & mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Keycloak requires `client_secret` for the existing client | Create a new Keycloak client with `Access Type: public` — no secret needed for PKCE |
+| Token refresh gaps | `oidc-client-ts` `automaticSilentRenew` + `accessTokenExpiring` event handle this |
+| CORS during dev (Vite proxy vs browser) | Vite `server.proxy` routes all `/api/v1/*` through Node — no CORS headers needed in dev |
+| `/.well-known/*` paths | Nginx proxy block covers them in production; Vite proxy in dev |
+
+### Phase 7 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
 - Signed publishes (sigstore/cosign).
 - Webhooks on publish events.

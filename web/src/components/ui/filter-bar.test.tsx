@@ -3,9 +3,9 @@
  *
  * Unit tests for the FilterBar client component.
  *
- * next/navigation is mocked so the component can render in jsdom without a
- * real Next.js runtime. Because the component initialises its local state from
- * useSearchParams (the URL is the source of truth), tests set
+ * react-router-dom is mocked so the component can render in jsdom without a
+ * real router. Because the component initialises its local state from
+ * useLocation (the URL is the source of truth), tests set
  * mockSearchParamsString before rendering to simulate active filters.
  *
  * We verify:
@@ -13,34 +13,41 @@
  *  - Select dropdowns render all provided options and reflect the URL param.
  *  - Visibility filter is hidden by default; shown when showVisibility=true.
  *  - Clear button appears only when at least one filter is active, and calls
- *    router.replace(pathname) when clicked.
- *  - Typing in a text input calls router.replace() only after the debounce.
- *  - Changing a select calls router.replace() immediately.
+ *    navigate(pathname) when clicked.
+ *  - Typing in a text input calls navigate() only after the debounce.
+ *  - Changing a select calls navigate() immediately.
  *  - Cursor param is always stripped when any filter changes.
  */
 
-import { render, screen, fireEvent, act } from "@testing-library/react"
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { FilterBar } from "./filter-bar"
+import { render, screen, fireEvent, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { FilterBar } from './filter-bar'
 
-// ── Mock next/navigation ──────────────────────────────────────────────────────
+// ── Mock react-router-dom ─────────────────────────────────────────────────────
 
-const mockReplace = vi.fn()
-const PATHNAME = "/mcp"
+const mockNavigate = vi.fn()
+const PATHNAME = '/mcp'
+let mockSearchParamsString = ''
 
-// Tests mutate this string before rendering to control what useSearchParams
-// returns. Each test starts from the beforeEach reset (empty string).
-let mockSearchParamsString = ""
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: mockReplace }),
-  usePathname: () => PATHNAME,
-  useSearchParams: () => new URLSearchParams(mockSearchParamsString),
-}))
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>()
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+    useLocation: () => ({
+      pathname: PATHNAME,
+      search: mockSearchParamsString ? '?' + mockSearchParamsString : '',
+      hash: '',
+      state: null,
+      key: 'default',
+    }),
+    useSearchParams: () => [new URLSearchParams(mockSearchParamsString), vi.fn()],
+  }
+})
 
 beforeEach(() => {
-  mockReplace.mockClear()
-  mockSearchParamsString = ""
+  mockNavigate.mockClear()
+  mockSearchParamsString = ''
   vi.useFakeTimers()
 })
 
@@ -56,192 +63,192 @@ function flushDebounce() {
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
-describe("FilterBar — rendering", () => {
-  it("pre-fills search input from URL param q", () => {
-    mockSearchParamsString = "q=hello"
+describe('FilterBar — rendering', () => {
+  it('pre-fills search input from URL param q', () => {
+    mockSearchParamsString = 'q=hello'
     render(<FilterBar statusOptions={[]} />)
-    expect((screen.getByPlaceholderText("Search…") as HTMLInputElement).value).toBe("hello")
+    expect((screen.getByPlaceholderText('Search…') as HTMLInputElement).value).toBe('hello')
   })
 
-  it("uses a custom searchPlaceholder", () => {
+  it('uses a custom searchPlaceholder', () => {
     render(<FilterBar searchPlaceholder="Search servers…" statusOptions={[]} />)
-    expect(screen.getByPlaceholderText("Search servers…")).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Search servers…')).toBeInTheDocument()
   })
 
-  it("pre-fills namespace input from URL param namespace", () => {
-    mockSearchParamsString = "namespace=acme"
+  it('pre-fills namespace input from URL param namespace', () => {
+    mockSearchParamsString = 'namespace=acme'
     render(<FilterBar statusOptions={[]} />)
-    expect((screen.getByPlaceholderText("Publisher…") as HTMLInputElement).value).toBe("acme")
+    expect((screen.getByPlaceholderText('Publisher…') as HTMLInputElement).value).toBe('acme')
   })
 
-  it("renders status options with title-cased labels", () => {
-    render(<FilterBar statusOptions={["draft", "published", "deprecated"]} />)
-    expect(screen.getByRole("option", { name: "All statuses" })).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "Draft" })).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "Published" })).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "Deprecated" })).toBeInTheDocument()
+  it('renders status options with title-cased labels', () => {
+    render(<FilterBar statusOptions={['draft', 'published', 'deprecated']} />)
+    expect(screen.getByRole('option', { name: 'All statuses' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Draft' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Published' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Deprecated' })).toBeInTheDocument()
   })
 
-  it("pre-selects status from URL param", () => {
-    mockSearchParamsString = "status=published"
-    render(<FilterBar statusOptions={["draft", "published", "deprecated"]} />)
-    expect((screen.getByLabelText("Filter by status") as HTMLSelectElement).value).toBe("published")
+  it('pre-selects status from URL param', () => {
+    mockSearchParamsString = 'status=published'
+    render(<FilterBar statusOptions={['draft', 'published', 'deprecated']} />)
+    expect((screen.getByLabelText('Filter by status') as HTMLSelectElement).value).toBe('published')
   })
 
-  it("hides the visibility filter by default", () => {
+  it('hides the visibility filter by default', () => {
     render(<FilterBar statusOptions={[]} />)
-    expect(screen.queryByLabelText("Filter by visibility")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Filter by visibility')).not.toBeInTheDocument()
   })
 
-  it("shows the visibility filter when showVisibility=true", () => {
+  it('shows the visibility filter when showVisibility=true', () => {
     render(<FilterBar statusOptions={[]} showVisibility />)
-    expect(screen.getByLabelText("Filter by visibility")).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "All visibility" })).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "Public" })).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "Private" })).toBeInTheDocument()
+    expect(screen.getByLabelText('Filter by visibility')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'All visibility' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Public' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Private' })).toBeInTheDocument()
   })
 
-  it("pre-selects visibility from URL param", () => {
-    mockSearchParamsString = "visibility=private"
+  it('pre-selects visibility from URL param', () => {
+    mockSearchParamsString = 'visibility=private'
     render(<FilterBar statusOptions={[]} showVisibility />)
-    expect((screen.getByLabelText("Filter by visibility") as HTMLSelectElement).value).toBe("private")
+    expect((screen.getByLabelText('Filter by visibility') as HTMLSelectElement).value).toBe('private')
   })
 
-  it("renders inside a <form> element", () => {
+  it('renders inside a <form> element', () => {
     const { container } = render(<FilterBar statusOptions={[]} />)
-    expect(container.querySelector("form")).toBeTruthy()
+    expect(container.querySelector('form')).toBeTruthy()
   })
 })
 
 // ── Clear button ──────────────────────────────────────────────────────────────
 
-describe("FilterBar — Clear button", () => {
-  it("is always visible but disabled when no filters are active", () => {
+describe('FilterBar — Clear button', () => {
+  it('is always visible but disabled when no filters are active', () => {
     render(<FilterBar statusOptions={[]} />)
-    const btn = screen.getByRole("button", { name: /clear/i })
+    const btn = screen.getByRole('button', { name: /clear/i })
     expect(btn).toBeInTheDocument()
     expect(btn).toBeDisabled()
   })
 
-  it("is shown when URL param q is set", () => {
-    mockSearchParamsString = "q=hello"
+  it('is shown when URL param q is set', () => {
+    mockSearchParamsString = 'q=hello'
     render(<FilterBar statusOptions={[]} />)
-    expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument()
   })
 
-  it("is shown when URL param namespace is set", () => {
-    mockSearchParamsString = "namespace=acme"
+  it('is shown when URL param namespace is set', () => {
+    mockSearchParamsString = 'namespace=acme'
     render(<FilterBar statusOptions={[]} />)
-    expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument()
   })
 
-  it("is shown when URL param status is set", () => {
-    mockSearchParamsString = "status=draft"
-    render(<FilterBar statusOptions={["draft"]} />)
-    expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument()
+  it('is shown when URL param status is set', () => {
+    mockSearchParamsString = 'status=draft'
+    render(<FilterBar statusOptions={['draft']} />)
+    expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument()
   })
 
-  it("is shown when URL param visibility is set", () => {
-    mockSearchParamsString = "visibility=public"
+  it('is shown when URL param visibility is set', () => {
+    mockSearchParamsString = 'visibility=public'
     render(<FilterBar statusOptions={[]} showVisibility />)
-    expect(screen.getByRole("button", { name: /clear/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument()
   })
 
-  it("calls router.replace(pathname) with no params when clicked", () => {
-    mockSearchParamsString = "q=test"
+  it('calls navigate(pathname) with no params when clicked', () => {
+    mockSearchParamsString = 'q=test'
     render(<FilterBar statusOptions={[]} />)
-    fireEvent.click(screen.getByRole("button", { name: /clear/i }))
-    expect(mockReplace).toHaveBeenCalledWith(PATHNAME)
+    fireEvent.click(screen.getByRole('button', { name: /clear/i }))
+    expect(mockNavigate).toHaveBeenCalledWith(PATHNAME, { replace: true })
   })
 })
 
 // ── Text input debounce ───────────────────────────────────────────────────────
 
-describe("FilterBar — text input debounce", () => {
-  it("does NOT call router.replace immediately on typing", () => {
+describe('FilterBar — text input debounce', () => {
+  it('does NOT call navigate immediately on typing', () => {
     render(<FilterBar statusOptions={[]} />)
-    typeInto(screen.getByPlaceholderText("Search…"), "foo")
-    expect(mockReplace).not.toHaveBeenCalled()
+    typeInto(screen.getByPlaceholderText('Search…'), 'foo')
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 
-  it("calls router.replace after the debounce window", () => {
+  it('calls navigate after the debounce window', () => {
     render(<FilterBar statusOptions={[]} />)
-    typeInto(screen.getByPlaceholderText("Search…"), "foo")
+    typeInto(screen.getByPlaceholderText('Search…'), 'foo')
     flushDebounce()
-    expect(mockReplace).toHaveBeenCalledOnce()
-    expect(mockReplace.mock.calls[0][0]).toContain("q=foo")
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).toContain('q=foo')
   })
 
-  it("debounces multiple keystrokes into a single navigation", () => {
+  it('debounces multiple keystrokes into a single navigation', () => {
     render(<FilterBar statusOptions={[]} />)
-    const input = screen.getByPlaceholderText("Search…")
-    typeInto(input, "f")
+    const input = screen.getByPlaceholderText('Search…')
+    typeInto(input, 'f')
     act(() => { vi.advanceTimersByTime(100) })
-    typeInto(input, "fo")
+    typeInto(input, 'fo')
     act(() => { vi.advanceTimersByTime(100) })
-    typeInto(input, "foo")
+    typeInto(input, 'foo')
     flushDebounce()
     // Only the final value triggers a navigation.
-    expect(mockReplace).toHaveBeenCalledOnce()
-    expect(mockReplace.mock.calls[0][0]).toContain("q=foo")
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).toContain('q=foo')
   })
 
-  it("removes q param from URL when input is cleared", () => {
-    mockSearchParamsString = "q=hello"
+  it('removes q param from URL when input is cleared', () => {
+    mockSearchParamsString = 'q=hello'
     render(<FilterBar statusOptions={[]} />)
-    typeInto(screen.getByPlaceholderText("Search…"), "")
+    typeInto(screen.getByPlaceholderText('Search…'), '')
     flushDebounce()
-    expect(mockReplace).toHaveBeenCalledOnce()
-    expect(mockReplace.mock.calls[0][0]).not.toContain("q=")
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).not.toContain('q=')
   })
 
-  it("namespace input also debounces", () => {
+  it('namespace input also debounces', () => {
     render(<FilterBar statusOptions={[]} />)
-    typeInto(screen.getByPlaceholderText("Publisher…"), "acme")
-    expect(mockReplace).not.toHaveBeenCalled()
+    typeInto(screen.getByPlaceholderText('Publisher…'), 'acme')
+    expect(mockNavigate).not.toHaveBeenCalled()
     flushDebounce()
-    expect(mockReplace).toHaveBeenCalledOnce()
-    expect(mockReplace.mock.calls[0][0]).toContain("namespace=acme")
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).toContain('namespace=acme')
   })
 })
 
 // ── Select immediate navigation ───────────────────────────────────────────────
 
-describe("FilterBar — select immediate navigation", () => {
-  it("calls router.replace immediately when status changes", () => {
-    render(<FilterBar statusOptions={["draft", "published"]} />)
-    fireEvent.change(screen.getByLabelText("Filter by status"), {
-      target: { value: "published" },
+describe('FilterBar — select immediate navigation', () => {
+  it('calls navigate immediately when status changes', () => {
+    render(<FilterBar statusOptions={['draft', 'published']} />)
+    fireEvent.change(screen.getByLabelText('Filter by status'), {
+      target: { value: 'published' },
     })
-    expect(mockReplace).toHaveBeenCalledOnce()
-    expect(mockReplace.mock.calls[0][0]).toContain("status=published")
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).toContain('status=published')
   })
 
-  it("removes status param when 'All statuses' is selected", () => {
-    mockSearchParamsString = "status=draft"
-    render(<FilterBar statusOptions={["draft", "published"]} />)
-    fireEvent.change(screen.getByLabelText("Filter by status"), {
-      target: { value: "" },
+  it('removes status param when "All statuses" is selected', () => {
+    mockSearchParamsString = 'status=draft'
+    render(<FilterBar statusOptions={['draft', 'published']} />)
+    fireEvent.change(screen.getByLabelText('Filter by status'), {
+      target: { value: '' },
     })
-    expect(mockReplace).toHaveBeenCalledOnce()
-    expect(mockReplace.mock.calls[0][0]).not.toContain("status=")
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).not.toContain('status=')
   })
 
-  it("calls router.replace immediately when visibility changes", () => {
+  it('calls navigate immediately when visibility changes', () => {
     render(<FilterBar statusOptions={[]} showVisibility />)
-    fireEvent.change(screen.getByLabelText("Filter by visibility"), {
-      target: { value: "private" },
+    fireEvent.change(screen.getByLabelText('Filter by visibility'), {
+      target: { value: 'private' },
     })
-    expect(mockReplace).toHaveBeenCalledOnce()
-    expect(mockReplace.mock.calls[0][0]).toContain("visibility=private")
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).toContain('visibility=private')
   })
 
-  it("strips cursor param when a filter changes", () => {
-    mockSearchParamsString = "cursor=abc123"
-    render(<FilterBar statusOptions={["draft"]} />)
-    fireEvent.change(screen.getByLabelText("Filter by status"), {
-      target: { value: "draft" },
+  it('strips cursor param when a filter changes', () => {
+    mockSearchParamsString = 'cursor=abc123'
+    render(<FilterBar statusOptions={['draft']} />)
+    fireEvent.change(screen.getByLabelText('Filter by status'), {
+      target: { value: 'draft' },
     })
-    expect(mockReplace.mock.calls[0][0]).not.toContain("cursor=")
+    expect(mockNavigate.mock.calls[0][0]).not.toContain('cursor=')
   })
 })
