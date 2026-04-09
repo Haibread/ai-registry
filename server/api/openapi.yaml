@@ -8,8 +8,8 @@ info:
   contact:
     name: AI Registry Team
 servers:
-  - url: /api/v1
-    description: v1
+  - url: /
+    description: Current host
 
 tags:
   - name: system
@@ -17,11 +17,17 @@ tags:
   - name: publishers
     description: Publisher management (admin only)
   - name: mcp
-    description: MCP server registry
+    description: MCP server registry (v1)
   - name: agents
-    description: AI agent registry
+    description: AI agent registry (v1)
+  - name: audit
+    description: Audit log (admin only)
+  - name: v0
+    description: MCP registry wire-format (spec-compatible /v0 surface)
 
 paths:
+  # ── System ───────────────────────────────────────────────────────────────
+
   /healthz:
     get:
       operationId: healthz
@@ -59,9 +65,11 @@ paths:
   /metrics:
     get:
       operationId: metrics
-      summary: Prometheus metrics
+      summary: Prometheus metrics (admin only)
       description: Exposes Prometheus-format metrics for scraping.
       tags: [system]
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Prometheus metrics text
@@ -69,6 +77,10 @@ paths:
             text/plain:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /openapi.yaml:
     get:
@@ -82,6 +94,51 @@ paths:
             application/yaml:
               schema:
                 type: string
+
+  /docs:
+    get:
+      operationId: apiDocs
+      summary: Interactive API reference (Scalar UI)
+      tags: [system]
+      responses:
+        "200":
+          description: HTML page with interactive API docs
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /.well-known/oauth-protected-resource:
+    get:
+      operationId: oauthProtectedResource
+      summary: MCP OAuth 2.0 Protected Resource Metadata
+      description: RFC 8707 resource metadata required by the MCP authorization spec.
+      tags: [system]
+      responses:
+        "200":
+          description: Resource metadata
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /.well-known/agent-card.json:
+    get:
+      operationId: globalAgentCard
+      summary: Global registry A2A Agent Card
+      description: >
+        Returns the Google A2A-compatible Agent Card for the registry itself,
+        making the registry a first-class A2A citizen.
+      tags: [agents]
+      responses:
+        "200":
+          description: A2A Agent Card
+          content:
+            application/json:
+              schema:
+                type: object
+
+  # ── Publishers ────────────────────────────────────────────────────────────
 
   /api/v1/publishers:
     get:
@@ -143,17 +200,19 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── MCP Servers ───────────────────────────────────────────────────────────
+
   /api/v1/mcp/servers:
     get:
       operationId: listMCPServers
-      summary: List MCP servers (public entries only)
+      summary: List MCP servers
       tags: [mcp]
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
         - name: q
           in: query
-          description: Full-text search query
+          description: Full-text search query (prefix matching)
           schema:
             type: string
         - name: namespace
@@ -161,6 +220,18 @@ paths:
           description: Filter by publisher slug
           schema:
             type: string
+        - name: status
+          in: query
+          description: Filter by lifecycle status
+          schema:
+            type: string
+            enum: [draft, published, deprecated]
+        - name: visibility
+          in: query
+          description: Filter by visibility (admin only — public requests always see public entries only)
+          schema:
+            type: string
+            enum: [public, private]
       responses:
         "200":
           description: Paginated list of MCP servers
@@ -214,18 +285,206 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/mcp/servers/{namespace}/{slug}/visibility:
+    post:
+      operationId: setMCPServerVisibility
+      summary: Set MCP server visibility (admin only)
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetVisibilityRequest"
+      responses:
+        "200":
+          description: Visibility updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visibility:
+                    type: string
+                    enum: [public, private]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/mcp/servers/{namespace}/{slug}/deprecate:
+    post:
+      operationId: deprecateMCPServer
+      summary: Deprecate an MCP server (admin only)
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: Server deprecated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/mcp/servers/{namespace}/{slug}/versions:
+    get:
+      operationId: listMCPServerVersions
+      summary: List versions of an MCP server
+      tags: [mcp]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: List of versions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPServerVersionList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createMCPServerVersion
+      summary: Create a new version of an MCP server (admin only)
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMCPServerVersionRequest"
+      responses:
+        "201":
+          description: Version created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPServerVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}:
+    get:
+      operationId: getMCPServerVersion
+      summary: Get a specific version of an MCP server
+      tags: [mcp]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "200":
+          description: Version detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPServerVersion"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish:
+    post:
+      operationId: publishMCPServerVersion
+      summary: Publish a version (admin only)
+      description: >
+        Transitions the version from draft to published. Published versions are
+        immutable — metadata edits after publish are forbidden.
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "200":
+          description: Version published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: published
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # ── Agents ────────────────────────────────────────────────────────────────
+
   /api/v1/agents:
     get:
       operationId: listAgents
-      summary: List agents (public entries only)
+      summary: List agents
       tags: [agents]
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
         - name: q
           in: query
+          description: Full-text search query (prefix matching)
           schema:
             type: string
+        - name: namespace
+          in: query
+          description: Filter by publisher slug
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by lifecycle status
+          schema:
+            type: string
+            enum: [draft, published, deprecated]
+        - name: visibility
+          in: query
+          description: Filter by visibility (admin only)
+          schema:
+            type: string
+            enum: [public, private]
       responses:
         "200":
           description: Paginated list of agents
@@ -279,6 +538,209 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/agents/{namespace}/{slug}/visibility:
+    post:
+      operationId: setAgentVisibility
+      summary: Set agent visibility (admin only)
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetVisibilityRequest"
+      responses:
+        "200":
+          description: Visibility updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visibility:
+                    type: string
+                    enum: [public, private]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/agents/{namespace}/{slug}/deprecate:
+    post:
+      operationId: deprecateAgent
+      summary: Deprecate an agent (admin only)
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: Agent deprecated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/agents/{namespace}/{slug}/versions:
+    get:
+      operationId: listAgentVersions
+      summary: List versions of an agent
+      tags: [agents]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: List of versions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVersionList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createAgentVersion
+      summary: Create a new version of an agent (admin only)
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentVersionRequest"
+      responses:
+        "201":
+          description: Version created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/agents/{namespace}/{slug}/versions/{version}:
+    get:
+      operationId: getAgentVersion
+      summary: Get a specific version of an agent
+      tags: [agents]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "200":
+          description: Version detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVersion"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/agents/{namespace}/{slug}/versions/{version}/publish:
+    post:
+      operationId: publishAgentVersion
+      summary: Publish an agent version (admin only)
+      description: >
+        Transitions the version from draft to published. Published versions are
+        immutable — metadata edits after publish are forbidden.
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "200":
+          description: Version published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: published
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/agents/{namespace}/{slug}/versions/{version}/status:
+    patch:
+      operationId: patchAgentVersionStatus
+      summary: Update agent version lifecycle status (admin only)
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchVersionStatusRequest"
+      responses:
+        "200":
+          description: Status updated; returns the updated version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  # ── Per-agent A2A card ────────────────────────────────────────────────────
+
   /agents/{namespace}/{slug}/.well-known/agent-card.json:
     get:
       operationId: getAgentCard
@@ -298,19 +760,373 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /.well-known/oauth-protected-resource:
+  # ── Stats & Audit ─────────────────────────────────────────────────────────
+
+  /api/v1/stats:
     get:
-      operationId: oauthProtectedResource
-      summary: MCP OAuth 2.0 Protected Resource Metadata
-      description: RFC 8707 resource metadata required by the MCP authorization spec.
+      operationId: getStats
+      summary: Registry resource counts (admin only)
       tags: [system]
+      security:
+        - bearerAuth: []
       responses:
         "200":
-          description: Resource metadata
+          description: Total counts for each resource type
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/RegistryCounts"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/audit:
+    get:
+      operationId: listAuditEvents
+      summary: List audit log events (admin only)
+      tags: [audit]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resource_type
+          in: query
+          description: Filter by resource type (mcp_server, agent, publisher)
+          schema:
+            type: string
+        - name: resource_id
+          in: query
+          description: Filter by resource ULID
+          schema:
+            type: string
+        - name: actor
+          in: query
+          description: Filter by Keycloak subject UUID
+          schema:
+            type: string
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of audit events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ── v0 MCP registry wire-format ───────────────────────────────────────────
+
+  /v0/servers:
+    get:
+      operationId: v0ListServers
+      summary: List MCP servers (MCP registry wire format)
+      description: >
+        Returns the paginated server list in the canonical MCP registry wire
+        format. Only public, published servers are returned.
+      tags: [v0]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Full-text search (also accepts "q" for legacy compat)
+          schema:
+            type: string
+        - name: updated_since
+          in: query
+          description: Return servers updated after this RFC 3339 timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: include_deleted
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: version
+          in: query
+          description: Exact semver filter, or "latest"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated server list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0ListResponse"
+
+  /v0/servers/{id}:
+    get:
+      operationId: v0GetServer
+      summary: Get an MCP server by ULID (MCP registry wire format)
+      tags: [v0]
+      parameters:
+        - $ref: "#/components/parameters/ServerIDParam"
+      responses:
+        "200":
+          description: Server detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0ServerResponse"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+
+  /v0/servers/{namespace}/{slug}:
+    get:
+      operationId: v0GetServerByName
+      summary: Get an MCP server by namespace/slug (MCP registry wire format)
+      tags: [v0]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: Server detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0ServerResponse"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+
+  /v0/servers/{namespace}/{slug}/versions:
+    get:
+      operationId: v0ListServerVersions
+      summary: List published versions of an MCP server (MCP registry wire format)
+      tags: [v0]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: List of published versions in wire format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0ListResponse"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+
+  /v0/servers/{namespace}/{slug}/versions/{version}:
+    get:
+      operationId: v0GetServerVersion
+      summary: Get a specific version of an MCP server (MCP registry wire format)
+      description: Use `latest` as the version value to get the latest published version.
+      tags: [v0]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "200":
+          description: Version detail in wire format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0ServerResponse"
+        "404":
+          description: Version not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+    put:
+      operationId: v0UpdateServerVersion
+      summary: Update a server version (admin only) — not yet implemented
+      tags: [v0]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      operationId: v0DeleteServerVersion
+      summary: Delete a server version (admin only) — not yet implemented
+      tags: [v0]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v0/servers/{namespace}/{slug}/status:
+    patch:
+      operationId: v0PatchServerStatus
+      summary: Update status for all published versions of a server (admin only)
+      tags: [v0]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V0StatusPatchRequest"
+      responses:
+        "200":
+          description: All versions updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0AllVersionsStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+
+  /v0/servers/{namespace}/{slug}/versions/{version}/status:
+    patch:
+      operationId: v0PatchVersionStatus
+      summary: Update status of a specific server version (admin only)
+      tags: [v0]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V0StatusPatchRequest"
+      responses:
+        "200":
+          description: Version status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0ServerResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Server or version not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+
+  /v0/publish:
+    post:
+      operationId: v0Publish
+      summary: Publish an MCP server version (admin only, MCP registry wire format)
+      description: >
+        Creates or updates an MCP server entry and immediately publishes a
+        version. The request body is the server.json shape directly (no wrapper).
+        Auto-creates the server record if the publisher exists.
+      tags: [v0]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/V0PublishRequest"
+      responses:
+        "200":
+          description: Server published; returns the full ServerResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0ServerResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V0Error"
 
 components:
   securitySchemes:
@@ -332,6 +1148,19 @@ components:
       required: true
       schema:
         type: string
+    VersionParam:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: string
+    ServerIDParam:
+      name: id
+      in: path
+      required: true
+      description: ULID of the MCP server
+      schema:
+        type: string
     LimitParam:
       name: limit
       in: query
@@ -347,6 +1176,8 @@ components:
         type: string
 
   schemas:
+    # ── System ──────────────────────────────────────────────────────────────
+
     StatusResponse:
       type: object
       required: [status]
@@ -356,6 +1187,19 @@ components:
           enum: [ok, unavailable]
         error:
           type: string
+
+    RegistryCounts:
+      type: object
+      required: [mcp_servers, agents, publishers]
+      properties:
+        mcp_servers:
+          type: integer
+        agents:
+          type: integer
+        publishers:
+          type: integer
+
+    # ── Publishers ──────────────────────────────────────────────────────────
 
     Publisher:
       type: object
@@ -404,6 +1248,52 @@ components:
         total_count:
           type: integer
 
+    # ── MCP Servers ─────────────────────────────────────────────────────────
+
+    PackageTransport:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [stdio, http, sse, streamable_http]
+        url:
+          type: string
+
+    PackageEntry:
+      type: object
+      required: [registryType, identifier, version, transport]
+      properties:
+        registryType:
+          type: string
+        registryBaseUrl:
+          type: string
+        identifier:
+          type: string
+        version:
+          type: string
+        transport:
+          $ref: "#/components/schemas/PackageTransport"
+
+    MCPServerLatestVersion:
+      type: object
+      required: [version, runtime, protocol_version]
+      properties:
+        version:
+          type: string
+        runtime:
+          type: string
+          enum: [stdio, http, sse, streamable_http]
+        protocol_version:
+          type: string
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageEntry"
+        published_at:
+          type: string
+          format: date-time
+
     MCPServer:
       type: object
       required: [id, namespace, slug, name, visibility, status, created_at, updated_at]
@@ -436,6 +1326,8 @@ components:
         updated_at:
           type: string
           format: date-time
+        latest_version:
+          $ref: "#/components/schemas/MCPServerLatestVersion"
 
     CreateMCPServerRequest:
       type: object
@@ -470,6 +1362,129 @@ components:
         total_count:
           type: integer
 
+    MCPServerVersion:
+      type: object
+      required: [id, version, runtime, protocol_version, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          description: ULID
+        version:
+          type: string
+          description: Semver string (e.g. 1.2.3)
+        runtime:
+          type: string
+          enum: [stdio, http, sse, streamable_http]
+        protocol_version:
+          type: string
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageEntry"
+        capabilities:
+          type: object
+          additionalProperties: true
+        checksum:
+          type: string
+        signature:
+          type: string
+        status:
+          type: string
+          enum: [draft, published, deprecated]
+        published_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MCPServerVersionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPServerVersion"
+
+    CreateMCPServerVersionRequest:
+      type: object
+      required: [version, runtime, protocol_version]
+      properties:
+        version:
+          type: string
+          description: Semver string (e.g. 1.2.3)
+        runtime:
+          type: string
+          enum: [stdio, http, sse, streamable_http]
+        protocol_version:
+          type: string
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageEntry"
+        capabilities:
+          type: object
+          additionalProperties: true
+        checksum:
+          type: string
+        signature:
+          type: string
+
+    # ── Agents ──────────────────────────────────────────────────────────────
+
+    AgentSkill:
+      type: object
+      required: [id, name, description, tags]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        examples:
+          type: array
+          items:
+            type: string
+
+    AgentLatestVersion:
+      type: object
+      required: [version, endpoint_url]
+      properties:
+        version:
+          type: string
+        endpoint_url:
+          type: string
+        skills:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSkill"
+        default_input_modes:
+          type: array
+          items:
+            type: string
+        default_output_modes:
+          type: array
+          items:
+            type: string
+        authentication:
+          type: array
+          items:
+            type: object
+        protocol_version:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+
     Agent:
       type: object
       required: [id, namespace, slug, name, visibility, status, created_at, updated_at]
@@ -496,6 +1511,8 @@ components:
         updated_at:
           type: string
           format: date-time
+        latest_version:
+          $ref: "#/components/schemas/AgentLatestVersion"
 
     CreateAgentRequest:
       type: object
@@ -523,6 +1540,322 @@ components:
           type: string
         total_count:
           type: integer
+
+    AgentVersion:
+      type: object
+      required: [id, version, endpoint_url, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          description: ULID
+        version:
+          type: string
+        endpoint_url:
+          type: string
+        skills:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSkill"
+        capabilities:
+          type: object
+          additionalProperties: true
+        authentication:
+          type: array
+          items:
+            type: object
+        default_input_modes:
+          type: array
+          items:
+            type: string
+        default_output_modes:
+          type: array
+          items:
+            type: string
+        provider:
+          type: object
+          additionalProperties: true
+        documentation_url:
+          type: string
+        icon_url:
+          type: string
+        protocol_version:
+          type: string
+        status:
+          type: string
+          enum: [draft, published, deprecated]
+        status_message:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AgentVersionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentVersion"
+
+    CreateAgentVersionRequest:
+      type: object
+      required: [version, endpoint_url]
+      properties:
+        version:
+          type: string
+        endpoint_url:
+          type: string
+        skills:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSkill"
+        capabilities:
+          type: object
+          additionalProperties: true
+        authentication:
+          type: array
+          items:
+            type: object
+        default_input_modes:
+          type: array
+          items:
+            type: string
+        default_output_modes:
+          type: array
+          items:
+            type: string
+        provider:
+          type: object
+          additionalProperties: true
+        documentation_url:
+          type: string
+        icon_url:
+          type: string
+        protocol_version:
+          type: string
+
+    PatchVersionStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, deprecated, deleted]
+        statusMessage:
+          type: string
+          description: Required when status is deprecated or deleted; must be absent when active.
+
+    SetVisibilityRequest:
+      type: object
+      required: [visibility]
+      properties:
+        visibility:
+          type: string
+          enum: [public, private]
+
+    # ── Audit ───────────────────────────────────────────────────────────────
+
+    AuditEvent:
+      type: object
+      required: [id, actor_subject, actor_email, action, resource_type, resource_id, created_at]
+      properties:
+        id:
+          type: string
+          description: ULID
+        actor_subject:
+          type: string
+          description: Keycloak subject UUID
+        actor_email:
+          type: string
+        action:
+          type: string
+          description: Action performed (e.g. mcp_server.created)
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        resource_ns:
+          type: string
+        resource_slug:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    AuditEventList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        next_cursor:
+          type: string
+
+    # ── v0 wire format ──────────────────────────────────────────────────────
+
+    V0Repository:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+        source:
+          type: string
+          description: e.g. "github", "gitlab"
+        subfolder:
+          type: string
+        id:
+          type: string
+
+    V0ServerDetail:
+      type: object
+      required: [name, description]
+      properties:
+        id:
+          type: string
+          description: ULID of the registry entry
+        name:
+          type: string
+          description: "namespace/slug (e.g. acme/my-server)"
+        description:
+          type: string
+        title:
+          type: string
+        version:
+          type: string
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageEntry"
+        capabilities:
+          type: object
+          additionalProperties: true
+        repository:
+          $ref: "#/components/schemas/V0Repository"
+        websiteUrl:
+          type: string
+
+    V0OfficialMeta:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, deprecated, deleted, draft]
+        statusMessage:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        statusChangedAt:
+          type: string
+          format: date-time
+        isLatest:
+          type: boolean
+
+    V0ServerResponse:
+      type: object
+      required: [server, _meta]
+      properties:
+        server:
+          $ref: "#/components/schemas/V0ServerDetail"
+        _meta:
+          type: object
+          properties:
+            io.modelcontextprotocol.registry/official:
+              $ref: "#/components/schemas/V0OfficialMeta"
+
+    V0ListMetadata:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+        nextCursor:
+          type: string
+
+    V0ListResponse:
+      type: object
+      required: [servers, metadata]
+      properties:
+        servers:
+          type: array
+          items:
+            $ref: "#/components/schemas/V0ServerResponse"
+        metadata:
+          $ref: "#/components/schemas/V0ListMetadata"
+
+    V0StatusPatchRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, deprecated, deleted]
+        statusMessage:
+          type: string
+
+    V0AllVersionsStatusResponse:
+      type: object
+      required: [updatedCount, servers]
+      properties:
+        updatedCount:
+          type: integer
+        servers:
+          type: array
+          items:
+            $ref: "#/components/schemas/V0ServerResponse"
+
+    V0PublishRequest:
+      type: object
+      required: [name, description, version, protocolVersion]
+      properties:
+        name:
+          type: string
+          description: "namespace/slug (e.g. acme/my-server)"
+          pattern: "^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$"
+        description:
+          type: string
+        version:
+          type: string
+        title:
+          type: string
+        protocolVersion:
+          type: string
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageEntry"
+        capabilities:
+          type: object
+          additionalProperties: true
+        repository:
+          $ref: "#/components/schemas/V0Repository"
+        websiteUrl:
+          type: string
+
+    V0Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    # ── Error (RFC 7807) ────────────────────────────────────────────────────
 
     Problem:
       type: object

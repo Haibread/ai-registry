@@ -30,6 +30,11 @@ A centralized registry for AI ecosystem artifacts:
      protected resource metadata).
    - Every agent MUST generate a Google A2A-compatible Agent Card
      (`/.well-known/agent-card.json` shape) from its stored metadata.
+5. **Every API endpoint MUST be documented in `server/api/openapi.yaml`.** This is
+   non-negotiable. When you add a route to the router, you MUST add the
+   corresponding path + operation to the spec in the same change. The spec is
+   the source of truth and is served live at `/openapi.yaml`; it MUST stay in
+   sync with the implementation at all times.
 
 ## Tech stack
 
@@ -59,8 +64,8 @@ A centralized registry for AI ecosystem artifacts:
 ## Repository layout (target)
 
 ```
-/api/                 # OpenAPI 3.1 spec (source of truth)
 /server/              # Go service
+  /api/               # OpenAPI 3.1 spec (source of truth, embedded into binary)
   /cmd/server/        # entrypoint
   /internal/
     /http/            # chi router, handlers, middleware (auth, logging)
@@ -112,7 +117,7 @@ CLAUDE.md             # this file
 
 1. Read `PLAN.md` before starting any task — it defines the phased roadmap.
 2. Prefer editing existing files over creating new ones.
-3. When touching the API, update `/api/openapi.yaml` first, then regenerate
+3. When touching the API, update `server/api/openapi.yaml` first, then regenerate
    types, then implement the handler.
 4. Keep MCP and A2A compatibility: when in doubt, link to the relevant spec
    section in the PR description.

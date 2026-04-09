@@ -35,10 +35,12 @@ describe('RequireAuth', () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
 
-  it('shows redirect message and calls login when not authenticated', () => {
+  it('redirects to home page (not Keycloak) when not authenticated', () => {
     renderWithRouter({ isLoading: false, accessToken: undefined, login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never })
-    expect(mockLogin).toHaveBeenCalled()
-    expect(screen.getByText(/redirecting/i)).toBeInTheDocument()
+    // Should navigate to "/" and render Home, not call login() or show Keycloak redirect
+    expect(mockLogin).not.toHaveBeenCalled()
+    expect(screen.getByText('Home')).toBeInTheDocument()
+    expect(screen.queryByText(/admin content/i)).not.toBeInTheDocument()
   })
 
   it('renders children when authenticated', () => {

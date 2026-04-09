@@ -7,6 +7,11 @@ export default defineConfig({
   test: {
     // Use jsdom for component tests; override per-file with @vitest-environment
     environment: "jsdom",
+    environmentOptions: {
+      jsdom: {
+        url: "http://localhost:3000",
+      },
+    },
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "*.test.ts"],

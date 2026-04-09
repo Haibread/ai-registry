@@ -64,6 +64,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/readyz", handlers.Readyz(deps.DB))
 	r.With(auth.RequireAdmin).Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/openapi.yaml", handlers.OpenAPISpec)
+	r.Get("/docs", handlers.SwaggerUI)
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
 	r.Get("/.well-known/oauth-protected-resource", handlers.OAuthProtectedResource)

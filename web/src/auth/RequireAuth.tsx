@@ -1,16 +1,10 @@
-import { useEffect } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 
 interface Props { children: React.ReactNode }
 
 export function RequireAuth({ children }: Props) {
-  const { accessToken, isLoading, login } = useAuth()
-
-  useEffect(() => {
-    if (!isLoading && !accessToken) {
-      login()
-    }
-  }, [isLoading, accessToken, login])
+  const { accessToken, isLoading } = useAuth()
 
   if (isLoading) {
     return (
@@ -20,12 +14,10 @@ export function RequireAuth({ children }: Props) {
     )
   }
 
+  // No token (never logged in, or session cleared after 401) → send to home.
+  // The header's Sign In button lets the user initiate login intentionally.
   if (!accessToken) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-sm text-muted-foreground animate-pulse">Redirecting to sign in…</p>
-      </div>
-    )
+    return <Navigate to="/" replace />
   }
 
   return <>{children}</>

@@ -18,6 +18,34 @@ export default defineConfig({
         target: process.env.API_URL ?? 'http://localhost:8081',
         changeOrigin: true,
       },
+      '/agents': {
+        target: process.env.API_URL ?? 'http://localhost:8081',
+        changeOrigin: true,
+      },
+      '/healthz': {
+        target: process.env.API_URL ?? 'http://localhost:8081',
+        changeOrigin: true,
+      },
+      '/readyz': {
+        target: process.env.API_URL ?? 'http://localhost:8081',
+        changeOrigin: true,
+      },
+      '/metrics': {
+        target: process.env.API_URL ?? 'http://localhost:8081',
+        changeOrigin: true,
+      },
+      '/.well-known': {
+        target: process.env.API_URL ?? 'http://localhost:8081',
+        changeOrigin: true,
+      },
+      '/docs': {
+        target: process.env.API_URL ?? 'http://localhost:8081',
+        changeOrigin: true,
+      },
+      '/openapi.yaml': {
+        target: process.env.API_URL ?? 'http://localhost:8081',
+        changeOrigin: true,
+      },
     },
   },
   build: {

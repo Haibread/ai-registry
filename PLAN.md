@@ -185,7 +185,7 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - [ ] `PATCH /api/v1/publishers/{slug}` — edit publisher
 - [ ] `DELETE /api/v1/publishers/{slug}` — delete publisher
 - [ ] `GET /api/v1/users`, `PATCH /api/v1/users/{sub}` — user & role management
-- [ ] Update `/api/openapi.yaml` to reflect all current endpoints
+- [ ] Update `server/api/openapi.yaml` to reflect all current endpoints
 
 **TODO — Admin UI (missing features):**
 - [ ] Edit form for MCP servers (`/admin/mcp/[ns]/[slug]/edit`)

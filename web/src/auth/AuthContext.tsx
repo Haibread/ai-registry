@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { UserManager, type User } from 'oidc-client-ts'
 
 const userManager = new UserManager({
@@ -51,8 +51,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = () => userManager.signinRedirect()
   const logout = () => userManager.signoutRedirect()
   // Clears the local session without a Keycloak redirect — used when the
-  // server returns 401 (expired or revoked token).
-  const clearSession = () => userManager.removeUser()
+  // server returns 401 (expired or revoked token). Stable reference (useCallback)
+  // so useMemo in useAuthClient does not recreate the client on every render.
+  const clearSession = useCallback(() => userManager.removeUser(), [])
 
   return (
     <AuthContext.Provider value={{
