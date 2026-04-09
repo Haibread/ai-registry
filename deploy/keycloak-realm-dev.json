@@ -72,8 +72,8 @@
       }
     },
     {
-      "clientId": "ai-registry-backend",
-      "name": "AI Registry Backend",
+      "clientId": "ai-registry-server",
+      "name": "AI Registry Server",
       "description": "Resource server \u2014 validates tokens issued to the web client",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",

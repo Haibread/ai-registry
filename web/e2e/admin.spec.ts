@@ -117,7 +117,7 @@ test.describe("Admin: Agent CRUD", () => {
 test.describe("Admin: Deprecate flow (via API — MCP server)", () => {
   /**
    * The UI deprecate button is only rendered for published servers.
-   * We use the backend API directly to create + publish a version first,
+   * We use the server API directly to create + publish a version first,
    * then verify the UI deprecate button works.
    *
    * API calls go through the proxy route handler which injects the session

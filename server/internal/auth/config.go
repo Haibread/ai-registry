@@ -10,7 +10,7 @@ type Config struct {
 	OIDCIssuer string
 
 	// OIDCJWKSUrl overrides the JWKS endpoint used to fetch signing keys.
-	// Useful when the backend can only reach Keycloak via an internal hostname
+	// Useful when the server can only reach Keycloak via an internal hostname
 	// (e.g. http://keycloak:8080/...) while the JWT `iss` uses an external URL.
 	// When empty, the JWKS endpoint is derived from OIDCIssuer.
 	OIDCJWKSUrl string

@@ -114,7 +114,7 @@ MCP client / browser → GET /agents/{ns}/{slug}/.well-known/agent-card.json
 ```
 postgres:5432
 keycloak:8080
-backend:8081        ← go run / air hot-reload
+server:8081         ← go run / air hot-reload
 web:3000            ← next dev
 otel-collector:4317
 jaeger:16686
@@ -123,7 +123,7 @@ jaeger:16686
 **Production (docker-compose prod profile)**
 ```
 postgres (managed or container with volume)
-backend (multi-stage Docker image, distroless)
+server (multi-stage Docker image, alpine)
 web (Next.js standalone output)
 reverse proxy (Caddy or nginx) → TLS termination
 otel-collector → external Prometheus / Grafana / Tempo
@@ -131,7 +131,7 @@ otel-collector → external Prometheus / Grafana / Tempo
 
 **Kubernetes (Helm chart)**
 ```
-Deployment: backend (2+ replicas, HPA on CPU)
+Deployment: server (2+ replicas, HPA on CPU)
 Deployment: web (2+ replicas)
 Service + Ingress (with TLS via cert-manager)
 PodDisruptionBudget on both
@@ -193,7 +193,7 @@ Required fields on every log line:
   "msg": "...",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "span_id": "00f067aa0ba902b7",
-  "service.name": "ai-registry-backend",
+  "service.name": "ai-registry-server",
   "service.version": "0.1.0"
 }
 ```
@@ -211,7 +211,7 @@ Never log: `Authorization` header value, raw JWT, API key plaintext.
 ```
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-OTEL_SERVICE_NAME=ai-registry-backend
+OTEL_SERVICE_NAME=ai-registry-server
 OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production
 ```
 

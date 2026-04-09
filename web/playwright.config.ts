@@ -4,7 +4,7 @@ import { defineConfig, devices } from "@playwright/test"
  * Playwright configuration for AI Registry E2E tests.
  *
  * Prerequisites:
- *   - The full docker-compose stack must be running (web + backend + keycloak + postgres).
+ *   - The full docker-compose stack must be running (web + server + keycloak + postgres).
  *   - A test admin user must exist in Keycloak (see E2E_ADMIN_* env vars below).
  *
  * Run:

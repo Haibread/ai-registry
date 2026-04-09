@@ -59,7 +59,7 @@ export default function AdminDashboard() {
           className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
           data-testid="stats-error"
         >
-          Failed to load stats — check backend connectivity and Keycloak token claims.
+          Failed to load stats — check server connectivity and Keycloak token claims.
         </div>
       )}
 

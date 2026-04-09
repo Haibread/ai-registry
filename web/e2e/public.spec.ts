@@ -35,7 +35,7 @@ test.describe("Public: MCP Servers listing", () => {
   test("private servers do not appear in the public listing", async ({
     page,
   }) => {
-    // private entries have visibility='private' — the backend filters them out
+    // private entries have visibility='private' — the server filters them out
     // for unauthenticated requests.  We check the page text doesn't contain
     // the magic marker we'd expect only on a private fixture.
     await page.goto("/mcp")

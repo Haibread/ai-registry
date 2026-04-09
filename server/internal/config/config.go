@@ -26,7 +26,7 @@ type AuthConfig struct {
 	OIDCIssuer string
 
 	// OIDCJWKSUrl overrides the JWKS fetch URL. Set this to the internal
-	// Docker hostname when the backend cannot reach the external issuer URL,
+	// Docker hostname when the server cannot reach the external issuer URL,
 	// e.g. http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs
 	OIDCJWKSUrl string
 }

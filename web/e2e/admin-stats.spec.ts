@@ -6,7 +6,7 @@
  * Root causes previously observed:
  *  1. /api/v1/stats didn't exist — dashboard fell back to "—" for all counts.
  *  2. Keycloak 26 doesn't include realm_access.roles in access tokens unless
- *     explicitly configured — backend returned 401 → frontend silently showed "—".
+ *     explicitly configured — server returned 401 → frontend silently showed "—".
  *
  * These tests verify that:
  *  a) The stats panel shows numeric values (never "—") after login.
@@ -44,7 +44,7 @@ test.describe("Admin Dashboard: stats panel (regression)", () => {
 
   test("stats API is reachable and returns required keys", async ({ page }) => {
     // Use the browser request context (carries the authenticated session cookie)
-    // to call the backend via the Next.js proxy route.
+    // to call the server via the proxy route.
     const res = await page.request.get("/api/proxy/stats")
     expect(res.ok()).toBeTruthy()
 
