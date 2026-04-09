@@ -1,3 +1,4 @@
+import { cache } from "react"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
@@ -19,21 +20,24 @@ interface Props {
   params: Promise<{ ns: string; slug: string }>
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { ns, slug } = await params
+// cache() deduplicates this fetch within a single request cycle so that
+// generateMetadata and the page component share one backend call.
+const getAgent = cache(async (ns: string, slug: string) => {
   const api = getPublicClient()
-  const { data } = await api.GET("/api/v1/agents/{namespace}/{slug}", {
+  return api.GET("/api/v1/agents/{namespace}/{slug}", {
     params: { path: { namespace: ns, slug } },
   })
+})
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { ns, slug } = await params
+  const { data } = await getAgent(ns, slug)
   return { title: data ? `${data.name} — Agent` : `${ns}/${slug}` }
 }
 
 export default async function AgentPage({ params }: Props) {
   const { ns, slug } = await params
-  const api = getPublicClient()
-  const { data, error } = await api.GET("/api/v1/agents/{namespace}/{slug}", {
-    params: { path: { namespace: ns, slug } },
-  })
+  const { data, error } = await getAgent(ns, slug)
 
   if (error || !data) notFound()
 

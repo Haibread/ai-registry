@@ -108,7 +108,7 @@ describe("getApiClient — RefreshAccessTokenError session gate", () => {
   it("does NOT redirect when there is no session at all (unauthenticated read)", async () => {
     // Unauthenticated callers have no session — the middleware blocks them
     // from /admin separately; getApiClient should not redirect by itself.
-    mockAuth.mockResolvedValue(null)
+    mockAuth.mockResolvedValue(null as never)
 
     await getApiClient()
 
@@ -215,7 +215,7 @@ describe("getApiClient — Authorization header", () => {
   })
 
   it("omits the Authorization header when there is no access token", async () => {
-    mockAuth.mockResolvedValue(null)
+    mockAuth.mockResolvedValue(null as never)
     const fetchSpy = stubFetch(200, {})
 
     const api = await getApiClient()

@@ -135,7 +135,7 @@ export function NewAgentForm({ publishers }: Props) {
           <CardHeader>
             <CardTitle className="text-base">First Version</CardTitle>
             <CardDescription>
-              Leave "Version" blank to create the agent as a draft without a version.
+              Leave &quot;Version&quot; blank to create the agent as a draft without a version.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

@@ -13,8 +13,14 @@ const navItems = [
   { href: "/admin/api-keys", label: "API Keys", icon: Key },
 ]
 
-export function AdminSidebar() {
-  const pathname = usePathname()
+interface AdminSidebarProps {
+  /** Override the current pathname — used in tests to avoid mocking next/navigation. */
+  pathname?: string
+}
+
+export function AdminSidebar({ pathname: pathnameProp }: AdminSidebarProps = {}) {
+  const routerPathname = usePathname()
+  const pathname = pathnameProp ?? routerPathname ?? ""
 
   return (
     <aside className="w-56 shrink-0 border-r bg-muted/30 min-h-[calc(100vh-3.5rem)]">

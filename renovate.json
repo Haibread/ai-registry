@@ -61,6 +61,14 @@
       "allowedVersions": "^22.0.0"
     },
     {
+      "description": "openapi-typescript peer-dep declares typescript ^5.x — group with typescript so they upgrade together and the .npmrc note stays accurate",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["typescript", "openapi-typescript"],
+      "groupName": "TypeScript + openapi-typescript",
+      "groupSlug": "typescript-openapi",
+      "automerge": false
+    },
+    {
       "description": "Automerge patch and minor Go updates",
       "matchManagers": ["gomod"],
       "matchUpdateTypes": ["patch", "minor"],

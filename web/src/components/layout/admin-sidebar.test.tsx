@@ -20,9 +20,10 @@ function linkClass(label: string): string {
   return screen.getByRole("link", { name: new RegExp(label, "i") }).className
 }
 
-// "shadow-sm" only appears on the active link; the inactive hover class
-// "hover:bg-background/60" would false-positive on a plain "bg-background" check.
-const ACTIVE_CLASS = "shadow-sm"
+// "bg-accent text-accent-foreground" is the exact pair applied on active links.
+// Inactive links use "hover:bg-accent hover:text-accent-foreground" (different token order),
+// so the substring "bg-accent text-accent-foreground" never appears in the inactive className.
+const ACTIVE_CLASS = "bg-accent text-accent-foreground"
 const INACTIVE_CLASS = "text-muted-foreground"
 
 describe("AdminSidebar — active route detection", () => {

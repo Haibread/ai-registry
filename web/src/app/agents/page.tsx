@@ -7,6 +7,7 @@ import { AgentCard } from "@/components/agents/agent-card"
 import { FilterBar } from "@/components/ui/filter-bar"
 import { FilterBarSkeleton } from "@/components/ui/filter-bar-skeleton"
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
 import { getPublicClient } from "@/lib/api-client"
 
 export const metadata: Metadata = { title: "Agents" }
@@ -78,7 +79,7 @@ export default async function AgentsPage({
             </p>
             {(q || namespace || status) && (
               <Button variant="outline" size="sm" asChild>
-                <a href="/agents">Clear filters</a>
+                <Link href="/agents">Clear filters</Link>
               </Button>
             )}
           </div>

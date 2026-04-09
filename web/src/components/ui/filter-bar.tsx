@@ -43,7 +43,7 @@ interface FilterBarProps {
 
 const selectClass =
   "h-9 rounded-md border border-input bg-background px-3 text-sm " +
-  "text-foreground shadow-sm transition-colors focus-visible:outline-none " +
+  "text-foreground shadow-xs transition-colors focus-visible:outline-hidden " +
   "focus-visible:ring-1 focus-visible:ring-ring min-w-[130px]"
 
 const DEBOUNCE_MS = 300
@@ -71,11 +71,14 @@ export function FilterBar({
 
   // Keep local text state in sync when the URL changes externally (browser
   // back/forward). Selects read directly from searchParams so they don't need
-  // this treatment.
+  // this treatment. setState in effect is intentional here: we're syncing
+  // React state FROM an external system (URL), which is the documented use case.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setQ(searchParams.get("q") ?? "")
     setNamespace(searchParams.get("namespace") ?? "")
   }, [searchParams])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Debounce timer ref — shared across q and namespace.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
