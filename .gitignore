@@ -9,9 +9,9 @@ Thumbs.db
 *.iml
 
 # ── Go ────────────────────────────────────────────────────────────────────────
-backend/bin/
-backend/dist/
-backend/tmp/
+server/bin/
+server/dist/
+server/tmp/
 
 # ── Vite / Node ───────────────────────────────────────────────────────────────
 web/node_modules/

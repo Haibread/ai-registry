@@ -143,7 +143,7 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - `/healthz`, `/readyz`, `/metrics`, `/openapi.yaml` serving.
 - Initial OpenAPI 3.1 stub.
 - Postgres + migrations + first tables (`publishers`, `users`).
-- Dockerfile + docker-compose (postgres, keycloak, backend).
+- Dockerfile + docker-compose (postgres, keycloak, server).
 
 ### Phase 2 — MCP registry MVP ✅
 - Schema: `mcp_servers`, `mcp_server_versions`.
@@ -248,7 +248,7 @@ Query** — a plain SPA served as static files from nginx.
 - [x] Tailwind CSS v4, postcss, tsconfig configured
 - [x] `src/components/ui/`, `src/lib/` migrated (no Next.js deps)
 - [x] Installed: `react-router-dom`, `@tanstack/react-query`, `oidc-client-ts`, `openapi-fetch`, `lucide-react`
-- [x] Vite proxy for `/api/v1/*`, `/v0/*`, `/.well-known/*` → backend
+- [x] Vite proxy for `/api/v1/*`, `/v0/*`, `/.well-known/*` → server
 - [x] `openapi-typescript` regenerated `schema.d.ts`
 
 **Step 2 — Auth** ✅
@@ -275,7 +275,7 @@ Query** — a plain SPA served as static files from nginx.
 - [x] `notFound()` / `redirect()` replaced with React Router primitives
 
 **Step 6 — Production build** ✅
-- [x] `web/nginx.conf` with `try_files $uri /index.html` + backend proxy blocks
+- [x] `web/nginx.conf` with `try_files $uri /index.html` + server proxy blocks
 - [x] `web/Dockerfile`: `node:22-alpine` build stage → `nginx:alpine` serve stage
 - [x] `AUTH_SECRET`, `AUTH_KEYCLOAK_SECRET`, `NEXTAUTH_URL` removed from docker-compose
 - [x] `VITE_OIDC_ISSUER`, `VITE_OIDC_CLIENT_ID` added as build args

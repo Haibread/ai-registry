@@ -7,7 +7,7 @@ name: ai-registry-dev
 #
 # The web service mounts ../web directly into the container and runs
 # `vite dev`, so any file save is picked up immediately.
-# Vite proxies /api/* and /v0/* to the backend (configured in vite.config.ts).
+# Vite proxies /api/* and /v0/* to the server (configured in vite.config.ts).
 # All other services are identical to the production compose.
 
 services:
@@ -42,10 +42,10 @@ services:
     ports:
       - "8080:8080"
 
-  # ── Backend ──────────────────────────────────────────────────────────────────
-  backend:
+  # ── Server ───────────────────────────────────────────────────────────────────
+  server:
     build:
-      context: ../backend
+      context: ../server
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
@@ -61,16 +61,16 @@ services:
       retries: 20
       start_period: 15s
 
-  # ── Seed (one-shot, runs after backend is ready and migrations are done) ────
+  # ── Seed (one-shot, runs after server is ready and migrations are done) ─────
   seed:
     build:
-      context: ../backend
+      context: ../server
       dockerfile: Dockerfile
     entrypoint: ["/seed"]
     restart: "no"
     env_file: .env
     depends_on:
-      backend:
+      server:
         condition: service_healthy
 
   # ── Web (Vite dev server with hot reload) ───────────────────────────────────
@@ -92,9 +92,9 @@ services:
         npm run dev -- --host
       "
     environment:
-      # Vite proxies /api/* to backend (see vite.config.ts), so API_URL is only
-      # needed by the Vite proxy, not baked into the bundle.
-      API_URL: http://backend:8081
+      # Vite proxies /api/* to the server (see vite.config.ts), so API_URL is
+      # only needed by the Vite proxy, not baked into the bundle.
+      API_URL: http://server:8081
       # VITE_* vars are exposed to the browser bundle at runtime in dev mode.
       VITE_OIDC_ISSUER: "${VITE_OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}"
       VITE_OIDC_CLIENT_ID: "${VITE_OIDC_CLIENT_ID:-ai-registry-web}"
@@ -111,7 +111,7 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      backend:
+      server:
         condition: service_started
       keycloak:
         condition: service_started

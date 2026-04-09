@@ -33,7 +33,7 @@ A centralized registry for AI ecosystem artifacts:
 
 ## Tech stack
 
-- **Backend**: Go, `chi` router, PostgreSQL, `sqlc` or `pgx` for DB access,
+- **Server**: Go, `chi` router, PostgreSQL, `sqlc` or `pgx` for DB access,
   `golang-migrate` for schema migrations.
 - **Auth**: OAuth2 / OIDC (external IdP, Keycloak in dev via docker-compose).
   JWT access tokens validated via JWKS. MCP-compatible. Also supports hashed
@@ -47,10 +47,10 @@ A centralized registry for AI ecosystem artifacts:
   in `src/pages/`.
 - **OpenAPI**: hand-written OpenAPI 3.1 spec is the source of truth; server
   types and TS client are generated from it.
-- **Dev infra**: docker-compose for Postgres + Keycloak + backend + web.
+- **Dev infra**: docker-compose for Postgres + Keycloak + server + web.
 - **Deployment**: docker-compose (dev + prod profiles) + Helm chart for k8s.
 - **Observability**: OpenTelemetry (OTel) for all signals — traces, metrics,
-  and logs. Use the Go `go.opentelemetry.io/otel` SDK in the backend; export
+  and logs. Use the Go `go.opentelemetry.io/otel` SDK in the server; export
   via OTLP (gRPC or HTTP). Every HTTP handler must be traced; DB calls must
   produce child spans. Structured logs must carry `trace_id` and `span_id`
   fields. Key business metrics (request counts, latency histograms, registry
@@ -60,7 +60,7 @@ A centralized registry for AI ecosystem artifacts:
 
 ```
 /api/                 # OpenAPI 3.1 spec (source of truth)
-/backend/             # Go service
+/server/              # Go service
   /cmd/server/        # entrypoint
   /internal/
     /http/            # chi router, handlers, middleware (auth, logging)
@@ -120,7 +120,7 @@ CLAUDE.md             # this file
 6. **Always write tests** for every function, handler, or repository method you
    create or modify. No exceptions.
 7. **Instrument with OTel**: every new handler gets a span; every new metric
-   (counter, histogram) is registered in `/internal/observability/`. Use the
+   (counter, histogram) is registered in `/server/internal/observability/`. Use the
    existing tracer/meter from context — never create ad-hoc providers.
 
 ## Resolved implementation decisions
