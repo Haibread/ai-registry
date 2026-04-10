@@ -152,10 +152,11 @@ jobs:
         id: versions
         run: |
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            # Strip the leading 'v' for SemVer chart version (Helm requires no prefix).
+            # Strip the leading 'v': Helm requires no prefix, and Docker images
+            # are tagged without it (type=semver,pattern={{version}}).
             CHART_VERSION="${{ github.ref_name }}"
             CHART_VERSION="${CHART_VERSION#v}"
-            APP_VERSION="${{ github.ref_name }}"
+            APP_VERSION="${CHART_VERSION}"
           else
             BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-')
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
