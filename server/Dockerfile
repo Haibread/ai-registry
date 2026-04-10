@@ -13,8 +13,7 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server && \
-    go build -trimpath -ldflags="-s -w" -o /out/seed   ./cmd/seed
+    go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM alpine:3.21
@@ -25,7 +24,6 @@ RUN apk add --no-cache wget && \
     adduser -S -u 1001 -G appgroup appuser
 
 COPY --from=builder /out/server /server
-COPY --from=builder /out/seed   /seed
 
 USER appuser
 EXPOSE 8081

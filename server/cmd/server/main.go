@@ -13,6 +13,7 @@ import (
 	"time"
 
 	authpkg "github.com/haibread/ai-registry/internal/auth"
+	"github.com/haibread/ai-registry/internal/bootstrap"
 	"github.com/haibread/ai-registry/internal/config"
 	registryhttp "github.com/haibread/ai-registry/internal/http"
 	"github.com/haibread/ai-registry/internal/observability"
@@ -30,9 +31,15 @@ func run() error {
 	// ── Flags ────────────────────────────────────────────────────────────────
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	configFile := fs.String("config", "", "path to YAML config file (overrides CONFIG_FILE env var)")
+	bootstrapFile := fs.String("bootstrap-file", "", "path to YAML/JSON bootstrap file; loads initial data then starts the server (overrides BOOTSTRAP_FILE env var)")
 	// Parse only known flags; ignore unrecognised ones so that test harnesses
 	// can inject extra arguments without breaking the server.
 	_ = fs.Parse(os.Args[1:])
+
+	// Env var fallback for bootstrap file (consistent with other config values).
+	if *bootstrapFile == "" {
+		*bootstrapFile = os.Getenv("BOOTSTRAP_FILE")
+	}
 
 	// ── Config ───────────────────────────────────────────────────────────────
 	cfg, err := config.Load(*configFile)
@@ -84,6 +91,18 @@ func run() error {
 		return err
 	}
 	logger.Info("migrations complete")
+
+	// ── Bootstrap (optional) ─────────────────────────────────────────────────
+	if *bootstrapFile != "" {
+		logger.Info("loading bootstrap file", slog.String("path", *bootstrapFile))
+		spec, err := bootstrap.LoadSpec(*bootstrapFile)
+		if err != nil {
+			return err
+		}
+		if err := bootstrap.Run(ctx, db, spec, logger); err != nil {
+			return err
+		}
+	}
 
 	// ── Trusted proxy ─────────────────────────────────────────────────────────
 	var trustedProxy *net.IPNet

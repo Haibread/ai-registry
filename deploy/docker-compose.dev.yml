@@ -49,6 +49,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Mount the example bootstrap file and enable it automatically in dev.
+      # Remove or override BOOTSTRAP_FILE in .env to disable.
+      BOOTSTRAP_FILE: /etc/ai-registry/bootstrap.yaml
+    volumes:
+      - ./bootstrap.example.yaml:/etc/ai-registry/bootstrap.yaml:ro
     ports:
       - "8081:8081"
     depends_on:
@@ -60,18 +66,6 @@ services:
       timeout: 5s
       retries: 20
       start_period: 15s
-
-  # ── Seed (one-shot, runs after server is ready and migrations are done) ─────
-  seed:
-    build:
-      context: ../server
-      dockerfile: Dockerfile
-    entrypoint: ["/seed"]
-    restart: "no"
-    env_file: .env
-    depends_on:
-      server:
-        condition: service_healthy
 
   # ── Web (Vite dev server with hot reload) ───────────────────────────────────
   web:
