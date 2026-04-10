@@ -62,10 +62,10 @@ services:
     build:
       context: ..
       dockerfile: web/Dockerfile
-      args:
-        VITE_OIDC_ISSUER: "${VITE_OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}"
-        VITE_OIDC_CLIENT_ID: "${VITE_OIDC_CLIENT_ID:-ai-registry-web}"
     restart: unless-stopped
+    environment:
+      # nginx proxies /api/, /v0/, /config.json, etc. to this upstream.
+      API_URL: "http://server:8081"
     ports:
       - "3000:80"
     depends_on:

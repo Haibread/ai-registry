@@ -23,6 +23,10 @@ RUN npm run build
 # ── Runtime (nginx) ───────────────────────────────────────────────────────────
 FROM nginx:alpine AS runner
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY web/nginx.conf /etc/nginx/conf.d/default.conf
+# Stored as a template; API_URL is substituted at container startup via envsubst
+# so that a single image works across docker-compose and Kubernetes.
+COPY web/nginx.conf /etc/nginx/conf.d/default.conf.template
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Only substitute ${API_URL} — quoting the variable list prevents nginx's own
+# $host, $remote_addr, $uri etc. from being wiped by envsubst.
+CMD ["/bin/sh", "-c", "envsubst '${API_URL}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
