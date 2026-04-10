@@ -50,24 +50,24 @@ export default function HomePage() {
           <div className="container grid grid-cols-2 gap-4 max-w-sm mx-auto">
             <Link to="/mcp" className="group">
               <Card className="transition-shadow hover:shadow-md">
-                <CardHeader className="pb-2">
+                <CardHeader className="pt-4 pb-1">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-center gap-2 group-hover:text-primary transition-colors">
                     <Server className="h-4 w-4" aria-hidden="true" /> MCP Servers
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pb-4">
                   <p className="text-3xl font-bold text-center">{mcpTotal}</p>
                 </CardContent>
               </Card>
             </Link>
             <Link to="/agents" className="group">
               <Card className="transition-shadow hover:shadow-md">
-                <CardHeader className="pb-2">
+                <CardHeader className="pt-4 pb-1">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-center gap-2 group-hover:text-primary transition-colors">
                     <Bot className="h-4 w-4" aria-hidden="true" /> Agents
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pb-4">
                   <p className="text-3xl font-bold text-center">{agentsTotal}</p>
                 </CardContent>
               </Card>
