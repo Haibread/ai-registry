@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import { SessionExpired } from './SessionExpired'
 
-vi.mock('./AuthContext', () => ({
-  userManager: { signoutRedirect: vi.fn() },
-}))
+const mockSignoutRedirect = vi.fn()
 
-import { userManager } from './AuthContext'
-const mockSignout = vi.mocked(userManager.signoutRedirect)
+vi.mock('./AuthContext', () => ({
+  getUserManager: () => Promise.resolve({ signoutRedirect: mockSignoutRedirect }),
+}))
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -22,14 +21,21 @@ describe('<SessionExpired>', () => {
     expect(screen.getByText(/signing you out/i)).toBeInTheDocument()
   })
 
-  it('calls signoutRedirect on mount', () => {
-    render(<SessionExpired />)
-    expect(mockSignout).toHaveBeenCalledTimes(1)
+  it('calls signoutRedirect on mount', async () => {
+    await act(async () => {
+      render(<SessionExpired />)
+    })
+    expect(mockSignoutRedirect).toHaveBeenCalledTimes(1)
   })
 
-  it('does not call signoutRedirect more than once on re-render', () => {
-    const { rerender } = render(<SessionExpired />)
-    rerender(<SessionExpired />)
-    expect(mockSignout).toHaveBeenCalledTimes(1)
+  it('does not call signoutRedirect more than once on re-render', async () => {
+    let rerender: (ui: React.ReactElement) => void
+    await act(async () => {
+      ;({ rerender } = render(<SessionExpired />))
+    })
+    await act(async () => {
+      rerender(<SessionExpired />)
+    })
+    expect(mockSignoutRedirect).toHaveBeenCalledTimes(1)
   })
 })

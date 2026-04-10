@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { userManager } from './AuthContext'
+import { getUserManager } from './AuthContext'
 
 export function SessionExpired() {
   const called = useRef(false)
   useEffect(() => {
     if (called.current) return
     called.current = true
-    userManager.signoutRedirect()
+    getUserManager().then((um) => um.signoutRedirect())
   }, [])
 
   return (
