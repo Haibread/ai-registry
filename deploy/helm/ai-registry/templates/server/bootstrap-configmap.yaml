@@ -1,0 +1,32 @@
+{{- /*
+Bootstrap ConfigMap — rendered only when backend.bootstrap.enabled is true.
+
+Content precedence (highest wins):
+  1. backend.bootstrap.content  — raw YAML provided inline in values
+  2. backend.bootstrap.sampleData — the built-in sample data bundled with the chart
+
+The server reads this file at startup (BOOTSTRAP_FILE env var) and upserts
+all publishers, MCP servers, and agents. Running it multiple times is safe —
+existing entries are skipped.
+*/}}
+{{- if .Values.backend.bootstrap.enabled -}}
+{{- $content := "" -}}
+{{- if .Values.backend.bootstrap.content -}}
+{{- $content = .Values.backend.bootstrap.content -}}
+{{- else if .Values.backend.bootstrap.sampleData -}}
+{{- $content = (.Files.Get "files/bootstrap-sample.yaml") -}}
+{{- end -}}
+{{- if not $content -}}
+{{- fail "backend.bootstrap.enabled is true but neither backend.bootstrap.content nor backend.bootstrap.sampleData is set" -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-registry.backend.fullname" . }}-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.backend.labels" . | nindent 4 }}
+data:
+  bootstrap.yaml: |
+    {{- $content | nindent 4 }}
+{{- end }}

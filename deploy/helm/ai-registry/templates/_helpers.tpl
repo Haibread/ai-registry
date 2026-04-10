@@ -31,15 +31,6 @@ Create chart label.
 {{- end }}
 
 {{/*
-Resolve the image tag: use the component-level tag if set, otherwise fall back
-to the chart AppVersion.
-Usage: {{ include "ai-registry.imageTag" .Values.backend }}
-*/}}
-{{- define "ai-registry.imageTag" -}}
-{{- .tag | default "" }}
-{{- end }}
-
-{{/*
 Common labels (applied to all resources).
 */}}
 {{- define "ai-registry.labels" -}}
@@ -60,7 +51,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/* -------------------------------------------------------------------------
-Backend helpers
+Backend (server) helpers
 ------------------------------------------------------------------------- */}}
 
 {{- define "ai-registry.backend.fullname" -}}

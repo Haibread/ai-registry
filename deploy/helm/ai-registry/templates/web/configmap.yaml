@@ -7,7 +7,7 @@ metadata:
     {{- include "ai-registry.web.labels" . | nindent 4 }}
 data:
   {{- /*
-    API_URL: internal backend address used by the Next.js server process.
+    API_URL: internal server address used by the SPA's backend proxy / SSR.
     Falls back to the in-cluster service URL derived from the release name.
   */}}
   API_URL: {{ .Values.web.apiUrl | default (printf "http://%s:%d" (include "ai-registry.backend.fullname" .) (int .Values.backend.service.port)) | quote }}

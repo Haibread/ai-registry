@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "ai-registry.backend.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.backend.autoscaling }}
+  {{- if not .Values.backend.autoscaling.enabled }}
   replicas: {{ .Values.backend.replicaCount }}
   {{- end }}
   selector:
@@ -15,8 +15,14 @@ spec:
   template:
     metadata:
       annotations:
-        # Force a rollout when the ConfigMap changes.
-        checksum/configmap: {{ include (print $.Template.BasePath "/backend-configmap.yaml") . | sha256sum }}
+        # Force a rollout when the ConfigMap or Secret changes.
+        checksum/configmap: {{ include (print $.Template.BasePath "/server/configmap.yaml") . | sha256sum }}
+        {{- if and .Values.backend.databaseUrl (not .Values.backend.databaseUrlSecret) (not .Values.cnpg.enabled) }}
+        checksum/secret: {{ include (print $.Template.BasePath "/server/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.backend.bootstrap.enabled }}
+        checksum/bootstrap: {{ include (print $.Template.BasePath "/server/bootstrap-configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.backend.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -34,14 +40,14 @@ spec:
       securityContext:
         {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
       containers:
-        - name: backend
+        - name: server
           securityContext:
             {{- toYaml .Values.backend.securityContext | nindent 12 }}
           image: {{ include "ai-registry.backend.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: {{ .Values.backend.service.port }}
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -51,7 +57,7 @@ spec:
               DATABASE_URL precedence (highest to lowest):
               1. External secret referenced by databaseUrlSecret
               2. CNPG-generated superuser secret (when cnpg.enabled)
-              3. Plain-text value already injected via ConfigMap (lowest)
+              3. Plain-text value injected via ConfigMap (lowest)
             */}}
             {{- if .Values.backend.databaseUrlSecret }}
             - name: DATABASE_URL
@@ -72,6 +78,9 @@ spec:
                   name: {{ include "ai-registry.backend.fullname" . }}
                   key: DATABASE_URL
             {{- end }}
+            {{- with .Values.backend.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -88,6 +97,13 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
           {{- with .Values.backend.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -95,9 +111,25 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.backend.bootstrap.enabled }}
+            - name: bootstrap
+              mountPath: /etc/ai-registry
+              readOnly: true
+            {{- end }}
+            {{- with .Values.backend.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.backend.bootstrap.enabled }}
+        - name: bootstrap
+          configMap:
+            name: {{ include "ai-registry.backend.fullname" . }}-bootstrap
+        {{- end }}
+        {{- with .Values.backend.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

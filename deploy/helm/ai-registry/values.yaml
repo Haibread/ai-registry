@@ -20,17 +20,54 @@ backend:
     # Defaults to .Chart.AppVersion when empty
     tag: ""
 
-  # Non-sensitive environment variables
+  # ── Auth (OIDC) ─────────────────────────────────────────────────────────
+  # [REQUIRED] OIDC issuer URL — must match the `iss` claim in issued JWTs.
   oidcIssuer: ""
+  # Optional audience claim check (leave empty to skip).
   oidcAudience: ""
-  otlpEndpoint: ""
+  # Override the JWKS URL for internal network resolution (e.g. when the
+  # server pod cannot reach the public issuer URL directly).
+  # Example: http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs
+  oidcJwksUrl: ""
 
-  # DATABASE_URL — provide exactly one of these:
-  #   databaseUrl        : plain-text value (not recommended for prod)
-  #   databaseUrlSecret  : name of a pre-existing Kubernetes Secret whose key
-  #                        "DATABASE_URL" holds the connection string
+  # ── Database ─────────────────────────────────────────────────────────────
+  # DATABASE_URL — provide exactly one of the following (highest wins):
+  #   databaseUrlSecret : name of a pre-existing Kubernetes Secret whose key
+  #                       "DATABASE_URL" holds the connection string (recommended)
+  #   databaseUrl       : plain-text value (not recommended for production)
+  #   cnpg.enabled      : use the CNPG-managed cluster (see cnpg section)
   databaseUrl: ""
   databaseUrlSecret: ""
+  # Connection pool sizes.
+  dbMaxConns: 25
+  dbMinConns: 5
+
+  # ── HTTP ─────────────────────────────────────────────────────────────────
+  # Comma-separated list of allowed CORS origins.
+  # Example: "https://registry.example.com,https://admin.example.com"
+  corsAllowedOrigins: ""
+  # CIDR of the trusted reverse proxy for real-IP extraction via X-Forwarded-For.
+  # Example: "10.0.0.0/8"
+  trustedProxyCIDR: ""
+
+  # ── Observability ────────────────────────────────────────────────────────
+  # Structured log level: debug | info | warn | error
+  logLevel: "info"
+  # OTLP gRPC endpoint for traces/metrics export (leave empty to disable).
+  # Example: http://otel-collector:4317
+  otlpEndpoint: ""
+
+  # ── Bootstrap ────────────────────────────────────────────────────────────
+  # When enabled, the server loads a bootstrap file on startup and upserts
+  # all publishers, MCP servers, and agents. Idempotent — safe to re-run.
+  bootstrap:
+    enabled: false
+    # sampleData: load the built-in sample data bundled with the chart
+    # (publishers + MCP servers + agents). Ignored when content is set.
+    sampleData: false
+    # content: inline YAML bootstrap file. Takes precedence over sampleData.
+    # Paste the full contents of a bootstrap.yaml here.
+    content: ""
 
   service:
     type: ClusterIP
@@ -68,7 +105,10 @@ backend:
       drop:
         - ALL
 
+  # ── Autoscaling ──────────────────────────────────────────────────────────
+  # When enabled, an HPA manages the replica count; replicaCount is ignored.
   autoscaling:
+    enabled: false
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 70
@@ -85,8 +125,25 @@ backend:
     # Override the name (defaults to fullname-backend)
     name: ""
 
+  # ── Escape hatches ───────────────────────────────────────────────────────
+  # Extra environment variables injected into the server container.
+  extraEnv: []
+  # Example:
+  # extraEnv:
+  #   - name: MY_FEATURE_FLAG
+  #     value: "true"
+  #   - name: SECRET_FROM_K8S
+  #     valueFrom:
+  #       secretKeyRef:
+  #         name: my-secret
+  #         key: my-key
+
+  # Extra volumes and mounts (e.g. for custom TLS certs or config files).
+  extraVolumes: []
+  extraVolumeMounts: []
+
 # ----------------------------------------------------------------------------
-# Web (Next.js app)
+# Web (Vite + React SPA served by nginx)
 # ----------------------------------------------------------------------------
 web:
   replicaCount: 1
@@ -97,14 +154,14 @@ web:
     tag: ""
 
   # Non-sensitive environment variables
-  # Internal URL for Next.js server → backend (server-side only)
+  # Internal URL for the SPA's API proxy (server-side only).
+  # Falls back to the in-cluster backend service URL when empty.
   apiUrl: ""
   nextauthUrl: ""
   keycloakIssuer: ""
 
-  # Sensitive environment variables stored in a generated Secret
-  # These are required in production.
-  authSecret: ""           # AUTH_SECRET (NextAuth secret)
+  # Sensitive environment variables stored in a generated Secret.
+  authSecret: ""           # AUTH_SECRET
   keycloakId: ""           # AUTH_KEYCLOAK_ID
   keycloakSecret: ""       # AUTH_KEYCLOAK_SECRET
 
@@ -131,15 +188,18 @@ web:
 
   securityContext:
     allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: false  # Next.js writes to .next cache at runtime
+    readOnlyRootFilesystem: false  # nginx/Next.js writes cache files at runtime
     capabilities:
       drop:
         - ALL
 
+  # ── Autoscaling ──────────────────────────────────────────────────────────
   autoscaling:
+    enabled: false
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 70
+    # targetMemoryUtilizationPercentage: 80
 
   podDisruptionBudget:
     minAvailable: 1
@@ -148,6 +208,11 @@ web:
     create: true
     annotations: {}
     name: ""
+
+  # ── Escape hatches ───────────────────────────────────────────────────────
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
 
 # ----------------------------------------------------------------------------
 # Ingress
@@ -176,7 +241,7 @@ cnpg:
   storageSize: 5Gi
   postgresVersion: "16"
   # Name of the superuser secret CNPG will create (referenced as DATABASE_URL
-  # source in the backend deployment when cnpg is enabled).
+  # source in the backend deployment when cnpg.enabled=true).
   # CNPG creates a secret named "<clusterName>-superuser" automatically.
   # Override only if you need a specific secret name.
   superuserSecretName: ""

@@ -1,0 +1,480 @@
+# ============================================================================
+# AI Registry — bootstrap file example
+# ============================================================================
+# Pass this file to the server with --bootstrap-file to load initial data.
+# The server will upsert all entries on startup and then continue serving.
+# Running it multiple times is safe — existing entries are skipped.
+#
+# Usage:
+#   /server --bootstrap-file /etc/ai-registry/bootstrap.yaml
+#
+# Or via docker-compose (mount the file and set the flag via command/entrypoint):
+#   command: ["/server", "--bootstrap-file", "/etc/ai-registry/bootstrap.yaml"]
+#
+# Supported formats: .yaml / .yml / .json
+# ============================================================================
+
+publishers:
+  - slug: "anthropic"
+    name: "Anthropic"
+    verified: true
+
+  - slug: "openai"
+    name: "OpenAI"
+    verified: true
+
+  - slug: "community"
+    name: "Community"
+    verified: false
+
+# ── MCP Servers ───────────────────────────────────────────────────────────────
+mcp_servers:
+  # anthropic/filesystem — npm, stdio, two versions (v1 published, v2 draft)
+  - publisher: "anthropic"
+    slug: "filesystem"
+    name: "Filesystem MCP Server"
+    description: "Gives Claude read/write access to the local file system."
+    repository_url: "https://github.com/anthropics/mcp-filesystem"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@anthropic/mcp-filesystem"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+      - version: "2.0.0"
+        status: "draft"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@anthropic/mcp-filesystem"
+            version: "2.0.0"
+            transport:
+              type: "stdio"
+
+  # anthropic/computer-use — npm, SSE transport
+  - publisher: "anthropic"
+    slug: "computer-use"
+    name: "Computer Use MCP Server"
+    description: "Streams real-time desktop screenshots and control events over Server-Sent Events."
+    repository_url: "https://github.com/anthropics/mcp-computer-use"
+    public: true
+    versions:
+      - version: "1.2.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@anthropic/mcp-computer-use"
+            version: "1.2.0"
+            transport:
+              type: "sse"
+              url: "https://mcp.anthropic.com/computer-use/sse"
+
+  # anthropic/memory — npm, HTTP transport, deprecated
+  - publisher: "anthropic"
+    slug: "memory"
+    name: "Memory MCP Server"
+    description: "Provides long-term memory storage for conversations. Deprecated: use anthropic/knowledge-base."
+    repository_url: "https://github.com/anthropics/mcp-memory"
+    public: true
+    status: "deprecated"
+    versions:
+      - version: "1.0.0"
+        status: "deprecated"
+        status_message: "Replaced by anthropic/knowledge-base"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@anthropic/mcp-memory"
+            version: "1.0.0"
+            transport:
+              type: "http"
+              url: "https://mcp.anthropic.com/memory"
+
+  # anthropic/github — npm, stdio, two published versions
+  - publisher: "anthropic"
+    slug: "github"
+    name: "GitHub MCP Server"
+    description: "Interact with GitHub repositories, issues, and pull requests."
+    repository_url: "https://github.com/anthropics/mcp-github"
+    public: true
+    versions:
+      - version: "0.5.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@anthropic/mcp-github"
+            version: "0.5.0"
+            transport:
+              type: "stdio"
+      - version: "1.0.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@anthropic/mcp-github"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+
+  # openai/web-search — npm, streamable-http
+  - publisher: "openai"
+    slug: "web-search"
+    name: "Web Search MCP Server"
+    description: "Provides real-time web search capabilities via a streaming HTTP transport."
+    repository_url: "https://github.com/openai/mcp-web-search"
+    public: true
+    versions:
+      - version: "2.1.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@openai/mcp-web-search"
+            version: "2.1.0"
+            transport:
+              type: "streamable-http"
+              url: "https://mcp.openai.com/search"
+
+  # openai/image-gen — OCI container + HTTP transport
+  - publisher: "openai"
+    slug: "image-gen"
+    name: "Image Generation MCP Server"
+    description: "Generate images from text prompts via a containerised HTTP endpoint."
+    repository_url: "https://github.com/openai/mcp-image-gen"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "oci"
+            identifier: "ghcr.io/openai/mcp-image-gen"
+            version: "1.0.0"
+            transport:
+              type: "http"
+              url: "https://mcp.openai.com/image-gen"
+
+  # openai/code-interpreter — streamable-http, draft (never published)
+  - publisher: "openai"
+    slug: "code-interpreter"
+    name: "Code Interpreter MCP Server"
+    description: "Execute Python code in a sandboxed environment and return results."
+    repository_url: "https://github.com/openai/mcp-code-interpreter"
+    public: true
+    versions:
+      - version: "0.3.0"
+        status: "draft"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@openai/mcp-code-interpreter"
+            version: "0.3.0"
+            transport:
+              type: "streamable-http"
+              url: "https://mcp.openai.com/code-interpreter"
+
+  # community/postgres — pypi, stdio
+  - publisher: "community"
+    slug: "postgres"
+    name: "PostgreSQL MCP Server"
+    description: "Community-maintained server for querying and managing PostgreSQL databases."
+    repository_url: "https://github.com/community/mcp-postgres"
+    public: true
+    versions:
+      - version: "0.3.1"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "pypi"
+            identifier: "mcp-postgres"
+            version: "0.3.1"
+            transport:
+              type: "stdio"
+
+  # community/sqlite — pypi, stdio
+  - publisher: "community"
+    slug: "sqlite"
+    name: "SQLite MCP Server"
+    description: "Read and write SQLite databases using natural language."
+    repository_url: "https://github.com/community/mcp-sqlite"
+    public: true
+    versions:
+      - version: "1.2.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "pypi"
+            identifier: "mcp-sqlite"
+            version: "1.2.0"
+            transport:
+              type: "stdio"
+
+  # community/kubernetes — OCI container, HTTP
+  - publisher: "community"
+    slug: "kubernetes"
+    name: "Kubernetes MCP Server"
+    description: "Manage Kubernetes clusters and workloads from your AI assistant."
+    repository_url: "https://github.com/community/mcp-kubernetes"
+    public: true
+    versions:
+      - version: "0.5.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "oci"
+            identifier: "ghcr.io/community/mcp-kubernetes"
+            version: "0.5.0"
+            transport:
+              type: "http"
+              url: "http://localhost:8080"
+
+  # community/dotnet-tools — nuget, stdio, private
+  - publisher: "community"
+    slug: "dotnet-tools"
+    name: ".NET Tools MCP Server"
+    description: "Wraps common .NET CLI tools (build, test, publish) as MCP primitives."
+    repository_url: "https://github.com/community/mcp-dotnet-tools"
+    public: false
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "nuget"
+            identifier: "MCP.DotNetTools"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+
+  # community/mcp-bridge — mcpb registry type, stdio
+  - publisher: "community"
+    slug: "mcp-bridge"
+    name: "MCP Bridge Server"
+    description: "Bridges legacy tool APIs into the MCP ecosystem using the mcpb packaging format."
+    repository_url: "https://github.com/community/mcp-bridge"
+    public: true
+    versions:
+      - version: "0.9.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "mcpb"
+            identifier: "mcp-bridge"
+            version: "0.9.0"
+            transport:
+              type: "stdio"
+
+  # community/multi-transport — multiple packages (npm + oci), two transports
+  - publisher: "community"
+    slug: "multi-transport"
+    name: "Multi-Transport MCP Server"
+    description: "Ships as both an npm package (stdio) and an OCI image (HTTP) — pick the deployment model you need."
+    repository_url: "https://github.com/community/mcp-multi-transport"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "@community/multi-transport"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+          - registry_type: "oci"
+            identifier: "ghcr.io/community/mcp-multi-transport"
+            version: "1.0.0"
+            transport:
+              type: "http"
+              url: "http://localhost:3000"
+
+# ── Agents ────────────────────────────────────────────────────────────────────
+agents:
+  # anthropic/code-review — published, public
+  - publisher: "anthropic"
+    slug: "code-review"
+    name: "Code Review Agent"
+    description: "Automatically reviews pull requests and suggests improvements."
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        endpoint_url: "https://agents.anthropic.com/code-review"
+        default_input_modes: ["text/plain"]
+        default_output_modes: ["text/plain"]
+        skills:
+          - id: "review-pr"
+            name: "Review Pull Request"
+            description: "Analyse a PR diff and post inline comments"
+            tags: ["git", "code-quality"]
+          - id: "suggest-fix"
+            name: "Suggest Fix"
+            description: "Generate a code fix for a flagged issue"
+            tags: ["code-quality"]
+        authentication:
+          - scheme: "Bearer"
+
+  # anthropic/browser-agent — published, public, text + image I/O
+  - publisher: "anthropic"
+    slug: "browser-agent"
+    name: "Browser Automation Agent"
+    description: "Controls a real browser to fill forms, click buttons, and extract information from any website."
+    public: true
+    versions:
+      - version: "1.2.0"
+        status: "published"
+        endpoint_url: "https://agents.anthropic.com/browser"
+        default_input_modes: ["text/plain", "application/json"]
+        default_output_modes: ["text/plain", "image/png"]
+        skills:
+          - id: "navigate"
+            name: "Navigate"
+            description: "Open a URL in the browser"
+            tags: ["browser", "automation"]
+          - id: "click"
+            name: "Click Element"
+            description: "Click on a CSS selector"
+            tags: ["browser", "automation"]
+          - id: "screenshot"
+            name: "Screenshot"
+            description: "Capture the current viewport as a PNG"
+            tags: ["browser", "visual"]
+          - id: "extract"
+            name: "Extract Data"
+            description: "Pull structured data from a page using a schema"
+            tags: ["browser", "data"]
+        authentication:
+          - scheme: "Bearer"
+
+  # openai/data-analyst — published, public
+  - publisher: "openai"
+    slug: "data-analyst"
+    name: "Data Analyst Agent"
+    description: "Analyses structured datasets and produces charts and summaries."
+    public: true
+    versions:
+      - version: "0.9.0"
+        status: "published"
+        endpoint_url: "https://agents.openai.com/data-analyst"
+        default_input_modes: ["text/plain", "application/json", "text/csv"]
+        default_output_modes: ["text/plain", "image/png", "application/json"]
+        skills:
+          - id: "analyse-csv"
+            name: "Analyse CSV"
+            description: "Parse and summarise a CSV file"
+            tags: ["data", "csv"]
+          - id: "plot-chart"
+            name: "Plot Chart"
+            description: "Generate a chart from tabular data"
+            tags: ["data", "visualisation"]
+          - id: "sql-query"
+            name: "SQL Query"
+            description: "Run a SQL query against an uploaded file"
+            tags: ["data", "sql"]
+        authentication:
+          - scheme: "ApiKey"
+
+  # openai/research-agent — deprecated
+  - publisher: "openai"
+    slug: "research-agent"
+    name: "Research Agent"
+    description: "Searches the web and academic databases to answer deep research questions."
+    public: true
+    status: "deprecated"
+    versions:
+      - version: "0.5.0"
+        status: "published"
+        endpoint_url: "https://agents.openai.com/research"
+        default_input_modes: ["text/plain"]
+        default_output_modes: ["text/plain"]
+        skills:
+          - id: "web-search"
+            name: "Web Search"
+            description: "Search the public web"
+            tags: ["search", "research"]
+          - id: "paper-search"
+            name: "Paper Search"
+            description: "Query arXiv and Semantic Scholar"
+            tags: ["research", "academic"]
+        authentication:
+          - scheme: "Bearer"
+
+  # community/docs-writer — published, public
+  - publisher: "community"
+    slug: "docs-writer"
+    name: "Documentation Writer"
+    description: "Generates and maintains API documentation from source code."
+    public: true
+    versions:
+      - version: "0.2.0"
+        status: "published"
+        endpoint_url: "https://community.example.com/agents/docs-writer"
+        default_input_modes: ["text/plain"]
+        default_output_modes: ["text/plain"]
+        skills:
+          - id: "generate-docs"
+            name: "Generate Docs"
+            description: "Extract and write API documentation from code"
+            tags: ["docs", "openapi"]
+        authentication:
+          - scheme: "Bearer"
+
+  # community/devops-agent — draft (never published)
+  - publisher: "community"
+    slug: "devops-agent"
+    name: "DevOps Agent"
+    description: "Provisions cloud infrastructure, manages CI/CD pipelines, and monitors deployments."
+    public: true
+    versions:
+      - version: "0.1.0"
+        status: "draft"
+        endpoint_url: "https://community.example.com/agents/devops"
+        default_input_modes: ["text/plain", "application/json"]
+        default_output_modes: ["text/plain", "application/json"]
+        skills:
+          - id: "deploy"
+            name: "Deploy"
+            description: "Deploy an application to a cloud provider"
+            tags: ["cloud", "deploy"]
+          - id: "monitor"
+            name: "Monitor"
+            description: "Check deployment health and logs"
+            tags: ["cloud", "observability"]
+          - id: "rollback"
+            name: "Rollback"
+            description: "Roll back to a previous release"
+            tags: ["cloud", "deploy"]
+        authentication:
+          - scheme: "Bearer"
+          - scheme: "ApiKey"
+
+  # community/security-scanner — published, private
+  - publisher: "community"
+    slug: "security-scanner"
+    name: "Security Scanner Agent"
+    description: "Scans codebases and infrastructure configs for common vulnerabilities."
+    public: false
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        endpoint_url: "https://community.example.com/agents/security-scanner"
+        default_input_modes: ["text/plain", "application/json"]
+        default_output_modes: ["text/plain", "application/json"]
+        skills:
+          - id: "scan-code"
+            name: "Scan Code"
+            description: "Static analysis for common CVEs"
+            tags: ["security", "sast"]
+          - id: "scan-infra"
+            name: "Scan Infra"
+            description: "Check IaC files for misconfigurations"
+            tags: ["security", "iac"]
+        authentication:
+          - scheme: "ApiKey"

@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "ai-registry.web.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.web.autoscaling }}
+  {{- if not .Values.web.autoscaling.enabled }}
   replicas: {{ .Values.web.replicaCount }}
   {{- end }}
   selector:
@@ -15,8 +15,9 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: {{ include (print $.Template.BasePath "/web-configmap.yaml") . | sha256sum }}
-        checksum/secret: {{ include (print $.Template.BasePath "/web-secret.yaml") . | sha256sum }}
+        # Force a rollout when the ConfigMap or Secret changes.
+        checksum/configmap: {{ include (print $.Template.BasePath "/web/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/web/secret.yaml") . | sha256sum }}
         {{- with .Values.web.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -41,13 +42,17 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 3000
+              containerPort: {{ .Values.web.service.port }}
               protocol: TCP
           envFrom:
             - configMapRef:
                 name: {{ include "ai-registry.web.fullname" . }}
             - secretRef:
                 name: {{ include "ai-registry.web.fullname" . }}
+          {{- with .Values.web.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /
@@ -73,11 +78,17 @@ spec:
               mountPath: /tmp
             - name: nextjs-cache
               mountPath: /app/.next/cache
+            {{- with .Values.web.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
         - name: nextjs-cache
           emptyDir: {}
+        {{- with .Values.web.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.web.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

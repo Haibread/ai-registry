@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-registry.backend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.backend.labels" . | nindent 4 }}
+data:
+  # ── HTTP ──────────────────────────────────────────────────────────────────
+  # Bind address must match the containerPort defined in the Deployment.
+  HTTP_ADDR: ":{{ .Values.backend.service.port }}"
+  {{- if .Values.backend.corsAllowedOrigins }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.backend.corsAllowedOrigins | quote }}
+  {{- end }}
+  {{- if .Values.backend.trustedProxyCIDR }}
+  TRUSTED_PROXY_CIDR: {{ .Values.backend.trustedProxyCIDR | quote }}
+  {{- end }}
+
+  # ── Auth (OIDC) ───────────────────────────────────────────────────────────
+  OIDC_ISSUER: {{ .Values.backend.oidcIssuer | quote }}
+  {{- if .Values.backend.oidcAudience }}
+  OIDC_AUDIENCE: {{ .Values.backend.oidcAudience | quote }}
+  {{- end }}
+  {{- if .Values.backend.oidcJwksUrl }}
+  OIDC_JWKS_URL: {{ .Values.backend.oidcJwksUrl | quote }}
+  {{- end }}
+
+  # ── Database ──────────────────────────────────────────────────────────────
+  {{- /* Plain-text DATABASE_URL as a last resort (overridden by secret if set) */}}
+  {{- if and .Values.backend.databaseUrl (not .Values.backend.databaseUrlSecret) (not .Values.cnpg.enabled) }}
+  DATABASE_URL: {{ .Values.backend.databaseUrl | quote }}
+  {{- end }}
+  DATABASE_MAX_CONNS: {{ .Values.backend.dbMaxConns | quote }}
+  DATABASE_MIN_CONNS: {{ .Values.backend.dbMinConns | quote }}
+
+  # ── Observability ─────────────────────────────────────────────────────────
+  LOG_LEVEL: {{ .Values.backend.logLevel | quote }}
+  {{- if .Values.backend.otlpEndpoint }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.backend.otlpEndpoint | quote }}
+  {{- end }}
+
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  {{- if .Values.backend.bootstrap.enabled }}
+  BOOTSTRAP_FILE: /etc/ai-registry/bootstrap.yaml
+  {{- end }}
