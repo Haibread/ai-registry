@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net"
@@ -26,8 +27,15 @@ func main() {
 }
 
 func run() error {
+	// ── Flags ────────────────────────────────────────────────────────────────
+	fs := flag.NewFlagSet("server", flag.ContinueOnError)
+	configFile := fs.String("config", "", "path to YAML config file (overrides CONFIG_FILE env var)")
+	// Parse only known flags; ignore unrecognised ones so that test harnesses
+	// can inject extra arguments without breaking the server.
+	_ = fs.Parse(os.Args[1:])
+
 	// ── Config ───────────────────────────────────────────────────────────────
-	cfg, err := config.Load()
+	cfg, err := config.Load(*configFile)
 	if err != nil {
 		return err
 	}

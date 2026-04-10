@@ -90,8 +90,9 @@ CLAUDE.md             # this file
   setup; subsequent features on descriptive branches. Never push to `main`
   without explicit request.
 - **Commits**: conventional commits (`feat:`, `fix:`, `docs:`, `chore:`).
-- **DB**: every schema change is a forward + down migration. No ORM magic;
-  explicit SQL.
+- **DB**: schema changes are forward-only migrations. Down migrations are
+  maintained for local development convenience only — never rely on them in
+  production. No ORM magic; explicit SQL.
 - **Errors**: API errors follow RFC 7807 (`application/problem+json`).
 - **IDs**: ULIDs for primary keys exposed via API; internal bigserial allowed.
 - **Versioning**: registry entries are versioned (semver). A publish creates
@@ -102,6 +103,31 @@ CLAUDE.md             # this file
   admin flows. **Every new piece of code must have tests.** Unit tests are
   required for business logic; integration tests for handlers and DB
   repositories. Do not open a PR without test coverage for the changed code.
+
+## Configuration (non-negotiable)
+
+Every configuration value MUST be settable in **both** of the following ways,
+with the listed precedence (highest wins):
+
+1. **Environment variable** — `UPPER_SNAKE_CASE` (e.g. `DATABASE_URL`).
+2. **Config file key** — `lower_snake_case` in a YAML file whose path is given
+   by the `CONFIG_FILE` env var or a `--config` CLI flag (e.g. `database_url`).
+3. **Built-in default** — hard-coded in `server/internal/config/config.go`.
+
+Rules for implementors:
+
+- Adding a new config value means adding it in all three places: the env-var
+  reader, the YAML key reader, and the default. Never add an env-only or
+  file-only knob.
+- Env var always overrides the config file; the config file always overrides
+  the default. This lets operators use a base config file and override specific
+  values per-environment via env vars without touching the file.
+- Config file format is **YAML**. The file is optional — if absent the server
+  runs on env vars and defaults alone.
+- Sensitive values (passwords, tokens, DSNs) SHOULD be supplied via env var
+  or a secrets manager, not committed in a config file.
+- All config keys (env and file) MUST be documented in `deploy/.env.example`
+  with a comment explaining the value and its default.
 
 ## Security rules
 
