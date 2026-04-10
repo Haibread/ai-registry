@@ -13,7 +13,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY web/ .
 # OpenAPI spec is required to generate the TypeScript client types.
-COPY api/openapi.yaml /api/openapi.yaml
+COPY server/api/openapi.yaml /api/openapi.yaml
 # Generate TypeScript types from the OpenAPI spec.
 # OIDC configuration is NOT baked in here — the SPA fetches /config.json at
 # runtime from the server, so a single image works across all environments.
