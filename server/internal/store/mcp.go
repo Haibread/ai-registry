@@ -432,7 +432,7 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 	}, nil
 }
 
-// ListMCPServerVersions returns all versions for a given server ID, ordered by released_at.
+// ListMCPServerVersions returns all versions for a given server ID, ordered by created_at.
 func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]domain.MCPServerVersion, error) {
 	ctx, span := startSpan(ctx, "ListMCPServerVersions")
 	defer span.End()
@@ -440,10 +440,10 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, released_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
 		FROM mcp_server_versions
 		WHERE server_id = $1
-		ORDER BY released_at DESC`, serverID)
+		ORDER BY created_at DESC`, serverID)
 	if err != nil {
 		recordErr(span, err)
 		return nil, fmt.Errorf("listing mcp server versions: %w", err)
@@ -474,7 +474,7 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string)
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, released_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND version = $2`, serverID, version)
 
@@ -498,7 +498,7 @@ func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, released_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -544,10 +544,10 @@ func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersi
 	_, err := db.Pool.Exec(ctx, `
 		INSERT INTO mcp_server_versions
 		    (id, server_id, version, runtime, packages, capabilities,
-		     protocol_version, checksum, signature, released_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		     protocol_version, checksum, signature)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
 		id, p.ServerID, p.Version, p.Runtime, p.Packages, p.Capabilities,
-		p.ProtocolVersion, p.Checksum, p.Signature, now,
+		p.ProtocolVersion, p.Checksum, p.Signature,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -569,7 +569,8 @@ func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersi
 		ProtocolVersion: p.ProtocolVersion,
 		Checksum:        p.Checksum,
 		Signature:       p.Signature,
-		ReleasedAt:      now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}, nil
 }
 
@@ -667,7 +668,7 @@ func (db *DB) GetPublisherBySlug(ctx context.Context, slug string) (id string, e
 
 // scanVersion scans one mcp_server_versions row from any pgx scanner.
 // Column order must match SELECT: id, server_id, version, runtime, packages, capabilities,
-// protocol_version, checksum, signature, status, published_at, released_at, status_message, status_changed_at
+// protocol_version, checksum, signature, status, published_at, created_at, updated_at, status_message, status_changed_at
 func scanVersion(s interface {
 	Scan(...any) error
 }) (domain.MCPServerVersion, error) {
@@ -676,7 +677,7 @@ func scanVersion(s interface {
 		&v.ID, &v.ServerID, &v.Version, &v.Runtime,
 		&v.Packages, &v.Capabilities,
 		&v.ProtocolVersion, &v.Checksum, &v.Signature,
-		&v.Status, &v.PublishedAt, &v.ReleasedAt,
+		&v.Status, &v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
 		&v.StatusMessage, &v.StatusChangedAt,
 	)
 	return v, err
@@ -736,7 +737,7 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 		WHERE server_id=$3 AND published_at IS NOT NULL
 		RETURNING id, server_id, version, runtime, packages, capabilities,
 		          protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		          status, published_at, released_at, coalesce(status_message,''), status_changed_at`,
+		          status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at`,
 		status, statusMessage, serverID)
 	if err != nil {
 		recordErr(span, err)

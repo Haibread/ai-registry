@@ -692,9 +692,17 @@ func seedAgentPublished(t *testing.T, ns, slug string) {
 
 func TestAgentHandler_ListAgents_TotalCount(t *testing.T) {
 	resetTables(t)
-	// Seed 3 agents visible to admin.
+	// Seed 3 agents under the same publisher.
+	pubID := seedPublisher(t, "atc-pub", "ATC Pub")
 	for i := range 3 {
-		seedAgent(t, "atc-pub", fmt.Sprintf("atc-ag-%d", i))
+		_, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
+			PublisherID: pubID,
+			Slug:        fmt.Sprintf("atc-ag-%d", i),
+			Name:        fmt.Sprintf("ATC Agent %d", i),
+		})
+		if err != nil {
+			t.Fatalf("creating agent %d: %v", i, err)
+		}
 	}
 
 	// Ask for page of 2 — items should have 2, but total_count should be 3.

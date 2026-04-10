@@ -78,7 +78,8 @@ type MCPServerVersion struct {
 	StatusMessage   string
 	StatusChangedAt time.Time
 	PublishedAt     *time.Time
-	ReleasedAt      time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // IsPublished reports whether the version has been published (immutable after this).

@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -464,29 +465,32 @@ func TestEncodeCursorFromTime(t *testing.T) {
 
 func TestDecodeCursor_Malformed(t *testing.T) {
 	tests := []struct {
-		name   string
-		cursor string
+		name        string
+		cursor      string
+		expectError bool // true → ErrInvalidCursor expected; false → ignored (first page)
 	}{
-		{"empty string", ""},
-		{"no comma", "20240101T000000Z01HXYZ1234567890ABCDEFGHIJ"},
-		{"invalid time", "not-a-time,01HXYZ1234567890ABCDEFGHIJ"},
-		{"too short", "x,y"},
+		{"empty string", "", false},
+		{"no comma", "20240101T000000Z01HXYZ1234567890ABCDEFGHIJ", true},
+		{"invalid time", "not-a-time,01HXYZ1234567890ABCDEFGHIJ", true},
+		{"too short", "x,y", true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// decodeCursor is unexported; exercise it indirectly via ListMCPServers
-			// — a malformed cursor should be silently ignored (no WHERE clause applied)
-			// rather than returning an error. This matches the implementation's
-			// `if err == nil` guard. We just verify no panic and a valid (empty) result.
 			resetDB(t)
 			ctx := context.Background()
 			_, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
 				Cursor: tc.cursor,
 				Limit:  5,
 			})
-			if err != nil {
-				t.Errorf("ListMCPServers with malformed cursor %q returned unexpected error: %v", tc.cursor, err)
+			if tc.expectError {
+				if !errors.Is(err, store.ErrInvalidCursor) {
+					t.Errorf("ListMCPServers with cursor %q: want ErrInvalidCursor, got %v", tc.cursor, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ListMCPServers with cursor %q returned unexpected error: %v", tc.cursor, err)
+				}
 			}
 		})
 	}

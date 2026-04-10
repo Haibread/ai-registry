@@ -52,7 +52,8 @@ type AgentVersion struct {
 	StatusMessage      string
 	StatusChangedAt    time.Time
 	PublishedAt        *time.Time
-	ReleasedAt         time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // IsPublished reports whether this version has been published.

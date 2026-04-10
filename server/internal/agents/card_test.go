@@ -44,7 +44,8 @@ func makeAgentVersion(version, endpoint string) *domain.AgentVersion {
 		IconURL:            "https://icon.example.com/icon.png",
 		ProtocolVersion:    domain.A2AProtocolVersion,
 		PublishedAt:        &now,
-		ReleasedAt:         now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 }
 

@@ -321,10 +321,10 @@ func (db *DB) ListAgentVersions(ctx context.Context, agentID string) ([]domain.A
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, released_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at
 		FROM agent_versions
 		WHERE agent_id = $1
-		ORDER BY released_at DESC`, agentID)
+		ORDER BY created_at DESC`, agentID)
 	if err != nil {
 		recordErr(span, err)
 		return nil, fmt.Errorf("listing agent versions: %w", err)
@@ -356,7 +356,7 @@ func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string) (*do
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, released_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at
 		FROM agent_versions
 		WHERE agent_id = $1 AND version = $2`, agentID, version)
 
@@ -381,7 +381,7 @@ func (db *DB) GetLatestPublishedAgentVersion(ctx context.Context, agentID string
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, released_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at
 		FROM agent_versions
 		WHERE agent_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -440,12 +440,12 @@ func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams
 		INSERT INTO agent_versions
 		    (id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		     default_input_modes, default_output_modes, provider,
-		     documentation_url, icon_url, protocol_version, released_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		     documentation_url, icon_url, protocol_version)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		id, p.AgentID, p.Version, p.EndpointURL,
 		p.Skills, p.Capabilities, p.Authentication,
 		p.DefaultInputModes, p.DefaultOutputModes, p.Provider,
-		p.DocumentationURL, p.IconURL, p.ProtocolVersion, now,
+		p.DocumentationURL, p.IconURL, p.ProtocolVersion,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -473,7 +473,8 @@ func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams
 		ProtocolVersion:    p.ProtocolVersion,
 		Status:             domain.VersionStatusActive,
 		StatusChangedAt:    now,
-		ReleasedAt:         now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}, nil
 }
 
@@ -584,7 +585,7 @@ func (db *DB) SetAllAgentVersionsStatus(ctx context.Context, agentID string, sta
 		          default_input_modes, default_output_modes, provider,
 		          coalesce(documentation_url,''), coalesce(icon_url,''),
 		          protocol_version, status, coalesce(status_message,''), status_changed_at,
-		          published_at, released_at`,
+		          published_at, created_at`,
 		status, statusMessage, agentID)
 	if err != nil {
 		recordErr(span, err)
@@ -616,7 +617,7 @@ func scanAgentVersion(s interface{ Scan(...any) error }) (domain.AgentVersion, e
 		&v.DefaultInputModes, &v.DefaultOutputModes, &v.Provider,
 		&v.DocumentationURL, &v.IconURL,
 		&v.ProtocolVersion, &v.Status, &v.StatusMessage, &v.StatusChangedAt,
-		&v.PublishedAt, &v.ReleasedAt,
+		&v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
 	)
 	return v, err
 }

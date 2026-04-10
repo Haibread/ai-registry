@@ -685,9 +685,17 @@ func seedMCPServerPublished(t *testing.T, ns, slug string) {
 
 func TestMCPHandler_ListServers_TotalCount(t *testing.T) {
 	resetTables(t)
-	// Seed 3 servers visible to admin.
+	// Seed 3 servers under the same publisher.
+	pubID := seedPublisher(t, "tc-pub", "TC Pub")
 	for i := range 3 {
-		seedMCPServer(t, "tc-pub", fmt.Sprintf("tc-srv-%d", i))
+		_, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
+			PublisherID: pubID,
+			Slug:        fmt.Sprintf("tc-srv-%d", i),
+			Name:        fmt.Sprintf("TC Server %d", i),
+		})
+		if err != nil {
+			t.Fatalf("creating server %d: %v", i, err)
+		}
 	}
 
 	// Ask for page of 2 — items should have 2, but total_count should be 3.
