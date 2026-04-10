@@ -12,11 +12,11 @@ imagePullSecrets: []
 # ----------------------------------------------------------------------------
 # Backend (Go HTTP service)
 # ----------------------------------------------------------------------------
-backend:
+server:
   replicaCount: 1
 
   image:
-    repository: ghcr.io/haibread/ai-registry/backend
+    repository: ghcr.io/haibread/ai-registry/server
     # Defaults to .Chart.AppVersion when empty
     tag: ""
 
@@ -29,6 +29,11 @@ backend:
   # server pod cannot reach the public issuer URL directly).
   # Example: http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs
   oidcJwksUrl: ""
+  # [REQUIRED] Public OAuth 2.0 client ID for the browser SPA.
+  # Served via GET /config.json so the frontend can configure its OIDC client
+  # at runtime without baking this value into the Docker image.
+  # Example: ai-registry-web
+  oidcClientId: ""
 
   # ── Database ─────────────────────────────────────────────────────────────
   # DATABASE_URL — provide exactly one of the following (highest wins):
@@ -68,6 +73,9 @@ backend:
     # content: inline YAML bootstrap file. Takes precedence over sampleData.
     # Paste the full contents of a bootstrap.yaml here.
     content: ""
+    # Directory where the bootstrap ConfigMap is mounted inside the container.
+    # The server reads <mountPath>/bootstrap.yaml (set via BOOTSTRAP_FILE env var).
+    mountPath: /etc/ai-registry
 
   service:
     type: ClusterIP
@@ -104,6 +112,40 @@ backend:
     capabilities:
       drop:
         - ALL
+
+  # ── Probes ───────────────────────────────────────────────────────────────
+  # Full probe objects — override any field including httpGet.path/port,
+  # initialDelaySeconds, periodSeconds, timeoutSeconds, failureThreshold, etc.
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    # 12 × 5 s = 60 s maximum startup budget before liveness kicks in.
+    failureThreshold: 12
+
+  # ── Volume mount paths ───────────────────────────────────────────────────
+  # Writable /tmp directory for the read-only-root-filesystem container.
+  tmpDir: /tmp
 
   # ── Autoscaling ──────────────────────────────────────────────────────────
   # When enabled, an HPA manages the replica count; replicaCount is ignored.
@@ -167,7 +209,7 @@ web:
 
   service:
     type: ClusterIP
-    port: 3000
+    port: 80  # nginx listens on port 80; docker-compose maps host:3000 → container:80
 
   resources: {}
 
@@ -188,10 +230,35 @@ web:
 
   securityContext:
     allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: false  # nginx/Next.js writes cache files at runtime
+    readOnlyRootFilesystem: false  # nginx writes cache files at runtime
     capabilities:
       drop:
         - ALL
+
+  # ── Probes ───────────────────────────────────────────────────────────────
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # ── Volume mount paths ───────────────────────────────────────────────────
+  # Writable /tmp directory.
+  tmpDir: /tmp
+  # nginx runtime cache directory.
+  cacheDir: /app/.next/cache
 
   # ── Autoscaling ──────────────────────────────────────────────────────────
   autoscaling:
@@ -215,7 +282,7 @@ web:
   extraVolumeMounts: []
 
 # ----------------------------------------------------------------------------
-# Ingress
+# Ingress (nginx / classic)
 # ----------------------------------------------------------------------------
 ingress:
   enabled: true
@@ -231,6 +298,33 @@ ingress:
     secretName: ""
 
 # ----------------------------------------------------------------------------
+# Gateway API HTTPRoute
+# An alternative to the Ingress resource for clusters running a Gateway API
+# controller (Envoy Gateway, Cilium, Istio, Traefik v3, …).
+#
+# TLS is configured on the Gateway listener — not here. If your Gateway
+# listener already terminates TLS for the hostname, the SPA and API will be
+# served over HTTPS automatically without any change to this section.
+#
+# Both httpRoute and ingress can be enabled at the same time (e.g. during a
+# migration), but enabling both for the same host with different controllers
+# may cause conflicts. Enable only one per production environment.
+# ----------------------------------------------------------------------------
+httpRoute:
+  enabled: false
+
+  # [REQUIRED when enabled] Reference to the Gateway this route attaches to.
+  gatewayRef:
+    name: ""          # Name of the Gateway resource
+    namespace: ""     # Namespace of the Gateway (empty = same namespace as this release)
+    sectionName: ""   # Optional: specific listener section (e.g. "https")
+
+  # Hostname the route matches. Should align with the Gateway listener's hostname.
+  host: ai-registry.example.com
+
+  annotations: {}
+
+# ----------------------------------------------------------------------------
 # CloudNativePG (CNPG) managed Postgres cluster
 # Set cnpg.enabled=true to provision a Postgres cluster inside the namespace.
 # Requires the CNPG operator to be installed in the cluster.
@@ -240,6 +334,21 @@ cnpg:
   instances: 1
   storageSize: 5Gi
   postgresVersion: "16"
+
+  # Database and owner created by the initdb bootstrap.
+  initdb:
+    database: ai_registry
+    owner: ai_registry
+
+  # PostgreSQL server parameters (free-form map — add any GUC you need).
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "256MB"
+
+  # Allow the CNPG operator to connect as the superuser (needed for migrations).
+  enableSuperuserAccess: true
+
   # Name of the superuser secret CNPG will create (referenced as DATABASE_URL
   # source in the backend deployment when cnpg.enabled=true).
   # CNPG creates a secret named "<clusterName>-superuser" automatically.

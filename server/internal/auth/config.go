@@ -14,6 +14,11 @@ type Config struct {
 	// (e.g. http://keycloak:8080/...) while the JWT `iss` uses an external URL.
 	// When empty, the JWKS endpoint is derived from OIDCIssuer.
 	OIDCJWKSUrl string
+
+	// OIDCClientID is the public OAuth 2.0 client ID for the browser SPA.
+	// It is served as-is via GET /config.json so the SPA can bootstrap its
+	// OIDC client without baking configuration into the Docker image.
+	OIDCClientID string
 }
 
 // JWKSEndpoint returns the URL to fetch Keycloak signing keys from.

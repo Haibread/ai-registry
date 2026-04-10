@@ -65,6 +65,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.With(auth.RequireAdmin).Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/openapi.yaml", handlers.OpenAPISpec)
 	r.Get("/docs", handlers.SwaggerUI)
+	// Public runtime config consumed by the browser SPA (OIDC bootstrap).
+	r.Get("/config.json", handlers.ConfigJSON(deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCClientID))
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
 	r.Get("/.well-known/oauth-protected-resource", handlers.OAuthProtectedResource)

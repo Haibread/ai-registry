@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { userManager } from './AuthContext'
+import { getUserManager } from './AuthContext'
 
 export function AuthCallback() {
   const navigate = useNavigate()
@@ -10,7 +10,8 @@ export function AuthCallback() {
     if (called.current) return
     called.current = true
 
-    userManager.signinRedirectCallback()
+    getUserManager()
+      .then((um) => um.signinRedirectCallback())
       .then(() => navigate('/admin', { replace: true }))
       .catch(() => navigate('/', { replace: true }))
   }, [navigate])

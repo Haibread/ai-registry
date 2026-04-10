@@ -9,11 +9,11 @@ The server reads this file at startup (BOOTSTRAP_FILE env var) and upserts
 all publishers, MCP servers, and agents. Running it multiple times is safe —
 existing entries are skipped.
 */}}
-{{- if .Values.backend.bootstrap.enabled -}}
+{{- if .Values.server.bootstrap.enabled -}}
 {{- $content := "" -}}
-{{- if .Values.backend.bootstrap.content -}}
-{{- $content = .Values.backend.bootstrap.content -}}
-{{- else if .Values.backend.bootstrap.sampleData -}}
+{{- if .Values.server.bootstrap.content -}}
+{{- $content = .Values.server.bootstrap.content -}}
+{{- else if .Values.server.bootstrap.sampleData -}}
 {{- $content = (.Files.Get "files/bootstrap-sample.yaml") -}}
 {{- end -}}
 {{- if not $content -}}
@@ -22,10 +22,10 @@ existing entries are skipped.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "ai-registry.backend.fullname" . }}-bootstrap
+  name: {{ include "ai-registry.server.fullname" . }}-bootstrap
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "ai-registry.backend.labels" . | nindent 4 }}
+    {{- include "ai-registry.server.labels" . | nindent 4 }}
 data:
   bootstrap.yaml: |
     {{- $content | nindent 4 }}

@@ -1,34 +1,34 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ai-registry.backend.fullname" . }}
+  name: {{ include "ai-registry.server.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "ai-registry.backend.labels" . | nindent 4 }}
+    {{- include "ai-registry.server.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.backend.autoscaling.enabled }}
-  replicas: {{ .Values.backend.replicaCount }}
+  {{- if not .Values.server.autoscaling.enabled }}
+  replicas: {{ .Values.server.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "ai-registry.backend.selectorLabels" . | nindent 6 }}
+      {{- include "ai-registry.server.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
         # Force a rollout when the ConfigMap or Secret changes.
         checksum/configmap: {{ include (print $.Template.BasePath "/server/configmap.yaml") . | sha256sum }}
-        {{- if and .Values.backend.databaseUrl (not .Values.backend.databaseUrlSecret) (not .Values.cnpg.enabled) }}
+        {{- if and .Values.server.databaseUrl (not .Values.server.databaseUrlSecret) (not .Values.cnpg.enabled) }}
         checksum/secret: {{ include (print $.Template.BasePath "/server/secret.yaml") . | sha256sum }}
         {{- end }}
-        {{- if .Values.backend.bootstrap.enabled }}
+        {{- if .Values.server.bootstrap.enabled }}
         checksum/bootstrap: {{ include (print $.Template.BasePath "/server/bootstrap-configmap.yaml") . | sha256sum }}
         {{- end }}
-        {{- with .Values.backend.podAnnotations }}
+        {{- with .Values.server.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "ai-registry.backend.selectorLabels" . | nindent 8 }}
-        {{- with .Values.backend.podLabels }}
+        {{- include "ai-registry.server.selectorLabels" . | nindent 8 }}
+        {{- with .Values.server.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -36,22 +36,22 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "ai-registry.backend.serviceAccountName" . }}
+      serviceAccountName: {{ include "ai-registry.server.serviceAccountName" . }}
       securityContext:
-        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+        {{- toYaml .Values.server.podSecurityContext | nindent 8 }}
       containers:
         - name: server
           securityContext:
-            {{- toYaml .Values.backend.securityContext | nindent 12 }}
-          image: {{ include "ai-registry.backend.image" . }}
+            {{- toYaml .Values.server.securityContext | nindent 12 }}
+          image: {{ include "ai-registry.server.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.backend.service.port }}
+              containerPort: {{ .Values.server.service.port }}
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: {{ include "ai-registry.backend.fullname" . }}
+                name: {{ include "ai-registry.server.fullname" . }}
           env:
             {{- /*
               DATABASE_URL precedence (highest to lowest):
@@ -59,11 +59,11 @@ spec:
               2. CNPG-generated superuser secret (when cnpg.enabled)
               3. Plain-text value injected via ConfigMap (lowest)
             */}}
-            {{- if .Values.backend.databaseUrlSecret }}
+            {{- if .Values.server.databaseUrlSecret }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.backend.databaseUrlSecret }}
+                  name: {{ .Values.server.databaseUrlSecret }}
                   key: DATABASE_URL
             {{- else if .Values.cnpg.enabled }}
             - name: DATABASE_URL
@@ -71,74 +71,57 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
                   key: uri
-            {{- else if .Values.backend.databaseUrl }}
+            {{- else if .Values.server.databaseUrl }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-registry.backend.fullname" . }}
+                  name: {{ include "ai-registry.server.fullname" . }}
                   key: DATABASE_URL
             {{- end }}
-            {{- with .Values.backend.extraEnv }}
+            {{- with .Values.server.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 3
+            {{- toYaml .Values.server.livenessProbe | nindent 12 }}
           readinessProbe:
-            httpGet:
-              path: /readyz
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
+            {{- toYaml .Values.server.readinessProbe | nindent 12 }}
           startupProbe:
-            httpGet:
-              path: /healthz
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            failureThreshold: 12
-          {{- with .Values.backend.resources }}
+            {{- toYaml .Values.server.startupProbe | nindent 12 }}
+          {{- with .Values.server.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: tmp
-              mountPath: /tmp
-            {{- if .Values.backend.bootstrap.enabled }}
+              mountPath: {{ .Values.server.tmpDir }}
+            {{- if .Values.server.bootstrap.enabled }}
             - name: bootstrap
-              mountPath: /etc/ai-registry
+              mountPath: {{ .Values.server.bootstrap.mountPath }}
               readOnly: true
             {{- end }}
-            {{- with .Values.backend.extraVolumeMounts }}
+            {{- with .Values.server.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if .Values.backend.bootstrap.enabled }}
+        {{- if .Values.server.bootstrap.enabled }}
         - name: bootstrap
           configMap:
-            name: {{ include "ai-registry.backend.fullname" . }}-bootstrap
+            name: {{ include "ai-registry.server.fullname" . }}-bootstrap
         {{- end }}
-        {{- with .Values.backend.extraVolumes }}
+        {{- with .Values.server.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.backend.nodeSelector }}
+      {{- with .Values.server.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.backend.affinity }}
+      {{- with .Values.server.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.backend.tolerations }}
+      {{- with .Values.server.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

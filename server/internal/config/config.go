@@ -35,6 +35,11 @@ type AuthConfig struct {
 	// Docker hostname when the server cannot reach the external issuer URL,
 	// e.g. http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs
 	OIDCJWKSUrl string
+
+	// OIDCClientID is the public OAuth 2.0 client ID for the browser SPA.
+	// Served via GET /config.json so the frontend can bootstrap its OIDC
+	// client at runtime without baking the value into the Docker image.
+	OIDCClientID string
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -101,8 +106,9 @@ type fileLogConfig struct {
 }
 
 type fileAuthConfig struct {
-	OIDCIssuer  string `yaml:"oidc_issuer"`
-	OIDCJWKSUrl string `yaml:"oidc_jwks_url"`
+	OIDCIssuer   string `yaml:"oidc_issuer"`
+	OIDCJWKSUrl  string `yaml:"oidc_jwks_url"`
+	OIDCClientID string `yaml:"oidc_client_id"`
 }
 
 type fileConfig struct {
@@ -191,8 +197,9 @@ func Load(configFile string) (*Config, error) {
 			Level: envString("LOG_LEVEL", fc.Log.Level),
 		},
 		Auth: AuthConfig{
-			OIDCIssuer:  envString("OIDC_ISSUER", fc.Auth.OIDCIssuer),
-			OIDCJWKSUrl: envString("OIDC_JWKS_URL", fc.Auth.OIDCJWKSUrl),
+			OIDCIssuer:   envString("OIDC_ISSUER", fc.Auth.OIDCIssuer),
+			OIDCJWKSUrl:  envString("OIDC_JWKS_URL", fc.Auth.OIDCJWKSUrl),
+			OIDCClientID: envString("OIDC_CLIENT_ID", fc.Auth.OIDCClientID),
 		},
 	}
 

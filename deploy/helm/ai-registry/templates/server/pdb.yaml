@@ -1,12 +1,12 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "ai-registry.backend.fullname" . }}
+  name: {{ include "ai-registry.server.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "ai-registry.backend.labels" . | nindent 4 }}
+    {{- include "ai-registry.server.labels" . | nindent 4 }}
 spec:
-  minAvailable: {{ .Values.backend.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.server.podDisruptionBudget.minAvailable }}
   selector:
     matchLabels:
-      {{- include "ai-registry.backend.selectorLabels" . | nindent 6 }}
+      {{- include "ai-registry.server.selectorLabels" . | nindent 6 }}

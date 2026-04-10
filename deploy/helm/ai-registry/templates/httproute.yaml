@@ -1,0 +1,99 @@
+{{- /*
+Gateway API HTTPRoute — alternative to the Ingress resource.
+Requires the Gateway API CRDs (gateway.networking.k8s.io/v1) and a compatible
+Gateway controller (e.g. Envoy Gateway, Cilium, Istio, Traefik, …) installed
+in the cluster.
+
+TLS termination is configured on the Gateway listener, not here. Point your
+Gateway listener at the appropriate certificate and set httpRoute.host to the
+matching hostname.
+
+Both httpRoute and ingress can coexist, but enabling both for the same host
+with different controllers may cause conflicts. Enable only one per environment.
+*/}}
+{{- if .Values.httpRoute.enabled -}}
+{{- if not .Values.httpRoute.gatewayRef.name -}}
+{{- fail "httpRoute.gatewayRef.name is required when httpRoute.enabled is true" -}}
+{{- end -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "ai-registry.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.labels" . | nindent 4 }}
+  {{- with .Values.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: {{ .Values.httpRoute.gatewayRef.name | quote }}
+      {{- if .Values.httpRoute.gatewayRef.namespace }}
+      namespace: {{ .Values.httpRoute.gatewayRef.namespace | quote }}
+      {{- end }}
+      {{- if .Values.httpRoute.gatewayRef.sectionName }}
+      sectionName: {{ .Values.httpRoute.gatewayRef.sectionName | quote }}
+      {{- end }}
+  {{- if .Values.httpRoute.host }}
+  hostnames:
+    - {{ .Values.httpRoute.host | quote }}
+  {{- end }}
+  rules:
+    # ── Backend prefix routes ────────────────────────────────────────────────
+    # All paths that are handled by the Go server and share the same prefix.
+    # Multiple matches within a rule are OR-ed; the rule wins over the catch-all
+    # because PathPrefix specificity is ranked by prefix length at the Gateway
+    # level — no annotation hacks needed.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+        - path:
+            type: PathPrefix
+            value: /v0
+        - path:
+            type: PathPrefix
+            value: /agents
+        - path:
+            type: PathPrefix
+            value: /.well-known
+      backendRefs:
+        - name: {{ include "ai-registry.server.fullname" . }}
+          port: {{ .Values.server.service.port }}
+
+    # ── Backend exact routes ─────────────────────────────────────────────────
+    # Short, exact paths served by the Go server that would otherwise be caught
+    # by the web catch-all if left unspecified.
+    - matches:
+        - path:
+            type: Exact
+            value: /healthz
+        - path:
+            type: Exact
+            value: /readyz
+        - path:
+            type: Exact
+            value: /config.json
+        - path:
+            type: Exact
+            value: /openapi.yaml
+        - path:
+            type: Exact
+            value: /docs
+      backendRefs:
+        - name: {{ include "ai-registry.server.fullname" . }}
+          port: {{ .Values.server.service.port }}
+
+    # ── Web catch-all ────────────────────────────────────────────────────────
+    # Everything else (SPA routes, static assets) is served by nginx.
+    # This rule MUST be last — Gateway API evaluates rules by specificity and
+    # then by order, so the more-specific rules above always win.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "ai-registry.web.fullname" . }}
+          port: {{ .Values.web.service.port }}
+{{- end }}

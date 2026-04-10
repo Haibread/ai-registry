@@ -54,37 +54,37 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Backend (server) helpers
 ------------------------------------------------------------------------- */}}
 
-{{- define "ai-registry.backend.fullname" -}}
-{{- printf "%s-backend" (include "ai-registry.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- define "ai-registry.server.fullname" -}}
+{{- printf "%s-server" (include "ai-registry.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "ai-registry.backend.labels" -}}
+{{- define "ai-registry.server.labels" -}}
 {{ include "ai-registry.labels" . }}
-app.kubernetes.io/component: backend
+app.kubernetes.io/component: server
 {{- end }}
 
-{{- define "ai-registry.backend.selectorLabels" -}}
+{{- define "ai-registry.server.selectorLabels" -}}
 {{ include "ai-registry.selectorLabels" . }}
-app.kubernetes.io/component: backend
+app.kubernetes.io/component: server
 {{- end }}
 
 {{/*
 Backend service account name.
 */}}
-{{- define "ai-registry.backend.serviceAccountName" -}}
-{{- if .Values.backend.serviceAccount.create }}
-{{- default (include "ai-registry.backend.fullname" .) .Values.backend.serviceAccount.name }}
+{{- define "ai-registry.server.serviceAccountName" -}}
+{{- if .Values.server.serviceAccount.create }}
+{{- default (include "ai-registry.server.fullname" .) .Values.server.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.backend.serviceAccount.name }}
+{{- default "default" .Values.server.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{/*
 Backend image reference (repository:tag).
 */}}
-{{- define "ai-registry.backend.image" -}}
-{{- $tag := .Values.backend.image.tag | default .Chart.AppVersion -}}
-{{- printf "%s:%s" .Values.backend.image.repository $tag }}
+{{- define "ai-registry.server.image" -}}
+{{- $tag := .Values.server.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s:%s" .Values.server.image.repository $tag }}
 {{- end }}
 
 {{/* -------------------------------------------------------------------------

@@ -120,8 +120,9 @@ func run() error {
 		DB:      db,
 		Metrics: metrics,
 		AuthConf: authpkg.Config{
-			OIDCIssuer:  cfg.Auth.OIDCIssuer,
-			OIDCJWKSUrl: cfg.Auth.OIDCJWKSUrl,
+			OIDCIssuer:   cfg.Auth.OIDCIssuer,
+			OIDCJWKSUrl:  cfg.Auth.OIDCJWKSUrl,
+			OIDCClientID: cfg.Auth.OIDCClientID,
 		},
 		CORSOrigins:  cfg.HTTP.CORSOrigins,
 		TrustedProxy: trustedProxy,

@@ -35,44 +35,65 @@ spec:
             pathType: ImplementationSpecific
             backend:
               service:
-                name: {{ include "ai-registry.backend.fullname" . }}
+                name: {{ include "ai-registry.server.fullname" . }}
                 port:
-                  number: {{ .Values.backend.service.port }}
+                  number: {{ .Values.server.service.port }}
           - path: /v0(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
               service:
-                name: {{ include "ai-registry.backend.fullname" . }}
+                name: {{ include "ai-registry.server.fullname" . }}
                 port:
-                  number: {{ .Values.backend.service.port }}
+                  number: {{ .Values.server.service.port }}
           - path: /healthz
             pathType: Exact
             backend:
               service:
-                name: {{ include "ai-registry.backend.fullname" . }}
+                name: {{ include "ai-registry.server.fullname" . }}
                 port:
-                  number: {{ .Values.backend.service.port }}
+                  number: {{ .Values.server.service.port }}
           - path: /readyz
             pathType: Exact
             backend:
               service:
-                name: {{ include "ai-registry.backend.fullname" . }}
+                name: {{ include "ai-registry.server.fullname" . }}
                 port:
-                  number: {{ .Values.backend.service.port }}
+                  number: {{ .Values.server.service.port }}
           - path: /.well-known(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
               service:
-                name: {{ include "ai-registry.backend.fullname" . }}
+                name: {{ include "ai-registry.server.fullname" . }}
                 port:
-                  number: {{ .Values.backend.service.port }}
+                  number: {{ .Values.server.service.port }}
           - path: /agents(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
               service:
-                name: {{ include "ai-registry.backend.fullname" . }}
+                name: {{ include "ai-registry.server.fullname" . }}
                 port:
-                  number: {{ .Values.backend.service.port }}
+                  number: {{ .Values.server.service.port }}
+          - path: /config.json
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "ai-registry.server.fullname" . }}
+                port:
+                  number: {{ .Values.server.service.port }}
+          - path: /openapi.yaml
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "ai-registry.server.fullname" . }}
+                port:
+                  number: {{ .Values.server.service.port }}
+          - path: /docs
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "ai-registry.server.fullname" . }}
+                port:
+                  number: {{ .Values.server.service.port }}
           # --- Web (catch-all) ---
           - path: /
             pathType: Prefix

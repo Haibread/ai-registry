@@ -21,13 +21,12 @@ spec:
 
   postgresql:
     parameters:
-      max_connections: "200"
-      shared_buffers: "256MB"
+      {{- toYaml .Values.cnpg.postgresql.parameters | nindent 6 }}
 
   bootstrap:
     initdb:
-      database: ai_registry
-      owner: ai_registry
+      database: {{ .Values.cnpg.initdb.database }}
+      owner: {{ .Values.cnpg.initdb.owner }}
 
   storage:
     size: {{ .Values.cnpg.storageSize }}
@@ -39,6 +38,6 @@ spec:
   superuserSecret:
     name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
 
-  # Enable automated minor version updates.
-  enableSuperuserAccess: true
+  # Allow the CNPG operator to connect as superuser (needed for migrations).
+  enableSuperuserAccess: {{ .Values.cnpg.enableSuperuserAccess }}
 {{- end }}

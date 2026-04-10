@@ -10,6 +10,6 @@ data:
     API_URL: internal server address used by the SPA's backend proxy / SSR.
     Falls back to the in-cluster service URL derived from the release name.
   */}}
-  API_URL: {{ .Values.web.apiUrl | default (printf "http://%s:%d" (include "ai-registry.backend.fullname" .) (int .Values.backend.service.port)) | quote }}
+  API_URL: {{ .Values.web.apiUrl | default (printf "http://%s:%d" (include "ai-registry.server.fullname" .) (int .Values.server.service.port)) | quote }}
   NEXTAUTH_URL: {{ .Values.web.nextauthUrl | quote }}
   AUTH_KEYCLOAK_ISSUER: {{ .Values.web.keycloakIssuer | quote }}

@@ -86,12 +86,9 @@ services:
         npm run dev -- --host
       "
     environment:
-      # Vite proxies /api/* to the server (see vite.config.ts), so API_URL is
-      # only needed by the Vite proxy, not baked into the bundle.
+      # Vite proxies /api/* and /config.json to the server (see vite.config.ts).
+      # OIDC coordinates are fetched at runtime via GET /config.json — no baked-in values needed.
       API_URL: http://server:8081
-      # VITE_* vars are exposed to the browser bundle at runtime in dev mode.
-      VITE_OIDC_ISSUER: "${VITE_OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}"
-      VITE_OIDC_CLIENT_ID: "${VITE_OIDC_CLIENT_ID:-ai-registry-web}"
       NODE_ENV: development
       # Polling is required for inotify to work through Docker volume mounts
       # on Linux and WSL2. Has no effect on macOS (native fsevents are used).

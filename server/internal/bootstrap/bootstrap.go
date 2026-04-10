@@ -125,13 +125,14 @@ func upsertPublisher(ctx context.Context, db *store.DB, p PublisherSpec) (string
 func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MCPServerSpec, logger *slog.Logger) error {
 	// Check if the server already exists.
 	var serverID string
+	created := false
 	err := db.Pool.QueryRow(ctx,
 		`SELECT id FROM mcp_servers WHERE publisher_id = $1 AND slug = $2`,
 		publisherID, s.Slug,
 	).Scan(&serverID)
 
 	if err != nil {
-		// Create a new server.
+		// Row not found — create it.
 		srv, createErr := db.CreateMCPServer(ctx, store.CreateMCPServerParams{
 			PublisherID: publisherID,
 			Slug:        s.Slug,
@@ -145,6 +146,7 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MC
 			return fmt.Errorf("creating server: %w", createErr)
 		}
 		serverID = srv.ID
+		created = true
 
 		vis := domain.VisibilityPrivate
 		if s.Public {
@@ -158,15 +160,16 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MC
 		logger.Info("bootstrap: mcp_server already exists, skipping", slog.String("slug", s.Slug))
 	}
 
-	// Apply versions.
+	// Apply versions (idempotent per-version check inside).
 	for _, v := range s.Versions {
 		if err := upsertMCPVersion(ctx, db, serverID, v, logger); err != nil {
 			return fmt.Errorf("version %q: %w", v.Version, err)
 		}
 	}
 
-	// Apply explicit server-level status (only if set in spec).
-	if s.Status == "deprecated" {
+	// Only apply server-level status mutations for newly created servers.
+	// Existing servers keep whatever status they already have.
+	if created && s.Status == "deprecated" {
 		if err := db.SetMCPServerStatus(ctx, serverID, domain.StatusDeprecated); err != nil {
 			return fmt.Errorf("deprecating server: %w", err)
 		}
@@ -239,12 +242,14 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID string, v MCPV
 
 func upsertAgent(ctx context.Context, db *store.DB, publisherID string, a AgentSpec, logger *slog.Logger) error {
 	var agentID string
+	created := false
 	err := db.Pool.QueryRow(ctx,
 		`SELECT id FROM agents WHERE publisher_id = $1 AND slug = $2`,
 		publisherID, a.Slug,
 	).Scan(&agentID)
 
 	if err != nil {
+		// Row not found — create it.
 		ag, createErr := db.CreateAgent(ctx, store.CreateAgentParams{
 			PublisherID: publisherID,
 			Slug:        a.Slug,
@@ -255,6 +260,7 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID string, a AgentS
 			return fmt.Errorf("creating agent: %w", createErr)
 		}
 		agentID = ag.ID
+		created = true
 
 		vis := domain.VisibilityPrivate
 		if a.Public {
@@ -268,13 +274,16 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID string, a AgentS
 		logger.Info("bootstrap: agent already exists, skipping", slog.String("slug", a.Slug))
 	}
 
+	// Apply versions (idempotent per-version check inside).
 	for _, v := range a.Versions {
 		if err := upsertAgentVersion(ctx, db, agentID, v, logger); err != nil {
 			return fmt.Errorf("version %q: %w", v.Version, err)
 		}
 	}
 
-	if a.Status == "deprecated" {
+	// Only apply agent-level status mutations for newly created agents.
+	// Existing agents keep whatever status they already have.
+	if created && a.Status == "deprecated" {
 		if err := db.DeprecateAgent(ctx, agentID); err != nil {
 			return fmt.Errorf("deprecating agent: %w", err)
 		}
