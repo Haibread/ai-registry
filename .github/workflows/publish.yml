@@ -4,8 +4,8 @@ name: Publish
 #
 # Triggers:
 #   push to main  → images tagged :latest + :main-<short-sha>
-#                   chart version  <chart-version>-main.<short-sha>
-#   push of v* tag → images tagged :<semver> + :latest
+#                   chart version  0.0.0-main.<short-sha>
+#   push of v* tag → images tagged :<semver> + :<major>.<minor>
 #                   chart version  <semver-without-v>
 
 on:
@@ -56,7 +56,7 @@ jobs:
             # On semver tag: v1.2.3 → 1.2.3 and 1.2
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            # On main branch: latest + main-<short-sha>
+            # On main branch: :latest + :main-<short-sha>
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=main-,enable={{is_default_branch}},format=short
 
@@ -151,18 +151,18 @@ jobs:
       - name: Compute chart and app versions
         id: versions
         run: |
-          # Read the base chart version from Chart.yaml.
-          CHART_BASE=$(grep '^version:' deploy/helm/ai-registry/Chart.yaml | awk '{print $2}')
-
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             # Strip the leading 'v' for SemVer chart version (Helm requires no prefix).
             CHART_VERSION="${{ github.ref_name }}"
             CHART_VERSION="${CHART_VERSION#v}"
             APP_VERSION="${{ github.ref_name }}"
           else
+            BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-')
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            CHART_VERSION="${CHART_BASE}-main.${SHORT_SHA}"
-            APP_VERSION="main-${SHORT_SHA}"
+            # 0.0.0 is a neutral SemVer base for non-release builds.
+            # Helm requires valid SemVer; the pre-release segment carries the identity.
+            CHART_VERSION="0.0.0-${BRANCH}.${SHORT_SHA}"
+            APP_VERSION="${BRANCH}-${SHORT_SHA}"
           fi
 
           echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
