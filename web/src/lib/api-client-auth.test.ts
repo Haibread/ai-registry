@@ -48,6 +48,7 @@ beforeEach(() => {
     user: null,
     isLoading: false,
     userManager: {} as never,
+    loginError: null,
   })
 })
 
@@ -100,6 +101,7 @@ describe('useAuthClient', () => {
       user: null,
       isLoading: false,
       userManager: {} as never,
+      loginError: null,
     })
 
     renderHook(() => useAuthClient())

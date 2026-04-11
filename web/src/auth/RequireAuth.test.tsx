@@ -31,12 +31,12 @@ function renderWithRouter(authState: ReturnType<typeof useAuth>, initialPath = '
 
 describe('RequireAuth', () => {
   it('shows spinner while loading', () => {
-    renderWithRouter({ isLoading: true, accessToken: undefined, login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never })
+    renderWithRouter({ isLoading: true, accessToken: undefined, login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never, loginError: null })
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
 
   it('redirects to home page (not Keycloak) when not authenticated', () => {
-    renderWithRouter({ isLoading: false, accessToken: undefined, login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never })
+    renderWithRouter({ isLoading: false, accessToken: undefined, login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never, loginError: null })
     // Should navigate to "/" and render Home, not call login() or show Keycloak redirect
     expect(mockLogin).not.toHaveBeenCalled()
     expect(screen.getByText('Home')).toBeInTheDocument()
@@ -44,7 +44,7 @@ describe('RequireAuth', () => {
   })
 
   it('renders children when authenticated', () => {
-    renderWithRouter({ isLoading: false, accessToken: 'tok-abc', login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never })
+    renderWithRouter({ isLoading: false, accessToken: 'tok-abc', login: mockLogin, logout: vi.fn(), clearSession: vi.fn(), user: null, userManager: {} as never, loginError: null })
     expect(screen.getByText('Admin content')).toBeInTheDocument()
   })
 })
