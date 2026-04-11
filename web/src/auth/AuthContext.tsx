@@ -13,6 +13,11 @@ interface AppConfig {
 
 let _managerPromise: Promise<UserManager> | undefined
 
+/** Resets the module-level UserManager cache. Only for use in tests. */
+export function resetManagerForTesting() {
+  _managerPromise = undefined
+}
+
 export function getUserManager(): Promise<UserManager> {
   if (_managerPromise) return _managerPromise
   _managerPromise = fetch('/config.json')
