@@ -100,9 +100,9 @@ server:
 
   podSecurityContext:
     runAsNonRoot: true
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
+    runAsUser: 65532  # nonroot user in gcr.io/distroless/static-debian12:nonroot
+    runAsGroup: 65532
+    fsGroup: 65532
     seccompProfile:
       type: RuntimeDefault
 

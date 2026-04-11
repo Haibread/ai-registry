@@ -19,17 +19,12 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
-FROM alpine:3.21
-
-# wget is used by the docker-compose healthcheck.
-# UID/GID 1000 matches the Helm chart's podSecurityContext (runAsUser: 1000).
-RUN apk add --no-cache wget && \
-    addgroup -S -g 1000 appgroup && \
-    adduser -S -u 1000 -G appgroup appuser
+# distroless/static is ~2 MB — no shell, no package manager, no OS utilities.
+# The Go binary is fully static (CGO_ENABLED=0) so nothing else is needed.
+# The nonroot variant runs as UID 65532; matches Helm podSecurityContext.
+FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=builder /out/server /server
-
-USER appuser
 
 # Default port — overridden by HTTP_ADDR env var in production (e.g. :8080 in k8s).
 EXPOSE 8081
