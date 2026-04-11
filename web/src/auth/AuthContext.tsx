@@ -40,6 +40,7 @@ export function getUserManager(): Promise<UserManager> {
 interface AuthState {
   user: User | null
   isLoading: boolean
+  loginError: string | null
   accessToken: string | undefined
   login: () => void
   logout: () => void
@@ -53,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [um, setUm] = useState<UserManager | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loginError, setLoginError] = useState<string | null>(null)
 
   // Step 1: resolve UserManager (triggers the /config.json fetch once).
   useEffect(() => {
@@ -83,7 +85,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [um])
 
-  const login = useCallback(() => um?.signinRedirect(), [um])
+  const login = useCallback(() => {
+    setLoginError(null)
+    um?.signinRedirect().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      setLoginError(
+        msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')
+          ? 'Cannot reach the authentication server. Check your OIDC configuration and CORS settings.'
+          : `Sign-in failed: ${msg}`,
+      )
+    })
+  }, [um])
   const logout = useCallback(() => um?.signoutRedirect(), [um])
   const clearSession = useCallback(
     () => um?.removeUser() ?? Promise.resolve(),
@@ -95,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isLoading: isLoading || !um,
+        loginError,
         accessToken: user?.access_token,
         login,
         logout,

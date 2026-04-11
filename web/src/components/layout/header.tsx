@@ -1,15 +1,21 @@
 import { Link } from 'react-router-dom'
-import { Server, Bot } from 'lucide-react'
+import { Server, Bot, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NavLink } from '@/components/layout/nav-link'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { useAuth } from '@/auth/AuthContext'
 
 export function Header() {
-  const { accessToken, login, logout } = useAuth()
+  const { accessToken, login, logout, loginError } = useAuth()
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur-sm supports-backdrop-filter:bg-background/60">
+      {loginError && (
+        <div role="alert" className="flex items-center gap-2 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {loginError}
+        </div>
+      )}
       <div className="container flex h-14 items-center gap-6">
         <Link to="/" className="flex items-center gap-2 font-semibold shrink-0">
           <div className="flex h-7 w-7 items-center justify-center rounded bg-primary text-primary-foreground text-xs font-bold">

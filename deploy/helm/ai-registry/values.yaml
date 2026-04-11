@@ -199,8 +199,6 @@ web:
   # Internal URL for the SPA's API proxy (server-side only).
   # Falls back to the in-cluster backend service URL when empty.
   apiUrl: ""
-  nextauthUrl: ""
-  keycloakIssuer: ""
 
   service:
     type: ClusterIP
