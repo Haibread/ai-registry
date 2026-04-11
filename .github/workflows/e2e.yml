@@ -33,18 +33,21 @@ jobs:
         run: touch deploy/.env
 
       # Build images and start all four services (postgres, keycloak, server, web).
-      # --build ensures we use the current commit's code, not a cached image.
+      # docker-compose.ci.yml overrides depends_on conditions to service_started
+      # so this command returns immediately without blocking on Keycloak's slow
+      # JVM startup. The wait steps below own the readiness gates.
       - name: Start stack
         working-directory: deploy
-        run: docker compose -f docker-compose.yml up -d --build
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build
 
       # Keycloak takes the longest to start (60 s start_period in the healthcheck).
       # Poll the realm discovery endpoint rather than relying on docker healthcheck
       # timing, which is conservative.
+      # Keycloak is a JVM app — it can take 90-120 s to boot on a CI runner.
       - name: Wait for Keycloak
         run: |
           echo "Waiting for Keycloak realm..."
-          timeout 180 bash -c \
+          timeout 240 bash -c \
             'until curl -sf http://localhost:8080/realms/ai-registry > /dev/null; do
                echo "  not ready, retrying in 5 s..."; sleep 5
              done'
