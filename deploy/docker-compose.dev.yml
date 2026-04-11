@@ -77,7 +77,7 @@ services:
 
   # ── Web (Vite dev server with hot reload) ───────────────────────────────────
   web:
-    image: node:22-alpine
+    image: node:24-alpine
     restart: unless-stopped
     working_dir: /app
     # Install deps on first start (node_modules volume persists across restarts),
