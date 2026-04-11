@@ -46,6 +46,10 @@ export default defineConfig({
         target: process.env.API_URL ?? 'http://localhost:8081',
         changeOrigin: true,
       },
+      '/config.json': {
+        target: process.env.API_URL ?? 'http://localhost:8081',
+        changeOrigin: true,
+      },
     },
   },
   build: {

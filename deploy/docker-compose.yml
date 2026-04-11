@@ -45,10 +45,23 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Dev defaults — Keycloak is exposed on localhost:8080 from the host,
+      # but the server container reaches it via the internal Docker network.
+      # OIDC_ISSUER is the public-facing URL (matches the `iss` claim in tokens).
+      # OIDC_JWKS_URL lets the server fetch JWKS internally without going via the host.
+      # Override any of these in .env to customise for your environment.
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-ai-registry-web}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs}
+      DATABASE_URL: ${DATABASE_URL:-postgres://registry:registry@postgres:5432/registry?sslmode=disable}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
     ports:
       - "8081:8081"
     depends_on:
       postgres:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8081/readyz || exit 1"]
@@ -67,7 +80,7 @@ services:
       # nginx proxies /api/, /v0/, /config.json, etc. to this upstream.
       API_URL: "http://server:8081"
     ports:
-      - "3000:80"
+      - "3000:8080"
     depends_on:
       server:
         condition: service_started
