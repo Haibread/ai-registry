@@ -17,7 +17,6 @@ spec:
       annotations:
         # Force a rollout when the ConfigMap or Secret changes.
         checksum/configmap: {{ include (print $.Template.BasePath "/web/configmap.yaml") . | sha256sum }}
-        checksum/secret: {{ include (print $.Template.BasePath "/web/secret.yaml") . | sha256sum }}
         {{- with .Values.web.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -47,8 +46,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "ai-registry.web.fullname" . }}
-            - secretRef:
-                name: {{ include "ai-registry.web.fullname" . }}
           {{- with .Values.web.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}
@@ -64,15 +61,27 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: {{ .Values.web.tmpDir }}
-            - name: nextjs-cache
-              mountPath: {{ .Values.web.cacheDir }}
+            # Required by nginxinc/nginx-unprivileged with readOnlyRootFilesystem: true.
+            # nginx writes its PID and temp files to these paths at runtime.
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            # The entrypoint runs envsubst on /etc/nginx/templates/ and writes
+            # the result here; must be writable even with a read-only root fs.
+            - name: nginx-conf-d
+              mountPath: /etc/nginx/conf.d
             {{- with .Values.web.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
-        - name: nextjs-cache
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-conf-d
           emptyDir: {}
         {{- with .Values.web.extraVolumes }}
         {{- toYaml . | nindent 8 }}

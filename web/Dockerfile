@@ -2,13 +2,13 @@
 # Build context: repository root (docker-compose sets context: ..)
 
 # ── Dependencies ──────────────────────────────────────────────────────────────
-FROM node:25-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY web/package.json web/package-lock.json* ./
 RUN npm ci
 
 # ── Builder ───────────────────────────────────────────────────────────────────
-FROM node:25-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY web/ .
@@ -21,12 +21,19 @@ RUN npm run generate
 RUN npm run build
 
 # ── Runtime (nginx) ───────────────────────────────────────────────────────────
-FROM nginx:alpine AS runner
+FROM nginxinc/nginx-unprivileged:alpine AS runner
+
+# Remove the default server block shipped with the image.
+RUN rm /etc/nginx/conf.d/default.conf
+
 COPY --from=builder /app/dist /usr/share/nginx/html
-# Stored as a template; API_URL is substituted at container startup via envsubst
-# so that a single image works across docker-compose and Kubernetes.
-COPY web/nginx.conf /etc/nginx/conf.d/default.conf.template
-EXPOSE 80
-# Only substitute ${API_URL} — quoting the variable list prevents nginx's own
-# $host, $remote_addr, $uri etc. from being wiped by envsubst.
-CMD ["/bin/sh", "-c", "envsubst '${API_URL}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+
+# The unprivileged nginx entrypoint runs envsubst on files in /etc/nginx/templates/
+# and writes the result to /etc/nginx/conf.d/ at container startup.
+COPY web/nginx.conf /etc/nginx/templates/default.conf.template
+
+# Only substitute ${API_URL}. Without this, envsubst would also wipe nginx's
+# own variables ($host, $remote_addr, $proxy_add_x_forwarded_for, etc.).
+ENV NGINX_ENVSUBST_TEMPLATE_VARS=API_URL
+
+EXPOSE 8080

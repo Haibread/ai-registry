@@ -202,14 +202,9 @@ web:
   nextauthUrl: ""
   keycloakIssuer: ""
 
-  # Sensitive environment variables stored in a generated Secret.
-  authSecret: ""           # AUTH_SECRET
-  keycloakId: ""           # AUTH_KEYCLOAK_ID
-  keycloakSecret: ""       # AUTH_KEYCLOAK_SECRET
-
   service:
     type: ClusterIP
-    port: 80  # nginx listens on port 80; docker-compose maps host:3000 → container:80
+    port: 8080  # nginx-unprivileged listens on 8080 (non-root cannot bind < 1024)
 
   resources: {}
 
@@ -222,15 +217,17 @@ web:
 
   podSecurityContext:
     runAsNonRoot: true
-    runAsUser: 1001
-    runAsGroup: 1001
-    fsGroup: 1001
+    runAsUser: 101   # nginx user in nginxinc/nginx-unprivileged
+    runAsGroup: 101
+    fsGroup: 101
     seccompProfile:
       type: RuntimeDefault
 
   securityContext:
     allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: false  # nginx writes cache files at runtime
+    # /var/cache/nginx, /var/run, and /etc/nginx/conf.d are mounted as emptyDir
+    # so nginx can write to them; the root filesystem is otherwise read-only.
+    readOnlyRootFilesystem: true
     capabilities:
       drop:
         - ALL
@@ -255,10 +252,8 @@ web:
     failureThreshold: 3
 
   # ── Volume mount paths ───────────────────────────────────────────────────
-  # Writable /tmp directory.
+  # Writable /tmp directory (used by nginx for temp files and the envsubst config).
   tmpDir: /tmp
-  # nginx runtime cache directory.
-  cacheDir: /app/.next/cache
 
   # ── Autoscaling ──────────────────────────────────────────────────────────
   autoscaling:
