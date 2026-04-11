@@ -19,6 +19,9 @@
 
 import { test as setup, expect } from '@playwright/test'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@example.com'
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'admin'
