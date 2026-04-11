@@ -44,6 +44,15 @@ export default defineConfig({
       testMatch: /admin\.spec\.ts/,
     },
     {
+      name: "admin-stats",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /admin-stats\.spec\.ts/,
+    },
+    {
       name: "public-chromium",
       use: {
         ...devices["Desktop Chrome"],

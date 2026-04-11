@@ -107,7 +107,7 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - Agents: symmetric endpoints.
 - Visibility: `POST /{ns}/{slug}:set-visibility` (toggle `private`/`public`).
 - API keys: `POST/DELETE /api/v1/api-keys` — manage per-publisher API keys.
-- Users & roles: `GET/PATCH /api/v1/users`.
+- Users & roles: **delegated to the IdP** — no user/role endpoints in this API.
 
 ### 3.4 System
 
@@ -184,7 +184,6 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - [ ] `DELETE /api/v1/agents/{ns}/{slug}` — delete agent
 - [ ] `PATCH /api/v1/publishers/{slug}` — edit publisher
 - [ ] `DELETE /api/v1/publishers/{slug}` — delete publisher
-- [ ] `GET /api/v1/users`, `PATCH /api/v1/users/{sub}` — user & role management
 - [ ] Update `server/api/openapi.yaml` to reflect all current endpoints
 
 **TODO — Admin UI (missing features):**
@@ -192,11 +191,15 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - [ ] Edit form for agents (`/admin/agents/[ns]/[slug]/edit`)
 - [ ] Edit form for publishers (`/admin/publishers/[slug]/edit`)
 - [ ] Delete actions for servers, agents, and publishers (with confirmation)
-- [ ] Users & roles management page (`/admin/users`)
 
-**TODO — Public UI (missing features):**
-- [ ] Search bar wired to `?q=` on `/mcp` and `/agents` list pages
-- [ ] Cursor-based pagination controls on list pages
+**Out of scope — User & role management:**
+User and role management is intentionally delegated to the identity provider
+(Keycloak in dev, any OIDC-compliant IdP in production). The registry never
+stores or manages users or roles itself — it only reads the `realm_access.roles`
+claim from the JWT. Adding or removing the `admin` role is done in the IdP's
+admin console. No `/api/v1/users` endpoint or `/admin/users` page will be built.
+
+**Public UI — complete.** Search (`?q=`), namespace/status filters, cursor-based "Load more" pagination, and empty-state handling are all implemented on both `/mcp` and `/agents` list pages.
 
 ### Phase 5 — Hardening
 - Rate limiting ✅, CORS ✅, audit log ✅.
@@ -322,6 +325,7 @@ Query** — a plain SPA served as static files from nginx.
 | 4 | Deployment target | Docker Compose **and** Helm chart for k8s |
 | 5 | API-key auth | Yes — support both OIDC (interactive) and hashed API keys (machine-to-machine). Middleware tries JWT first, falls back to API-key. |
 | 6 | UI template | shadcn/ui blocks (minimal) — build from primitives, no third-party admin template |
+| 7 | User & role management | Fully delegated to the IdP (Keycloak or any OIDC provider). The registry reads `realm_access.roles` from the JWT but never stores or manages users or roles. No `/api/v1/users` endpoint or admin users page. |
 
 ## 7. Definition of done (per phase)
 

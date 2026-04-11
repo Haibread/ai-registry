@@ -11,7 +11,9 @@
     "generate": "openapi-typescript ../api/openapi.yaml -o src/lib/schema.d.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.4",
