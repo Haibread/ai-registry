@@ -32,6 +32,11 @@ export function getUserManager(): Promise<UserManager> {
           automaticSilentRenew: true,
         }),
     )
+    .catch((err) => {
+      // Reset so the next call retries rather than replaying the rejection.
+      _managerPromise = undefined
+      throw err
+    })
   return _managerPromise
 }
 
@@ -59,8 +64,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Step 1: resolve UserManager (triggers the /config.json fetch once).
   useEffect(() => {
     getUserManager()
-      .then(setUm)
-      .catch(() => setIsLoading(false))
+      .then((resolved) => { setUm(resolved); setIsLoading(false) })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        setLoginError(`Authentication configuration failed: ${msg}`)
+        setIsLoading(false)
+      })
   }, [])
 
   // Step 2: subscribe to auth events once the manager is ready.
@@ -87,7 +96,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(() => {
     setLoginError(null)
-    um?.signinRedirect().catch((err: unknown) => {
+    if (!um) {
+      setLoginError('Authentication is not configured. Check that the server is reachable and /config.json is served correctly.')
+      return
+    }
+    um.signinRedirect().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err)
       setLoginError(
         msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')
@@ -106,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        isLoading: isLoading || !um,
+        isLoading,
         loginError,
         accessToken: user?.access_token,
         login,
