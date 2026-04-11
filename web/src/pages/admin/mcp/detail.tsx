@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { DeprecateButton } from '@/components/admin/deprecate-button'
+import { DeleteButton } from '@/components/admin/delete-button'
 import { Separator } from '@/components/ui/separator'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
 import { InstallCommand } from '@/components/ui/install-command'
 import { useAuthClient } from '@/lib/api-client'
@@ -16,6 +20,7 @@ export default function AdminMCPDetail() {
   const { accessToken } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [editOpen, setEditOpen] = useState(false)
 
   const api = useAuthClient()
   const { data, isLoading, isError } = useQuery({
@@ -48,6 +53,25 @@ export default function AdminMCPDetail() {
       })
     },
     onSuccess: invalidate,
+  })
+
+  const editMutation = useMutation({
+    mutationFn: async (body: { name: string; description: string; homepage_url: string; repo_url: string; license: string }) => {
+      await api.PATCH('/api/v1/mcp/servers/{namespace}/{slug}', {
+        params: { path: { namespace: ns!, slug: slug! } },
+        body,
+      })
+    },
+    onSuccess: () => { invalidate(); setEditOpen(false) },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await api.DELETE('/api/v1/mcp/servers/{namespace}/{slug}', {
+        params: { path: { namespace: ns!, slug: slug! } },
+      })
+    },
+    onSuccess: () => navigate('/admin/mcp'),
   })
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>
@@ -157,9 +181,70 @@ export default function AdminMCPDetail() {
 
       <Separator />
 
+      {/* Edit form */}
+      {editOpen && (
+        <form
+          className="space-y-4 border rounded-lg p-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const fd = new FormData(e.currentTarget)
+            editMutation.mutate({
+              name: fd.get('name') as string,
+              description: fd.get('description') as string,
+              homepage_url: fd.get('homepage_url') as string,
+              repo_url: fd.get('repo_url') as string,
+              license: fd.get('license') as string,
+            })
+          }}
+        >
+          <h2 className="text-lg font-semibold">Edit MCP Server</h2>
+          <div className="grid gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="name">Name <span className="text-destructive">*</span></Label>
+              <Input id="name" name="name" defaultValue={data.name} required />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="description">Description</Label>
+              <Input id="description" name="description" defaultValue={data.description ?? ''} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="homepage_url">Homepage URL</Label>
+              <Input id="homepage_url" name="homepage_url" type="url" defaultValue={data.homepage_url ?? ''} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="repo_url">Repository URL</Label>
+              <Input id="repo_url" name="repo_url" type="url" defaultValue={data.repo_url ?? ''} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="license">License</Label>
+              <Input id="license" name="license" defaultValue={data.license ?? ''} />
+            </div>
+          </div>
+          {editMutation.isError && (
+            <p className="text-sm text-destructive">Update failed. Please try again.</p>
+          )}
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={editMutation.isPending}>
+              {editMutation.isPending ? 'Saving…' : 'Save changes'}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">Actions</h2>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEditOpen(v => !v)}
+          >
+            {editOpen ? 'Cancel edit' : 'Edit'}
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -175,8 +260,14 @@ export default function AdminMCPDetail() {
               entityName={data.name}
             />
           )}
+
+          <DeleteButton
+            onDelete={() => deleteMutation.mutate()}
+            entityName={data.name}
+            isPending={deleteMutation.isPending}
+          />
         </div>
-        {(visibilityMutation.isError || deprecateMutation.isError) && (
+        {(visibilityMutation.isError || deprecateMutation.isError || deleteMutation.isError) && (
           <p className="text-sm text-destructive">Action failed. Please try again.</p>
         )}
       </div>

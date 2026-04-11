@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/haibread/ai-registry/internal/store"
@@ -205,5 +206,98 @@ func TestGetPublisherBySlug(t *testing.T) {
 	_, err = sharedDB.GetPublisherBySlug(ctx, "missing")
 	if err != store.ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestUpdatePublisher(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pub, err := sharedDB.CreatePublisher(ctx, store.CreatePublisherParams{
+		Slug: "upd-pub", Name: "Original", Contact: "original@example.com",
+	})
+	if err != nil {
+		t.Fatalf("CreatePublisher: %v", err)
+	}
+
+	updated, err := sharedDB.UpdatePublisher(ctx, pub.ID, store.UpdatePublisherParams{
+		Name:    "Updated",
+		Contact: "updated@example.com",
+	})
+	if err != nil {
+		t.Fatalf("UpdatePublisher: %v", err)
+	}
+	if updated.Name != "Updated" {
+		t.Errorf("name = %q, want %q", updated.Name, "Updated")
+	}
+	if updated.Contact != "updated@example.com" {
+		t.Errorf("contact = %q, want %q", updated.Contact, "updated@example.com")
+	}
+	if updated.Slug != pub.Slug {
+		t.Errorf("slug changed: got %q, want %q", updated.Slug, pub.Slug)
+	}
+}
+
+func TestUpdatePublisher_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	_, err := sharedDB.UpdatePublisher(ctx, store.NewULID(), store.UpdatePublisherParams{Name: "X"})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeletePublisher(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pub, err := sharedDB.CreatePublisher(ctx, store.CreatePublisherParams{
+		Slug: "del-pub", Name: "Delete Me",
+	})
+	if err != nil {
+		t.Fatalf("CreatePublisher: %v", err)
+	}
+
+	if err := sharedDB.DeletePublisher(ctx, pub.ID); err != nil {
+		t.Fatalf("DeletePublisher: %v", err)
+	}
+
+	// Should be gone.
+	_, err = sharedDB.GetPublisher(ctx, "del-pub")
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+func TestDeletePublisher_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	if err := sharedDB.DeletePublisher(ctx, store.NewULID()); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeletePublisher_ConflictWithActiveEntries(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pub, err := sharedDB.CreatePublisher(ctx, store.CreatePublisherParams{
+		Slug: "busy-pub", Name: "Busy Publisher",
+	})
+	if err != nil {
+		t.Fatalf("CreatePublisher: %v", err)
+	}
+	// Add an active MCP server.
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pub.ID,
+		Slug:        "active-srv",
+		Name:        "Active Server",
+	}); err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	err = sharedDB.DeletePublisher(ctx, pub.ID)
+	if !errors.Is(err, store.ErrConflict) {
+		t.Errorf("expected ErrConflict, got %v", err)
 	}
 }

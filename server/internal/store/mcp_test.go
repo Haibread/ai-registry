@@ -665,3 +665,106 @@ func TestListMCPServers_TotalCount(t *testing.T) {
 		t.Errorf("total_count page 2: got %d, want 3", total2)
 	}
 }
+
+func TestUpdateMCPServer(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "update-pub", "Update Pub")
+
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID,
+		Slug:        "update-srv",
+		Name:        "Original Name",
+		Description: "Original description",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	updated, err := sharedDB.UpdateMCPServer(ctx, srv.ID, store.UpdateMCPServerParams{
+		Name:        "Updated Name",
+		Description: "Updated description",
+		HomepageURL: "https://example.com",
+		RepoURL:     "https://github.com/example",
+		License:     "MIT",
+	})
+	if err != nil {
+		t.Fatalf("UpdateMCPServer: %v", err)
+	}
+	if updated.Name != "Updated Name" {
+		t.Errorf("name = %q, want %q", updated.Name, "Updated Name")
+	}
+	if updated.Description != "Updated description" {
+		t.Errorf("description = %q, want %q", updated.Description, "Updated description")
+	}
+	if updated.HomepageURL != "https://example.com" {
+		t.Errorf("homepage_url = %q, want %q", updated.HomepageURL, "https://example.com")
+	}
+	if updated.License != "MIT" {
+		t.Errorf("license = %q, want %q", updated.License, "MIT")
+	}
+}
+
+func TestUpdateMCPServer_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	_, err := sharedDB.UpdateMCPServer(ctx, store.NewULID(), store.UpdateMCPServerParams{Name: "X"})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteMCPServer(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "del-pub", "Delete Pub")
+
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID,
+		Slug:        "del-srv",
+		Name:        "Delete Me",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+	// Add a version so we can verify it's also soft-deleted.
+	_, err = sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+		ServerID:        srv.ID,
+		Version:         "1.0.0",
+		Runtime:         domain.RuntimeStdio,
+		Packages:        validPackages,
+		ProtocolVersion: "2025-03-26",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServerVersion: %v", err)
+	}
+
+	if err := sharedDB.DeleteMCPServer(ctx, srv.ID); err != nil {
+		t.Fatalf("DeleteMCPServer: %v", err)
+	}
+
+	// Server should not appear in a non-admin listing.
+	rows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{PublicOnly: true})
+	if err != nil {
+		t.Fatalf("ListMCPServers: %v", err)
+	}
+	for _, r := range rows {
+		if r.ID == srv.ID {
+			t.Error("deleted server still appears in public listing")
+		}
+	}
+
+	// Double-delete should return ErrNotFound.
+	if err := sharedDB.DeleteMCPServer(ctx, srv.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("second delete: expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteMCPServer_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	if err := sharedDB.DeleteMCPServer(ctx, store.NewULID()); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}

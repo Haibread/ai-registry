@@ -123,3 +123,102 @@ func (h *PublisherHandlers) CreatePublisher(w http.ResponseWriter, r *http.Reque
 	})
 	writeJSON(w, r, http.StatusCreated, pub)
 }
+
+// ── PATCH /api/v1/publishers/{slug} ──────────────────────────────────────────
+
+func (h *PublisherHandlers) PatchPublisher(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+
+	pub, err := h.db.GetPublisher(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("publisher '%s' does not exist", slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	var body struct {
+		Name    *string `json:"name"`
+		Contact *string `json:"contact"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+
+	p := store.UpdatePublisherParams{
+		Name:    pub.Name,
+		Contact: pub.Contact,
+	}
+	if body.Name != nil {
+		p.Name = *body.Name
+	}
+	if body.Contact != nil {
+		p.Contact = *body.Contact
+	}
+
+	if p.Name == "" {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			"name is required", r.URL.Path)
+		return
+	}
+
+	updated, err := h.db.UpdatePublisher(r.Context(), pub.ID, p)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("publisher '%s' does not exist", slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionPublisherUpdated, ResourceType: "publisher",
+		ResourceID: pub.ID, ResourceSlug: pub.Slug,
+	})
+	writeJSON(w, r, http.StatusOK, updated)
+}
+
+// ── DELETE /api/v1/publishers/{slug} ─────────────────────────────────────────
+
+func (h *PublisherHandlers) DeletePublisher(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+
+	pub, err := h.db.GetPublisher(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("publisher '%s' does not exist", slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	if err := h.db.DeletePublisher(r.Context(), pub.ID); errors.Is(err, store.ErrConflict) {
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("publisher '%s' still has active entries", slug), r.URL.Path)
+		return
+	} else if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("publisher '%s' does not exist", slug), r.URL.Path)
+		return
+	} else if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionPublisherDeleted, ResourceType: "publisher",
+		ResourceID: pub.ID, ResourceSlug: pub.Slug,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}

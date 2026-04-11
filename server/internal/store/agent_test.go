@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -566,5 +567,87 @@ func TestListAgents_TotalCount(t *testing.T) {
 	}
 	if total2 != 3 {
 		t.Errorf("total_count page 2: got %d, want 3", total2)
+	}
+}
+
+func TestUpdateAgent(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "ag-update-pub", "Update Pub")
+
+	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID,
+		Slug:        "update-agent",
+		Name:        "Original Agent",
+		Description: "Original description",
+	})
+	if err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+
+	updated, err := sharedDB.UpdateAgent(ctx, ag.ID, store.UpdateAgentParams{
+		Name:        "Updated Agent",
+		Description: "Updated description",
+	})
+	if err != nil {
+		t.Fatalf("UpdateAgent: %v", err)
+	}
+	if updated.Name != "Updated Agent" {
+		t.Errorf("name = %q, want %q", updated.Name, "Updated Agent")
+	}
+	if updated.Description != "Updated description" {
+		t.Errorf("description = %q, want %q", updated.Description, "Updated description")
+	}
+}
+
+func TestUpdateAgent_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	_, err := sharedDB.UpdateAgent(ctx, store.NewULID(), store.UpdateAgentParams{Name: "X"})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteAgent(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "ag-del-pub", "Delete Pub")
+
+	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID,
+		Slug:        "del-agent",
+		Name:        "Delete Me",
+	})
+	if err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+
+	if err := sharedDB.DeleteAgent(ctx, ag.ID); err != nil {
+		t.Fatalf("DeleteAgent: %v", err)
+	}
+
+	// Should not appear in public listing.
+	rows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{PublicOnly: true})
+	if err != nil {
+		t.Fatalf("ListAgents: %v", err)
+	}
+	for _, r := range rows {
+		if r.ID == ag.ID {
+			t.Error("deleted agent still appears in public listing")
+		}
+	}
+
+	// Double-delete should return ErrNotFound.
+	if err := sharedDB.DeleteAgent(ctx, ag.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("second delete: expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteAgent_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	if err := sharedDB.DeleteAgent(ctx, store.NewULID()); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }

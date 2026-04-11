@@ -609,6 +609,124 @@ func (db *DB) SetAllAgentVersionsStatus(ctx context.Context, agentID string, sta
 	return result, nil
 }
 
+// UpdateAgentParams holds the mutable fields for a PATCH operation on an agent.
+type UpdateAgentParams struct {
+	Name        string
+	Description string
+}
+
+// UpdateAgent updates the mutable metadata fields of an agent.
+// Returns ErrNotFound if the agent does not exist.
+func (db *DB) UpdateAgent(ctx context.Context, agentID string, p UpdateAgentParams) (*AgentRow, error) {
+	ctx, span := startSpan(ctx, "UpdateAgent")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agents
+		SET name=$1, description=$2, updated_at=now()
+		WHERE id=$3 AND status != 'deleted'`,
+		p.Name, p.Description, agentID,
+	)
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("updating agent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
+		return nil, ErrNotFound
+	}
+	return db.getAgentByID(ctx, agentID)
+}
+
+// DeleteAgent soft-deletes an agent by setting status='deleted' on the agent
+// and all its versions. Returns ErrNotFound if not found.
+func (db *DB) DeleteAgent(ctx context.Context, agentID string) error {
+	ctx, span := startSpan(ctx, "DeleteAgent")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx,
+		`UPDATE agents SET status='deleted', updated_at=now() WHERE id=$1 AND status != 'deleted'`,
+		agentID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("deleting agent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
+		return ErrNotFound
+	}
+	_, err = db.Pool.Exec(ctx,
+		`UPDATE agent_versions SET status='deleted', status_changed_at=now() WHERE agent_id=$1`,
+		agentID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("deleting agent versions: %w", err)
+	}
+	return nil
+}
+
+// getAgentByID retrieves an agent by its ULID (internal helper for update returns).
+func (db *DB) getAgentByID(ctx context.Context, id string) (*AgentRow, error) {
+	ctx, span := startSpan(ctx, "getAgentByID")
+	defer span.End()
+
+	q := `
+		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
+		       coalesce(a.description,''), a.visibility, a.status, a.created_at, a.updated_at,
+		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
+		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
+		FROM agents a
+		JOIN publishers pub ON pub.id = a.publisher_id
+		LEFT JOIN LATERAL (
+		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
+		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
+		    FROM agent_versions av
+		    WHERE av.agent_id = a.id AND av.published_at IS NOT NULL
+		    ORDER BY av.published_at DESC
+		    LIMIT 1
+		) lav ON true
+		WHERE a.id = $1`
+
+	var r AgentRow
+	var (
+		lavVersion     *string
+		lavEndpoint    *string
+		lavSkills      []byte
+		lavInputModes  []string
+		lavOutputModes []string
+		lavAuth        []byte
+		lavProto       *string
+		lavPublishedAt *time.Time
+	)
+	err := db.Pool.QueryRow(ctx, q, id).Scan(
+		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
+		&r.Description, &r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+		&lavVersion, &lavEndpoint, &lavSkills, &lavInputModes,
+		&lavOutputModes, &lavAuth, &lavProto, &lavPublishedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("getting agent by id: %w", err)
+	}
+	if lavVersion != nil {
+		r.LatestVersion = &LatestAgentVersion{
+			Version:            *lavVersion,
+			EndpointURL:        *lavEndpoint,
+			Skills:             json.RawMessage(lavSkills),
+			DefaultInputModes:  lavInputModes,
+			DefaultOutputModes: lavOutputModes,
+			Authentication:     json.RawMessage(lavAuth),
+			ProtocolVersion:    *lavProto,
+			PublishedAt:        lavPublishedAt,
+		}
+	}
+	return &r, nil
+}
+
 func scanAgentVersion(s interface{ Scan(...any) error }) (domain.AgentVersion, error) {
 	var v domain.AgentVersion
 	err := s.Scan(

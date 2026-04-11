@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Cpu, Shield, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { DeprecateButton } from '@/components/admin/deprecate-button'
+import { DeleteButton } from '@/components/admin/delete-button'
 import { Separator } from '@/components/ui/separator'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
 import { useAuthClient } from '@/lib/api-client'
@@ -19,6 +23,7 @@ export default function AdminAgentDetail() {
   const { accessToken } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [editOpen, setEditOpen] = useState(false)
 
   const api = useAuthClient()
   const { data, isLoading, isError } = useQuery({
@@ -51,6 +56,25 @@ export default function AdminAgentDetail() {
       })
     },
     onSuccess: invalidate,
+  })
+
+  const editMutation = useMutation({
+    mutationFn: async (body: { name: string; description: string }) => {
+      await api.PATCH('/api/v1/agents/{namespace}/{slug}', {
+        params: { path: { namespace: ns!, slug: slug! } },
+        body,
+      })
+    },
+    onSuccess: () => { invalidate(); setEditOpen(false) },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await api.DELETE('/api/v1/agents/{namespace}/{slug}', {
+        params: { path: { namespace: ns!, slug: slug! } },
+      })
+    },
+    onSuccess: () => navigate('/admin/agents'),
   })
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>
@@ -209,9 +233,55 @@ export default function AdminAgentDetail() {
 
       <Separator />
 
+      {/* Edit form */}
+      {editOpen && (
+        <form
+          className="space-y-4 border rounded-lg p-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const fd = new FormData(e.currentTarget)
+            editMutation.mutate({
+              name: fd.get('name') as string,
+              description: fd.get('description') as string,
+            })
+          }}
+        >
+          <h2 className="text-lg font-semibold">Edit Agent</h2>
+          <div className="grid gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="name">Name <span className="text-destructive">*</span></Label>
+              <Input id="name" name="name" defaultValue={data.name} required />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="description">Description</Label>
+              <Input id="description" name="description" defaultValue={data.description ?? ''} />
+            </div>
+          </div>
+          {editMutation.isError && (
+            <p className="text-sm text-destructive">Update failed. Please try again.</p>
+          )}
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={editMutation.isPending}>
+              {editMutation.isPending ? 'Saving…' : 'Save changes'}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">Actions</h2>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEditOpen(v => !v)}
+          >
+            {editOpen ? 'Cancel edit' : 'Edit'}
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -227,8 +297,14 @@ export default function AdminAgentDetail() {
               entityName={data.name}
             />
           )}
+
+          <DeleteButton
+            onDelete={() => deleteMutation.mutate()}
+            entityName={data.name}
+            isPending={deleteMutation.isPending}
+          />
         </div>
-        {(visibilityMutation.isError || deprecateMutation.isError) && (
+        {(visibilityMutation.isError || deprecateMutation.isError || deleteMutation.isError) && (
           <p className="text-sm text-destructive">Action failed. Please try again.</p>
         )}
       </div>

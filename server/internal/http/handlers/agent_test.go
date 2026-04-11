@@ -25,6 +25,8 @@ func newAgentRouter() *chi.Mux {
 	r.Get("/api/v1/agents", h.ListAgents)
 	r.Post("/api/v1/agents", h.CreateAgent)
 	r.Get("/api/v1/agents/{namespace}/{slug}", h.GetAgent)
+	r.Patch("/api/v1/agents/{namespace}/{slug}", h.PatchAgent)
+	r.Delete("/api/v1/agents/{namespace}/{slug}", h.DeleteAgent)
 	r.Get("/api/v1/agents/{namespace}/{slug}/versions", h.ListVersions)
 	r.Post("/api/v1/agents/{namespace}/{slug}/versions", h.CreateVersion)
 	r.Get("/api/v1/agents/{namespace}/{slug}/versions/{version}", h.GetVersion)
@@ -726,5 +728,96 @@ func TestAgentHandler_ListAgents_TotalCount(t *testing.T) {
 	}
 	if body.TotalCount != 3 {
 		t.Errorf("total_count: got %d, want 3", body.TotalCount)
+	}
+}
+
+func TestAgentHandler_PatchAgent_Success(t *testing.T) {
+	resetTables(t)
+	seedAgent(t, "patch-ns", "patch-agent")
+
+	payload := `{"name":"New Name","description":"New desc"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/agents/patch-ns/patch-agent",
+		bytes.NewBufferString(payload))
+	req = req.WithContext(adminAgentCtx())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var ag struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&ag); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if ag.Name != "New Name" {
+		t.Errorf("name = %q, want %q", ag.Name, "New Name")
+	}
+}
+
+func TestAgentHandler_PatchAgent_NotFound(t *testing.T) {
+	resetTables(t)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/agents/ns/missing",
+		bytes.NewBufferString(`{"name":"X"}`))
+	req = req.WithContext(adminAgentCtx())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestAgentHandler_PatchAgent_NameRequired(t *testing.T) {
+	resetTables(t)
+	seedAgent(t, "val-ns", "val-agent")
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/agents/val-ns/val-agent",
+		bytes.NewBufferString(`{"name":""}`))
+	req = req.WithContext(adminAgentCtx())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestAgentHandler_DeleteAgent_Success(t *testing.T) {
+	resetTables(t)
+	seedAgent(t, "del-ns", "del-agent")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/del-ns/del-agent", nil)
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// No longer in public listing.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	rec = httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	var body struct {
+		Items []any `json:"items"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if len(body.Items) != 0 {
+		t.Errorf("expected empty list after delete, got %d items", len(body.Items))
+	}
+}
+
+func TestAgentHandler_DeleteAgent_NotFound(t *testing.T) {
+	resetTables(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/ns/missing", nil)
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }

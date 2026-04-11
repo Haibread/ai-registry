@@ -384,6 +384,119 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deprecated"})
 }
 
+// ── PATCH /api/v1/mcp/servers/{namespace}/{slug} ──────────────────────────
+
+func (h *MCPHandlers) PatchServer(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	var body struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		HomepageURL *string `json:"homepage_url"`
+		RepoURL     *string `json:"repo_url"`
+		License     *string `json:"license"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+
+	// Merge non-nil provided fields over current values.
+	p := store.UpdateMCPServerParams{
+		Name:        srv.Name,
+		Description: srv.Description,
+		HomepageURL: srv.HomepageURL,
+		RepoURL:     srv.RepoURL,
+		License:     srv.License,
+	}
+	if body.Name != nil {
+		p.Name = *body.Name
+	}
+	if body.Description != nil {
+		p.Description = *body.Description
+	}
+	if body.HomepageURL != nil {
+		p.HomepageURL = *body.HomepageURL
+	}
+	if body.RepoURL != nil {
+		p.RepoURL = *body.RepoURL
+	}
+	if body.License != nil {
+		p.License = *body.License
+	}
+
+	if p.Name == "" {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			"name is required", r.URL.Path)
+		return
+	}
+
+	updated, err := h.db.UpdateMCPServer(r.Context(), srv.ID, p)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionMCPServerUpdated, ResourceType: "mcp_server",
+		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+	})
+	writeJSON(w, r, http.StatusOK, serverToResponse(updated))
+}
+
+// ── DELETE /api/v1/mcp/servers/{namespace}/{slug} ─────────────────────────
+
+func (h *MCPHandlers) DeleteServer(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	if err := h.db.DeleteMCPServer(r.Context(), srv.ID); errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	} else if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionMCPServerDeleted, ResourceType: "mcp_server",
+		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── helper ────────────────────────────────────────────────────────────────
 
 func serverToResponse(srv *store.MCPServerRow) map[string]any {

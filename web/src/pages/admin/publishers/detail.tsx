@@ -1,11 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Circle, Server, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/ui/badge'
+import { DeleteButton } from '@/components/admin/delete-button'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
@@ -14,6 +18,8 @@ export default function AdminPublisherDetail() {
   const { slug } = useParams<{ slug: string }>()
   const { accessToken } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [editOpen, setEditOpen] = useState(false)
 
   const api = useAuthClient()
 
@@ -39,6 +45,30 @@ export default function AdminPublisherDetail() {
       params: { query: { namespace: slug, limit: 50 } },
     }).then(r => r.data),
     enabled: !!slug && !!accessToken,
+  })
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-publisher', slug] })
+    queryClient.invalidateQueries({ queryKey: ['admin-publishers'] })
+  }
+
+  const editMutation = useMutation({
+    mutationFn: async (body: { name: string; contact: string }) => {
+      await api.PATCH('/api/v1/publishers/{slug}', {
+        params: { path: { slug: slug! } },
+        body,
+      })
+    },
+    onSuccess: () => { invalidate(); setEditOpen(false) },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await api.DELETE('/api/v1/publishers/{slug}', {
+        params: { path: { slug: slug! } },
+      })
+    },
+    onSuccess: () => navigate('/admin/publishers'),
   })
 
   const mcpServers = mcpData?.items ?? []
@@ -93,6 +123,64 @@ export default function AdminPublisherDetail() {
         <dt className="text-muted-foreground">Updated</dt>
         <dd>{formatDate(publisher.updated_at)}</dd>
       </dl>
+
+      {/* Edit form */}
+      {editOpen && (
+        <form
+          className="space-y-4 border rounded-lg p-4 max-w-sm"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const fd = new FormData(e.currentTarget)
+            editMutation.mutate({
+              name: fd.get('name') as string,
+              contact: fd.get('contact') as string,
+            })
+          }}
+        >
+          <h2 className="text-lg font-semibold">Edit Publisher</h2>
+          <div className="grid gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="name">Name <span className="text-destructive">*</span></Label>
+              <Input id="name" name="name" defaultValue={publisher.name} required />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="contact">Contact</Label>
+              <Input id="contact" name="contact" defaultValue={publisher.contact ?? ''} />
+            </div>
+          </div>
+          {editMutation.isError && (
+            <p className="text-sm text-destructive">Update failed. Please try again.</p>
+          )}
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={editMutation.isPending}>
+              {editMutation.isPending ? 'Saving…' : 'Save changes'}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {/* Actions */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold">Actions</h2>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(v => !v)}>
+            {editOpen ? 'Cancel edit' : 'Edit'}
+          </Button>
+          <DeleteButton
+            onDelete={() => deleteMutation.mutate()}
+            entityName={publisher.name}
+            isPending={deleteMutation.isPending}
+          />
+        </div>
+        {deleteMutation.isError && (
+          <p className="text-sm text-destructive">
+            Delete failed — publisher may still have active entries.
+          </p>
+        )}
+      </div>
 
       <Separator />
 

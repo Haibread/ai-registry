@@ -108,6 +108,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.With(publicRL).Get("/", pubH.ListPublishers)
 			r.With(auth.RequireAdmin).Post("/", pubH.CreatePublisher)
 			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
+			r.With(auth.RequireAdmin).Patch("/{slug}", pubH.PatchPublisher)
+			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
 		})
 
 		// MCP servers
@@ -117,6 +119,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", mcpH.GetServer)
+				r.With(auth.RequireAdmin).Patch("/", mcpH.PatchServer)
+				r.With(auth.RequireAdmin).Delete("/", mcpH.DeleteServer)
 				r.With(auth.RequireAdmin).Post("/deprecate", mcpH.DeprecateServer)
 				r.With(auth.RequireAdmin).Post("/visibility", mcpH.SetVisibility)
 
@@ -136,6 +140,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", agentH.GetAgent)
+				r.With(auth.RequireAdmin).Patch("/", agentH.PatchAgent)
+				r.With(auth.RequireAdmin).Delete("/", agentH.DeleteAgent)
 				r.With(auth.RequireAdmin).Post("/deprecate", agentH.DeprecateAgent)
 				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
 

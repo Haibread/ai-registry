@@ -163,5 +163,73 @@ func (db *DB) SetPublisherVerified(ctx context.Context, id string, verified bool
 	return nil
 }
 
+// UpdatePublisherParams holds the mutable fields for a PATCH operation.
+type UpdatePublisherParams struct {
+	Name    string
+	Contact string
+}
+
+// UpdatePublisher updates the mutable metadata fields of a publisher.
+// Returns ErrNotFound if the publisher does not exist.
+func (db *DB) UpdatePublisher(ctx context.Context, publisherID string, p UpdatePublisherParams) (*Publisher, error) {
+	ctx, span := startSpan(ctx, "UpdatePublisher")
+	defer span.End()
+
+	var pub Publisher
+	err := db.Pool.QueryRow(ctx, `
+		UPDATE publishers
+		SET name=$1, contact=$2, updated_at=now()
+		WHERE id=$3
+		RETURNING id, slug, name, coalesce(contact,''), verified, created_at, updated_at`,
+		p.Name, p.Contact, publisherID,
+	).Scan(&pub.ID, &pub.Slug, &pub.Name, &pub.Contact, &pub.Verified, &pub.CreatedAt, &pub.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("updating publisher: %w", err)
+	}
+	return &pub, nil
+}
+
+// DeletePublisher hard-deletes a publisher. Returns ErrConflict if the
+// publisher still owns any MCP servers or agents (active or not).
+func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
+	ctx, span := startSpan(ctx, "DeletePublisher")
+	defer span.End()
+
+	// Check for dependent resources.
+	var mcpCount, agentCount int
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1 AND status != 'deleted'`,
+		publisherID).Scan(&mcpCount); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("counting mcp servers: %w", err)
+	}
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM agents WHERE publisher_id=$1 AND status != 'deleted'`,
+		publisherID).Scan(&agentCount); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("counting agents: %w", err)
+	}
+	if mcpCount > 0 || agentCount > 0 {
+		recordErr(span, ErrConflict)
+		return ErrConflict
+	}
+
+	tag, err := db.Pool.Exec(ctx, `DELETE FROM publishers WHERE id=$1`, publisherID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("deleting publisher: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
+		return ErrNotFound
+	}
+	return nil
+}
+
 // scanPublisher is a convenience alias used by domain helpers.
 var _ = domain.VisibilityPublic // keep domain import used

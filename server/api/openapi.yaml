@@ -199,6 +199,62 @@ paths:
                 $ref: "#/components/schemas/Publisher"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: patchPublisher
+      summary: Update a publisher's metadata (admin only)
+      tags: [publishers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Display name for the publisher
+                contact:
+                  type: string
+                  description: Contact email or URL
+      responses:
+        "200":
+          description: Updated publisher
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Publisher"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deletePublisher
+      summary: Delete a publisher (admin only)
+      description: Hard-deletes the publisher. Returns 409 if the publisher still owns active MCP servers or agents.
+      tags: [publishers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204":
+          description: Publisher deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   # ── MCP Servers ───────────────────────────────────────────────────────────
 
@@ -282,6 +338,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MCPServer"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: patchMCPServer
+      summary: Update an MCP server's metadata (admin only)
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                homepage_url:
+                  type: string
+                repo_url:
+                  type: string
+                license:
+                  type: string
+      responses:
+        "200":
+          description: Updated MCP server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPServer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteMCPServer
+      summary: Soft-delete an MCP server (admin only)
+      description: Sets the server and all its versions to status='deleted'. The entry is no longer returned in public listings.
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204":
+          description: MCP server deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -535,6 +651,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Agent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: patchAgent
+      summary: Update an agent's metadata (admin only)
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        "200":
+          description: Updated agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteAgent
+      summary: Soft-delete an agent (admin only)
+      description: Sets the agent and all its versions to status='deleted'. The entry is no longer returned in public listings.
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204":
+          description: Agent deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 

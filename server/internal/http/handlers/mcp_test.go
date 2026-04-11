@@ -25,6 +25,8 @@ func newMCPRouter() *chi.Mux {
 	r.Get("/api/v1/mcp/servers", h.ListServers)
 	r.Post("/api/v1/mcp/servers", h.CreateServer)
 	r.Get("/api/v1/mcp/servers/{namespace}/{slug}", h.GetServer)
+	r.Patch("/api/v1/mcp/servers/{namespace}/{slug}", h.PatchServer)
+	r.Delete("/api/v1/mcp/servers/{namespace}/{slug}", h.DeleteServer)
 	r.Get("/api/v1/mcp/servers/{namespace}/{slug}/versions", h.ListVersions)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/versions", h.CreateVersion)
 	r.Get("/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}", h.GetVersion)
@@ -719,5 +721,100 @@ func TestMCPHandler_ListServers_TotalCount(t *testing.T) {
 	}
 	if body.TotalCount != 3 {
 		t.Errorf("total_count: got %d, want 3", body.TotalCount)
+	}
+}
+
+
+func TestMCPHandler_PatchServer_Success(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "patch-ns", "patch-srv")
+
+	payload := `{"name":"New Name","description":"New desc","license":"MIT"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/mcp/servers/patch-ns/patch-srv",
+		bytes.NewBufferString(payload))
+	req = req.WithContext(adminCtx())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var srv struct {
+		Name    string `json:"name"`
+		License string `json:"license"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&srv); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if srv.Name != "New Name" {
+		t.Errorf("name = %q, want %q", srv.Name, "New Name")
+	}
+	if srv.License != "MIT" {
+		t.Errorf("license = %q, want %q", srv.License, "MIT")
+	}
+}
+
+func TestMCPHandler_PatchServer_NotFound(t *testing.T) {
+	resetTables(t)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/mcp/servers/ns/missing",
+		bytes.NewBufferString(`{"name":"X"}`))
+	req = req.WithContext(adminCtx())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestMCPHandler_PatchServer_NameRequired(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "val-ns", "val-srv")
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/mcp/servers/val-ns/val-srv",
+		bytes.NewBufferString(`{"name":""}`))
+	req = req.WithContext(adminCtx())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestMCPHandler_DeleteServer_Success(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "del-ns", "del-srv")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/mcp/servers/del-ns/del-srv", nil)
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// No longer in public listing.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers", nil)
+	rec = httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	var body struct {
+		Items []any `json:"items"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if len(body.Items) != 0 {
+		t.Errorf("expected empty list after delete, got %d items", len(body.Items))
+	}
+}
+
+func TestMCPHandler_DeleteServer_NotFound(t *testing.T) {
+	resetTables(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/mcp/servers/ns/missing", nil)
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }

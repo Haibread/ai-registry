@@ -761,6 +761,66 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 	return result, nil
 }
 
+// UpdateMCPServerParams holds the mutable fields for a PATCH operation.
+type UpdateMCPServerParams struct {
+	Name        string
+	Description string
+	HomepageURL string
+	RepoURL     string
+	License     string
+}
+
+// UpdateMCPServer updates the mutable metadata fields of an MCP server.
+// Returns ErrNotFound if the server does not exist.
+func (db *DB) UpdateMCPServer(ctx context.Context, serverID string, p UpdateMCPServerParams) (*MCPServerRow, error) {
+	ctx, span := startSpan(ctx, "UpdateMCPServer")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE mcp_servers
+		SET name=$1, description=$2, homepage_url=$3, repo_url=$4, license=$5, updated_at=now()
+		WHERE id=$6 AND status != 'deleted'`,
+		p.Name, p.Description, p.HomepageURL, p.RepoURL, p.License, serverID,
+	)
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("updating mcp server: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
+		return nil, ErrNotFound
+	}
+	return db.GetMCPServerByID(ctx, serverID)
+}
+
+// DeleteMCPServer soft-deletes an MCP server by setting status='deleted' on
+// the server and all its versions. Returns ErrNotFound if not found.
+func (db *DB) DeleteMCPServer(ctx context.Context, serverID string) error {
+	ctx, span := startSpan(ctx, "DeleteMCPServer")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx,
+		`UPDATE mcp_servers SET status='deleted', updated_at=now() WHERE id=$1 AND status != 'deleted'`,
+		serverID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("deleting mcp server: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		recordErr(span, ErrNotFound)
+		return ErrNotFound
+	}
+	// Mark all versions deleted too.
+	_, err = db.Pool.Exec(ctx,
+		`UPDATE mcp_server_versions SET status='deleted', status_changed_at=now() WHERE server_id=$1`,
+		serverID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("deleting mcp server versions: %w", err)
+	}
+	return nil
+}
+
 // decodeCursor splits a cursor string into (time, id).
 func decodeCursor(cursor string) (time.Time, string, error) {
 	// cursor format: "<RFC3339>,<ulid>"

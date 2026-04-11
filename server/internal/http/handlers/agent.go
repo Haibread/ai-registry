@@ -387,6 +387,103 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deprecated"})
 }
 
+// ── PATCH /api/v1/agents/{namespace}/{slug} ───────────────────────────────
+
+func (h *AgentHandlers) PatchAgent(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	agent, err := h.db.GetAgent(r.Context(), ns, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	var body struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+
+	p := store.UpdateAgentParams{
+		Name:        agent.Name,
+		Description: agent.Description,
+	}
+	if body.Name != nil {
+		p.Name = *body.Name
+	}
+	if body.Description != nil {
+		p.Description = *body.Description
+	}
+
+	if p.Name == "" {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			"name is required", r.URL.Path)
+		return
+	}
+
+	updated, err := h.db.UpdateAgent(r.Context(), agent.ID, p)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionAgentUpdated, ResourceType: "agent",
+		ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+	})
+	writeJSON(w, r, http.StatusOK, agentToResponse(updated))
+}
+
+// ── DELETE /api/v1/agents/{namespace}/{slug} ──────────────────────────────
+
+func (h *AgentHandlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	agent, err := h.db.GetAgent(r.Context(), ns, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	if err := h.db.DeleteAgent(r.Context(), agent.ID); errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	} else if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionAgentDeleted, ResourceType: "agent",
+		ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── PATCH /api/v1/agents/{namespace}/{slug}/versions/{version}/status ────────
 
 // PatchVersionStatus updates the lifecycle status of a specific agent version.

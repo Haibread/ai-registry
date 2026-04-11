@@ -20,8 +20,18 @@ const (
 	ActionAgentDeprecated     AuditAction = "agent.deprecated"
 	ActionAgentVisibility     AuditAction = "agent.visibility_changed"
 
+	// MCP server update/delete actions
+	ActionMCPServerUpdated AuditAction = "mcp_server.updated"
+	ActionMCPServerDeleted AuditAction = "mcp_server.deleted"
+
+	// Agent update/delete actions
+	ActionAgentUpdated AuditAction = "agent.updated"
+	ActionAgentDeleted AuditAction = "agent.deleted"
+
 	// Publisher actions
 	ActionPublisherCreated AuditAction = "publisher.created"
+	ActionPublisherUpdated AuditAction = "publisher.updated"
+	ActionPublisherDeleted AuditAction = "publisher.deleted"
 )
 
 // AuditEvent is a single immutable entry in the audit log.

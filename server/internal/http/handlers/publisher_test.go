@@ -23,6 +23,8 @@ func newPublisherRouter() *chi.Mux {
 	r.Get("/api/v1/publishers", h.ListPublishers)
 	r.Post("/api/v1/publishers", h.CreatePublisher)
 	r.Get("/api/v1/publishers/{slug}", h.GetPublisher)
+	r.Patch("/api/v1/publishers/{slug}", h.PatchPublisher)
+	r.Delete("/api/v1/publishers/{slug}", h.DeletePublisher)
 	return r
 }
 
@@ -235,5 +237,114 @@ func TestPublisherHandler_List_Pagination(t *testing.T) {
 		if seen[p.ID] {
 			t.Errorf("item %s appeared on both pages", p.ID)
 		}
+	}
+}
+
+func TestPublisherHandler_Patch_Success(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "patch-pub", "Original Name")
+
+	payload := `{"name":"Updated Name","contact":"new@example.com"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/publishers/patch-pub",
+		bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var pub struct {
+		Name    string `json:"name"`
+		Contact string `json:"contact"`
+		Slug    string `json:"slug"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&pub); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if pub.Name != "Updated Name" {
+		t.Errorf("name = %q, want %q", pub.Name, "Updated Name")
+	}
+	if pub.Contact != "new@example.com" {
+		t.Errorf("contact = %q, want %q", pub.Contact, "new@example.com")
+	}
+	if pub.Slug != "patch-pub" {
+		t.Errorf("slug changed: got %q, want %q", pub.Slug, "patch-pub")
+	}
+}
+
+func TestPublisherHandler_Patch_NotFound(t *testing.T) {
+	resetTables(t)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/publishers/missing",
+		bytes.NewBufferString(`{"name":"X"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestPublisherHandler_Patch_NameRequired(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "val-pub", "Some Pub")
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/publishers/val-pub",
+		bytes.NewBufferString(`{"name":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestPublisherHandler_Delete_Success(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "del-pub", "Delete Me")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/publishers/del-pub", nil)
+	rec := httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Should now 404.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/publishers/del-pub", nil)
+	rec = httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("after delete: status = %d, want 404", rec.Code)
+	}
+}
+
+func TestPublisherHandler_Delete_NotFound(t *testing.T) {
+	resetTables(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/publishers/missing", nil)
+	rec := httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestPublisherHandler_Delete_ConflictWithActiveEntries(t *testing.T) {
+	resetTables(t)
+	// Create publisher with an MCP server.
+	pubID := seedPublisher(t, "busy-pub", "Busy")
+	if _, err := testDB.CreateMCPServer(t.Context(), store.CreateMCPServerParams{
+		PublisherID: pubID,
+		Slug:        "server",
+		Name:        "Server",
+	}); err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/publishers/busy-pub", nil)
+	rec := httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", rec.Code)
 	}
 }
