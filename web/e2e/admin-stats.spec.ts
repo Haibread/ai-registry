@@ -43,6 +43,9 @@ test.describe('Admin Dashboard: stats panel (regression)', () => {
   })
 
   test('stats API is reachable and returns required keys', async ({ page }) => {
+    // Navigate first so localStorage is accessible (about:blank blocks it).
+    await page.goto('/admin')
+    await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
     const res = await apiGet(page, '/api/v1/stats')
     expect(res.ok()).toBeTruthy()
 
@@ -53,6 +56,9 @@ test.describe('Admin Dashboard: stats panel (regression)', () => {
   })
 
   test('stats counts increase after creating resources', async ({ page }) => {
+    // Navigate first so localStorage is accessible (about:blank blocks it).
+    await page.goto('/admin')
+    await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
     // Read baseline counts.
     const beforeRes = await apiGet(page, '/api/v1/stats')
     expect(beforeRes.ok()).toBeTruthy()

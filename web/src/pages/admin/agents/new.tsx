@@ -39,7 +39,7 @@ export default function AdminAgentNew() {
   const navigate = useNavigate()
 
   const [namespace, setNamespace] = useState('')
-  const [authScheme, setAuthScheme] = useState('')
+  const [authScheme, setAuthScheme] = useState('_none')
   const [formError, setFormError] = useState<CreateError | null>(null)
 
   const api = useAuthClient()
@@ -94,7 +94,7 @@ export default function AdminAgentNew() {
         ? [{ id: skillId, name: skillName, description: skillDescription, tags: skillTags }]
         : []
 
-      const authentication = authScheme ? [{ scheme: authScheme }] : []
+      const authentication = (authScheme && authScheme !== '_none') ? [{ scheme: authScheme }] : []
 
       const defaultInputModes = MODE_VALUES.filter((v) => formData.get(`input_mode_${v}`) === 'on')
       const defaultOutputModes = MODE_VALUES.filter((v) => formData.get(`output_mode_${v}`) === 'on')
@@ -281,7 +281,7 @@ export default function AdminAgentNew() {
                   <SelectValue placeholder="None / public" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None / public</SelectItem>
+                  <SelectItem value="_none">None / public</SelectItem>
                   {AUTH_SCHEME_OPTIONS.map((a) => (
                     <SelectItem key={a.value} value={a.value}>
                       {a.label}

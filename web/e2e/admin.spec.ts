@@ -27,7 +27,17 @@ const AGENT_NAME = `E2E Agent ${RUN_ID}`
 
 async function goTo(page: Page, path: string) {
   await page.goto(path)
-  await page.waitForLoadState('networkidle')
+  // Don't use networkidle — automaticSilentRenew and TanStack Query retries
+  // keep the network active and prevent networkidle from ever resolving.
+  await page.waitForLoadState('domcontentloaded')
+}
+
+// Select a Radix UI <Select> option by its trigger element id and partial text.
+// Waits for the option to appear (publishers may load after the trigger is clicked).
+async function selectOption(page: Page, triggerId: string, optionText: string | RegExp) {
+  await page.locator(`#${triggerId}`).click()
+  await expect(page.getByRole('option', { name: optionText })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('option', { name: optionText }).click()
 }
 
 // ── Publisher ─────────────────────────────────────────────────────────────────
@@ -51,8 +61,7 @@ test.describe('Admin: Publisher CRUD', () => {
     await page.fill('input[name="name"]', `${PUBLISHER_NAME} edited`)
     await page.click('button:has-text("Save changes")')
 
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText(`${PUBLISHER_NAME} edited`)).toBeVisible()
+    await expect(page.getByText(`${PUBLISHER_NAME} edited`)).toBeVisible({ timeout: 10_000 })
   })
 })
 
@@ -62,20 +71,23 @@ test.describe('Admin: MCP Server CRUD', () => {
   test('create an MCP server', async ({ page }) => {
     await goTo(page, '/admin/mcp/new')
 
-    await page.fill('input[name="namespace"]', PUBLISHER_SLUG)
+    // Namespace is a Radix <Select> — publishers load from the API after auth.
+    await expect(page.locator('#namespace-select')).toBeVisible({ timeout: 10_000 })
+    await selectOption(page, 'namespace-select', new RegExp(PUBLISHER_SLUG))
+
     await page.fill('input[name="slug"]', MCP_SLUG)
     await page.fill('input[name="name"]', MCP_NAME)
-    await page.fill('textarea[name="description"], input[name="description"]', 'An E2E test MCP server.')
+    await page.fill('input[name="description"]', 'An E2E test MCP server.')
     await page.click('button[type="submit"]')
 
-    await page.waitForURL(/\/admin\/mcp/)
+    await page.waitForURL(new RegExp(`/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`))
     await expect(page.getByText(MCP_NAME)).toBeVisible()
   })
 
   test('MCP server detail page shows draft status', async ({ page }) => {
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
-    await expect(page.getByText('draft')).toBeVisible()
-    await expect(page.getByText('private')).toBeVisible()
+    await expect(page.getByText('draft').first()).toBeVisible()
+    await expect(page.getByText('private').first()).toBeVisible()
   })
 
   test('edit MCP server metadata', async ({ page }) => {
@@ -86,27 +98,27 @@ test.describe('Admin: MCP Server CRUD', () => {
     await page.fill('input[name="license"]', 'MIT')
     await page.click('button:has-text("Save changes")')
 
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText(`${MCP_NAME} edited`)).toBeVisible()
-    await expect(page.getByText('MIT')).toBeVisible()
+    await expect(page.getByText(`${MCP_NAME} edited`)).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('MIT')).toBeVisible({ timeout: 10_000 })
   })
 
   test('toggle MCP server visibility to public', async ({ page }) => {
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
 
     await page.click('button:has-text("Make public")')
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('public')).toBeVisible()
+    await expect(page.getByText('public').first()).toBeVisible()
   })
 
   test('toggle MCP server visibility back to private', async ({ page }) => {
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     await page.click('button:has-text("Make private")')
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('private')).toBeVisible()
+    await expect(page.getByText('private').first()).toBeVisible()
   })
 
   test('publish a version via API, then deprecate via UI', async ({ page }) => {
+    // Navigate first so localStorage is accessible for apiPost.
+    await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
+
     // Create a version via the API.
     const createRes = await apiPost(
       page,
@@ -130,16 +142,15 @@ test.describe('Admin: MCP Server CRUD', () => {
     )
     expect(publishRes.ok()).toBeTruthy()
 
-    // Navigate to admin detail — Deprecate button should appear.
+    // Reload the detail page — Deprecate button should now appear.
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
-    await expect(page.getByText('published')).toBeVisible()
+    await expect(page.getByText('published').first()).toBeVisible()
     await expect(page.getByRole('button', { name: 'Deprecate' })).toBeVisible()
 
     // Deprecate via UI.
     page.on('dialog', dialog => dialog.accept())
     await page.click('button:has-text("Deprecate")')
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('deprecated')).toBeVisible()
+    await expect(page.getByText('deprecated').first()).toBeVisible()
   })
 
   test('delete an MCP server', async ({ page }) => {
@@ -160,20 +171,23 @@ test.describe('Admin: Agent CRUD', () => {
   test('create an agent', async ({ page }) => {
     await goTo(page, '/admin/agents/new')
 
-    await page.fill('input[name="namespace"]', PUBLISHER_SLUG)
+    // Namespace is a Radix <Select> — publishers load from the API after auth.
+    await expect(page.locator('#namespace-select')).toBeVisible({ timeout: 10_000 })
+    await selectOption(page, 'namespace-select', new RegExp(PUBLISHER_SLUG))
+
     await page.fill('input[name="slug"]', AGENT_SLUG)
     await page.fill('input[name="name"]', AGENT_NAME)
-    await page.fill('textarea[name="description"], input[name="description"]', 'An E2E test agent.')
+    await page.fill('input[name="description"]', 'An E2E test agent.')
     await page.click('button[type="submit"]')
 
-    await page.waitForURL(/\/admin\/agents/)
+    await page.waitForURL(new RegExp(`/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`))
     await expect(page.getByText(AGENT_NAME)).toBeVisible()
   })
 
   test('agent detail page shows draft status', async ({ page }) => {
     await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
-    await expect(page.getByText('draft')).toBeVisible()
-    await expect(page.getByText('private')).toBeVisible()
+    await expect(page.getByText('draft').first()).toBeVisible()
+    await expect(page.getByText('private').first()).toBeVisible()
   })
 
   test('edit agent metadata', async ({ page }) => {
@@ -183,15 +197,13 @@ test.describe('Admin: Agent CRUD', () => {
     await page.fill('input[name="name"]', `${AGENT_NAME} edited`)
     await page.click('button:has-text("Save changes")')
 
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText(`${AGENT_NAME} edited`)).toBeVisible()
+    await expect(page.getByText(`${AGENT_NAME} edited`)).toBeVisible({ timeout: 10_000 })
   })
 
   test('toggle agent visibility to public', async ({ page }) => {
     await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
     await page.click('button:has-text("Make public")')
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('public')).toBeVisible()
+    await expect(page.getByText('public').first()).toBeVisible()
   })
 
   test('delete an agent', async ({ page }) => {
@@ -201,7 +213,7 @@ test.describe('Admin: Agent CRUD', () => {
     await page.click('button:has-text("Delete")')
 
     await page.waitForURL(/\/admin\/agents$/)
-    await expect(page.getByText(AGENT_NAME)).not.toBeVisible()
+    await expect(page.getByText(`${AGENT_NAME} edited`, { exact: true })).not.toBeVisible({ timeout: 10_000 })
   })
 })
 
@@ -211,10 +223,14 @@ test.describe('Admin: Publisher delete', () => {
   test('delete a publisher once its entries are gone', async ({ page }) => {
     await goTo(page, `/admin/publishers/${PUBLISHER_SLUG}`)
 
+    // Wait for the publisher data to load before looking for the Delete button.
+    // The query is gated on accessToken; auth hydration from storageState is async.
+    await expect(page.getByText(`${PUBLISHER_NAME} edited`, { exact: true })).toBeVisible({ timeout: 15_000 })
+
     page.on('dialog', dialog => dialog.accept())
     await page.click('button:has-text("Delete")')
 
     await page.waitForURL(/\/admin\/publishers$/)
-    await expect(page.getByText(PUBLISHER_NAME)).not.toBeVisible()
+    await expect(page.getByText(`${PUBLISHER_NAME} edited`, { exact: true })).not.toBeVisible({ timeout: 10_000 })
   })
 })

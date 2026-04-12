@@ -215,6 +215,47 @@ admin console. No `/api/v1/users` endpoint or `/admin/users` page will be built.
 - [ ] Docker Compose prod profile (`deploy/docker-compose.prod.yml`)
 - [ ] Helm chart (`deploy/helm/`)
 
+### Server handler tests — mutation coverage gap
+
+The store layer and all GET (read) handlers are thoroughly tested via
+testcontainers-go integration tests. The auth and middleware layers also have
+dedicated test files. However, all **write-path HTTP handlers** currently have
+no handler-level tests — they are only exercised by the Playwright E2E suite.
+
+The infrastructure to add these tests already exists in each package
+(testcontainers Postgres setup, seed helpers, mini chi router builders, admin
+context helpers). The work is additive — add cases to the existing `*_test.go`
+files.
+
+**Untested mutation routes (handler level):**
+
+Publishers (`internal/http/publisher_test.go`):
+- [ ] `POST /api/v1/publishers` — create publisher
+- [ ] `PATCH /api/v1/publishers/{slug}` — edit publisher name/contact
+- [ ] `DELETE /api/v1/publishers/{slug}` — delete publisher
+
+MCP Servers (`internal/http/mcp_test.go`):
+- [ ] `POST /api/v1/mcp/servers` — create server
+- [ ] `PATCH /api/v1/mcp/servers/{ns}/{slug}` — edit metadata
+- [ ] `DELETE /api/v1/mcp/servers/{ns}/{slug}` — delete server
+- [ ] `POST /api/v1/mcp/servers/{ns}/{slug}/versions` — create version
+- [ ] `POST /api/v1/mcp/servers/{ns}/{slug}/versions/{v}/publish` — publish version
+- [ ] `POST /api/v1/mcp/servers/{ns}/{slug}/deprecate` — deprecate server
+
+Agents (`internal/http/agent_test.go`):
+- [ ] `POST /api/v1/agents` — create agent
+- [ ] `PATCH /api/v1/agents/{ns}/{slug}` — edit metadata
+- [ ] `DELETE /api/v1/agents/{ns}/{slug}` — delete agent
+- [ ] `POST /api/v1/agents/{ns}/{slug}/versions` — create version
+- [ ] `POST /api/v1/agents/{ns}/{slug}/versions/{v}/publish` — publish version
+- [ ] `PATCH /api/v1/agents/{ns}/{slug}/versions/{v}/status` — patch version status
+- [ ] `POST /api/v1/agents/{ns}/{slug}/deprecate` — deprecate agent
+
+Misc (`internal/http/`):
+- [ ] `GET /config.json` — OIDC bootstrap config
+- [ ] `GET /docs` — Swagger UI redirect
+- [ ] `GET /metrics` — Prometheus metrics (admin-only guard)
+
 ### Phase 6 — Migrate web app from Next.js → Vite + React SPA ✅ COMPLETED
 
 Migration is done. The web app is now a plain Vite + React SPA served by nginx.

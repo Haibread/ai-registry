@@ -28,6 +28,9 @@ function makeUserManager(overrides: Partial<{
 
 vi.mock('oidc-client-ts', () => ({
   UserManager: vi.fn(),
+  // WebStorageStateStore is instantiated during UserManager creation.
+  // Provide a no-op mock so jsdom's limited localStorage doesn't throw.
+  WebStorageStateStore: vi.fn().mockImplementation(() => ({})),
 }))
 
 import { UserManager } from 'oidc-client-ts'

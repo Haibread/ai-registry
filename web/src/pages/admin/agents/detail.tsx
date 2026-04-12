@@ -26,7 +26,7 @@ export default function AdminAgentDetail() {
   const [editOpen, setEditOpen] = useState(false)
 
   const api = useAuthClient()
-  const { data, isLoading, isError } = useQuery({
+  const { data, isPending, isError } = useQuery({
     queryKey: ['admin-agent-detail', ns, slug],
     queryFn: () => api.GET('/api/v1/agents/{namespace}/{slug}', {
       params: { path: { namespace: ns!, slug: slug! } },
@@ -70,14 +70,18 @@ export default function AdminAgentDetail() {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      await api.DELETE('/api/v1/agents/{namespace}/{slug}', {
+      const { error } = await api.DELETE('/api/v1/agents/{namespace}/{slug}', {
         params: { path: { namespace: ns!, slug: slug! } },
       })
+      if (error) throw new Error((error as { title?: string }).title ?? 'Delete failed')
     },
-    onSuccess: () => navigate('/admin/agents'),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['admin-agents'] })
+      navigate('/admin/agents')
+    },
   })
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>
+  if (isPending) return <p className="text-muted-foreground">Loading…</p>
   if (isError || !data) return (
     <div className="space-y-4">
       <p className="text-destructive">Not found.</p>

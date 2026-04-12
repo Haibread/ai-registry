@@ -18,7 +18,12 @@ export default defineConfig({
         target: process.env.API_URL ?? 'http://localhost:8081',
         changeOrigin: true,
       },
-      '/agents': {
+      // Only proxy actual per-agent paths (/{ns}/{slug}/…), NOT the bare /agents
+      // SPA listing route. The trailing slash is critical: Vite's proxy uses
+      // prefix matching, so '/agents/' only matches '/agents/foo' whereas
+      // '/agents' would also match the bare '/agents' path, sending it to the
+      // backend instead of serving the React SPA.
+      '/agents/': {
         target: process.env.API_URL ?? 'http://localhost:8081',
         changeOrigin: true,
       },

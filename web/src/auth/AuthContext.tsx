@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { UserManager, type User } from 'oidc-client-ts'
+import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts'
 
 // ── Runtime config fetch ──────────────────────────────────────────────────────
 // OIDC coordinates are not baked into the bundle at build time. Instead the SPA
@@ -35,6 +35,10 @@ export function getUserManager(): Promise<UserManager> {
           response_type: 'code',
           scope: 'openid profile email',
           automaticSilentRenew: true,
+          // oidc-client-ts v3 defaults to sessionStorage, which is not
+          // captured by Playwright's storageState(). Use localStorage so that
+          // E2E tests can save and restore the authenticated session.
+          userStore: new WebStorageStateStore({ store: window.localStorage }),
         }),
     )
     .catch((err) => {
@@ -67,9 +71,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loginError, setLoginError] = useState<string | null>(null)
 
   // Step 1: resolve UserManager (triggers the /config.json fetch once).
+  // Do NOT call setIsLoading(false) here — wait until Step 2 has loaded the
+  // user from localStorage, otherwise RequireAuth sees isLoading=false with no
+  // accessToken and incorrectly redirects to "/" before the stored session is read.
   useEffect(() => {
     getUserManager()
-      .then((resolved) => { setUm(resolved); setIsLoading(false) })
+      .then((resolved) => { setUm(resolved) })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err)
         setLoginError(`Authentication configuration failed: ${msg}`)

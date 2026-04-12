@@ -23,7 +23,7 @@ export default function AdminPublisherDetail() {
 
   const api = useAuthClient()
 
-  const { data: publisher, isLoading, isError } = useQuery({
+  const { data: publisher, isPending, isError } = useQuery({
     queryKey: ['admin-publisher', slug],
     queryFn: () => api.GET('/api/v1/publishers/{slug}', {
       params: { path: { slug: slug! } },
@@ -64,17 +64,21 @@ export default function AdminPublisherDetail() {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      await api.DELETE('/api/v1/publishers/{slug}', {
+      const { error } = await api.DELETE('/api/v1/publishers/{slug}', {
         params: { path: { slug: slug! } },
       })
+      if (error) throw new Error((error as { title?: string }).title ?? 'Delete failed')
     },
-    onSuccess: () => navigate('/admin/publishers'),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['admin-publishers'] })
+      navigate('/admin/publishers')
+    },
   })
 
   const mcpServers = mcpData?.items ?? []
   const agents = agentsData?.items ?? []
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>
+  if (isPending) return <p className="text-muted-foreground">Loading…</p>
   if (isError || !publisher) return (
     <div className="space-y-4">
       <p className="text-destructive">Not found.</p>

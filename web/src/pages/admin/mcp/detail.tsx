@@ -23,7 +23,7 @@ export default function AdminMCPDetail() {
   const [editOpen, setEditOpen] = useState(false)
 
   const api = useAuthClient()
-  const { data, isLoading, isError } = useQuery({
+  const { data, isPending, isError } = useQuery({
     queryKey: ['admin-mcp-detail', ns, slug],
     queryFn: () => api.GET('/api/v1/mcp/servers/{namespace}/{slug}', {
       params: { path: { namespace: ns!, slug: slug! } },
@@ -67,14 +67,18 @@ export default function AdminMCPDetail() {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      await api.DELETE('/api/v1/mcp/servers/{namespace}/{slug}', {
+      const { error } = await api.DELETE('/api/v1/mcp/servers/{namespace}/{slug}', {
         params: { path: { namespace: ns!, slug: slug! } },
       })
+      if (error) throw new Error((error as { title?: string }).title ?? 'Delete failed')
     },
-    onSuccess: () => navigate('/admin/mcp'),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['admin-mcp'] })
+      navigate('/admin/mcp')
+    },
   })
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>
+  if (isPending) return <p className="text-muted-foreground">Loading…</p>
   if (isError || !data) return (
     <div className="space-y-4">
       <p className="text-destructive">Not found.</p>

@@ -51,36 +51,38 @@ test.describe('Public: MCP Servers listing', () => {
 test.describe('Public: Agents listing', () => {
   test('page loads and shows agent cards or empty state', async ({ page }) => {
     await page.goto('/agents')
-    await page.waitForLoadState('networkidle')
+    // Wait for the heading so we know React has rendered the page.
+    await expect(page.locator('h1')).toBeVisible({ timeout: 10_000 })
 
     const cards = page.locator('.grid > .rounded-lg')
     const emptyMsg = page.getByText(/No public agents yet\.|No agents match your filters\./)
 
-    const cardsCount = await cards.count()
-    const emptyCount = await emptyMsg.count()
-    expect(cardsCount + emptyCount).toBeGreaterThan(0)
+    // Wait for either a card or the empty-state message — whichever appears first.
+    await expect(cards.first().or(emptyMsg)).toBeVisible({ timeout: 10_000 })
   })
 })
 
 test.describe('Public: Auth enforcement on admin routes', () => {
   // RequireAuth redirects to '/' (homepage) when no access token is present.
-  // There is no HTTP-level redirect — React Router handles it client-side.
+  // React Router handles this client-side — there is no HTTP-level redirect.
+  // We wait for the URL to change rather than for networkidle, because the OIDC
+  // library makes background requests that prevent networkidle from resolving.
 
   test('GET /admin redirects unauthenticated visitors away from admin', async ({ page }) => {
     await page.goto('/admin')
-    await page.waitForLoadState('networkidle')
+    await page.waitForURL(url => !url.href.includes('/admin'), { timeout: 10_000 })
     expect(page.url()).not.toMatch(/\/admin/)
   })
 
   test('GET /admin/mcp redirects unauthenticated visitors', async ({ page }) => {
     await page.goto('/admin/mcp')
-    await page.waitForLoadState('networkidle')
+    await page.waitForURL(url => !url.href.includes('/admin/mcp'), { timeout: 10_000 })
     expect(page.url()).not.toMatch(/\/admin\/mcp/)
   })
 
   test('GET /admin/agents redirects unauthenticated visitors', async ({ page }) => {
     await page.goto('/admin/agents')
-    await page.waitForLoadState('networkidle')
+    await page.waitForURL(url => !url.href.includes('/admin/agents'), { timeout: 10_000 })
     expect(page.url()).not.toMatch(/\/admin\/agents/)
   })
 })
