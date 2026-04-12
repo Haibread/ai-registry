@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
-import { Server, Bot, AlertCircle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NavLink } from '@/components/layout/nav-link'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
+import { ResourceIcon } from '@/components/ui/resource-icon'
 import { useAuth } from '@/auth/AuthContext'
 
 export function Header() {
@@ -26,11 +27,11 @@ export function Header() {
 
         <nav className="flex items-center gap-1">
           <NavLink to="/mcp">
-            <Server className="h-4 w-4" aria-hidden="true" />
+            <ResourceIcon type="mcp-server" />
             MCP Servers
           </NavLink>
           <NavLink to="/agents">
-            <Bot className="h-4 w-4" aria-hidden="true" />
+            <ResourceIcon type="agent" />
             Agents
           </NavLink>
         </nav>

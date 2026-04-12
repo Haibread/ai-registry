@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, Cpu, Shield } from 'lucide-react'
+import { ExternalLink, Cpu, Shield } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
@@ -8,8 +8,15 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { DetailPageSkeleton } from '@/components/ui/detail-page-skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { TooltipInfo } from '@/components/ui/tooltip-info'
+import { CopyButton } from '@/components/ui/copy-button'
+import { ResourceIcon } from '@/components/ui/resource-icon'
 import { getPublicClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
+import { getFieldExplanation } from '@/lib/field-explanations'
 import type { components } from '@/lib/schema'
 
 type AgentSkill = components['schemas']['AgentSkill']
@@ -28,14 +35,23 @@ export default function AgentDetailPage() {
   if (isLoading) return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="flex-1 container py-8"><p className="text-muted-foreground">Loading…</p></main>
+      <main className="flex-1 container py-8 max-w-3xl">
+        <DetailPageSkeleton />
+      </main>
       <Footer />
     </div>
   )
   if (isError || !data) return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="flex-1 container py-8"><p className="text-destructive">Not found.</p></main>
+      <main className="flex-1 container py-8 max-w-3xl">
+        <EmptyState
+          icon={<ResourceIcon type="agent" className="h-10 w-10" />}
+          title="Agent not found"
+          description="The agent you're looking for doesn't exist or has been removed."
+          action={<Button variant="outline" size="sm" asChild><Link to="/agents">Back to Agents</Link></Button>}
+        />
+      </main>
       <Footer />
     </div>
   )
@@ -47,20 +63,19 @@ export default function AgentDetailPage() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-8 max-w-3xl space-y-6">
-        {/* Breadcrumb */}
-        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Link to="/agents" className="flex items-center gap-1 hover:text-foreground transition-colors">
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            Agents
-          </Link>
-          <span aria-hidden="true">/</span>
-          <span className="font-mono text-foreground">{data.namespace}/{data.slug}</span>
-        </nav>
+        <Breadcrumbs
+          segments={[
+            { label: 'Home', href: '/' },
+            { label: 'Agents', href: '/agents' },
+            { label: data.namespace, href: `/agents?namespace=${data.namespace}` },
+            { label: data.slug },
+          ]}
+        />
 
         {/* Title row */}
         <div className="space-y-2">
           <div className="flex items-start gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold flex-1">{data.name}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold flex-1 min-w-0 break-words">{data.name}</h1>
             <div className="flex gap-2 flex-wrap">
               {lv && (
                 <Badge variant="outline" className="font-mono">v{lv.version}</Badge>
@@ -69,9 +84,15 @@ export default function AgentDetailPage() {
               <VisibilityBadge visibility={data.visibility} />
             </div>
           </div>
-          <p className="text-sm text-muted-foreground font-mono">
-            {data.namespace}/{data.slug}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-muted-foreground font-mono">
+              <Link to={`/agents?namespace=${data.namespace}`} className="hover:text-foreground transition-colors">
+                {data.namespace}
+              </Link>
+              /{data.slug}
+            </p>
+            <CopyButton value={`${data.namespace}/${data.slug}`} label="Copy identifier" />
+          </div>
         </div>
 
         {data.description && <p className="text-muted-foreground">{data.description}</p>}
@@ -79,27 +100,34 @@ export default function AgentDetailPage() {
         <Separator />
 
         {/* Metadata grid */}
-        <dl className="grid grid-cols-2 gap-4 text-sm">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           {lv && (
             <>
               {lv.endpoint_url && (
                 <>
-                  <dt className="text-muted-foreground">Endpoint</dt>
-                  <dd>
+                  <dt className="text-muted-foreground flex items-center gap-1">
+                    Endpoint
+                    <TooltipInfo content={getFieldExplanation('endpoint_url') ?? ''} />
+                  </dt>
+                  <dd className="flex items-center gap-2 min-w-0">
                     <a
                       href={lv.endpoint_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-mono text-xs hover:underline break-all"
+                      className="font-mono text-xs hover:underline truncate"
                     >
                       {lv.endpoint_url}
                     </a>
+                    <CopyButton value={lv.endpoint_url} label="Copy endpoint URL" />
                   </dd>
                 </>
               )}
               {lv.protocol_version && (
                 <>
-                  <dt className="text-muted-foreground">A2A protocol</dt>
+                  <dt className="text-muted-foreground flex items-center gap-1">
+                    A2A protocol
+                    <TooltipInfo content={getFieldExplanation('a2a_protocol_version') ?? ''} />
+                  </dt>
                   <dd className="font-mono">{lv.protocol_version}</dd>
                 </>
               )}
@@ -139,7 +167,12 @@ export default function AgentDetailPage() {
                       const s = scheme as Record<string, string>
                       const label = s['scheme'] ?? s['type'] ?? `scheme ${i + 1}`
                       return (
-                        <Badge key={i} variant="outline" className="text-xs">{label}</Badge>
+                        <span key={i} className="flex items-center gap-1">
+                          <Badge variant="outline" className="text-xs">{label}</Badge>
+                          {getFieldExplanation(label) && (
+                            <TooltipInfo content={getFieldExplanation(label)!} />
+                          )}
+                        </span>
                       )
                     })}
                   </dd>
