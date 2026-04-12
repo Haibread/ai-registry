@@ -17,17 +17,20 @@ export default function MCPListPage() {
   const cursor = searchParams.get('cursor') ?? undefined
   const namespace = searchParams.get('namespace') ?? undefined
   const status = searchParams.get('status') ?? undefined
+  const transport = searchParams.get('transport') ?? undefined
+  const registryType = searchParams.get('registry_type') ?? undefined
+  const sort = searchParams.get('sort') ?? undefined
 
   const api = getPublicClient()
   const { data, isLoading } = useQuery({
-    queryKey: ['mcp-servers', { q, cursor, namespace, status }],
+    queryKey: ['mcp-servers', { q, cursor, namespace, status, transport, registry_type: registryType, sort }],
     queryFn: () => api.GET('/api/v1/mcp/servers', {
-      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined } },
+      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined, transport: transport as 'stdio' | 'sse' | 'streamable_http' | undefined, registry_type: registryType, sort: sort as 'created_at_desc' | 'updated_at_desc' | 'name_asc' | 'name_desc' | undefined } },
     }).then(r => r.data),
   })
 
   const servers = data?.items ?? []
-  const hasFilters = !!(q || namespace || status)
+  const hasFilters = !!(q || namespace || status || transport || registryType || sort)
 
   const buildNextParams = () => {
     const p = new URLSearchParams(searchParams)
@@ -58,6 +61,14 @@ export default function MCPListPage() {
               status={status}
               statusOptions={['published', 'deprecated']}
               searchPlaceholder="Search servers…"
+              transportOptions={['stdio', 'sse', 'streamable_http']}
+              registryTypeOptions={['npm', 'pypi', 'docker', 'cargo', 'go']}
+              sortOptions={[
+                { value: '', label: 'Newest first' },
+                { value: 'updated_at_desc', label: 'Recently updated' },
+                { value: 'name_asc', label: 'Name A–Z' },
+                { value: 'name_desc', label: 'Name Z–A' },
+              ]}
             />
 
             {servers.length === 0 ? (

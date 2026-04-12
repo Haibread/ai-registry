@@ -36,17 +36,32 @@ export function AgentCard({ agent }: AgentCardProps) {
             <StatusBadge status={agent.status} className="text-[11px]" />
           </div>
         </div>
-        <div className="text-xs text-muted-foreground font-mono">
-          {agent.namespace}/{agent.slug}
+        <div className="text-xs text-muted-foreground font-mono relative z-10">
+          <Link
+            to={`/agents?namespace=${agent.namespace}`}
+            className="hover:text-foreground transition-colors"
+          >
+            {agent.namespace}
+          </Link>
+          /{agent.slug}
         </div>
 
-        {/* Skills count only — reduce badge noise */}
+        {/* Skills count + top tags */}
         {lv?.skills && lv.skills.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex items-center gap-1">
               <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
               {lv.skills.length} skill{lv.skills.length !== 1 ? 's' : ''}
             </Badge>
+            {(() => {
+              // Collect unique tags across all skills, show up to 3.
+              const tags = [...new Set(lv.skills.flatMap(s => s.tags ?? []))].slice(0, 3)
+              return tags.map(tag => (
+                <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">
+                  {tag}
+                </Badge>
+              ))
+            })()}
           </div>
         )}
       </CardHeader>

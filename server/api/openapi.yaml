@@ -288,6 +288,24 @@ paths:
           schema:
             type: string
             enum: [public, private]
+        - name: transport
+          in: query
+          description: Filter by transport type of the latest published version's packages
+          schema:
+            type: string
+            enum: [stdio, sse, streamable_http]
+        - name: registry_type
+          in: query
+          description: Filter by package registry/ecosystem type (e.g. npm, pip, docker)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort order for results (ignored when q is provided — search results are ranked by relevance)
+          schema:
+            type: string
+            enum: [created_at_desc, updated_at_desc, name_asc, name_desc]
+            default: created_at_desc
       responses:
         "200":
           description: Paginated list of MCP servers
@@ -601,6 +619,13 @@ paths:
           schema:
             type: string
             enum: [public, private]
+        - name: sort
+          in: query
+          description: Sort order for results (ignored when q is provided — search results are ranked by relevance)
+          schema:
+            type: string
+            enum: [created_at_desc, updated_at_desc, name_asc, name_desc]
+            default: created_at_desc
       responses:
         "200":
           description: Paginated list of agents

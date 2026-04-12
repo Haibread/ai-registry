@@ -48,6 +48,10 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	if visibility != "public" && visibility != "private" {
 		visibility = ""
 	}
+	sort := r.URL.Query().Get("sort")
+	if sort != "created_at_desc" && sort != "updated_at_desc" && sort != "name_asc" && sort != "name_desc" {
+		sort = ""
+	}
 
 	rows, total, err := h.db.ListAgents(r.Context(), store.ListAgentsParams{
 		PublicOnly: !auth.IsAdminFromContext(r.Context()),
@@ -57,6 +61,7 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		Query:      r.URL.Query().Get("q"),
 		Limit:      limit + 1,
 		Cursor:     r.URL.Query().Get("cursor"),
+		Sort:       sort,
 	})
 	if errors.Is(err, store.ErrInvalidCursor) {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid cursor", r.URL.Path)
@@ -71,7 +76,11 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	if int32(len(rows)) > limit {
 		rows = rows[:limit]
 		last := rows[len(rows)-1]
-		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
+		cursorTime := last.CreatedAt
+		if sort == "updated_at_desc" {
+			cursorTime = last.UpdatedAt
+		}
+		nextCursor = store.EncodeCursor(cursorTime, last.ID)
 	}
 
 	items := make([]map[string]any, 0, len(rows))

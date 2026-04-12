@@ -48,15 +48,26 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 	if visibility != "public" && visibility != "private" {
 		visibility = ""
 	}
+	transport := r.URL.Query().Get("transport")
+	if transport != "stdio" && transport != "sse" && transport != "streamable_http" {
+		transport = ""
+	}
+	sort := r.URL.Query().Get("sort")
+	if sort != "created_at_desc" && sort != "updated_at_desc" && sort != "name_asc" && sort != "name_desc" {
+		sort = ""
+	}
 
 	p := store.ListMCPServersParams{
-		PublicOnly: !auth.IsAdminFromContext(r.Context()),
-		Namespace:  r.URL.Query().Get("namespace"),
-		Status:     status,
-		Visibility: visibility,
-		Query:      r.URL.Query().Get("q"),
-		Limit:      limit + 1, // fetch one extra to detect next page
-		Cursor:     r.URL.Query().Get("cursor"),
+		PublicOnly:   !auth.IsAdminFromContext(r.Context()),
+		Namespace:    r.URL.Query().Get("namespace"),
+		Status:       status,
+		Visibility:   visibility,
+		Query:        r.URL.Query().Get("q"),
+		Limit:        limit + 1, // fetch one extra to detect next page
+		Cursor:       r.URL.Query().Get("cursor"),
+		Transport:    transport,
+		RegistryType: r.URL.Query().Get("registry_type"),
+		Sort:         sort,
 	}
 
 	rows, total, err := h.db.ListMCPServers(r.Context(), p)
@@ -73,7 +84,12 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 	if int32(len(rows)) > limit {
 		rows = rows[:limit]
 		last := rows[len(rows)-1]
-		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
+		// Cursor column depends on the sort order.
+		cursorTime := last.CreatedAt
+		if sort == "updated_at_desc" {
+			cursorTime = last.UpdatedAt
+		}
+		nextCursor = store.EncodeCursor(cursorTime, last.ID)
 	}
 
 	items := make([]map[string]any, 0, len(rows))

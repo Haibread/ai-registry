@@ -17,17 +17,18 @@ export default function AgentListPage() {
   const cursor = searchParams.get('cursor') ?? undefined
   const namespace = searchParams.get('namespace') ?? undefined
   const status = searchParams.get('status') ?? undefined
+  const sort = searchParams.get('sort') ?? undefined
 
   const api = getPublicClient()
   const { data, isLoading } = useQuery({
-    queryKey: ['agents', { q, cursor, namespace, status }],
+    queryKey: ['agents', { q, cursor, namespace, status, sort }],
     queryFn: () => api.GET('/api/v1/agents', {
-      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined } },
+      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined, sort: sort as 'created_at_desc' | 'updated_at_desc' | 'name_asc' | 'name_desc' | undefined } },
     }).then(r => r.data),
   })
 
   const agents = data?.items ?? []
-  const hasFilters = !!(q || namespace || status)
+  const hasFilters = !!(q || namespace || status || sort)
 
   const buildNextParams = () => {
     const p = new URLSearchParams(searchParams)
@@ -58,6 +59,12 @@ export default function AgentListPage() {
               status={status}
               statusOptions={['published', 'deprecated']}
               searchPlaceholder="Search agents…"
+              sortOptions={[
+                { value: '', label: 'Newest first' },
+                { value: 'updated_at_desc', label: 'Recently updated' },
+                { value: 'name_asc', label: 'Name A–Z' },
+                { value: 'name_desc', label: 'Name Z–A' },
+              ]}
             />
 
             {agents.length === 0 ? (

@@ -41,6 +41,7 @@ type ListAgentsParams struct {
 	Query      string
 	Limit      int32
 	Cursor     string
+	Sort       string // sort order: "created_at_desc" (default), "updated_at_desc", "name_asc", "name_desc"
 }
 
 // ListAgents returns a paginated list of agents and the total count of rows
@@ -102,9 +103,17 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		if err != nil {
 			return nil, 0, ErrInvalidCursor
 		}
-		whereClause += fmt.Sprintf(" AND (a.created_at, a.id) < ($%d, $%d)", argN, argN+1)
-		args = append(args, at, id)
-		argN += 2
+		cursorCol := "a.created_at"
+		if p.Sort == "updated_at_desc" {
+			cursorCol = "a.updated_at"
+		}
+		// For name-based sorts, cursor is not supported (cursor encodes a
+		// timestamp, not a name). Silently ignore the cursor.
+		if p.Sort != "name_asc" && p.Sort != "name_desc" {
+			whereClause += fmt.Sprintf(" AND (%s, a.id) < ($%d, $%d)", cursorCol, argN, argN+1)
+			args = append(args, at, id)
+			argN += 2
+		}
 	}
 
 	orderClause := "ORDER BY a.created_at DESC, a.id DESC"
@@ -115,6 +124,15 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		)
 		args = append(args, tsQuery)
 		argN++
+	} else {
+		switch p.Sort {
+		case "updated_at_desc":
+			orderClause = "ORDER BY a.updated_at DESC, a.id DESC"
+		case "name_asc":
+			orderClause = "ORDER BY a.name ASC, a.id ASC"
+		case "name_desc":
+			orderClause = "ORDER BY a.name DESC, a.id DESC"
+		}
 	}
 
 	args = append(args, p.Limit)

@@ -35,6 +35,12 @@ interface FilterBarProps {
   statusOptions: string[]
   showVisibility?: boolean
   searchPlaceholder?: string
+  /** MCP-only: transport type filter options */
+  transportOptions?: string[]
+  /** MCP-only: registry/ecosystem type filter options */
+  registryTypeOptions?: string[]
+  /** Sort options (values like "created_at_desc", "name_asc") */
+  sortOptions?: { value: string; label: string }[]
 }
 
 const selectClass =
@@ -52,6 +58,9 @@ export function FilterBar({
   statusOptions,
   showVisibility = false,
   searchPlaceholder = 'Search…',
+  transportOptions = [],
+  registryTypeOptions = [],
+  sortOptions = [],
 }: FilterBarProps) {
   const navigate = useNavigate()
   const { pathname, search } = useLocation()
@@ -120,7 +129,10 @@ export function FilterBar({
 
   const currentStatus = searchParams.get('status') ?? ''
   const currentVisibility = searchParams.get('visibility') ?? ''
-  const hasFilters = !!(q || namespace || currentStatus || currentVisibility)
+  const currentTransport = searchParams.get('transport') ?? ''
+  const currentRegistryType = searchParams.get('registry_type') ?? ''
+  const currentSort = searchParams.get('sort') ?? ''
+  const hasFilters = !!(q || namespace || currentStatus || currentVisibility || currentTransport || currentRegistryType || currentSort)
 
   return (
     // The form still works as a GET form when JS is unavailable.
@@ -190,6 +202,59 @@ export function FilterBar({
           <option value="">All visibility</option>
           <option value="public">Public</option>
           <option value="private">Private</option>
+        </select>
+      )}
+
+      {/* Transport — instant, MCP only */}
+      {transportOptions.length > 0 && (
+        <select
+          name="transport"
+          value={currentTransport}
+          onChange={(e) => applyNow({ transport: e.target.value })}
+          className={selectClass}
+          aria-label="Filter by transport"
+        >
+          <option value="">All transports</option>
+          {transportOptions.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {/* Registry type / ecosystem — instant, MCP only, shown when transport=stdio */}
+      {registryTypeOptions.length > 0 && currentTransport === 'stdio' && (
+        <select
+          name="registry_type"
+          value={currentRegistryType}
+          onChange={(e) => applyNow({ registry_type: e.target.value })}
+          className={selectClass}
+          aria-label="Filter by ecosystem"
+        >
+          <option value="">All ecosystems</option>
+          {registryTypeOptions.map((rt) => (
+            <option key={rt} value={rt}>
+              {rt}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {/* Sort — instant */}
+      {sortOptions.length > 0 && (
+        <select
+          name="sort"
+          value={currentSort}
+          onChange={(e) => applyNow({ sort: e.target.value })}
+          className={selectClass}
+          aria-label="Sort by"
+        >
+          {sortOptions.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
         </select>
       )}
 

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ExternalLink, GitFork, Braces, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge, StatusBadge } from '@/components/ui/badge'
+import { CopyButton } from '@/components/ui/copy-button'
 import { formatDate, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
@@ -44,8 +45,14 @@ export function ServerCard({ server }: ServerCardProps) {
             <StatusBadge status={server.status} className="text-[11px]" />
           </div>
         </div>
-        <div className="text-xs text-muted-foreground font-mono">
-          {server.namespace}/{server.slug}
+        <div className="text-xs text-muted-foreground font-mono relative z-10">
+          <Link
+            to={`/mcp?namespace=${server.namespace}`}
+            className="hover:text-foreground transition-colors"
+          >
+            {server.namespace}
+          </Link>
+          /{server.slug}
         </div>
 
         {/* Runtime + one ecosystem chip */}
@@ -84,6 +91,7 @@ export function ServerCard({ server }: ServerCardProps) {
               <span className="text-[11px] font-mono text-muted-foreground truncate" title={endpointUrl}>
                 {endpointUrl}
               </span>
+              <CopyButton value={endpointUrl} iconSize="h-3 w-3" label="Copy endpoint URL" />
             </div>
           </div>
         </CardContent>

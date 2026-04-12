@@ -252,3 +252,121 @@ describe('FilterBar — select immediate navigation', () => {
     expect(mockNavigate.mock.calls[0][0]).not.toContain('cursor=')
   })
 })
+
+// ── Transport filter ─────────────────────────────────────────────────────────
+
+describe('FilterBar — transport filter', () => {
+  it('renders transport select when transportOptions are provided', () => {
+    render(<FilterBar statusOptions={[]} transportOptions={['stdio', 'sse', 'streamable_http']} />)
+    expect(screen.getByLabelText('Filter by transport')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'All transports' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'stdio' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'sse' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'streamable_http' })).toBeInTheDocument()
+  })
+
+  it('does not render transport select when transportOptions is empty', () => {
+    render(<FilterBar statusOptions={[]} />)
+    expect(screen.queryByLabelText('Filter by transport')).not.toBeInTheDocument()
+  })
+
+  it('calls navigate immediately when transport changes', () => {
+    render(<FilterBar statusOptions={[]} transportOptions={['stdio', 'sse']} />)
+    fireEvent.change(screen.getByLabelText('Filter by transport'), {
+      target: { value: 'stdio' },
+    })
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).toContain('transport=stdio')
+  })
+
+  it('pre-selects transport from URL param', () => {
+    mockSearchParamsString = 'transport=sse'
+    render(<FilterBar statusOptions={[]} transportOptions={['stdio', 'sse']} />)
+    expect((screen.getByLabelText('Filter by transport') as HTMLSelectElement).value).toBe('sse')
+  })
+})
+
+// ── Registry type / ecosystem filter ─────────────────────────────────────────
+
+describe('FilterBar — registry type filter', () => {
+  it('is hidden when transport is not stdio', () => {
+    render(<FilterBar statusOptions={[]} transportOptions={['stdio', 'sse']} registryTypeOptions={['npm', 'pypi']} />)
+    expect(screen.queryByLabelText('Filter by ecosystem')).not.toBeInTheDocument()
+  })
+
+  it('is shown when transport is stdio', () => {
+    mockSearchParamsString = 'transport=stdio'
+    render(<FilterBar statusOptions={[]} transportOptions={['stdio', 'sse']} registryTypeOptions={['npm', 'pypi']} />)
+    expect(screen.getByLabelText('Filter by ecosystem')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'All ecosystems' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'npm' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'pypi' })).toBeInTheDocument()
+  })
+
+  it('calls navigate immediately when registry type changes', () => {
+    mockSearchParamsString = 'transport=stdio'
+    render(<FilterBar statusOptions={[]} transportOptions={['stdio']} registryTypeOptions={['npm', 'pypi']} />)
+    fireEvent.change(screen.getByLabelText('Filter by ecosystem'), {
+      target: { value: 'npm' },
+    })
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).toContain('registry_type=npm')
+  })
+})
+
+// ── Sort filter ──────────────────────────────────────────────────────────────
+
+describe('FilterBar — sort filter', () => {
+  const sortOptions = [
+    { value: '', label: 'Newest first' },
+    { value: 'updated_at_desc', label: 'Recently updated' },
+    { value: 'name_asc', label: 'Name A–Z' },
+    { value: 'name_desc', label: 'Name Z–A' },
+  ]
+
+  it('renders sort select when sortOptions are provided', () => {
+    render(<FilterBar statusOptions={[]} sortOptions={sortOptions} />)
+    expect(screen.getByLabelText('Sort by')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Newest first' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Recently updated' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Name A–Z' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Name Z–A' })).toBeInTheDocument()
+  })
+
+  it('does not render sort select when sortOptions is empty', () => {
+    render(<FilterBar statusOptions={[]} />)
+    expect(screen.queryByLabelText('Sort by')).not.toBeInTheDocument()
+  })
+
+  it('calls navigate immediately when sort changes', () => {
+    render(<FilterBar statusOptions={[]} sortOptions={sortOptions} />)
+    fireEvent.change(screen.getByLabelText('Sort by'), {
+      target: { value: 'name_asc' },
+    })
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).toContain('sort=name_asc')
+  })
+
+  it('pre-selects sort from URL param', () => {
+    mockSearchParamsString = 'sort=name_desc'
+    render(<FilterBar statusOptions={[]} sortOptions={sortOptions} />)
+    expect((screen.getByLabelText('Sort by') as HTMLSelectElement).value).toBe('name_desc')
+  })
+
+  it('removes sort param when default option is selected', () => {
+    mockSearchParamsString = 'sort=name_asc'
+    render(<FilterBar statusOptions={[]} sortOptions={sortOptions} />)
+    fireEvent.change(screen.getByLabelText('Sort by'), {
+      target: { value: '' },
+    })
+    expect(mockNavigate).toHaveBeenCalledOnce()
+    expect(mockNavigate.mock.calls[0][0]).not.toContain('sort=')
+  })
+
+  it('includes sort in hasFilters check — Clear is enabled when sort is set', () => {
+    mockSearchParamsString = 'sort=name_asc'
+    render(<FilterBar statusOptions={[]} sortOptions={sortOptions} />)
+    const btn = screen.getByRole('button', { name: /clear/i })
+    expect(btn).not.toBeDisabled()
+  })
+})
