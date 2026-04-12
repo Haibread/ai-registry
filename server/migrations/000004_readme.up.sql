@@ -1,0 +1,2 @@
+ALTER TABLE mcp_servers ADD COLUMN readme TEXT;
+ALTER TABLE agents ADD COLUMN readme TEXT;

@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 func resetTables(t *testing.T) {
 	t.Helper()
 	_, err := testDB.Pool.Exec(context.Background(),
-		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers, audit_log RESTART IDENTITY CASCADE`)
+		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers, audit_log, reports RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("truncating tables: %v", err)
 	}

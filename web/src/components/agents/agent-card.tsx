@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
 import { ExternalLink, Braces, Cpu, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge, StatusBadge } from '@/components/ui/badge'
+import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
+import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
 import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
@@ -33,6 +34,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 v{lv.version}
               </Badge>
             )}
+            {agent.verified && <VerifiedBadge className="text-[10px]" />}
             <StatusBadge status={agent.status} className="text-[11px]" />
           </div>
         </div>
@@ -86,7 +88,7 @@ export function AgentCard({ agent }: AgentCardProps) {
       )}
 
       <CardFooter className="pt-3 border-t flex items-center justify-between text-xs text-muted-foreground relative z-10">
-        <span>{formatDate(agent.created_at)}</span>
+        <FreshnessIndicator updatedAt={agent.updated_at} />
         <div className="flex items-center gap-2">
           <a
             href={`/api/v1/agents/${agent.namespace}/${agent.slug}`}

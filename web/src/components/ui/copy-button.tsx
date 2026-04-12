@@ -7,6 +7,8 @@ interface CopyButtonProps {
   className?: string
   iconSize?: string
   label?: string
+  /** Optional callback fired after a successful copy */
+  onCopy?: () => void
 }
 
 /**
@@ -21,6 +23,7 @@ export function CopyButton({
   className,
   iconSize = "h-3.5 w-3.5",
   label = "Copy to clipboard",
+  onCopy,
 }: CopyButtonProps) {
   const [copied, setCopied] = useState(false)
 
@@ -28,7 +31,8 @@ export function CopyButton({
     await navigator.clipboard.writeText(value)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [value])
+    onCopy?.()
+  }, [value, onCopy])
 
   return (
     <button

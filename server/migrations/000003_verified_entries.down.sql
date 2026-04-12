@@ -1,0 +1,2 @@
+ALTER TABLE agents DROP COLUMN IF EXISTS verified;
+ALTER TABLE mcp_servers DROP COLUMN IF EXISTS verified;

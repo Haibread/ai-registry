@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
 import { ExternalLink, GitFork, Braces, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge, StatusBadge } from '@/components/ui/badge'
+import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/copy-button'
+import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
 import { formatDate, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
@@ -42,6 +43,7 @@ export function ServerCard({ server }: ServerCardProps) {
                 v{lv.version}
               </Badge>
             )}
+            {server.verified && <VerifiedBadge className="text-[10px]" />}
             <StatusBadge status={server.status} className="text-[11px]" />
           </div>
         </div>
@@ -98,7 +100,7 @@ export function ServerCard({ server }: ServerCardProps) {
       )}
 
       <CardFooter className="pt-3 border-t flex items-center justify-between gap-2 text-xs text-muted-foreground relative z-10">
-        <span>{formatDate(server.created_at)}</span>
+        <FreshnessIndicator updatedAt={server.updated_at} />
         <div className="flex items-center gap-3">
           {server.license && <span>{server.license}</span>}
           <a

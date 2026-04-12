@@ -1,9 +1,10 @@
+import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import { ExternalLink, Cpu, Shield, AlertTriangle, FileText } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
-import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
+import { Badge, StatusBadge, VisibilityBadge, VerifiedBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -15,6 +16,16 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { TooltipInfo } from '@/components/ui/tooltip-info'
 import { CopyButton } from '@/components/ui/copy-button'
 import { ResourceIcon } from '@/components/ui/resource-icon'
+import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
+import { AuthGuide } from '@/components/agents/auth-guide'
+import { AgentSnippetGenerator } from '@/components/agents/snippet-generator'
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
+import { PublisherSidebar } from '@/components/shared/publisher-sidebar'
+import { RelatedEntries } from '@/components/shared/related-entries'
+import { VersionHistory } from '@/components/shared/version-history'
+import { StickyDetailHeader } from '@/components/shared/sticky-detail-header'
+import { ReportDialog } from '@/components/shared/report-dialog'
+import { useRecordView, useRecordCopy } from '@/hooks/use-record-event'
 import { getPublicClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { getFieldExplanation } from '@/lib/field-explanations'
@@ -41,6 +52,13 @@ export default function AgentDetailPage() {
   const handleTabChange = (value: string) => {
     navigate(`${location.pathname}#${value}`, { replace: true })
   }
+
+  // Hooks must run unconditionally (Rules of Hooks): declare refs and
+  // tracking hooks before any early returns so hook order is stable across
+  // loading → loaded transitions.
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  useRecordView('agent', data?.namespace, data?.slug)
+  const recordCopy = useRecordCopy('agent', data?.namespace, data?.slug)
 
   if (isLoading) return (
     <div className="flex min-h-screen flex-col">
@@ -79,6 +97,13 @@ export default function AgentDetailPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
+      <StickyDetailHeader
+        type="agent"
+        name={data.name}
+        version={lv?.version}
+        identifier={`${data.namespace}/${data.slug}`}
+        titleRef={titleRef}
+      />
       <main className="flex-1 container py-8 max-w-3xl space-y-6">
         <Breadcrumbs
           segments={[
@@ -103,11 +128,12 @@ export default function AgentDetailPage() {
             {iconUrl && (
               <img src={iconUrl} alt="" className="h-10 w-10 rounded-lg shrink-0 object-cover" />
             )}
-            <h1 className="text-2xl sm:text-3xl font-bold flex-1 min-w-0 break-words">{data.name}</h1>
+            <h1 ref={titleRef} className="text-2xl sm:text-3xl font-bold flex-1 min-w-0 break-words">{data.name}</h1>
             <div className="flex gap-2 flex-wrap">
               {lv && (
                 <Badge variant="outline" className="font-mono">v{lv.version}</Badge>
               )}
+              {data.verified && <VerifiedBadge />}
               <StatusBadge status={data.status} />
               <VisibilityBadge visibility={data.visibility} />
             </div>
@@ -119,7 +145,7 @@ export default function AgentDetailPage() {
               </Link>
               /{data.slug}
             </p>
-            <CopyButton value={`${data.namespace}/${data.slug}`} label="Copy identifier" />
+            <CopyButton value={`${data.namespace}/${data.slug}`} label="Copy identifier" onCopy={recordCopy} />
           </div>
         </div>
 
@@ -139,6 +165,11 @@ export default function AgentDetailPage() {
               </a>
             </Button>
           )}
+          <ReportDialog
+            resourceType="agent"
+            resourceId={data.id}
+            resourceLabel={`${data.namespace}/${data.slug}`}
+          />
         </div>
 
         <Separator />
@@ -150,6 +181,8 @@ export default function AgentDetailPage() {
             <TabsTrigger value="skills">
               Skills{lv?.skills && lv.skills.length > 0 ? ` (${lv.skills.length})` : ''}
             </TabsTrigger>
+            <TabsTrigger value="connect">Connect</TabsTrigger>
+            <TabsTrigger value="versions">Versions</TabsTrigger>
             <TabsTrigger value="json">JSON</TabsTrigger>
           </TabsList>
 
@@ -190,7 +223,10 @@ export default function AgentDetailPage() {
                   {lv.published_at && (
                     <>
                       <dt className="text-muted-foreground">Published</dt>
-                      <dd>{formatDate(lv.published_at)}</dd>
+                      <dd className="flex items-center gap-2 flex-wrap">
+                        <span>{formatDate(lv.published_at)}</span>
+                        <FreshnessIndicator updatedAt={lv.published_at} />
+                      </dd>
                     </>
                   )}
                   {lv.default_input_modes && lv.default_input_modes.length > 0 && (
@@ -259,7 +295,27 @@ export default function AgentDetailPage() {
               <dd>{formatDate(data.created_at)}</dd>
               <dt className="text-muted-foreground">Updated</dt>
               <dd>{formatDate(data.updated_at)}</dd>
+              {(data.view_count != null && data.view_count > 0) && (
+                <>
+                  <dt className="text-muted-foreground">Views</dt>
+                  <dd>{data.view_count.toLocaleString()}</dd>
+                </>
+              )}
+              {(data.copy_count != null && data.copy_count > 0) && (
+                <>
+                  <dt className="text-muted-foreground">Copies</dt>
+                  <dd>{data.copy_count.toLocaleString()}</dd>
+                </>
+              )}
             </dl>
+
+            {/* README */}
+            {data.readme && (
+              <>
+                <Separator />
+                <MarkdownRenderer content={data.readme} />
+              </>
+            )}
           </TabsContent>
 
           {/* ── Skills Tab ── */}
@@ -310,11 +366,51 @@ export default function AgentDetailPage() {
             )}
           </TabsContent>
 
+          {/* ── Connect Tab ── */}
+          <TabsContent value="connect" className="space-y-6">
+            {lv?.authentication && lv.authentication.length > 0 && (
+              <AuthGuide schemes={lv.authentication as Array<Record<string, string>>} />
+            )}
+            {lv?.endpoint_url && (
+              <AgentSnippetGenerator
+                endpointUrl={lv.endpoint_url}
+                authSchemes={
+                  lv.authentication
+                    ? (lv.authentication as Array<Record<string, string>>).map(
+                        (s) => s.scheme ?? s.type ?? '',
+                      )
+                    : undefined
+                }
+              />
+            )}
+            {!lv?.endpoint_url && (
+              <EmptyState
+                icon={<Cpu className="h-8 w-8 text-muted-foreground" />}
+                title="No endpoint available"
+                description="This agent has not published an endpoint URL yet."
+              />
+            )}
+          </TabsContent>
+
+          {/* ── Versions Tab ── */}
+          <TabsContent value="versions" className="space-y-4">
+            <VersionHistory
+              type="agent"
+              namespace={data.namespace}
+              slug={data.slug}
+              latestVersion={lv?.version}
+            />
+          </TabsContent>
+
           {/* ── JSON Tab ── */}
           <TabsContent value="json">
             <RawJsonViewer data={data} title="Raw API response" />
           </TabsContent>
         </Tabs>
+
+        <Separator />
+        <PublisherSidebar namespace={data.namespace} />
+        <RelatedEntries type="agent" namespace={data.namespace} currentSlug={data.slug} />
       </main>
       <Footer />
     </div>

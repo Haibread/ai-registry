@@ -1,6 +1,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { Circle, CheckCircle2, AlertTriangle, Globe, Lock } from "lucide-react"
+import { Circle, CheckCircle2, AlertTriangle, Globe, Lock, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
@@ -77,6 +77,16 @@ export function VisibilityBadge({ visibility, className }: { visibility: "public
         : <Lock className="h-2.5 w-2.5" aria-hidden="true" />
       }
       {visibility}
+    </Badge>
+  )
+}
+
+/** Verified badge — shown when an entry has been verified by the registry. */
+export function VerifiedBadge({ className }: { className?: string }) {
+  return (
+    <Badge variant="success" className={className}>
+      <ShieldCheck className="h-2.5 w-2.5" aria-hidden="true" />
+      Verified
     </Badge>
   )
 }

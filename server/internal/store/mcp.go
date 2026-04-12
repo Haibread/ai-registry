@@ -50,7 +50,10 @@ type ListMCPServersParams struct {
 	VersionFilter  string     // when non-empty, filter to servers with this published version ("latest" = default latest-version behaviour)
 	Transport      string     // filter by transport type in latest version packages JSONB: "stdio" | "sse" | "streamable_http"
 	RegistryType   string     // filter by registryType in latest version packages JSONB (e.g. "npm", "pip")
-	Sort           string     // sort order: "created_at_desc" (default), "updated_at_desc", "name_asc", "name_desc"
+	Sort           string     // sort order: "created_at_desc" (default), "updated_at_desc", "published_at_desc", "name_asc", "name_desc"
+	Featured       *bool      // when non-nil, filter by featured flag
+	Tag            string     // when non-empty, filter to servers that contain this tag
+	PublishedSince *time.Time // when non-nil, only entries whose latest version was published after this time
 }
 
 // MCPServerRow is a flat projection used by list queries (includes namespace).
@@ -116,6 +119,18 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		argN++
 		countArgN++
 	}
+	if p.Featured != nil {
+		filterWhere += fmt.Sprintf(" AND s.featured = $%d", argN)
+		filterArgs = append(filterArgs, *p.Featured)
+		argN++
+		countArgN++
+	}
+	if p.Tag != "" {
+		filterWhere += fmt.Sprintf(" AND $%d = ANY(s.tags)", argN)
+		filterArgs = append(filterArgs, p.Tag)
+		argN++
+		countArgN++
+	}
 
 	// Transport filter — checks that at least one package in the latest version
 	// has the requested transport type. The condition is applied after the
@@ -133,6 +148,19 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		)
 		transportJSON := fmt.Sprintf(`[{"transport":{"type":"%s"}}]`, p.Transport)
 		filterArgs = append(filterArgs, transportJSON)
+		argN++
+		countArgN++
+	}
+	if p.PublishedSince != nil {
+		postJoinFilter += fmt.Sprintf(
+			" AND lv.published_at > $%d",
+			argN,
+		)
+		postJoinFilterCount += fmt.Sprintf(
+			" AND lv.published_at > $%d",
+			countArgN,
+		)
+		filterArgs = append(filterArgs, *p.PublishedSince)
 		argN++
 		countArgN++
 	}
@@ -185,8 +213,11 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 			return nil, 0, ErrInvalidCursor
 		}
 		cursorCol := "s.created_at"
-		if p.Sort == "updated_at_desc" {
+		switch p.Sort {
+		case "updated_at_desc":
 			cursorCol = "s.updated_at"
+		case "published_at_desc":
+			cursorCol = "lv.published_at"
 		}
 		// For name-based sorts, cursor is not supported (the cursor encodes a
 		// timestamp, not a name). Silently ignore the cursor.
@@ -209,6 +240,8 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		switch p.Sort {
 		case "updated_at_desc":
 			orderClause = "ORDER BY s.updated_at DESC, s.id DESC"
+		case "published_at_desc":
+			orderClause = "ORDER BY lv.published_at DESC NULLS LAST, s.id DESC"
 		case "name_asc":
 			orderClause = "ORDER BY s.name ASC, s.id ASC"
 		case "name_desc":
@@ -248,7 +281,8 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	q := fmt.Sprintf(`
 		SELECT s.id, pub.slug AS namespace, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
-		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
+		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
+		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
@@ -284,7 +318,8 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		if err := rows.Scan(
 			&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 			&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
-			&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+			&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
+			&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvPublishedAt,
 		); err != nil {
 			recordErr(span, err)
@@ -340,7 +375,8 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 	q := `
 		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
-		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
+		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
+		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
@@ -369,7 +405,8 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 	err := db.Pool.QueryRow(ctx, q, args...).Scan(
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
-		&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+		&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
+		&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -401,7 +438,8 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 	q := `
 		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
-		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
+		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
+		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
@@ -426,7 +464,8 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 	err := db.Pool.QueryRow(ctx, q, id).Scan(
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
-		&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+		&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
+		&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -910,4 +949,50 @@ func decodeCursor(cursor string) (time.Time, string, error) {
 // EncodeCursor produces an opaque cursor from a time and ID.
 func EncodeCursor(t time.Time, id string) string {
 	return t.UTC().Format(time.RFC3339Nano) + "," + id
+}
+
+// IncrementMCPServerViewCount atomically increments the view_count for the
+// given MCP server identified by namespace and slug.
+func (db *DB) IncrementMCPServerViewCount(ctx context.Context, namespace, slug string) error {
+	ctx, span := startSpan(ctx, "IncrementMCPServerViewCount")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE mcp_servers s
+		SET view_count = view_count + 1
+		FROM publishers pub
+		WHERE pub.id = s.publisher_id AND pub.slug = $1 AND s.slug = $2`,
+		namespace, slug,
+	)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("incrementing mcp server view count: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// IncrementMCPServerCopyCount atomically increments the copy_count for the
+// given MCP server identified by namespace and slug.
+func (db *DB) IncrementMCPServerCopyCount(ctx context.Context, namespace, slug string) error {
+	ctx, span := startSpan(ctx, "IncrementMCPServerCopyCount")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE mcp_servers s
+		SET copy_count = copy_count + 1
+		FROM publishers pub
+		WHERE pub.id = s.publisher_id AND pub.slug = $1 AND s.slug = $2`,
+		namespace, slug,
+	)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("incrementing mcp server copy count: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

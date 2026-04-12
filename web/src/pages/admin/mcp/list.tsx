@@ -1,10 +1,13 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { FilterBar } from '@/components/ui/filter-bar'
+import { BulkActionBar } from '@/components/admin/bulk-action-bar'
+import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
@@ -38,6 +41,51 @@ export default function AdminMCPList() {
   })
 
   const servers = data?.items ?? []
+  const queryClient = useQueryClient()
+  const selection = useBulkSelection<{ id: string; namespace: string; slug: string }>()
+  const [bulkError, setBulkError] = useState<string | null>(null)
+
+  const selectedItems = servers.filter((s) => selection.isSelected(s.id))
+
+  const bulkMutation = useMutation({
+    mutationFn: async (action: (s: { namespace: string; slug: string }) => Promise<void>) => {
+      setBulkError(null)
+      for (const item of selectedItems) {
+        await action({ namespace: item.namespace, slug: item.slug })
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-mcp'] })
+      selection.clear()
+    },
+    onError: (err: Error) => setBulkError(err.message || 'Bulk action failed'),
+  })
+
+  const bulkSetVisibility = (visibility: 'public' | 'private') => {
+    bulkMutation.mutate(async ({ namespace, slug }) => {
+      await api.POST('/api/v1/mcp/servers/{namespace}/{slug}/visibility', {
+        params: { path: { namespace, slug } },
+        body: { visibility },
+      })
+    })
+  }
+
+  const bulkDeprecate = () => {
+    bulkMutation.mutate(async ({ namespace, slug }) => {
+      await api.POST('/api/v1/mcp/servers/{namespace}/{slug}/deprecate', {
+        params: { path: { namespace, slug } },
+      })
+    })
+  }
+
+  const bulkDelete = () => {
+    if (!window.confirm(`Delete ${selection.selectedCount} server(s)? This cannot be undone.`)) return
+    bulkMutation.mutate(async ({ namespace, slug }) => {
+      await api.DELETE('/api/v1/mcp/servers/{namespace}/{slug}', {
+        params: { path: { namespace, slug } },
+      })
+    })
+  }
 
   const nextParams = new URLSearchParams()
   if (q) nextParams.set('q', q)
@@ -80,9 +128,22 @@ export default function AdminMCPList() {
         </p>
       ) : (
         <>
+          {bulkError && (
+            <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {bulkError}
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    checked={servers.length > 0 && servers.every((s) => selection.isSelected(s.id))}
+                    onChange={() => selection.toggleAll(servers)}
+                  />
+                </TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Namespace / Slug</TableHead>
                 <TableHead>Status</TableHead>
@@ -93,7 +154,15 @@ export default function AdminMCPList() {
             </TableHeader>
             <TableBody>
               {servers.map((s) => (
-                <TableRow key={s.id}>
+                <TableRow key={s.id} data-selected={selection.isSelected(s.id) || undefined}>
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${s.name}`}
+                      checked={selection.isSelected(s.id)}
+                      onChange={() => selection.toggle(s.id)}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{s.name}</TableCell>
                   <TableCell className="font-mono text-sm text-muted-foreground">
                     {s.namespace}/{s.slug}
@@ -114,6 +183,15 @@ export default function AdminMCPList() {
               ))}
             </TableBody>
           </Table>
+
+          <BulkActionBar
+            selectedCount={selection.selectedCount}
+            onClear={selection.clear}
+            onSetVisibility={bulkSetVisibility}
+            onDeprecate={bulkDeprecate}
+            onDelete={bulkDelete}
+            isBusy={bulkMutation.isPending}
+          />
 
           {data?.next_cursor && (
             <div className="flex justify-center pt-2">

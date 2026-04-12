@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Server, Bot, Users, ArrowRight, Plus } from 'lucide-react'
+import { Server, Bot, Users, ArrowRight, Plus, FileText, CheckCircle, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { StatusBadge } from '@/components/ui/badge'
+import { Badge, StatusBadge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
@@ -84,6 +84,48 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Status breakdown */}
+      {statsData?.mcp_status_breakdown && statsData?.agent_status_breakdown && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {[
+            { label: 'MCP Servers', breakdown: statsData.mcp_status_breakdown, href: '/admin/mcp' },
+            { label: 'Agents', breakdown: statsData.agent_status_breakdown, href: '/admin/agents' },
+          ].map(({ label, breakdown, href }) => (
+            <Card key={label}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{label} by Status</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground" /> Draft
+                  </span>
+                  <Link to={`${href}?status=draft`}>
+                    <Badge variant="outline" className="text-xs">{breakdown.draft}</Badge>
+                  </Link>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle className="h-3.5 w-3.5 text-green-600" /> Published
+                  </span>
+                  <Link to={`${href}?status=published`}>
+                    <Badge variant="outline" className="text-xs">{breakdown.published}</Badge>
+                  </Link>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" /> Deprecated
+                  </span>
+                  <Link to={`${href}?status=deprecated`}>
+                    <Badge variant="outline" className="text-xs">{breakdown.deprecated}</Badge>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Separator />
 

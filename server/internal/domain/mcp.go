@@ -49,6 +49,12 @@ type MCPServer struct {
 	License     string
 	Visibility  Visibility
 	Status      ServerStatus
+	Featured    bool
+	Verified    bool
+	Readme      string
+	ViewCount   int
+	CopyCount   int
+	Tags        []string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
