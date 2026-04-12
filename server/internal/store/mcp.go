@@ -32,6 +32,7 @@ type LatestMCPVersion struct {
 	Runtime         domain.Runtime
 	ProtocolVersion string
 	Packages        json.RawMessage
+	Capabilities    json.RawMessage
 	PublishedAt     *time.Time
 }
 
@@ -248,11 +249,11 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		SELECT s.id, pub.slug AS namespace, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
-		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.published_at
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
-		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.published_at
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.published_at
 		    FROM mcp_server_versions v
 		    WHERE v.server_id = s.id AND %s
 		    ORDER BY v.published_at DESC
@@ -273,17 +274,18 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	for rows.Next() {
 		var r MCPServerRow
 		var (
-			lvVersion     *string
-			lvRuntime     *string
-			lvProto       *string
-			lvPackages    []byte
-			lvPublishedAt *time.Time
+			lvVersion      *string
+			lvRuntime      *string
+			lvProto        *string
+			lvPackages     []byte
+			lvCapabilities []byte
+			lvPublishedAt  *time.Time
 		)
 		if err := rows.Scan(
 			&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 			&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 			&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
-			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
+			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvPublishedAt,
 		); err != nil {
 			recordErr(span, err)
 			return nil, 0, fmt.Errorf("scanning mcp server row: %w", err)
@@ -294,6 +296,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 				Runtime:         domain.Runtime(*lvRuntime),
 				ProtocolVersion: *lvProto,
 				Packages:        json.RawMessage(lvPackages),
+				Capabilities:    json.RawMessage(lvCapabilities),
 				PublishedAt:     lvPublishedAt,
 			}
 		}
@@ -338,11 +341,11 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
-		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.published_at
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
-		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.published_at
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.published_at
 		    FROM mcp_server_versions v
 		    WHERE v.server_id = s.id AND v.published_at IS NOT NULL
 		    ORDER BY v.published_at DESC
@@ -356,17 +359,18 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 
 	var r MCPServerRow
 	var (
-		lvVersion     *string
-		lvRuntime     *string
-		lvProto       *string
-		lvPackages    []byte
-		lvPublishedAt *time.Time
+		lvVersion      *string
+		lvRuntime      *string
+		lvProto        *string
+		lvPackages     []byte
+		lvCapabilities []byte
+		lvPublishedAt  *time.Time
 	)
 	err := db.Pool.QueryRow(ctx, q, args...).Scan(
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 		&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
-		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
+		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
@@ -382,6 +386,7 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 			Runtime:         domain.Runtime(*lvRuntime),
 			ProtocolVersion: *lvProto,
 			Packages:        json.RawMessage(lvPackages),
+			Capabilities:    json.RawMessage(lvCapabilities),
 			PublishedAt:     lvPublishedAt,
 		}
 	}
@@ -397,11 +402,11 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.created_at, s.updated_at,
-		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.published_at
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
-		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.published_at
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.published_at
 		    FROM mcp_server_versions v
 		    WHERE v.server_id = s.id AND v.published_at IS NOT NULL
 		    ORDER BY v.published_at DESC
@@ -411,17 +416,18 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 
 	var r MCPServerRow
 	var (
-		lvVersion     *string
-		lvRuntime     *string
-		lvProto       *string
-		lvPackages    []byte
-		lvPublishedAt *time.Time
+		lvVersion      *string
+		lvRuntime      *string
+		lvProto        *string
+		lvPackages     []byte
+		lvCapabilities []byte
+		lvPublishedAt  *time.Time
 	)
 	err := db.Pool.QueryRow(ctx, q, id).Scan(
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 		&r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
-		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvPublishedAt,
+		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
@@ -437,6 +443,7 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 			Runtime:         domain.Runtime(*lvRuntime),
 			ProtocolVersion: *lvProto,
 			Packages:        json.RawMessage(lvPackages),
+			Capabilities:    json.RawMessage(lvCapabilities),
 			PublishedAt:     lvPublishedAt,
 		}
 	}

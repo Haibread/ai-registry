@@ -1485,6 +1485,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PackageEntry"
+        capabilities:
+          type: object
+          additionalProperties: true
+          description: MCP server capabilities (tools, resources, prompts, etc.)
         published_at:
           type: string
           format: date-time

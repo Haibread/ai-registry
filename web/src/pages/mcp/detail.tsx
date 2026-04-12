@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import { ExternalLink, Package } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
 import { InstallCommand } from '@/components/ui/install-command'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
@@ -14,12 +15,15 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { TooltipInfo } from '@/components/ui/tooltip-info'
 import { CopyButton } from '@/components/ui/copy-button'
 import { ResourceIcon } from '@/components/ui/resource-icon'
+import { CapabilitiesSection } from '@/components/mcp/capabilities-section'
 import { getPublicClient } from '@/lib/api-client'
 import { formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import { getFieldExplanation } from '@/lib/field-explanations'
 
 export default function MCPDetailPage() {
   const { ns, slug } = useParams<{ ns: string; slug: string }>()
+  const location = useLocation()
+  const navigate = useNavigate()
   const api = getPublicClient()
   const { data, isLoading, isError } = useQuery({
     queryKey: ['mcp-server', ns, slug],
@@ -28,6 +32,12 @@ export default function MCPDetailPage() {
     }).then(r => r.data),
     enabled: !!ns && !!slug,
   })
+
+  // Tab state synced to URL hash
+  const defaultTab = location.hash?.replace('#', '') || 'overview'
+  const handleTabChange = (value: string) => {
+    navigate(`${location.pathname}#${value}`, { replace: true })
+  }
 
   if (isLoading) return (
     <div className="flex min-h-screen flex-col">
@@ -54,6 +64,7 @@ export default function MCPDetailPage() {
   )
 
   const lv = data.latest_version
+  const capabilities = (lv as Record<string, unknown> | undefined)?.capabilities as Record<string, unknown> | undefined
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -68,6 +79,7 @@ export default function MCPDetailPage() {
           ]}
         />
 
+        {/* Title row */}
         <div className="space-y-2">
           <div className="flex items-start gap-3 flex-wrap">
             <h1 className="text-2xl sm:text-3xl font-bold flex-1 min-w-0 break-words">{data.name}</h1>
@@ -90,83 +102,7 @@ export default function MCPDetailPage() {
 
         {data.description && <p className="text-muted-foreground">{data.description}</p>}
 
-        <Separator />
-
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-          {lv && (
-            <>
-              <dt className="text-muted-foreground flex items-center gap-1">
-                Runtime
-                <TooltipInfo content={getFieldExplanation('runtime') ?? ''} />
-              </dt>
-              <dd>
-                <Badge variant="secondary">{lv.runtime}</Badge>
-                {getFieldExplanation(lv.runtime) && (
-                  <TooltipInfo content={getFieldExplanation(lv.runtime)!} className="ml-1" />
-                )}
-              </dd>
-              <dt className="text-muted-foreground flex items-center gap-1">
-                Protocol version
-                <TooltipInfo content={getFieldExplanation('protocol_version') ?? ''} />
-              </dt>
-              <dd className="font-mono">{lv.protocol_version}</dd>
-              {lv.published_at && (
-                <>
-                  <dt className="text-muted-foreground">Published</dt>
-                  <dd>{formatDate(lv.published_at)}</dd>
-                </>
-              )}
-            </>
-          )}
-          {data.license && (
-            <>
-              <dt className="text-muted-foreground">License</dt>
-              <dd>{data.license}</dd>
-            </>
-          )}
-          <dt className="text-muted-foreground">Created</dt>
-          <dd>{formatDate(data.created_at)}</dd>
-          <dt className="text-muted-foreground">Updated</dt>
-          <dd>{formatDate(data.updated_at)}</dd>
-        </dl>
-
-        {lv?.packages && lv.packages.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Package className="h-4 w-4" aria-hidden="true" />
-              {lv.packages.every(p => isRemoteTransport(p.transport.type)) ? 'Connection' : 'Installation'}
-            </h2>
-            <div className="space-y-4">
-              {lv.packages.map((pkg, i) => {
-                const remote = isRemoteTransport(pkg.transport.type)
-                return (
-                  <div key={i} className="space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="secondary" className="text-xs">{ecosystemLabel(pkg.registryType)}</Badge>
-                      <span className="text-xs text-muted-foreground font-mono truncate">{pkg.identifier}@{pkg.version}</span>
-                      <Badge variant="outline" className="text-xs">{pkg.transport.type}</Badge>
-                      {getFieldExplanation(pkg.transport.type) && (
-                        <TooltipInfo content={getFieldExplanation(pkg.transport.type)!} />
-                      )}
-                    </div>
-                    {remote && pkg.transport.url ? (
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Endpoint URL</p>
-                        <InstallCommand command={pkg.transport.url} />
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Run command</p>
-                        <InstallCommand command={getInstallCommand(pkg)} />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
+        {/* External links */}
         <div className="flex gap-3 flex-wrap">
           {data.repo_url && (
             <Button variant="outline" size="sm" asChild>
@@ -185,7 +121,115 @@ export default function MCPDetailPage() {
         </div>
 
         <Separator />
-        <RawJsonViewer data={data} title="Raw API response" />
+
+        {/* Tabbed content */}
+        <Tabs defaultValue={defaultTab} onValueChange={handleTabChange}>
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="installation">Installation</TabsTrigger>
+            <TabsTrigger value="json">JSON</TabsTrigger>
+          </TabsList>
+
+          {/* ── Overview Tab ── */}
+          <TabsContent value="overview" className="space-y-6">
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              {lv && (
+                <>
+                  <dt className="text-muted-foreground flex items-center gap-1">
+                    Runtime
+                    <TooltipInfo content={getFieldExplanation('runtime') ?? ''} />
+                  </dt>
+                  <dd>
+                    <Badge variant="secondary">{lv.runtime}</Badge>
+                    {getFieldExplanation(lv.runtime) && (
+                      <TooltipInfo content={getFieldExplanation(lv.runtime)!} className="ml-1" />
+                    )}
+                  </dd>
+                  <dt className="text-muted-foreground flex items-center gap-1">
+                    Protocol version
+                    <TooltipInfo content={getFieldExplanation('protocol_version') ?? ''} />
+                  </dt>
+                  <dd className="font-mono">{lv.protocol_version}</dd>
+                  {lv.published_at && (
+                    <>
+                      <dt className="text-muted-foreground">Published</dt>
+                      <dd>{formatDate(lv.published_at)}</dd>
+                    </>
+                  )}
+                </>
+              )}
+              {data.license && (
+                <>
+                  <dt className="text-muted-foreground">License</dt>
+                  <dd>{data.license}</dd>
+                </>
+              )}
+              <dt className="text-muted-foreground">Created</dt>
+              <dd>{formatDate(data.created_at)}</dd>
+              <dt className="text-muted-foreground">Updated</dt>
+              <dd>{formatDate(data.updated_at)}</dd>
+            </dl>
+
+            {/* Capabilities */}
+            {capabilities && Object.keys(capabilities).length > 0 && (
+              <>
+                <Separator />
+                <CapabilitiesSection capabilities={capabilities} />
+              </>
+            )}
+          </TabsContent>
+
+          {/* ── Installation Tab ── */}
+          <TabsContent value="installation" className="space-y-6">
+            {lv?.packages && lv.packages.length > 0 ? (
+              <div className="space-y-3">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Package className="h-4 w-4" aria-hidden="true" />
+                  {lv.packages.every(p => isRemoteTransport(p.transport.type)) ? 'Connection' : 'Installation'}
+                </h2>
+                <div className="space-y-4">
+                  {lv.packages.map((pkg, i) => {
+                    const remote = isRemoteTransport(pkg.transport.type)
+                    return (
+                      <div key={i} className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="secondary" className="text-xs">{ecosystemLabel(pkg.registryType)}</Badge>
+                          <span className="text-xs text-muted-foreground font-mono truncate">{pkg.identifier}@{pkg.version}</span>
+                          <Badge variant="outline" className="text-xs">{pkg.transport.type}</Badge>
+                          {getFieldExplanation(pkg.transport.type) && (
+                            <TooltipInfo content={getFieldExplanation(pkg.transport.type)!} />
+                          )}
+                        </div>
+                        {remote && pkg.transport.url ? (
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Endpoint URL</p>
+                            <InstallCommand command={pkg.transport.url} />
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Run command</p>
+                            <InstallCommand command={getInstallCommand(pkg)} />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<Package className="h-8 w-8 text-muted-foreground" />}
+                title="No packages available"
+                description="This server has no published packages yet."
+              />
+            )}
+          </TabsContent>
+
+          {/* ── JSON Tab ── */}
+          <TabsContent value="json">
+            <RawJsonViewer data={data} title="Raw API response" />
+          </TabsContent>
+        </Tabs>
       </main>
       <Footer />
     </div>

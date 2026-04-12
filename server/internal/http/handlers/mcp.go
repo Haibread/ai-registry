@@ -536,6 +536,7 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 			"runtime":          string(lv.Runtime),
 			"protocol_version": lv.ProtocolVersion,
 			"packages":         lv.Packages,
+			"capabilities":     lv.Capabilities,
 			"published_at":     lv.PublishedAt,
 		}
 	}
