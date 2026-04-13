@@ -12,6 +12,13 @@
 #   command: ["/server", "--bootstrap-file", "/etc/ai-registry/bootstrap.yaml"]
 #
 # Supported formats: .yaml / .yml / .json
+#
+# This example also showcases the v0.2 fields:
+#   • featured   — flag an entry for the home page carousel
+#   • verified   — officially vetted badge
+#   • tags       — free-form labels surfaced in listing filters
+#   • readme     — long-form markdown rendered on the detail page
+#   • capabilities (MCP versions) — free-form MCP capabilities JSON
 # ============================================================================
 
 publishers:
@@ -36,10 +43,41 @@ mcp_servers:
     description: "Gives Claude read/write access to the local file system."
     repository_url: "https://github.com/anthropics/mcp-filesystem"
     public: true
+    featured: true
+    verified: true
+    tags: ["filesystem", "storage", "official", "stdio"]
+    readme: |
+      # Filesystem MCP Server
+
+      Gives an MCP host (Claude Desktop, Cursor, etc.) **scoped** read/write
+      access to a directory on the local machine.
+
+      ## Features
+
+      - Read, write and list files in an allow-listed root
+      - Glob-style search across the tree
+      - Atomic writes with backup
+      - Path traversal protection
+
+      ## Quick start
+
+      ```bash
+      npx -y @anthropic/mcp-filesystem /path/to/workspace
+      ```
+
+      Then point your MCP host at the command above. The server is stdio-only
+      — there is no network surface to harden.
     versions:
       - version: "1.0.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          resources:
+            subscribe: true
+            listChanged: true
+          logging: {}
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-filesystem"
@@ -49,6 +87,15 @@ mcp_servers:
       - version: "2.0.0"
         status: "draft"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          resources:
+            subscribe: true
+            listChanged: true
+          prompts:
+            listChanged: true
+          logging: {}
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-filesystem"
@@ -63,10 +110,33 @@ mcp_servers:
     description: "Streams real-time desktop screenshots and control events over Server-Sent Events."
     repository_url: "https://github.com/anthropics/mcp-computer-use"
     public: true
+    featured: true
+    verified: true
+    tags: ["desktop", "automation", "sse", "remote"]
+    readme: |
+      # Computer Use MCP Server
+
+      Exposes the local desktop as an MCP resource. The host can ask the
+      server to take a screenshot, move the mouse, type text, or click — and
+      screen updates stream back over SSE in real time.
+
+      > **Warning**
+      > Computer Use gives an agent full control of the machine it runs on.
+      > Run it inside a sandbox or VM unless you trust every tool call.
+
+      ## Auth
+
+      Per the MCP authorization spec this server is OAuth 2.1 with PKCE;
+      discover metadata at `/.well-known/oauth-protected-resource`.
     versions:
       - version: "1.2.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          resources:
+            subscribe: true
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-computer-use"
@@ -82,12 +152,25 @@ mcp_servers:
     description: "Provides long-term memory storage for conversations. Deprecated: use anthropic/knowledge-base."
     repository_url: "https://github.com/anthropics/mcp-memory"
     public: true
+    verified: true
     status: "deprecated"
+    tags: ["memory", "deprecated"]
+    readme: |
+      # Memory MCP Server (deprecated)
+
+      This server has been **replaced** by `anthropic/knowledge-base`, which
+      ships a richer semantic store and supports streaming updates.
+
+      Existing clients will keep working for the 1.x line, but no new
+      features will land here.
     versions:
       - version: "1.0.0"
         status: "deprecated"
         status_message: "Replaced by anthropic/knowledge-base"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: false
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-memory"
@@ -103,10 +186,36 @@ mcp_servers:
     description: "Interact with GitHub repositories, issues, and pull requests."
     repository_url: "https://github.com/anthropics/mcp-github"
     public: true
+    featured: true
+    verified: true
+    tags: ["github", "git", "devtools", "stdio"]
+    readme: |
+      # GitHub MCP Server
+
+      A thin wrapper around the GitHub REST + GraphQL APIs exposed as MCP
+      tools. Works with both personal access tokens and GitHub App
+      installations.
+
+      ## Tools
+
+      | Tool | Description |
+      |------|-------------|
+      | `list_issues` | List issues in a repo |
+      | `create_pr` | Open a new pull request |
+      | `review_pr` | Post inline review comments |
+      | `merge_pr` | Merge a PR (respects branch protections) |
+
+      ## Auth
+
+      Set `GITHUB_TOKEN` in the environment or supply an installation ID for
+      GitHub App auth.
     versions:
       - version: "0.5.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-github"
@@ -116,6 +225,12 @@ mcp_servers:
       - version: "1.0.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          resources:
+            listChanged: true
+          prompts: {}
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-github"
@@ -130,10 +245,32 @@ mcp_servers:
     description: "Provides real-time web search capabilities via a streaming HTTP transport."
     repository_url: "https://github.com/openai/mcp-web-search"
     public: true
+    featured: true
+    verified: true
+    tags: ["search", "web", "streamable-http", "remote"]
+    readme: |
+      # Web Search MCP Server
+
+      Streams search results as they come in using MCP's streamable-HTTP
+      transport. No polling, no artificial chunking — the host sees a new
+      result the moment the upstream index returns it.
+
+      ## Example
+
+      ```json
+      {
+        "tool": "search",
+        "args": { "query": "latest mcp spec changes", "limit": 10 }
+      }
+      ```
     versions:
       - version: "2.1.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          logging: {}
         packages:
           - registry_type: "npm"
             identifier: "@openai/mcp-web-search"
@@ -149,10 +286,29 @@ mcp_servers:
     description: "Generate images from text prompts via a containerised HTTP endpoint."
     repository_url: "https://github.com/openai/mcp-image-gen"
     public: true
+    verified: true
+    tags: ["image", "multimodal", "oci", "http"]
+    readme: |
+      # Image Generation MCP Server
+
+      Ships as an OCI image so you can run it anywhere a container runs —
+      locally with `docker run`, on Kubernetes, or as a serverless job.
+
+      ```bash
+      docker run --rm -p 7060:7060 \
+          -e OPENAI_API_KEY=sk-... \
+          ghcr.io/openai/mcp-image-gen:1.0.0
+      ```
+
+      Images are returned inline as base64-encoded PNG via the MCP
+      `generate_image` tool.
     versions:
       - version: "1.0.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: false
         packages:
           - registry_type: "oci"
             identifier: "ghcr.io/openai/mcp-image-gen"
@@ -168,10 +324,24 @@ mcp_servers:
     description: "Execute Python code in a sandboxed environment and return results."
     repository_url: "https://github.com/openai/mcp-code-interpreter"
     public: true
+    tags: ["python", "sandbox", "experimental"]
+    readme: |
+      # Code Interpreter MCP Server (draft)
+
+      Runs arbitrary Python in a gVisor sandbox and streams stdout, stderr,
+      and any generated files back to the host.
+
+      This version is still **draft** — the tool signatures will change before
+      the 1.0 release.
     versions:
       - version: "0.3.0"
         status: "draft"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          resources:
+            subscribe: true
         packages:
           - registry_type: "npm"
             identifier: "@openai/mcp-code-interpreter"
@@ -187,10 +357,25 @@ mcp_servers:
     description: "Community-maintained server for querying and managing PostgreSQL databases."
     repository_url: "https://github.com/community/mcp-postgres"
     public: true
+    tags: ["database", "postgres", "sql", "stdio"]
+    readme: |
+      # PostgreSQL MCP Server
+
+      Exposes a read-only (by default) PostgreSQL connection as MCP tools:
+
+      - `query` — run a SQL SELECT and return rows
+      - `describe_table` — list columns, types, indexes
+      - `explain` — return a query plan
+
+      Write tools (`insert`, `update`, `delete`) are gated behind the
+      `--allow-writes` flag.
     versions:
       - version: "0.3.1"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
         packages:
           - registry_type: "pypi"
             identifier: "mcp-postgres"
@@ -205,10 +390,21 @@ mcp_servers:
     description: "Read and write SQLite databases using natural language."
     repository_url: "https://github.com/community/mcp-sqlite"
     public: true
+    tags: ["database", "sqlite", "sql", "stdio"]
+    readme: |
+      # SQLite MCP Server
+
+      Drop-in MCP server for working with local `.sqlite` / `.db` files.
+      Perfect for poking at application databases, exports, or small
+      datasets without spinning up a full Postgres instance.
     versions:
       - version: "1.2.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          resources: {}
         packages:
           - registry_type: "pypi"
             identifier: "mcp-sqlite"
@@ -223,10 +419,26 @@ mcp_servers:
     description: "Manage Kubernetes clusters and workloads from your AI assistant."
     repository_url: "https://github.com/community/mcp-kubernetes"
     public: true
+    tags: ["kubernetes", "cloud", "oci", "http"]
+    readme: |
+      # Kubernetes MCP Server
+
+      Wraps `kubectl` + the Kubernetes API as MCP tools. Reads kubeconfig
+      from the environment and honours the current context — **be careful
+      which cluster you're pointing at.**
+
+      Ships as an OCI image that can run as a sidecar next to your MCP host.
     versions:
       - version: "0.5.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          resources:
+            subscribe: true
+            listChanged: true
+          logging: {}
         packages:
           - registry_type: "oci"
             identifier: "ghcr.io/community/mcp-kubernetes"
@@ -242,10 +454,20 @@ mcp_servers:
     description: "Wraps common .NET CLI tools (build, test, publish) as MCP primitives."
     repository_url: "https://github.com/community/mcp-dotnet-tools"
     public: false
+    tags: ["dotnet", "nuget", "devtools"]
+    readme: |
+      # .NET Tools MCP Server (internal)
+
+      Private to teams with a .NET-heavy stack. Exposes `dotnet build`,
+      `dotnet test`, and `dotnet publish` as MCP tools so an agent can drive
+      the full CI loop without shelling out.
     versions:
       - version: "1.0.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
         packages:
           - registry_type: "nuget"
             identifier: "MCP.DotNetTools"
@@ -260,10 +482,20 @@ mcp_servers:
     description: "Bridges legacy tool APIs into the MCP ecosystem using the mcpb packaging format."
     repository_url: "https://github.com/community/mcp-bridge"
     public: true
+    tags: ["bridge", "mcpb", "interop"]
+    readme: |
+      # MCP Bridge
+
+      Adapter for legacy function-calling tool APIs — point it at an OpenAPI
+      spec or a Swagger file and it generates MCP tools on the fly. Ships as
+      an `mcpb` bundle (Model Context Protocol Bundle format).
     versions:
       - version: "0.9.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
         packages:
           - registry_type: "mcpb"
             identifier: "mcp-bridge"
@@ -278,10 +510,22 @@ mcp_servers:
     description: "Ships as both an npm package (stdio) and an OCI image (HTTP) — pick the deployment model you need."
     repository_url: "https://github.com/community/mcp-multi-transport"
     public: true
+    tags: ["multi-transport", "stdio", "http", "example"]
+    readme: |
+      # Multi-Transport MCP Server
+
+      A reference implementation showing how to ship the same logical server
+      as **two** packages: an `npm` bundle for local stdio use, and an `oci`
+      image for remote HTTP deployments. Clients pick whichever one suits
+      their host.
     versions:
       - version: "1.0.0"
         status: "published"
         protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: true
+          resources: {}
         packages:
           - registry_type: "npm"
             identifier: "@community/multi-transport"
@@ -303,6 +547,25 @@ agents:
     name: "Code Review Agent"
     description: "Automatically reviews pull requests and suggests improvements."
     public: true
+    featured: true
+    verified: true
+    tags: ["code-review", "git", "devtools", "official"]
+    readme: |
+      # Code Review Agent
+
+      Reads a pull request diff and posts inline comments that flag bugs,
+      style issues, and missing tests.
+
+      ## What it's good at
+
+      - Spotting copy/paste bugs
+      - Catching missing null / error checks
+      - Suggesting test cases for new branches
+
+      ## What it's not
+
+      It is **not** a replacement for human review on anything security- or
+      architecture-sensitive. Use it as a first pass, not the final word.
     versions:
       - version: "1.0.0"
         status: "published"
@@ -327,6 +590,23 @@ agents:
     name: "Browser Automation Agent"
     description: "Controls a real browser to fill forms, click buttons, and extract information from any website."
     public: true
+    featured: true
+    verified: true
+    tags: ["browser", "automation", "multimodal", "official"]
+    readme: |
+      # Browser Automation Agent
+
+      A headful browser agent. Give it a goal in plain English ("book me a
+      table for two at 8pm") and it will navigate, click, type and screenshot
+      its way to the result.
+
+      ## I/O modes
+
+      - **Input:** `text/plain`, `application/json`
+      - **Output:** `text/plain`, `image/png` (screenshots)
+
+      Screenshots are returned alongside text so your host can show the user
+      what the agent actually did.
     versions:
       - version: "1.2.0"
         status: "published"
@@ -359,6 +639,21 @@ agents:
     name: "Data Analyst Agent"
     description: "Analyses structured datasets and produces charts and summaries."
     public: true
+    featured: true
+    verified: true
+    tags: ["data", "analytics", "charts", "csv"]
+    readme: |
+      # Data Analyst Agent
+
+      Accepts CSV, JSON, or plain-text datasets and returns a written
+      analysis alongside any charts it decided to draw.
+
+      ## Typical flow
+
+      1. Host uploads a CSV via `text/csv` input
+      2. Agent runs exploratory stats and picks an appropriate chart
+      3. Agent replies with a written summary (`text/plain`), the generated
+         chart (`image/png`), and the raw numbers (`application/json`)
     versions:
       - version: "0.9.0"
         status: "published"
@@ -387,7 +682,17 @@ agents:
     name: "Research Agent"
     description: "Searches the web and academic databases to answer deep research questions."
     public: true
+    verified: true
     status: "deprecated"
+    tags: ["research", "search", "deprecated"]
+    readme: |
+      # Research Agent (deprecated)
+
+      Replaced by the newer `openai/deep-research` agent, which uses a
+      long-horizon planner and can run for minutes without losing track of
+      its sub-goals.
+
+      The 0.5.x line will continue to respond but receives no new features.
     versions:
       - version: "0.5.0"
         status: "published"
@@ -412,6 +717,13 @@ agents:
     name: "Documentation Writer"
     description: "Generates and maintains API documentation from source code."
     public: true
+    tags: ["docs", "openapi", "devtools"]
+    readme: |
+      # Documentation Writer
+
+      Reads a codebase and emits Markdown / OpenAPI documentation for public
+      interfaces. Plug it into CI to keep your docs in sync with the code on
+      every merge.
     versions:
       - version: "0.2.0"
         status: "published"
@@ -432,6 +744,14 @@ agents:
     name: "DevOps Agent"
     description: "Provisions cloud infrastructure, manages CI/CD pipelines, and monitors deployments."
     public: true
+    tags: ["devops", "cloud", "ci-cd", "experimental"]
+    readme: |
+      # DevOps Agent (draft)
+
+      Experimental agent for driving cloud infrastructure. Currently
+      targets AWS and GCP; Azure support is on the roadmap.
+
+      > This version is **draft** — breaking changes will land before 1.0.
     versions:
       - version: "0.1.0"
         status: "draft"
@@ -461,6 +781,15 @@ agents:
     name: "Security Scanner Agent"
     description: "Scans codebases and infrastructure configs for common vulnerabilities."
     public: false
+    tags: ["security", "sast", "iac"]
+    readme: |
+      # Security Scanner Agent (internal)
+
+      Runs static analysis across code and IaC (Terraform, Helm, k8s
+      manifests) and returns a structured finding report.
+
+      Kept **private** so that the list of known-vulnerable patterns isn't
+      visible to unauthenticated users.
     versions:
       - version: "1.0.0"
         status: "published"
