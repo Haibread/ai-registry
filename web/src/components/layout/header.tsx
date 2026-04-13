@@ -1,12 +1,19 @@
-import { Link } from 'react-router-dom'
-import { Server, Bot, AlertCircle } from 'lucide-react'
+import { Link, useLocation } from 'react-router-dom'
+import { AlertCircle, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NavLink } from '@/components/layout/nav-link'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
+import { ResourceIcon } from '@/components/ui/resource-icon'
+import { SearchBar } from '@/components/ui/search-bar'
 import { useAuth } from '@/auth/AuthContext'
 
 export function Header() {
   const { accessToken, login, logout, loginError } = useAuth()
+  const location = useLocation()
+  // The home hero already hosts a big SearchBar — don't duplicate it in the
+  // header on `/`, but surface it on every other page so cross-type search is
+  // one click away from anywhere.
+  const showHeaderSearch = location.pathname !== '/'
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur-sm supports-backdrop-filter:bg-background/60">
@@ -26,16 +33,26 @@ export function Header() {
 
         <nav className="flex items-center gap-1">
           <NavLink to="/mcp">
-            <Server className="h-4 w-4" aria-hidden="true" />
+            <ResourceIcon type="mcp-server" />
             MCP Servers
           </NavLink>
           <NavLink to="/agents">
-            <Bot className="h-4 w-4" aria-hidden="true" />
+            <ResourceIcon type="agent" />
             Agents
+          </NavLink>
+          <NavLink to="/getting-started">
+            <BookOpen className="h-4 w-4" />
+            Getting Started
           </NavLink>
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        {showHeaderSearch && (
+          <div className="ml-auto flex-1 max-w-sm hidden md:block">
+            <SearchBar variant="compact" />
+          </div>
+        )}
+
+        <div className={`flex items-center gap-2 ${showHeaderSearch ? 'ml-2' : 'ml-auto'}`}>
           <ThemeToggle />
           {accessToken ? (
             <>

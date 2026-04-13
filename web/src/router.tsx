@@ -1,6 +1,10 @@
 import { Routes, Route } from 'react-router-dom'
 import { RequireAuth } from '@/auth/RequireAuth'
 import HomePage from '@/pages/home'
+import ExplorePage from '@/pages/explore'
+import GettingStartedPage from '@/pages/getting-started'
+import ChangelogPage from '@/pages/changelog'
+import PublisherDetailPage from '@/pages/publishers/detail'
 import MCPListPage from '@/pages/mcp/list'
 import MCPDetailPage from '@/pages/mcp/detail'
 import AgentListPage from '@/pages/agents/list'
@@ -18,12 +22,17 @@ import AdminPublisherList from '@/pages/admin/publishers/list'
 import AdminPublisherDetail from '@/pages/admin/publishers/detail'
 import AdminPublisherNew from '@/pages/admin/publishers/new'
 import AdminApiKeys from '@/pages/admin/api-keys'
+import AdminReports from '@/pages/admin/reports'
 import NotFoundPage from '@/pages/not-found'
 
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/explore" element={<ExplorePage />} />
+      <Route path="/getting-started" element={<GettingStartedPage />} />
+      <Route path="/changelog" element={<ChangelogPage />} />
+      <Route path="/publishers/:slug" element={<PublisherDetailPage />} />
       <Route path="/mcp" element={<MCPListPage />} />
       <Route path="/mcp/:ns/:slug" element={<MCPDetailPage />} />
       <Route path="/agents" element={<AgentListPage />} />
@@ -48,6 +57,7 @@ export function AppRoutes() {
         <Route path="publishers/new" element={<AdminPublisherNew />} />
         <Route path="publishers/:slug" element={<AdminPublisherDetail />} />
         <Route path="api-keys" element={<AdminApiKeys />} />
+        <Route path="reports" element={<AdminReports />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

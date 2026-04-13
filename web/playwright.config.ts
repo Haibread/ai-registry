@@ -59,5 +59,17 @@ export default defineConfig({
       },
       testMatch: /public\.spec\.ts/,
     },
+    // Detail-page tests seed their own data via the admin API, so they need
+    // the authenticated storage state. The page navigations themselves target
+    // public routes — auth does not alter their rendered content.
+    {
+      name: "detail-chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /detail\.spec\.ts/,
+    },
   ],
 })

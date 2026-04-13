@@ -28,32 +28,43 @@ type Agent struct {
 	Description string
 	Visibility  Visibility
 	Status      ServerStatus
+	Featured    bool
+	Verified    bool
+	Readme      string
+	ViewCount   int
+	CopyCount   int
+	Tags        []string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
 // AgentVersion is an immutable versioned release of an Agent.
 // Once published_at is set, no fields may be mutated.
+//
+// The JSON tags are the wire format used by the versions list/detail
+// endpoints — they must stay in sync with the AgentVersion schema in
+// server/api/openapi.yaml, and with the frontend VersionHistory component
+// which reads these snake_case keys.
 type AgentVersion struct {
-	ID                 string
-	AgentID            string
-	Version            string // semver
-	EndpointURL        string
-	Skills             json.RawMessage // []AgentSkill
-	Capabilities       json.RawMessage // AgentCapabilities
-	Authentication     json.RawMessage // []AuthScheme
-	DefaultInputModes  []string
-	DefaultOutputModes []string
-	Provider           json.RawMessage // AgentProvider
-	DocumentationURL   string
-	IconURL            string
-	ProtocolVersion    string
-	Status             VersionStatus // active | deprecated | deleted
-	StatusMessage      string
-	StatusChangedAt    time.Time
-	PublishedAt        *time.Time
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                 string          `json:"id"`
+	AgentID            string          `json:"agent_id"`
+	Version            string          `json:"version"` // semver
+	EndpointURL        string          `json:"endpoint_url"`
+	Skills             json.RawMessage `json:"skills,omitempty"`         // []AgentSkill
+	Capabilities       json.RawMessage `json:"capabilities,omitempty"`   // AgentCapabilities
+	Authentication     json.RawMessage `json:"authentication,omitempty"` // []AuthScheme
+	DefaultInputModes  []string        `json:"default_input_modes,omitempty"`
+	DefaultOutputModes []string        `json:"default_output_modes,omitempty"`
+	Provider           json.RawMessage `json:"provider,omitempty"` // AgentProvider
+	DocumentationURL   string          `json:"documentation_url,omitempty"`
+	IconURL            string          `json:"icon_url,omitempty"`
+	ProtocolVersion    string          `json:"protocol_version"`
+	Status             VersionStatus   `json:"status"` // active | deprecated | deleted
+	StatusMessage      string          `json:"status_message,omitempty"`
+	StatusChangedAt    time.Time       `json:"status_changed_at"`
+	PublishedAt        *time.Time      `json:"published_at,omitempty"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
 }
 
 // IsPublished reports whether this version has been published.

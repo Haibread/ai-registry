@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -48,15 +49,39 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	if visibility != "public" && visibility != "private" {
 		visibility = ""
 	}
+	sort := r.URL.Query().Get("sort")
+	if sort != "created_at_desc" && sort != "updated_at_desc" && sort != "published_at_desc" && sort != "name_asc" && sort != "name_desc" {
+		sort = ""
+	}
+
+	var featured *bool
+	if fv := r.URL.Query().Get("featured"); fv == "true" {
+		t := true
+		featured = &t
+	} else if fv == "false" {
+		f := false
+		featured = &f
+	}
+
+	var publishedSince *time.Time
+	if ps := r.URL.Query().Get("published_since"); ps != "" {
+		if t, err := time.Parse(time.RFC3339, ps); err == nil {
+			publishedSince = &t
+		}
+	}
 
 	rows, total, err := h.db.ListAgents(r.Context(), store.ListAgentsParams{
-		PublicOnly: !auth.IsAdminFromContext(r.Context()),
-		Namespace:  r.URL.Query().Get("namespace"),
-		Status:     status,
-		Visibility: visibility,
-		Query:      r.URL.Query().Get("q"),
-		Limit:      limit + 1,
-		Cursor:     r.URL.Query().Get("cursor"),
+		PublicOnly:     !auth.IsAdminFromContext(r.Context()),
+		Namespace:      r.URL.Query().Get("namespace"),
+		Status:         status,
+		Visibility:     visibility,
+		Query:          r.URL.Query().Get("q"),
+		Limit:          limit + 1,
+		Cursor:         r.URL.Query().Get("cursor"),
+		Sort:           sort,
+		Featured:       featured,
+		Tag:            r.URL.Query().Get("tag"),
+		PublishedSince: publishedSince,
 	})
 	if errors.Is(err, store.ErrInvalidCursor) {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid cursor", r.URL.Path)
@@ -71,7 +96,16 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	if int32(len(rows)) > limit {
 		rows = rows[:limit]
 		last := rows[len(rows)-1]
-		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
+		cursorTime := last.CreatedAt
+		switch sort {
+		case "updated_at_desc":
+			cursorTime = last.UpdatedAt
+		case "published_at_desc":
+			if last.LatestVersion != nil && last.LatestVersion.PublishedAt != nil {
+				cursorTime = *last.LatestVersion.PublishedAt
+			}
+		}
+		nextCursor = store.EncodeCursor(cursorTime, last.ID)
 	}
 
 	items := make([]map[string]any, 0, len(rows))
@@ -550,6 +584,42 @@ func (h *AgentHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, r, http.StatusOK, v)
 }
 
+// ── POST /api/v1/agents/{namespace}/{slug}/view ──────────────────────────
+
+func (h *AgentHandlers) RecordView(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	if err := h.db.IncrementAgentViewCount(r.Context(), ns, slug); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			problem.Write(w, http.StatusNotFound, "not-found",
+				fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
+			return
+		}
+		internalError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── POST /api/v1/agents/{namespace}/{slug}/copy ─────────────────────────
+
+func (h *AgentHandlers) RecordCopy(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	if err := h.db.IncrementAgentCopyCount(r.Context(), ns, slug); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			problem.Write(w, http.StatusNotFound, "not-found",
+				fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
+			return
+		}
+		internalError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── helper ────────────────────────────────────────────────────────────────
 
 func agentToResponse(a *store.AgentRow) map[string]any {
@@ -561,6 +631,12 @@ func agentToResponse(a *store.AgentRow) map[string]any {
 		"description": a.Description,
 		"visibility":  string(a.Visibility),
 		"status":      string(a.Status),
+		"featured":    a.Featured,
+		"verified":    a.Verified,
+		"tags":        a.Tags,
+		"readme":      a.Readme,
+		"view_count":  a.ViewCount,
+		"copy_count":  a.CopyCount,
 		"created_at":  a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		"updated_at":  a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}

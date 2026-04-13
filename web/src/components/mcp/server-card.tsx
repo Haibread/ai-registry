@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, GitFork, Braces, Link2 } from 'lucide-react'
+import { ExternalLink, Eye, GitFork, Braces, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge, StatusBadge } from '@/components/ui/badge'
-import { formatDate, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
+import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
+import { CopyButton } from '@/components/ui/copy-button'
+import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
+import { formatDate, formatCount, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type MCPServer = components['schemas']['MCPServer']
@@ -41,11 +43,18 @@ export function ServerCard({ server }: ServerCardProps) {
                 v{lv.version}
               </Badge>
             )}
+            {server.verified && <VerifiedBadge className="text-[10px]" />}
             <StatusBadge status={server.status} className="text-[11px]" />
           </div>
         </div>
-        <div className="text-xs text-muted-foreground font-mono">
-          {server.namespace}/{server.slug}
+        <div className="text-xs text-muted-foreground font-mono relative z-10">
+          <Link
+            to={`/mcp?namespace=${server.namespace}`}
+            className="hover:text-foreground transition-colors"
+          >
+            {server.namespace}
+          </Link>
+          /{server.slug}
         </div>
 
         {/* Runtime + one ecosystem chip */}
@@ -84,13 +93,24 @@ export function ServerCard({ server }: ServerCardProps) {
               <span className="text-[11px] font-mono text-muted-foreground truncate" title={endpointUrl}>
                 {endpointUrl}
               </span>
+              <CopyButton value={endpointUrl} iconSize="h-3 w-3" label="Copy endpoint URL" />
             </div>
           </div>
         </CardContent>
       )}
 
       <CardFooter className="pt-3 border-t flex items-center justify-between gap-2 text-xs text-muted-foreground relative z-10">
-        <span>{formatDate(server.created_at)}</span>
+        <div className="flex items-center gap-3 min-w-0">
+          <FreshnessIndicator updatedAt={server.updated_at} />
+          <span
+            className="inline-flex items-center gap-1"
+            title={`${(server.view_count ?? 0).toLocaleString()} views`}
+            aria-label={`${(server.view_count ?? 0).toLocaleString()} views`}
+          >
+            <Eye className="h-3 w-3" aria-hidden="true" />
+            {formatCount(server.view_count ?? 0)}
+          </span>
+        </div>
         <div className="flex items-center gap-3">
           {server.license && <span>{server.license}</span>}
           <a

@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Bot } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { AgentCard } from '@/components/agents/agent-card'
 import { FilterBar } from '@/components/ui/filter-bar'
+import { FilterBarSkeleton } from '@/components/ui/filter-bar-skeleton'
+import { CardGridSkeleton } from '@/components/ui/card-grid-skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ResourceIcon } from '@/components/ui/resource-icon'
 import { Button } from '@/components/ui/button'
 import { getPublicClient } from '@/lib/api-client'
 
@@ -14,16 +17,18 @@ export default function AgentListPage() {
   const cursor = searchParams.get('cursor') ?? undefined
   const namespace = searchParams.get('namespace') ?? undefined
   const status = searchParams.get('status') ?? undefined
+  const sort = searchParams.get('sort') ?? undefined
 
   const api = getPublicClient()
-  const { data } = useQuery({
-    queryKey: ['agents', { q, cursor, namespace, status }],
+  const { data, isLoading } = useQuery({
+    queryKey: ['agents', { q, cursor, namespace, status, sort }],
     queryFn: () => api.GET('/api/v1/agents', {
-      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined } },
+      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined, sort: sort as 'created_at_desc' | 'updated_at_desc' | 'name_asc' | 'name_desc' | undefined } },
     }).then(r => r.data),
   })
 
   const agents = data?.items ?? []
+  const hasFilters = !!(q || namespace || status || sort)
 
   const buildNextParams = () => {
     const p = new URLSearchParams(searchParams)
@@ -41,41 +46,55 @@ export default function AgentListPage() {
           <p className="text-muted-foreground mt-1">Browse A2A-compatible agents in the registry.</p>
         </div>
 
-        <FilterBar
-          q={q}
-          namespace={namespace}
-          status={status}
-          statusOptions={['published', 'deprecated']}
-          searchPlaceholder="Search agents…"
-        />
-
-        {agents.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center">
-            <Bot className="h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
-            <p className="text-muted-foreground font-medium">
-              {q || namespace || status ? 'No agents match your filters.' : 'No public agents yet.'}
-            </p>
-            {(q || namespace || status) && (
-              <Button variant="outline" size="sm" onClick={() => setSearchParams({})}>Clear filters</Button>
-            )}
-          </div>
+        {isLoading ? (
+          <>
+            <FilterBarSkeleton />
+            <CardGridSkeleton count={6} />
+          </>
         ) : (
           <>
-            <p className="text-sm text-muted-foreground">
-              Showing {agents.length}{data?.total_count && data.total_count > agents.length ? ` of ${data.total_count}` : ''} agent{agents.length !== 1 ? 's' : ''}
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {agents.map((a) => <AgentCard key={a.id} agent={a} />)}
-            </div>
-          </>
-        )}
+            <FilterBar
+              q={q}
+              namespace={namespace}
+              status={status}
+              statusOptions={['published', 'deprecated']}
+              searchPlaceholder="Search agents…"
+              sortOptions={[
+                { value: '', label: 'Newest first' },
+                { value: 'updated_at_desc', label: 'Recently updated' },
+                { value: 'name_asc', label: 'Name A–Z' },
+                { value: 'name_desc', label: 'Name Z–A' },
+              ]}
+            />
 
-        {data?.next_cursor && (
-          <div className="flex justify-center">
-            <Button variant="outline" asChild>
-              <Link to={`/agents?${buildNextParams()}`}>Load more</Link>
-            </Button>
-          </div>
+            {agents.length === 0 ? (
+              <EmptyState
+                icon={<ResourceIcon type="agent" className="h-10 w-10" />}
+                title={hasFilters ? 'No agents match your filters.' : 'No public agents yet.'}
+                description={hasFilters ? 'Try broadening your search or clearing filters.' : undefined}
+                action={hasFilters ? (
+                  <Button variant="outline" size="sm" onClick={() => setSearchParams({})}>Clear filters</Button>
+                ) : undefined}
+              />
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Showing {agents.length}{data?.total_count && data.total_count > agents.length ? ` of ${data.total_count}` : ''} agent{agents.length !== 1 ? 's' : ''}
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {agents.map((a) => <AgentCard key={a.id} agent={a} />)}
+                </div>
+              </>
+            )}
+
+            {data?.next_cursor && (
+              <div className="flex justify-center">
+                <Button variant="outline" asChild>
+                  <Link to={`/agents?${buildNextParams()}`}>Load more</Link>
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </main>
       <Footer />

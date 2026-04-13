@@ -3,9 +3,68 @@ package domain_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/haibread/ai-registry/internal/domain"
 )
+
+// TestMCPServerVersion_JSONShape locks in the snake_case wire format used by
+// the versions list/detail endpoints. Regression guard: before struct tags
+// were added, Go's default marshaler emitted PascalCase field names, which
+// meant the frontend VersionHistory read `undefined` for `published_at` and
+// rendered every published version as "Draft".
+func TestMCPServerVersion_JSONShape(t *testing.T) {
+	published := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
+	v := domain.MCPServerVersion{
+		ID:              "01J",
+		ServerID:        "01S",
+		Version:         "1.0.0",
+		Runtime:         domain.RuntimeStdio,
+		ProtocolVersion: "2025-03-26",
+		Status:          domain.VersionStatusActive,
+		PublishedAt:     &published,
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, key := range []string{
+		"id", "server_id", "version", "runtime", "protocol_version",
+		"status", "published_at", "created_at", "updated_at",
+	} {
+		if _, ok := out[key]; !ok {
+			t.Errorf("missing JSON key %q; got %s", key, string(b))
+		}
+	}
+	// Ensure no PascalCase leakage.
+	for _, bad := range []string{"ID", "ServerID", "Version", "PublishedAt", "Status"} {
+		if _, ok := out[bad]; ok {
+			t.Errorf("unexpected PascalCase JSON key %q", bad)
+		}
+	}
+}
+
+// TestMCPServerVersion_JSONShape_Draft verifies that PublishedAt is omitted
+// (not serialized as null) when the version is still a draft, so the
+// frontend's `v.published_at ? ... : 'Draft'` check triggers correctly.
+func TestMCPServerVersion_JSONShape_Draft(t *testing.T) {
+	v := domain.MCPServerVersion{ID: "01J", Version: "0.1.0"}
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := out["published_at"]; ok {
+		t.Errorf("published_at should be omitted for draft versions; got %s", string(b))
+	}
+}
 
 func TestValidatePackages(t *testing.T) {
 	tests := []struct {

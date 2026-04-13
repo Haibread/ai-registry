@@ -155,6 +155,22 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MC
 		if err := db.SetMCPServerVisibility(ctx, serverID, vis); err != nil {
 			return fmt.Errorf("setting visibility: %w", err)
 		}
+		// Apply v0.2 metadata fields (featured / verified / tags / readme)
+		// via direct SQL — the CreateMCPServer helper predates these columns.
+		if s.Featured || s.Verified || len(s.Tags) > 0 || s.Readme != "" {
+			tags := s.Tags
+			if tags == nil {
+				tags = []string{}
+			}
+			if _, err := db.Pool.Exec(ctx,
+				`UPDATE mcp_servers
+				 SET featured=$1, verified=$2, tags=$3, readme=$4, updated_at=now()
+				 WHERE id=$5`,
+				s.Featured, s.Verified, tags, s.Readme, serverID,
+			); err != nil {
+				return fmt.Errorf("setting mcp server metadata: %w", err)
+			}
+		}
 		logger.Info("bootstrap: created mcp_server", slog.String("slug", s.Slug))
 	} else {
 		logger.Info("bootstrap: mcp_server already exists, skipping", slog.String("slug", s.Slug))
@@ -201,11 +217,20 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID string, v MCPV
 		protocolVersion = "2025-03-26"
 	}
 
+	var capabilities json.RawMessage
+	if len(v.Capabilities) > 0 {
+		capabilities, err = json.Marshal(v.Capabilities)
+		if err != nil {
+			return fmt.Errorf("marshalling capabilities: %w", err)
+		}
+	}
+
 	ver, err := db.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID:        serverID,
 		Version:         v.Version,
 		Runtime:         runtime,
 		Packages:        packages,
+		Capabilities:    capabilities,
 		ProtocolVersion: protocolVersion,
 	})
 	if err != nil {
@@ -268,6 +293,22 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID string, a AgentS
 		}
 		if err := db.SetAgentVisibility(ctx, agentID, vis); err != nil {
 			return fmt.Errorf("setting visibility: %w", err)
+		}
+		// Apply v0.2 metadata fields (featured / verified / tags / readme)
+		// via direct SQL — the CreateAgent helper predates these columns.
+		if a.Featured || a.Verified || len(a.Tags) > 0 || a.Readme != "" {
+			tags := a.Tags
+			if tags == nil {
+				tags = []string{}
+			}
+			if _, err := db.Pool.Exec(ctx,
+				`UPDATE agents
+				 SET featured=$1, verified=$2, tags=$3, readme=$4, updated_at=now()
+				 WHERE id=$5`,
+				a.Featured, a.Verified, tags, a.Readme, agentID,
+			); err != nil {
+				return fmt.Errorf("setting agent metadata: %w", err)
+			}
 		}
 		logger.Info("bootstrap: created agent", slog.String("slug", a.Slug))
 	} else {

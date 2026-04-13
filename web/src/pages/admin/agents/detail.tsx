@@ -4,6 +4,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Cpu, Shield, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
+import { LifecycleStepper } from '@/components/admin/lifecycle-stepper'
 import { DeprecateButton } from '@/components/admin/deprecate-button'
 import { DeleteButton } from '@/components/admin/delete-button'
 import { Separator } from '@/components/ui/separator'
@@ -110,6 +111,13 @@ export default function AdminAgentDetail() {
           <VisibilityBadge visibility={data.visibility} />
         </div>
       </div>
+
+      <LifecycleStepper
+        currentStatus={data.status}
+        onTransition={(target) => {
+          if (target === 'deprecated') deprecateMutation.mutate()
+        }}
+      />
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted-foreground">Namespace / Slug</dt>

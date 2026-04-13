@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -48,15 +49,45 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 	if visibility != "public" && visibility != "private" {
 		visibility = ""
 	}
+	transport := r.URL.Query().Get("transport")
+	if transport != "stdio" && transport != "sse" && transport != "streamable_http" {
+		transport = ""
+	}
+	sort := r.URL.Query().Get("sort")
+	if sort != "created_at_desc" && sort != "updated_at_desc" && sort != "published_at_desc" && sort != "name_asc" && sort != "name_desc" {
+		sort = ""
+	}
+
+	var featured *bool
+	if fv := r.URL.Query().Get("featured"); fv == "true" {
+		t := true
+		featured = &t
+	} else if fv == "false" {
+		f := false
+		featured = &f
+	}
+
+	var publishedSince *time.Time
+	if ps := r.URL.Query().Get("published_since"); ps != "" {
+		if t, err := time.Parse(time.RFC3339, ps); err == nil {
+			publishedSince = &t
+		}
+	}
 
 	p := store.ListMCPServersParams{
-		PublicOnly: !auth.IsAdminFromContext(r.Context()),
-		Namespace:  r.URL.Query().Get("namespace"),
-		Status:     status,
-		Visibility: visibility,
-		Query:      r.URL.Query().Get("q"),
-		Limit:      limit + 1, // fetch one extra to detect next page
-		Cursor:     r.URL.Query().Get("cursor"),
+		PublicOnly:     !auth.IsAdminFromContext(r.Context()),
+		Namespace:      r.URL.Query().Get("namespace"),
+		Status:         status,
+		Visibility:     visibility,
+		Query:          r.URL.Query().Get("q"),
+		Limit:          limit + 1, // fetch one extra to detect next page
+		Cursor:         r.URL.Query().Get("cursor"),
+		Transport:      transport,
+		RegistryType:   r.URL.Query().Get("registry_type"),
+		Sort:           sort,
+		Featured:       featured,
+		Tag:            r.URL.Query().Get("tag"),
+		PublishedSince: publishedSince,
 	}
 
 	rows, total, err := h.db.ListMCPServers(r.Context(), p)
@@ -73,7 +104,17 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 	if int32(len(rows)) > limit {
 		rows = rows[:limit]
 		last := rows[len(rows)-1]
-		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
+		// Cursor column depends on the sort order.
+		cursorTime := last.CreatedAt
+		switch sort {
+		case "updated_at_desc":
+			cursorTime = last.UpdatedAt
+		case "published_at_desc":
+			if last.LatestVersion != nil && last.LatestVersion.PublishedAt != nil {
+				cursorTime = *last.LatestVersion.PublishedAt
+			}
+		}
+		nextCursor = store.EncodeCursor(cursorTime, last.ID)
 	}
 
 	items := make([]map[string]any, 0, len(rows))
@@ -497,6 +538,42 @@ func (h *MCPHandlers) DeleteServer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ── POST /api/v1/mcp/servers/{namespace}/{slug}/view ──────────────────────
+
+func (h *MCPHandlers) RecordView(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	if err := h.db.IncrementMCPServerViewCount(r.Context(), ns, slug); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			problem.Write(w, http.StatusNotFound, "not-found",
+				fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
+			return
+		}
+		internalError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── POST /api/v1/mcp/servers/{namespace}/{slug}/copy ─────────────────────
+
+func (h *MCPHandlers) RecordCopy(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	if err := h.db.IncrementMCPServerCopyCount(r.Context(), ns, slug); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			problem.Write(w, http.StatusNotFound, "not-found",
+				fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
+			return
+		}
+		internalError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ── helper ────────────────────────────────────────────────────────────────
 
 func serverToResponse(srv *store.MCPServerRow) map[string]any {
@@ -511,6 +588,12 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 		"license":      srv.License,
 		"visibility":   string(srv.Visibility),
 		"status":       string(srv.Status),
+		"featured":     srv.Featured,
+		"verified":     srv.Verified,
+		"tags":         srv.Tags,
+		"readme":       srv.Readme,
+		"view_count":   srv.ViewCount,
+		"copy_count":   srv.CopyCount,
 		"created_at":   srv.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		"updated_at":   srv.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
@@ -520,6 +603,7 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 			"runtime":          string(lv.Runtime),
 			"protocol_version": lv.ProtocolVersion,
 			"packages":         lv.Packages,
+			"capabilities":     lv.Capabilities,
 			"published_at":     lv.PublishedAt,
 		}
 	}

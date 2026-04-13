@@ -177,20 +177,14 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - Generated TS API client from OpenAPI (openapi-typescript + openapi-fetch).
 - Note: originally planned as Next.js; migrated to Vite SPA in Phase 6.
 
-**TODO — Backend (missing endpoints):**
-- [ ] `PATCH /api/v1/mcp/servers/{ns}/{slug}` — edit MCP server metadata
-- [ ] `DELETE /api/v1/mcp/servers/{ns}/{slug}` — delete MCP server
-- [ ] `PATCH /api/v1/agents/{ns}/{slug}` — edit agent metadata
-- [ ] `DELETE /api/v1/agents/{ns}/{slug}` — delete agent
-- [ ] `PATCH /api/v1/publishers/{slug}` — edit publisher
-- [ ] `DELETE /api/v1/publishers/{slug}` — delete publisher
-- [ ] Update `server/api/openapi.yaml` to reflect all current endpoints
+**Backend CRUD — complete.** `PATCH` and `DELETE` for MCP servers, agents,
+and publishers are all implemented (see `router.go`) and covered by
+handler-level tests against a real Postgres (testcontainers).
 
-**TODO — Admin UI (missing features):**
-- [ ] Edit form for MCP servers (`/admin/mcp/[ns]/[slug]/edit`)
-- [ ] Edit form for agents (`/admin/agents/[ns]/[slug]/edit`)
-- [ ] Edit form for publishers (`/admin/publishers/[slug]/edit`)
-- [ ] Delete actions for servers, agents, and publishers (with confirmation)
+**Admin UI CRUD — complete.** Edit and delete actions for MCP servers,
+agents, and publishers are wired into the admin detail pages
+(`web/src/pages/admin/{mcp,agents,publishers}/detail.tsx`) with
+confirmation dialogs.
 
 **Out of scope — User & role management:**
 User and role management is intentionally delegated to the identity provider
@@ -204,57 +198,18 @@ admin console. No `/api/v1/users` endpoint or `/admin/users` page will be built.
 ### Phase 5 — Hardening
 - Rate limiting ✅, CORS ✅, audit log ✅.
 - Pagination cursors ✅, full-text search ✅ (Postgres `tsvector`).
-- E2E tests (Playwright) for admin flows.
-- Deployment manifests: docker-compose prod profile + Helm chart for k8s.
+- E2E tests (Playwright) for admin flows ✅ (`web/e2e/admin.spec.ts`,
+  `admin-stats.spec.ts`, `public.spec.ts`).
+- Helm chart ✅ (`deploy/helm/ai-registry/`).
+- Handler-level tests for write paths ✅ — every `POST`/`PATCH`/`DELETE`
+  route on publishers, MCP servers, and agents has dedicated coverage
+  in `internal/http/handlers/*_test.go` (testcontainers Postgres).
 
 **TODO — Phase 5:**
 - [ ] `POST /api/v1/api-keys`, `DELETE /api/v1/api-keys/{id}` — hashed API keys (per-publisher, machine-to-machine)
 - [ ] API-key auth middleware (JWT-first, fallback to API-key lookup)
-- [ ] Admin UI: API keys management page (`/admin/api-keys`)
-- [ ] E2E tests with Playwright covering admin create / publish / deprecate flows
+- [ ] Admin UI: API keys management page (`/admin/api-keys` — placeholder only today)
 - [ ] Docker Compose prod profile (`deploy/docker-compose.prod.yml`)
-- [ ] Helm chart (`deploy/helm/`)
-
-### Server handler tests — mutation coverage gap
-
-The store layer and all GET (read) handlers are thoroughly tested via
-testcontainers-go integration tests. The auth and middleware layers also have
-dedicated test files. However, all **write-path HTTP handlers** currently have
-no handler-level tests — they are only exercised by the Playwright E2E suite.
-
-The infrastructure to add these tests already exists in each package
-(testcontainers Postgres setup, seed helpers, mini chi router builders, admin
-context helpers). The work is additive — add cases to the existing `*_test.go`
-files.
-
-**Untested mutation routes (handler level):**
-
-Publishers (`internal/http/publisher_test.go`):
-- [ ] `POST /api/v1/publishers` — create publisher
-- [ ] `PATCH /api/v1/publishers/{slug}` — edit publisher name/contact
-- [ ] `DELETE /api/v1/publishers/{slug}` — delete publisher
-
-MCP Servers (`internal/http/mcp_test.go`):
-- [ ] `POST /api/v1/mcp/servers` — create server
-- [ ] `PATCH /api/v1/mcp/servers/{ns}/{slug}` — edit metadata
-- [ ] `DELETE /api/v1/mcp/servers/{ns}/{slug}` — delete server
-- [ ] `POST /api/v1/mcp/servers/{ns}/{slug}/versions` — create version
-- [ ] `POST /api/v1/mcp/servers/{ns}/{slug}/versions/{v}/publish` — publish version
-- [ ] `POST /api/v1/mcp/servers/{ns}/{slug}/deprecate` — deprecate server
-
-Agents (`internal/http/agent_test.go`):
-- [ ] `POST /api/v1/agents` — create agent
-- [ ] `PATCH /api/v1/agents/{ns}/{slug}` — edit metadata
-- [ ] `DELETE /api/v1/agents/{ns}/{slug}` — delete agent
-- [ ] `POST /api/v1/agents/{ns}/{slug}/versions` — create version
-- [ ] `POST /api/v1/agents/{ns}/{slug}/versions/{v}/publish` — publish version
-- [ ] `PATCH /api/v1/agents/{ns}/{slug}/versions/{v}/status` — patch version status
-- [ ] `POST /api/v1/agents/{ns}/{slug}/deprecate` — deprecate agent
-
-Misc (`internal/http/`):
-- [ ] `GET /config.json` — OIDC bootstrap config
-- [ ] `GET /docs` — Swagger UI redirect
-- [ ] `GET /metrics` — Prometheus metrics (admin-only guard)
 
 ### Phase 6 — Migrate web app from Next.js → Vite + React SPA ✅ COMPLETED
 

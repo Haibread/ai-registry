@@ -3,9 +3,61 @@ package domain_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/haibread/ai-registry/internal/domain"
 )
+
+// TestAgentVersion_JSONShape locks in the snake_case wire format. See the
+// MCP counterpart in mcp_test.go for background.
+func TestAgentVersion_JSONShape(t *testing.T) {
+	published := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
+	v := domain.AgentVersion{
+		ID:              "01J",
+		AgentID:         "01A",
+		Version:         "1.0.0",
+		EndpointURL:     "https://example.com/a2a",
+		ProtocolVersion: "0.2.1",
+		Status:          domain.VersionStatusActive,
+		PublishedAt:     &published,
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, key := range []string{
+		"id", "agent_id", "version", "endpoint_url", "protocol_version",
+		"status", "published_at", "created_at", "updated_at",
+	} {
+		if _, ok := out[key]; !ok {
+			t.Errorf("missing JSON key %q; got %s", key, string(b))
+		}
+	}
+	for _, bad := range []string{"ID", "AgentID", "Version", "EndpointURL", "PublishedAt"} {
+		if _, ok := out[bad]; ok {
+			t.Errorf("unexpected PascalCase JSON key %q", bad)
+		}
+	}
+}
+
+func TestAgentVersion_JSONShape_Draft(t *testing.T) {
+	v := domain.AgentVersion{ID: "01J", Version: "0.1.0"}
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := out["published_at"]; ok {
+		t.Errorf("published_at should be omitted for draft versions; got %s", string(b))
+	}
+}
 
 func TestValidateSkills(t *testing.T) {
 	tests := []struct {

@@ -28,3 +28,14 @@ func (h *StatsHandlers) GetStats(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, r, http.StatusOK, counts)
 }
+
+// GetPublicStats handles GET /api/v1/public-stats.
+// Returns counts scoped to published + public entries. No auth required.
+func (h *StatsHandlers) GetPublicStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.db.GetPublicStats(r.Context())
+	if err != nil {
+		problem.Write(w, http.StatusInternalServerError, "internal", "failed to fetch public stats", r.URL.Path)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, stats)
+}

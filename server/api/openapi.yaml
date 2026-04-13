@@ -288,6 +288,40 @@ paths:
           schema:
             type: string
             enum: [public, private]
+        - name: transport
+          in: query
+          description: Filter by transport type of the latest published version's packages
+          schema:
+            type: string
+            enum: [stdio, sse, streamable_http]
+        - name: registry_type
+          in: query
+          description: Filter by package registry/ecosystem type (e.g. npm, pip, docker)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort order for results (ignored when q is provided — search results are ranked by relevance)
+          schema:
+            type: string
+            enum: [created_at_desc, updated_at_desc, published_at_desc, name_asc, name_desc]
+            default: created_at_desc
+        - name: featured
+          in: query
+          description: Filter by featured status
+          schema:
+            type: boolean
+        - name: tag
+          in: query
+          description: Filter by tag (exact match, single tag)
+          schema:
+            type: string
+        - name: published_since
+          in: query
+          description: Filter to entries whose latest version was published after this ISO 8601 date-time (e.g. 2025-01-01T00:00:00Z)
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: Paginated list of MCP servers
@@ -466,6 +500,34 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/v1/mcp/servers/{namespace}/{slug}/view:
+    post:
+      operationId: recordMCPServerView
+      summary: Record a view event for an MCP server (fire-and-forget)
+      tags: [mcp]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204":
+          description: View recorded
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/mcp/servers/{namespace}/{slug}/copy:
+    post:
+      operationId: recordMCPServerCopy
+      summary: Record a copy event for an MCP server (fire-and-forget)
+      tags: [mcp]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204":
+          description: Copy recorded
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/mcp/servers/{namespace}/{slug}/versions:
     get:
       operationId: listMCPServerVersions
@@ -601,6 +663,29 @@ paths:
           schema:
             type: string
             enum: [public, private]
+        - name: sort
+          in: query
+          description: Sort order for results (ignored when q is provided — search results are ranked by relevance)
+          schema:
+            type: string
+            enum: [created_at_desc, updated_at_desc, published_at_desc, name_asc, name_desc]
+            default: created_at_desc
+        - name: featured
+          in: query
+          description: Filter by featured status
+          schema:
+            type: boolean
+        - name: tag
+          in: query
+          description: Filter by tag (exact match, single tag)
+          schema:
+            type: string
+        - name: published_since
+          in: query
+          description: Filter to entries whose latest version was published after this ISO 8601 date-time (e.g. 2025-01-01T00:00:00Z)
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: Paginated list of agents
@@ -773,6 +858,34 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/v1/agents/{namespace}/{slug}/view:
+    post:
+      operationId: recordAgentView
+      summary: Record a view event for an agent (fire-and-forget)
+      tags: [agents]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204":
+          description: View recorded
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/agents/{namespace}/{slug}/copy:
+    post:
+      operationId: recordAgentCopy
+      summary: Record a copy event for an agent (fire-and-forget)
+      tags: [agents]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204":
+          description: Copy recorded
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/agents/{namespace}/{slug}/versions:
     get:
       operationId: listAgentVersions
@@ -932,6 +1045,43 @@ paths:
 
   # ── Stats & Audit ─────────────────────────────────────────────────────────
 
+  /api/v1/public-stats:
+    get:
+      operationId: getPublicStats
+      summary: Public registry statistics (published entries only)
+      tags: [system]
+      responses:
+        "200":
+          description: Public counts for each resource type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicStats"
+
+  /api/v1/changelog:
+    get:
+      operationId: getChangelog
+      summary: Recently published versions across MCP servers and agents
+      description: >
+        Aggregated timeline of version publications, newest first. Only
+        published versions of public, non-deleted entries are returned.
+      tags: [system]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Recent version publications across the registry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangelogList"
+
   /api/v1/stats:
     get:
       operationId: getStats
@@ -987,6 +1137,103 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /api/v1/reports:
+    post:
+      operationId: createReport
+      summary: File a community issue report
+      description: >
+        Public, rate-limited endpoint for anyone to report problems with a
+        registry entry (broken packaging, misleading description, spam,
+        security concern, etc.). Admins triage reports via the admin queue.
+      tags: [reports]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportRequest"
+      responses:
+        "201":
+          description: Report accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    get:
+      operationId: listReports
+      summary: List community issue reports (admin only)
+      tags: [reports]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [pending, reviewed, dismissed]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/reports/{id}:
+    patch:
+      operationId: updateReportStatus
+      summary: Update a report's status (admin only)
+      tags: [reports]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReportStatusRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [pending, reviewed, dismissed]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   # ── v0 MCP registry wire-format ───────────────────────────────────────────
 
@@ -1358,6 +1605,16 @@ components:
         error:
           type: string
 
+    StatusBreakdown:
+      type: object
+      properties:
+        draft:
+          type: integer
+        published:
+          type: integer
+        deprecated:
+          type: integer
+
     RegistryCounts:
       type: object
       required: [mcp_servers, agents, publishers]
@@ -1368,6 +1625,39 @@ components:
           type: integer
         publishers:
           type: integer
+        mcp_status_breakdown:
+          $ref: "#/components/schemas/StatusBreakdown"
+        agent_status_breakdown:
+          $ref: "#/components/schemas/StatusBreakdown"
+
+    PublicStats:
+      type: object
+      required:
+        - mcp_servers
+        - agents
+        - publishers
+        - new_mcp_servers_this_week
+        - new_agents_this_week
+        - new_publishers_this_week
+      properties:
+        mcp_servers:
+          type: integer
+          description: Total public published MCP servers
+        agents:
+          type: integer
+          description: Total public published agents
+        publishers:
+          type: integer
+          description: Total publishers with at least one public entry
+        new_mcp_servers_this_week:
+          type: integer
+          description: MCP servers published in the last 7 days
+        new_agents_this_week:
+          type: integer
+          description: Agents published in the last 7 days
+        new_publishers_this_week:
+          type: integer
+          description: Publishers with at least one public entry that were created in the last 7 days
 
     # ── Publishers ──────────────────────────────────────────────────────────
 
@@ -1460,6 +1750,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PackageEntry"
+        capabilities:
+          type: object
+          additionalProperties: true
+          description: MCP server capabilities (tools, resources, prompts, etc.)
         published_at:
           type: string
           format: date-time
@@ -1496,6 +1790,25 @@ components:
         updated_at:
           type: string
           format: date-time
+        featured:
+          type: boolean
+          default: false
+        verified:
+          type: boolean
+          default: false
+        tags:
+          type: array
+          items:
+            type: string
+        readme:
+          type: string
+          description: Long-form README content (Markdown)
+        view_count:
+          type: integer
+          description: Number of times this server has been viewed
+        copy_count:
+          type: integer
+          description: Number of times this server's config has been copied
         latest_version:
           $ref: "#/components/schemas/MCPServerLatestVersion"
 
@@ -1681,6 +1994,25 @@ components:
         updated_at:
           type: string
           format: date-time
+        featured:
+          type: boolean
+          default: false
+        verified:
+          type: boolean
+          default: false
+        tags:
+          type: array
+          items:
+            type: string
+        readme:
+          type: string
+          description: Long-form README content (Markdown)
+        view_count:
+          type: integer
+          description: Number of times this agent has been viewed
+        copy_count:
+          type: integer
+          description: Number of times this agent's config has been copied
         latest_version:
           $ref: "#/components/schemas/AgentLatestVersion"
 
@@ -1872,6 +2204,105 @@ components:
             $ref: "#/components/schemas/AuditEvent"
         next_cursor:
           type: string
+
+    ChangelogEntry:
+      type: object
+      required: [resource_type, namespace, slug, name, version, published_at]
+      properties:
+        resource_type:
+          type: string
+          enum: [mcp_server, agent]
+        namespace:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+
+    ChangelogList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangelogEntry"
+
+    Report:
+      type: object
+      required: [id, resource_type, resource_id, issue_type, description, status, created_at]
+      properties:
+        id:
+          type: string
+          description: ULID
+        resource_type:
+          type: string
+          enum: [mcp_server, agent]
+        resource_id:
+          type: string
+          description: ULID of the reported resource
+        issue_type:
+          type: string
+          enum: [broken, misleading, spam, security, licensing, outdated, duplicate, other]
+        description:
+          type: string
+          minLength: 5
+          maxLength: 4000
+        status:
+          type: string
+          enum: [pending, reviewed, dismissed]
+        reporter_ip:
+          type: string
+          description: Admin-only — only present in list responses for authenticated admins
+        created_at:
+          type: string
+          format: date-time
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        reviewed_by:
+          type: string
+          description: Admin-only — subject UUID of the reviewer
+
+    ReportList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Report"
+
+    CreateReportRequest:
+      type: object
+      required: [resource_type, resource_id, issue_type, description]
+      properties:
+        resource_type:
+          type: string
+          enum: [mcp_server, agent]
+        resource_id:
+          type: string
+        issue_type:
+          type: string
+          enum: [broken, misleading, spam, security, licensing, outdated, duplicate, other]
+        description:
+          type: string
+          minLength: 5
+          maxLength: 4000
+
+    UpdateReportStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, reviewed, dismissed]
 
     # ── v0 wire format ──────────────────────────────────────────────────────
 
@@ -2079,6 +2510,12 @@ components:
             $ref: "#/components/schemas/Problem"
     ValidationError:
       description: Request body failed schema validation
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    RateLimited:
+      description: Rate limit exceeded
       content:
         application/problem+json:
           schema:

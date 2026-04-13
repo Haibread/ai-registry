@@ -46,6 +46,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger)
+	reportH := handlers.NewReportHandlers(deps.DB)
+	changelogH := handlers.NewChangelogHandlers(deps.DB)
 
 	r := chi.NewRouter()
 
@@ -123,6 +125,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.With(auth.RequireAdmin).Delete("/", mcpH.DeleteServer)
 				r.With(auth.RequireAdmin).Post("/deprecate", mcpH.DeprecateServer)
 				r.With(auth.RequireAdmin).Post("/visibility", mcpH.SetVisibility)
+				r.With(publicRL).Post("/view", mcpH.RecordView)
+				r.With(publicRL).Post("/copy", mcpH.RecordCopy)
 
 				r.Route("/versions", func(r chi.Router) {
 					r.With(publicRL).Get("/", mcpH.ListVersions)
@@ -144,6 +148,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.With(auth.RequireAdmin).Delete("/", agentH.DeleteAgent)
 				r.With(auth.RequireAdmin).Post("/deprecate", agentH.DeprecateAgent)
 				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
+				r.With(publicRL).Post("/view", agentH.RecordView)
+				r.With(publicRL).Post("/copy", agentH.RecordCopy)
 
 				r.Route("/versions", func(r chi.Router) {
 					r.With(publicRL).Get("/", agentH.ListVersions)
@@ -155,11 +161,24 @@ func NewRouter(deps RouterDeps) http.Handler {
 			})
 		})
 
+		// Public stats (published + public only, no auth required)
+		r.With(publicRL).Get("/public-stats", statsH.GetPublicStats)
+
+		// Public changelog (aggregated recent version publications)
+		r.With(publicRL).Get("/changelog", changelogH.GetChangelog)
+
 		// Stats (admin — includes private entries)
 		r.With(auth.RequireAdmin).Get("/stats", statsH.GetStats)
 
 		// Audit log
 		r.With(auth.RequireAdmin).Get("/audit", auditH.ListEvents)
+
+		// Community issue reports
+		r.Route("/reports", func(r chi.Router) {
+			r.With(publicRL).Post("/", reportH.CreateReport)
+			r.With(auth.RequireAdmin).Get("/", reportH.ListReports)
+			r.With(auth.RequireAdmin).Patch("/{id}", reportH.PatchReport)
+		})
 	})
 
 	// ── Wrap with OTel HTTP instrumentation ───────────────────────────────────

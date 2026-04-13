@@ -36,11 +36,16 @@ func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 
 // RequireJSONBody rejects POST, PUT, and PATCH requests whose Content-Type
 // header does not start with "application/json". GET, DELETE, and other safe
-// methods pass through unchanged.
+// methods pass through unchanged. Bodyless requests (Content-Length: 0) are
+// also allowed — endpoints like /view and /copy trigger side effects from the
+// URL alone and have no payload to validate.
 func RequireJSONBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch:
+			if r.ContentLength == 0 {
+				break
+			}
 			ct := r.Header.Get("Content-Type")
 			if !strings.HasPrefix(ct, "application/json") {
 				problem.Write(w, http.StatusUnsupportedMediaType, "unsupported-media-type",

@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Braces, Cpu, Link2 } from 'lucide-react'
+import { ExternalLink, Eye, Braces, Cpu, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge, StatusBadge } from '@/components/ui/badge'
-import { formatDate } from '@/lib/utils'
+import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
+import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
+import { formatDate, formatCount } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type Agent = components['schemas']['Agent']
@@ -33,20 +34,36 @@ export function AgentCard({ agent }: AgentCardProps) {
                 v{lv.version}
               </Badge>
             )}
+            {agent.verified && <VerifiedBadge className="text-[10px]" />}
             <StatusBadge status={agent.status} className="text-[11px]" />
           </div>
         </div>
-        <div className="text-xs text-muted-foreground font-mono">
-          {agent.namespace}/{agent.slug}
+        <div className="text-xs text-muted-foreground font-mono relative z-10">
+          <Link
+            to={`/agents?namespace=${agent.namespace}`}
+            className="hover:text-foreground transition-colors"
+          >
+            {agent.namespace}
+          </Link>
+          /{agent.slug}
         </div>
 
-        {/* Skills count only — reduce badge noise */}
+        {/* Skills count + top tags */}
         {lv?.skills && lv.skills.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex items-center gap-1">
               <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
               {lv.skills.length} skill{lv.skills.length !== 1 ? 's' : ''}
             </Badge>
+            {(() => {
+              // Collect unique tags across all skills, show up to 3.
+              const tags = [...new Set(lv.skills.flatMap(s => s.tags ?? []))].slice(0, 3)
+              return tags.map(tag => (
+                <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">
+                  {tag}
+                </Badge>
+              ))
+            })()}
           </div>
         )}
       </CardHeader>
@@ -71,7 +88,17 @@ export function AgentCard({ agent }: AgentCardProps) {
       )}
 
       <CardFooter className="pt-3 border-t flex items-center justify-between text-xs text-muted-foreground relative z-10">
-        <span>{formatDate(agent.created_at)}</span>
+        <div className="flex items-center gap-3 min-w-0">
+          <FreshnessIndicator updatedAt={agent.updated_at} />
+          <span
+            className="inline-flex items-center gap-1"
+            title={`${(agent.view_count ?? 0).toLocaleString()} views`}
+            aria-label={`${(agent.view_count ?? 0).toLocaleString()} views`}
+          >
+            <Eye className="h-3 w-3" aria-hidden="true" />
+            {formatCount(agent.view_count ?? 0)}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <a
             href={`/api/v1/agents/${agent.namespace}/${agent.slug}`}

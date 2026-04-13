@@ -41,6 +41,10 @@ type ListAgentsParams struct {
 	Query      string
 	Limit      int32
 	Cursor     string
+	Sort           string     // sort order: "created_at_desc" (default), "updated_at_desc", "published_at_desc", "name_asc", "name_desc"
+	Featured       *bool      // when non-nil, filter by featured flag
+	Tag            string     // when non-empty, filter to agents that contain this tag
+	PublishedSince *time.Time // when non-nil, only entries whose latest version was published after this time
 }
 
 // ListAgents returns a paginated list of agents and the total count of rows
@@ -55,6 +59,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 
 	args := []any{}
 	argN := 1
+	countArgN := 1
 	filterWhere := "WHERE 1=1"
 	filterArgs := []any{}
 
@@ -62,21 +67,49 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		filterWhere += fmt.Sprintf(" AND a.visibility = $%d", argN)
 		filterArgs = append(filterArgs, "public")
 		argN++
+		countArgN++
 	} else if p.Visibility != "" {
 		filterWhere += fmt.Sprintf(" AND a.visibility = $%d", argN)
 		filterArgs = append(filterArgs, p.Visibility)
 		argN++
+		countArgN++
 	}
 	if p.Status != "" {
 		filterWhere += fmt.Sprintf(" AND a.status = $%d", argN)
 		filterArgs = append(filterArgs, p.Status)
 		argN++
+		countArgN++
 	}
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
 		argN++
+		countArgN++
 	}
+	if p.Featured != nil {
+		filterWhere += fmt.Sprintf(" AND a.featured = $%d", argN)
+		filterArgs = append(filterArgs, *p.Featured)
+		argN++
+		countArgN++
+	}
+	if p.Tag != "" {
+		filterWhere += fmt.Sprintf(" AND $%d = ANY(a.tags)", argN)
+		filterArgs = append(filterArgs, p.Tag)
+		argN++
+		countArgN++
+	}
+
+	// Post-join filters (reference lav.* columns only available after lateral join).
+	var postJoinFilter string
+	var postJoinFilterCount string
+	if p.PublishedSince != nil {
+		postJoinFilter += fmt.Sprintf(" AND lav.published_at > $%d", argN)
+		postJoinFilterCount += fmt.Sprintf(" AND lav.published_at > $%d", countArgN)
+		filterArgs = append(filterArgs, *p.PublishedSince)
+		argN++
+		countArgN++
+	}
+
 	tsQuery := prefixTSQuery(p.Query)
 	hasQuery := tsQuery != ""
 	if hasQuery {
@@ -86,6 +119,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		)
 		filterArgs = append(filterArgs, tsQuery)
 		argN++
+		countArgN++
 	}
 
 	// Snapshot filterArgs before cursor / ORDER-BY args so the COUNT query
@@ -102,9 +136,20 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		if err != nil {
 			return nil, 0, ErrInvalidCursor
 		}
-		whereClause += fmt.Sprintf(" AND (a.created_at, a.id) < ($%d, $%d)", argN, argN+1)
-		args = append(args, at, id)
-		argN += 2
+		cursorCol := "a.created_at"
+		switch p.Sort {
+		case "updated_at_desc":
+			cursorCol = "a.updated_at"
+		case "published_at_desc":
+			cursorCol = "lav.published_at"
+		}
+		// For name-based sorts, cursor is not supported (cursor encodes a
+		// timestamp, not a name). Silently ignore the cursor.
+		if p.Sort != "name_asc" && p.Sort != "name_desc" {
+			whereClause += fmt.Sprintf(" AND (%s, a.id) < ($%d, $%d)", cursorCol, argN, argN+1)
+			args = append(args, at, id)
+			argN += 2
+		}
 	}
 
 	orderClause := "ORDER BY a.created_at DESC, a.id DESC"
@@ -115,12 +160,30 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		)
 		args = append(args, tsQuery)
 		argN++
+	} else {
+		switch p.Sort {
+		case "updated_at_desc":
+			orderClause = "ORDER BY a.updated_at DESC, a.id DESC"
+		case "published_at_desc":
+			orderClause = "ORDER BY lav.published_at DESC NULLS LAST, a.id DESC"
+		case "name_asc":
+			orderClause = "ORDER BY a.name ASC, a.id ASC"
+		case "name_desc":
+			orderClause = "ORDER BY a.name DESC, a.id DESC"
+		}
+	}
+
+	// Apply post-join filters to both main and count WHERE clauses.
+	if postJoinFilter != "" {
+		whereClause += postJoinFilter
+		filterWhere += postJoinFilterCount
 	}
 
 	args = append(args, p.Limit)
 	q := fmt.Sprintf(`
 		SELECT a.id, pub.slug AS namespace, a.publisher_id, a.slug, a.name,
-		       coalesce(a.description,''), a.visibility, a.status, a.created_at, a.updated_at,
+		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
+		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
@@ -159,7 +222,8 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		)
 		if err := rows.Scan(
 			&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
-			&r.Description, &r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+			&r.Description, &r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
+			&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 			&lavVersion, &lavEndpoint, &lavSkills, &lavInputModes,
 			&lavOutputModes, &lavAuth, &lavProto, &lavPublishedAt,
 		); err != nil {
@@ -187,11 +251,29 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 
 	// Separate COUNT query using the same filter conditions but without
 	// cursor / ORDER-BY so it reflects the full matching set.
-	countQ := fmt.Sprintf(`
-		SELECT COUNT(*)
-		FROM agents a
-		JOIN publishers pub ON pub.id = a.publisher_id
-		%s`, filterWhere)
+	// When post-join filters are present (e.g. published_since), the count
+	// query must include the lateral join so those conditions can reference lav.*.
+	var countQ string
+	if postJoinFilterCount != "" {
+		countQ = fmt.Sprintf(`
+			SELECT COUNT(*)
+			FROM agents a
+			JOIN publishers pub ON pub.id = a.publisher_id
+			LEFT JOIN LATERAL (
+			    SELECT av.published_at
+			    FROM agent_versions av
+			    WHERE av.agent_id = a.id AND av.published_at IS NOT NULL
+			    ORDER BY av.published_at DESC
+			    LIMIT 1
+			) lav ON true
+			%s`, filterWhere)
+	} else {
+		countQ = fmt.Sprintf(`
+			SELECT COUNT(*)
+			FROM agents a
+			JOIN publishers pub ON pub.id = a.publisher_id
+			%s`, filterWhere)
+	}
 
 	var total int
 	if err := db.Pool.QueryRow(ctx, countQ, countArgs...).Scan(&total); err != nil {
@@ -209,7 +291,8 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 
 	q := `
 		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
-		       coalesce(a.description,''), a.visibility, a.status, a.created_at, a.updated_at,
+		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
+		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
@@ -241,7 +324,8 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 	)
 	err := db.Pool.QueryRow(ctx, q, args...).Scan(
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
-		&r.Description, &r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+		&r.Description, &r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
+		&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 		&lavVersion, &lavEndpoint, &lavSkills, &lavInputModes,
 		&lavOutputModes, &lavAuth, &lavProto, &lavPublishedAt,
 	)
@@ -672,7 +756,8 @@ func (db *DB) getAgentByID(ctx context.Context, id string) (*AgentRow, error) {
 
 	q := `
 		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
-		       coalesce(a.description,''), a.visibility, a.status, a.created_at, a.updated_at,
+		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
+		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
@@ -700,7 +785,8 @@ func (db *DB) getAgentByID(ctx context.Context, id string) (*AgentRow, error) {
 	)
 	err := db.Pool.QueryRow(ctx, q, id).Scan(
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
-		&r.Description, &r.Visibility, &r.Status, &r.CreatedAt, &r.UpdatedAt,
+		&r.Description, &r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
+		&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 		&lavVersion, &lavEndpoint, &lavSkills, &lavInputModes,
 		&lavOutputModes, &lavAuth, &lavProto, &lavPublishedAt,
 	)
@@ -738,4 +824,50 @@ func scanAgentVersion(s interface{ Scan(...any) error }) (domain.AgentVersion, e
 		&v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
 	)
 	return v, err
+}
+
+// IncrementAgentViewCount atomically increments the view_count for the
+// given agent identified by namespace and slug.
+func (db *DB) IncrementAgentViewCount(ctx context.Context, namespace, slug string) error {
+	ctx, span := startSpan(ctx, "IncrementAgentViewCount")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agents a
+		SET view_count = view_count + 1
+		FROM publishers pub
+		WHERE pub.id = a.publisher_id AND pub.slug = $1 AND a.slug = $2`,
+		namespace, slug,
+	)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("incrementing agent view count: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// IncrementAgentCopyCount atomically increments the copy_count for the
+// given agent identified by namespace and slug.
+func (db *DB) IncrementAgentCopyCount(ctx context.Context, namespace, slug string) error {
+	ctx, span := startSpan(ctx, "IncrementAgentCopyCount")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agents a
+		SET copy_count = copy_count + 1
+		FROM publishers pub
+		WHERE pub.id = a.publisher_id AND pub.slug = $1 AND a.slug = $2`,
+		namespace, slug,
+	)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("incrementing agent copy count: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

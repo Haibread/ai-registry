@@ -1,0 +1,2 @@
+ALTER TABLE agents DROP COLUMN IF EXISTS readme;
+ALTER TABLE mcp_servers DROP COLUMN IF EXISTS readme;
