@@ -34,11 +34,22 @@ func getStats(t *testing.T) map[string]int {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("stats: status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
-	var counts map[string]int
-	if err := json.NewDecoder(rec.Body).Decode(&counts); err != nil {
+	// The response has flat int totals (mcp_servers/agents/publishers) alongside
+	// nested *_status_breakdown objects. Decode the top-level fields we care
+	// about explicitly so the nested objects don't break the int unmarshal.
+	var shape struct {
+		MCPServers int `json:"mcp_servers"`
+		Agents     int `json:"agents"`
+		Publishers int `json:"publishers"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&shape); err != nil {
 		t.Fatalf("decode stats: %v", err)
 	}
-	return counts
+	return map[string]int{
+		"mcp_servers": shape.MCPServers,
+		"agents":      shape.Agents,
+		"publishers":  shape.Publishers,
+	}
 }
 
 func TestStatsHandler_ZeroOnEmptyDB(t *testing.T) {

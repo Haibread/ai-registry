@@ -17,6 +17,21 @@ export function formatDate(iso: string): string {
   })
 }
 
+/**
+ * Format a non-negative count for compact display on cards.
+ * Examples: 0 → "0", 42 → "42", 1234 → "1.2k", 15000 → "15k", 1_500_000 → "1.5M".
+ */
+export function formatCount(n: number | null | undefined): string {
+  if (n == null || n < 0) return "0"
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) {
+    const k = n / 1000
+    return k < 10 ? `${k.toFixed(1).replace(/\.0$/, "")}k` : `${Math.round(k)}k`
+  }
+  const m = n / 1_000_000
+  return m < 10 ? `${m.toFixed(1).replace(/\.0$/, "")}M` : `${Math.round(m)}M`
+}
+
 /** Returns true for transport types that connect to a remote URL rather than running a local process. */
 export function isRemoteTransport(type: string): boolean {
   return type === "sse" || type === "http" || type === "streamable_http"

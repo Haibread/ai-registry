@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, GitFork, Braces, Link2 } from 'lucide-react'
+import { ExternalLink, Eye, GitFork, Braces, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/copy-button'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
-import { formatDate, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
+import { formatDate, formatCount, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type MCPServer = components['schemas']['MCPServer']
@@ -100,7 +100,17 @@ export function ServerCard({ server }: ServerCardProps) {
       )}
 
       <CardFooter className="pt-3 border-t flex items-center justify-between gap-2 text-xs text-muted-foreground relative z-10">
-        <FreshnessIndicator updatedAt={server.updated_at} />
+        <div className="flex items-center gap-3 min-w-0">
+          <FreshnessIndicator updatedAt={server.updated_at} />
+          <span
+            className="inline-flex items-center gap-1"
+            title={`${(server.view_count ?? 0).toLocaleString()} views`}
+            aria-label={`${(server.view_count ?? 0).toLocaleString()} views`}
+          >
+            <Eye className="h-3 w-3" aria-hidden="true" />
+            {formatCount(server.view_count ?? 0)}
+          </span>
+        </div>
         <div className="flex items-center gap-3">
           {server.license && <span>{server.license}</span>}
           <a

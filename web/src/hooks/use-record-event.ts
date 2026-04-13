@@ -5,16 +5,20 @@
  */
 
 import { useEffect, useCallback, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { getPublicClient } from '@/lib/api-client'
 
 type ResourceType = 'mcp' | 'agent'
 
 /**
  * Records a page view when the component mounts.
- * Fires at most once per mount (StrictMode safe).
+ * Fires at most once per mount (StrictMode safe). On success, invalidates the
+ * matching detail and list queries so the updated view_count surfaces in the
+ * UI immediately instead of lagging behind a stale cache.
  */
 export function useRecordView(type: ResourceType, namespace?: string, slug?: string) {
   const fired = useRef(false)
+  const qc = useQueryClient()
 
   useEffect(() => {
     if (!namespace || !slug || fired.current) return
@@ -24,14 +28,25 @@ export function useRecordView(type: ResourceType, namespace?: string, slug?: str
       type === 'mcp'
         ? '/api/v1/mcp/servers/{namespace}/{slug}/view'
         : '/api/v1/agents/{namespace}/{slug}/view'
-    api.POST(path as any, { params: { path: { namespace, slug } } }).catch(() => {})
-  }, [type, namespace, slug])
+    api
+      .POST(path as any, { params: { path: { namespace, slug } } })
+      .then(() => {
+        // Bump the displayed count: refetch the detail query for this page and
+        // invalidate any list query so returning to the grid shows the new value.
+        const detailKey = type === 'mcp' ? ['mcp-server', namespace, slug] : ['agent', namespace, slug]
+        const listKey = type === 'mcp' ? ['mcp-servers'] : ['agents']
+        qc.invalidateQueries({ queryKey: detailKey })
+        qc.invalidateQueries({ queryKey: listKey })
+      })
+      .catch(() => {})
+  }, [type, namespace, slug, qc])
 }
 
 /**
  * Returns a callback that records a copy event.
  */
 export function useRecordCopy(type: ResourceType, namespace?: string, slug?: string) {
+  const qc = useQueryClient()
   return useCallback(() => {
     if (!namespace || !slug) return
     const api = getPublicClient()
@@ -39,6 +54,12 @@ export function useRecordCopy(type: ResourceType, namespace?: string, slug?: str
       type === 'mcp'
         ? '/api/v1/mcp/servers/{namespace}/{slug}/copy'
         : '/api/v1/agents/{namespace}/{slug}/copy'
-    api.POST(path as any, { params: { path: { namespace, slug } } }).catch(() => {})
-  }, [type, namespace, slug])
+    api
+      .POST(path as any, { params: { path: { namespace, slug } } })
+      .then(() => {
+        const detailKey = type === 'mcp' ? ['mcp-server', namespace, slug] : ['agent', namespace, slug]
+        qc.invalidateQueries({ queryKey: detailKey })
+      })
+      .catch(() => {})
+  }, [type, namespace, slug, qc])
 }

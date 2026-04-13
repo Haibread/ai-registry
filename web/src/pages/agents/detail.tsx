@@ -1,7 +1,21 @@
 import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
-import { ExternalLink, Cpu, Shield, AlertTriangle, FileText } from 'lucide-react'
+import {
+  ExternalLink,
+  Cpu,
+  Shield,
+  AlertTriangle,
+  FileText,
+  Link2,
+  GitBranch,
+  CalendarClock,
+  Building2,
+  Activity,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Package2,
+} from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { Badge, StatusBadge, VisibilityBadge, VerifiedBadge } from '@/components/ui/badge'
@@ -21,6 +35,9 @@ import { AuthGuide } from '@/components/agents/auth-guide'
 import { AgentSnippetGenerator } from '@/components/agents/snippet-generator'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { PublisherSidebar } from '@/components/shared/publisher-sidebar'
+import { StatTile } from '@/components/shared/stat-tile'
+import { SectionHeader } from '@/components/shared/section-header'
+import { ActivityStrip } from '@/components/shared/activity-strip'
 import { RelatedEntries } from '@/components/shared/related-entries'
 import { VersionHistory } from '@/components/shared/version-history'
 import { StickyDetailHeader } from '@/components/shared/sticky-detail-header'
@@ -63,7 +80,7 @@ export default function AgentDetailPage() {
   if (isLoading) return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="flex-1 container py-8 max-w-3xl">
+      <main className="flex-1 container py-8">
         <DetailPageSkeleton />
       </main>
       <Footer />
@@ -72,7 +89,7 @@ export default function AgentDetailPage() {
   if (isError || !data) return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="flex-1 container py-8 max-w-3xl">
+      <main className="flex-1 container py-8">
         <EmptyState
           icon={<ResourceIcon type="agent" className="h-10 w-10" />}
           title="Agent not found"
@@ -104,7 +121,7 @@ export default function AgentDetailPage() {
         identifier={`${data.namespace}/${data.slug}`}
         titleRef={titleRef}
       />
-      <main className="flex-1 container py-8 max-w-3xl space-y-6">
+      <main className="flex-1 container py-8 space-y-6">
         <Breadcrumbs
           segments={[
             { label: 'Home', href: '/' },
@@ -116,7 +133,7 @@ export default function AgentDetailPage() {
 
         {/* Status message banner */}
         {statusMessage && (
-          <div className="flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-200">
+          <div className="flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-200 max-w-prose">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             {statusMessage}
           </div>
@@ -124,12 +141,12 @@ export default function AgentDetailPage() {
 
         {/* Title row */}
         <div className="space-y-2">
-          <div className="flex items-start gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
             {iconUrl && (
               <img src={iconUrl} alt="" className="h-10 w-10 rounded-lg shrink-0 object-cover" />
             )}
-            <h1 ref={titleRef} className="text-2xl sm:text-3xl font-bold flex-1 min-w-0 break-words">{data.name}</h1>
-            <div className="flex gap-2 flex-wrap">
+            <h1 ref={titleRef} className="text-2xl sm:text-3xl font-bold min-w-0 break-words">{data.name}</h1>
+            <div className="flex items-center gap-2 flex-wrap">
               {lv && (
                 <Badge variant="outline" className="font-mono">v{lv.version}</Badge>
               )}
@@ -138,39 +155,36 @@ export default function AgentDetailPage() {
               <VisibilityBadge visibility={data.visibility} />
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm text-muted-foreground font-mono">
               <Link to={`/agents?namespace=${data.namespace}`} className="hover:text-foreground transition-colors">
                 {data.namespace}
               </Link>
               /{data.slug}
             </p>
-            <CopyButton value={`${data.namespace}/${data.slug}`} label="Copy identifier" onCopy={recordCopy} />
+            <CopyButton value={`${data.namespace}/${data.slug}`} label="Copy identifier" />
+            <span className="h-4 w-px bg-border mx-1" aria-hidden="true" />
+            <Button variant="outline" size="sm" asChild>
+              <a href={cardUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
+                <ExternalLink className="h-4 w-4" /> A2A Agent Card
+              </a>
+            </Button>
+            {documentationUrl && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={documentationUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
+                  <FileText className="h-4 w-4" /> Documentation
+                </a>
+              </Button>
+            )}
+            <ReportDialog
+              resourceType="agent"
+              resourceId={data.id}
+              resourceLabel={`${data.namespace}/${data.slug}`}
+            />
           </div>
         </div>
 
-        {data.description && <p className="text-muted-foreground">{data.description}</p>}
-
-        {/* External links */}
-        <div className="flex gap-3 flex-wrap">
-          <Button variant="outline" size="sm" asChild>
-            <a href={cardUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
-              <ExternalLink className="h-4 w-4" /> A2A Agent Card
-            </a>
-          </Button>
-          {documentationUrl && (
-            <Button variant="outline" size="sm" asChild>
-              <a href={documentationUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
-                <FileText className="h-4 w-4" /> Documentation
-              </a>
-            </Button>
-          )}
-          <ReportDialog
-            resourceType="agent"
-            resourceId={data.id}
-            resourceLabel={`${data.namespace}/${data.slug}`}
-          />
-        </div>
+        {data.description && <p className="text-muted-foreground max-w-prose">{data.description}</p>}
 
         <Separator />
 
@@ -187,52 +201,62 @@ export default function AgentDetailPage() {
           </TabsList>
 
           {/* ── Overview Tab ── */}
-          <TabsContent value="overview" className="space-y-6">
-            {/* Metadata grid */}
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              {lv && (
-                <>
-                  {lv.endpoint_url && (
-                    <>
-                      <dt className="text-muted-foreground flex items-center gap-1">
-                        Endpoint
-                        <TooltipInfo content={getFieldExplanation('endpoint_url') ?? ''} />
-                      </dt>
-                      <dd className="flex items-center gap-2 min-w-0">
-                        <a
-                          href={lv.endpoint_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-mono text-xs hover:underline truncate"
-                        >
-                          {lv.endpoint_url}
-                        </a>
-                        <CopyButton value={lv.endpoint_url} label="Copy endpoint URL" />
-                      </dd>
-                    </>
-                  )}
-                  {lv.protocol_version && (
-                    <>
-                      <dt className="text-muted-foreground flex items-center gap-1">
-                        A2A protocol
-                        <TooltipInfo content={getFieldExplanation('a2a_protocol_version') ?? ''} />
-                      </dt>
-                      <dd className="font-mono">{lv.protocol_version}</dd>
-                    </>
-                  )}
-                  {lv.published_at && (
-                    <>
-                      <dt className="text-muted-foreground">Published</dt>
-                      <dd className="flex items-center gap-2 flex-wrap">
-                        <span>{formatDate(lv.published_at)}</span>
-                        <FreshnessIndicator updatedAt={lv.published_at} />
-                      </dd>
-                    </>
-                  )}
-                  {lv.default_input_modes && lv.default_input_modes.length > 0 && (
-                    <>
-                      <dt className="text-muted-foreground">Input modes</dt>
-                      <dd className="flex flex-wrap gap-1">
+          {/* mt-6 overrides the TabsContent default mt-2 so the gap from the
+              tabs to the first child matches the rhythm below. */}
+          <TabsContent value="overview" className="mt-6 space-y-8">
+            {/* Publisher banner */}
+            <PublisherSidebar namespace={data.namespace} />
+
+            {/* ─── Connection ───
+                Everything a caller needs to invoke this agent: endpoint URL,
+                spec version, supported IO modes, and authentication schemes.
+                Grouped in one card so users see "how do I talk to this" at a
+                glance. */}
+            <section className="space-y-3">
+              <SectionHeader icon={<Link2 />} title="Connection" />
+              <div className="rounded-xl border bg-card overflow-hidden shadow-xs">
+                {/* Endpoint URL — hero row, full width */}
+                {lv?.endpoint_url && (
+                  <StatTile
+                    className="px-5 py-4"
+                    label="Endpoint URL"
+                    icon={<Link2 />}
+                    tooltip={getFieldExplanation('endpoint_url') ?? undefined}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <a
+                        href={lv.endpoint_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-xs hover:underline truncate"
+                      >
+                        {lv.endpoint_url}
+                      </a>
+                      <CopyButton value={lv.endpoint_url} label="Copy endpoint URL" onCopy={recordCopy} />
+                    </div>
+                  </StatTile>
+                )}
+                {/* Protocol / Input / Output / Auth — 4-col grid below */}
+                <div className="flex flex-col sm:flex-row sm:divide-x divide-y sm:divide-y-0 border-t">
+                  <StatTile
+                    className="flex-1 px-5 py-4"
+                    label="A2A Protocol"
+                    icon={<GitBranch />}
+                    tooltip={getFieldExplanation('a2a_protocol_version') ?? undefined}
+                  >
+                    {lv?.protocol_version ? (
+                      <span className="font-mono">{lv.protocol_version}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </StatTile>
+                  <StatTile
+                    className="flex-1 px-5 py-4"
+                    label="Input modes"
+                    icon={<ArrowDownToLine />}
+                  >
+                    {lv?.default_input_modes && lv.default_input_modes.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
                         {lv.default_input_modes.map((m) => {
                           const info = getModeInfo(m)
                           return (
@@ -242,13 +266,18 @@ export default function AgentDetailPage() {
                             </span>
                           )
                         })}
-                      </dd>
-                    </>
-                  )}
-                  {lv.default_output_modes && lv.default_output_modes.length > 0 && (
-                    <>
-                      <dt className="text-muted-foreground">Output modes</dt>
-                      <dd className="flex flex-wrap gap-1">
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </StatTile>
+                  <StatTile
+                    className="flex-1 px-5 py-4"
+                    label="Output modes"
+                    icon={<ArrowUpFromLine />}
+                  >
+                    {lv?.default_output_modes && lv.default_output_modes.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
                         {lv.default_output_modes.map((m) => {
                           const info = getModeInfo(m)
                           return (
@@ -258,15 +287,18 @@ export default function AgentDetailPage() {
                             </span>
                           )
                         })}
-                      </dd>
-                    </>
-                  )}
-                  {lv.authentication && lv.authentication.length > 0 && (
-                    <>
-                      <dt className="text-muted-foreground flex items-center gap-1">
-                        <Shield className="h-3.5 w-3.5" /> Auth schemes
-                      </dt>
-                      <dd className="flex flex-wrap gap-1">
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </StatTile>
+                  <StatTile
+                    className="flex-1 px-5 py-4"
+                    label="Authentication"
+                    icon={<Shield />}
+                  >
+                    {lv?.authentication && lv.authentication.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
                         {lv.authentication.map((scheme, i) => {
                           const s = scheme as Record<string, string>
                           const label = s['scheme'] ?? s['type'] ?? `scheme ${i + 1}`
@@ -279,49 +311,83 @@ export default function AgentDetailPage() {
                             </span>
                           )
                         })}
-                      </dd>
-                    </>
-                  )}
-                </>
-              )}
-              {/* Provider info */}
-              {provider && typeof provider.organization === 'string' && (
-                <>
-                  <dt className="text-muted-foreground">Provider</dt>
-                  <dd>{provider.organization}</dd>
-                </>
-              )}
-              <dt className="text-muted-foreground">Created</dt>
-              <dd>{formatDate(data.created_at)}</dd>
-              <dt className="text-muted-foreground">Updated</dt>
-              <dd>{formatDate(data.updated_at)}</dd>
-              {(data.view_count != null && data.view_count > 0) && (
-                <>
-                  <dt className="text-muted-foreground">Views</dt>
-                  <dd>{data.view_count.toLocaleString()}</dd>
-                </>
-              )}
-              {(data.copy_count != null && data.copy_count > 0) && (
-                <>
-                  <dt className="text-muted-foreground">Copies</dt>
-                  <dd>{data.copy_count.toLocaleString()}</dd>
-                </>
-              )}
-            </dl>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">Public</span>
+                    )}
+                  </StatTile>
+                </div>
+              </div>
+            </section>
+
+            {/* ─── Release ───
+                Version-level facts — who published what, when, at what status. */}
+            <section className="space-y-3">
+              <SectionHeader icon={<Package2 />} title="Release" />
+              <div className="rounded-xl border bg-card overflow-hidden shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:divide-x divide-y sm:divide-y-0">
+                  <StatTile
+                    className="flex-1 px-5 py-4"
+                    label="Published"
+                    icon={<CalendarClock />}
+                  >
+                    {lv?.published_at ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>{formatDate(lv.published_at)}</span>
+                        <FreshnessIndicator updatedAt={lv.published_at} />
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">Draft</span>
+                    )}
+                  </StatTile>
+                  <StatTile
+                    className="flex-1 px-5 py-4"
+                    label="Provider"
+                    icon={<Building2 />}
+                  >
+                    {provider && typeof provider.organization === 'string' ? (
+                      provider.organization
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </StatTile>
+                  <StatTile
+                    className="flex-1 px-5 py-4"
+                    label="Status"
+                    icon={<Activity />}
+                  >
+                    <Badge variant="secondary" className="capitalize">{data.status}</Badge>
+                  </StatTile>
+                </div>
+              </div>
+            </section>
+
+            {/* ─── Activity ───
+                De-emphasized engagement footnote. Kept as a compact inline
+                strip because skills and capabilities matter more than vanity
+                counts on this page. */}
+            <ActivityStrip
+              viewCount={data.view_count ?? 0}
+              copyCount={data.copy_count ?? 0}
+              createdAt={data.created_at}
+              updatedAt={data.updated_at}
+            />
 
             {/* README */}
             {data.readme && (
               <>
                 <Separator />
-                <MarkdownRenderer content={data.readme} />
+                <div className="max-w-prose">
+                  <MarkdownRenderer content={data.readme} />
+                </div>
               </>
             )}
           </TabsContent>
 
           {/* ── Skills Tab ── */}
-          <TabsContent value="skills" className="space-y-4">
+          <TabsContent value="skills" className="mt-6 space-y-4">
             {lv?.skills && lv.skills.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {lv.skills.map((skill: AgentSkill) => (
                   <Card key={skill.id} className="bg-muted/30">
                     <CardHeader className="pb-2 pt-4 px-4">
@@ -367,7 +433,7 @@ export default function AgentDetailPage() {
           </TabsContent>
 
           {/* ── Connect Tab ── */}
-          <TabsContent value="connect" className="space-y-6">
+          <TabsContent value="connect" className="mt-6 space-y-6 max-w-3xl">
             {lv?.authentication && lv.authentication.length > 0 && (
               <AuthGuide schemes={lv.authentication as Array<Record<string, string>>} />
             )}
@@ -393,7 +459,7 @@ export default function AgentDetailPage() {
           </TabsContent>
 
           {/* ── Versions Tab ── */}
-          <TabsContent value="versions" className="space-y-4">
+          <TabsContent value="versions" className="mt-6 space-y-4">
             <VersionHistory
               type="agent"
               namespace={data.namespace}
@@ -403,13 +469,12 @@ export default function AgentDetailPage() {
           </TabsContent>
 
           {/* ── JSON Tab ── */}
-          <TabsContent value="json">
-            <RawJsonViewer data={data} title="Raw API response" />
+          <TabsContent value="json" className="mt-6">
+            <RawJsonViewer data={data} title="Raw API response" defaultOpen />
           </TabsContent>
         </Tabs>
 
         <Separator />
-        <PublisherSidebar namespace={data.namespace} />
         <RelatedEntries type="agent" namespace={data.namespace} currentSlug={data.slug} />
       </main>
       <Footer />

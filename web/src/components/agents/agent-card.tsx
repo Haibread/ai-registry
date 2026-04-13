@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Braces, Cpu, Link2 } from 'lucide-react'
+import { ExternalLink, Eye, Braces, Cpu, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatCount } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type Agent = components['schemas']['Agent']
@@ -88,7 +88,17 @@ export function AgentCard({ agent }: AgentCardProps) {
       )}
 
       <CardFooter className="pt-3 border-t flex items-center justify-between text-xs text-muted-foreground relative z-10">
-        <FreshnessIndicator updatedAt={agent.updated_at} />
+        <div className="flex items-center gap-3 min-w-0">
+          <FreshnessIndicator updatedAt={agent.updated_at} />
+          <span
+            className="inline-flex items-center gap-1"
+            title={`${(agent.view_count ?? 0).toLocaleString()} views`}
+            aria-label={`${(agent.view_count ?? 0).toLocaleString()} views`}
+          >
+            <Eye className="h-3 w-3" aria-hidden="true" />
+            {formatCount(agent.view_count ?? 0)}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <a
             href={`/api/v1/agents/${agent.namespace}/${agent.slug}`}

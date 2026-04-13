@@ -15,6 +15,9 @@ import { Button } from '@/components/ui/button'
 
 interface CapabilitiesSectionProps {
   capabilities: Record<string, unknown>
+  /** Hide the built-in section heading — useful when embedding inside a
+   *  larger card that already has its own header. */
+  hideTitle?: boolean
 }
 
 const CAPABILITY_META: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
@@ -24,7 +27,7 @@ const CAPABILITY_META: Record<string, { label: string; icon: React.ComponentType
   logging: { label: 'Logging', icon: Activity },
 }
 
-export function CapabilitiesSection({ capabilities }: CapabilitiesSectionProps) {
+export function CapabilitiesSection({ capabilities, hideTitle }: CapabilitiesSectionProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const entries = Object.entries(capabilities).filter(
@@ -35,9 +38,11 @@ export function CapabilitiesSection({ capabilities }: CapabilitiesSectionProps) 
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-        Capabilities
-      </h3>
+      {!hideTitle && (
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Capabilities
+        </h3>
+      )}
       <div className="flex flex-wrap gap-2">
         {entries.map(([key, value]) => {
           const meta = CAPABILITY_META[key]

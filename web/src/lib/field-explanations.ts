@@ -7,6 +7,8 @@ export const fieldExplanations: Record<string, string> = {
   // Runtimes / Transports
   stdio:
     "The server runs as a local process on your machine. Your MCP host starts it and communicates via stdin/stdout.",
+  http:
+    "The server is hosted remotely. Your MCP host connects via HTTP request/response.",
   sse:
     "Server-Sent Events. The server is hosted remotely. Your MCP host connects via HTTP and receives streaming responses.",
   streamable_http:
@@ -21,6 +23,8 @@ export const fieldExplanations: Record<string, string> = {
     "How the MCP server runs: locally on your machine (stdio) or remotely via a network connection (SSE / Streamable HTTP).",
   endpoint_url:
     "The URL where this agent or server is reachable. Your client sends requests to this address.",
+  mcp_authentication:
+    "Remote MCP servers follow the MCP authorization spec — OAuth 2.1 with PKCE. Your client discovers the auth requirements at runtime from the server's protected-resource metadata.",
 
   // Package ecosystems
   npm: "A Node.js package available via the npm registry. Install with npx or npm.",

@@ -8,7 +8,7 @@
 // @vitest-environment node
 
 import { describe, it, expect } from "vitest"
-import { cn, formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from "./utils"
+import { cn, formatDate, formatCount, getInstallCommand, ecosystemLabel, isRemoteTransport } from "./utils"
 import type { components } from "@/lib/schema"
 
 type PackageEntry = components["schemas"]["PackageEntry"]
@@ -191,5 +191,42 @@ describe("ecosystemLabel", () => {
   it("is case-insensitive", () => {
     expect(ecosystemLabel("NPM")).toBe("npm")
     expect(ecosystemLabel("DOCKER")).toBe("docker")
+  })
+})
+
+// ── formatCount ───────────────────────────────────────────────────────────────
+
+describe("formatCount", () => {
+  it("returns '0' for null and undefined", () => {
+    expect(formatCount(null)).toBe("0")
+    expect(formatCount(undefined)).toBe("0")
+  })
+
+  it("returns '0' for negative numbers", () => {
+    expect(formatCount(-5)).toBe("0")
+  })
+
+  it("returns the raw string for values under 1000", () => {
+    expect(formatCount(0)).toBe("0")
+    expect(formatCount(1)).toBe("1")
+    expect(formatCount(42)).toBe("42")
+    expect(formatCount(999)).toBe("999")
+  })
+
+  it("uses one decimal in the k range when under 10k", () => {
+    expect(formatCount(1000)).toBe("1k")
+    expect(formatCount(1234)).toBe("1.2k")
+    expect(formatCount(9999)).toBe("10k") // rounds up
+  })
+
+  it("rounds to whole k between 10k and 1M", () => {
+    expect(formatCount(15000)).toBe("15k")
+    expect(formatCount(999499)).toBe("999k")
+  })
+
+  it("switches to M for values >= 1M", () => {
+    expect(formatCount(1_000_000)).toBe("1M")
+    expect(formatCount(1_500_000)).toBe("1.5M")
+    expect(formatCount(15_000_000)).toBe("15M")
   })
 })

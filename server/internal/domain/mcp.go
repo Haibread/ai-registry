@@ -70,22 +70,27 @@ const (
 
 // MCPServerVersion is an immutable versioned release of an MCPServer.
 // Once published_at is set, no fields may be mutated.
+//
+// The JSON tags are the wire format used by the versions list/detail
+// endpoints — they must stay in sync with the MCPServerVersion schema in
+// server/api/openapi.yaml, and with the frontend VersionHistory component
+// which reads these snake_case keys.
 type MCPServerVersion struct {
-	ID              string
-	ServerID        string
-	Version         string // semver
-	Runtime         Runtime
-	Packages        json.RawMessage // MCP packages array
-	Capabilities    json.RawMessage // MCP capabilities object
-	ProtocolVersion string
-	Checksum        string
-	Signature       string
-	Status          VersionStatus // active | deprecated | deleted
-	StatusMessage   string
-	StatusChangedAt time.Time
-	PublishedAt     *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string          `json:"id"`
+	ServerID        string          `json:"server_id"`
+	Version         string          `json:"version"` // semver
+	Runtime         Runtime         `json:"runtime"`
+	Packages        json.RawMessage `json:"packages,omitempty"`     // MCP packages array
+	Capabilities    json.RawMessage `json:"capabilities,omitempty"` // MCP capabilities object
+	ProtocolVersion string          `json:"protocol_version"`
+	Checksum        string          `json:"checksum,omitempty"`
+	Signature       string          `json:"signature,omitempty"`
+	Status          VersionStatus   `json:"status"` // active | deprecated | deleted
+	StatusMessage   string          `json:"status_message,omitempty"`
+	StatusChangedAt time.Time       `json:"status_changed_at"`
+	PublishedAt     *time.Time      `json:"published_at,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // IsPublished reports whether the version has been published (immutable after this).
