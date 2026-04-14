@@ -44,7 +44,10 @@ export default function AdminAgentList() {
   // agents (status='deleted') from /api/v1/agents when no status filter is
   // passed. Newer server builds exclude them by default at the store layer,
   // but the admin UI should never surface tombstoned rows regardless.
-  const agents = (data?.items ?? []).filter((a) => a.status !== 'deleted')
+  // Cast through string: 'deleted' is no longer in the published schema union,
+  // but older server builds may still return it. The defensive filter must
+  // outlive the type narrowing, so we widen the comparison explicitly.
+  const agents = (data?.items ?? []).filter((a) => (a.status as string) !== 'deleted')
   const queryClient = useQueryClient()
   const selection = useBulkSelection<{ id: string; namespace: string; slug: string }>()
   const [bulkError, setBulkError] = useState<string | null>(null)

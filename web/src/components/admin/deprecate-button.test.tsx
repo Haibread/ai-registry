@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { DeprecateButton } from './deprecate-button'
 
 describe('DeprecateButton', () => {
-  let confirmSpy: ReturnType<typeof vi.spyOn>
+  let confirmSpy: MockInstance<typeof window.confirm>
 
   beforeEach(() => {
     confirmSpy = vi.spyOn(window, 'confirm')

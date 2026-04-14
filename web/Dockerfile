@@ -11,7 +11,9 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY web/ .
 # OpenAPI spec is required to generate the TypeScript client types.
-COPY server/api/openapi.yaml /api/openapi.yaml
+# Copy to /server/api/openapi.yaml so the relative path used by `npm run generate`
+# (../server/api/openapi.yaml from /app) matches the local repo layout.
+COPY server/api/openapi.yaml /server/api/openapi.yaml
 # Generate TypeScript types from the OpenAPI spec, then build the SPA.
 # OIDC configuration is NOT baked in here — the SPA fetches /config.json at
 # runtime from the server, so a single image works across all environments.
