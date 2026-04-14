@@ -145,11 +145,15 @@ test.describe('Admin: MCP Server CRUD', () => {
     // Reload the detail page — Deprecate button should now appear.
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     await expect(page.getByText('published').first()).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Deprecate' })).toBeVisible()
+    // The status bar now renders a "Deprecated" transition chip whose name
+    // partial-matches "Deprecate". Use exact:true so we grab only the red
+    // action button in the sticky header.
+    const deprecateBtn = page.getByRole('button', { name: 'Deprecate', exact: true })
+    await expect(deprecateBtn).toBeVisible()
 
     // Deprecate via UI.
     page.on('dialog', dialog => dialog.accept())
-    await page.click('button:has-text("Deprecate")')
+    await deprecateBtn.click()
     await expect(page.getByText('deprecated').first()).toBeVisible()
   })
 
@@ -157,7 +161,10 @@ test.describe('Admin: MCP Server CRUD', () => {
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
 
     page.on('dialog', dialog => dialog.accept())
-    await page.click('button:has-text("Delete")')
+    // The lifecycle transition row renders a disabled "Deleted" chip whose
+    // accessible name partial-matches "Delete". Use exact:true so we target
+    // only the red action button.
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
 
     // Navigated back to the list.
     await page.waitForURL(/\/admin\/mcp$/)
@@ -210,7 +217,9 @@ test.describe('Admin: Agent CRUD', () => {
     await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
 
     page.on('dialog', dialog => dialog.accept())
-    await page.click('button:has-text("Delete")')
+    // Same strict-mode rationale as the MCP delete test — the "Deleted"
+    // lifecycle chip partial-matches "Delete".
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
 
     await page.waitForURL(/\/admin\/agents$/)
     await expect(page.getByText(`${AGENT_NAME} edited`, { exact: true })).not.toBeVisible({ timeout: 10_000 })
@@ -228,7 +237,7 @@ test.describe('Admin: Publisher delete', () => {
     await expect(page.getByText(`${PUBLISHER_NAME} edited`, { exact: true })).toBeVisible({ timeout: 15_000 })
 
     page.on('dialog', dialog => dialog.accept())
-    await page.click('button:has-text("Delete")')
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
 
     await page.waitForURL(/\/admin\/publishers$/)
     await expect(page.getByText(`${PUBLISHER_NAME} edited`, { exact: true })).not.toBeVisible({ timeout: 10_000 })

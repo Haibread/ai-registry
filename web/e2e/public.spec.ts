@@ -62,6 +62,43 @@ test.describe('Public: Agents listing', () => {
   })
 })
 
+test.describe('Public: SPA routing for /agents direct links (regression)', () => {
+  // Regression guard: an earlier Vite proxy config forwarded every /agents/*
+  // request to the backend so the A2A well-known agent card would resolve.
+  // That swallowed the SPA detail route too, so direct-link visits to
+  // /agents/{ns}/{slug} came back as a 404 from the Go server. The fix scopes
+  // the proxy to /agents/{ns}/{slug}/.well-known/* only. These tests make
+  // sure the two routings stay split.
+
+  test('GET /agents returns the SPA HTML, not a backend 404', async ({ page }) => {
+    const res = await page.request.get('/agents')
+    expect(res.status()).toBe(200)
+    const body = await res.text()
+    // Vite/nginx serve the same index.html shell; it contains the root div.
+    expect(body).toMatch(/<div id="root"/)
+  })
+
+  test('GET /agents/{ns}/{slug} returns the SPA HTML', async ({ page }) => {
+    // Use a slug that almost certainly does not exist. The point is that the
+    // SPA shell must load so React Router can render the "not found" state —
+    // the HTTP layer itself must not 404.
+    const res = await page.request.get('/agents/does-not-exist/also-missing')
+    expect(res.status()).toBe(200)
+    const body = await res.text()
+    expect(body).toMatch(/<div id="root"/)
+  })
+
+  test('GET /agents/{ns}/{slug}/.well-known/agent-card.json still proxies to the backend', async ({ page }) => {
+    // The well-known subpath must still reach the backend. A non-existent
+    // pair should come back as 404 (from the backend, not from the SPA shell).
+    const res = await page.request.get('/agents/does-not-exist/also-missing/.well-known/agent-card.json')
+    expect(res.status()).toBe(404)
+    // Not the SPA HTML.
+    const body = await res.text()
+    expect(body).not.toMatch(/<div id="root"/)
+  })
+})
+
 test.describe('Public: Auth enforcement on admin routes', () => {
   // RequireAuth redirects to '/' (homepage) when no access token is present.
   // React Router handles this client-side — there is no HTTP-level redirect.

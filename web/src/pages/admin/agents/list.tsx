@@ -40,7 +40,11 @@ export default function AdminAgentList() {
     enabled: !!accessToken,
   })
 
-  const agents = data?.items ?? []
+  // Defensive client-side filter: older server builds return soft-deleted
+  // agents (status='deleted') from /api/v1/agents when no status filter is
+  // passed. Newer server builds exclude them by default at the store layer,
+  // but the admin UI should never surface tombstoned rows regardless.
+  const agents = (data?.items ?? []).filter((a) => a.status !== 'deleted')
   const queryClient = useQueryClient()
   const selection = useBulkSelection<{ id: string; namespace: string; slug: string }>()
   const [bulkError, setBulkError] = useState<string | null>(null)

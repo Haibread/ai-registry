@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
@@ -274,6 +275,78 @@ func TestDeletePublisher_NotFound(t *testing.T) {
 	ctx := context.Background()
 	if err := sharedDB.DeletePublisher(ctx, store.NewULID()); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
+	// Regression: earlier DeletePublisher only COUNT-checked non-deleted
+	// children. The ON DELETE RESTRICT FK then blocked the hard delete
+	// whenever soft-deleted (status='deleted') mcp_servers or agents still
+	// referenced the publisher — and version rows under them blocked the
+	// child delete in turn. The fixed version purges tombstoned descendants
+	// (version rows first, then parent rows) in the same transaction.
+	resetDB(t)
+	ctx := context.Background()
+
+	pub, err := sharedDB.CreatePublisher(ctx, store.CreatePublisherParams{
+		Slug: "tombstone-pub", Name: "Tombstone Publisher",
+	})
+	if err != nil {
+		t.Fatalf("CreatePublisher: %v", err)
+	}
+
+	// Create an MCP server + version, then soft-delete the server.
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pub.ID,
+		Slug:        "tombstone-srv",
+		Name:        "Tombstone Server",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+		ServerID:        srv.ID,
+		Version:         "1.0.0",
+		Runtime:         domain.RuntimeStdio,
+		Packages:        []byte(`[{"registryType":"npm","identifier":"@tombstone/srv","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		ProtocolVersion: "2025-03-26",
+	}); err != nil {
+		t.Fatalf("CreateMCPServerVersion: %v", err)
+	}
+	if err := sharedDB.DeleteMCPServer(ctx, srv.ID); err != nil {
+		t.Fatalf("DeleteMCPServer: %v", err)
+	}
+
+	// Create an agent + version, then soft-delete the agent.
+	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pub.ID,
+		Slug:        "tombstone-agent",
+		Name:        "Tombstone Agent",
+	})
+	if err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+	if _, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
+		AgentID:         ag.ID,
+		Version:         "1.0.0",
+		EndpointURL:     "https://agents.example/tombstone",
+		Skills:          []byte(`[]`),
+		ProtocolVersion: "0.3.0",
+	}); err != nil {
+		t.Fatalf("CreateAgentVersion: %v", err)
+	}
+	if err := sharedDB.DeleteAgent(ctx, ag.ID); err != nil {
+		t.Fatalf("DeleteAgent: %v", err)
+	}
+
+	// All active entries are gone; only tombstones remain. DeletePublisher
+	// must succeed and purge those tombstones transactionally.
+	if err := sharedDB.DeletePublisher(ctx, pub.ID); err != nil {
+		t.Fatalf("DeletePublisher with tombstoned children: %v", err)
+	}
+
+	if _, err := sharedDB.GetPublisher(ctx, "tombstone-pub"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected publisher to be gone, got %v", err)
 	}
 }
 

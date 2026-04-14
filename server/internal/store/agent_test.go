@@ -638,6 +638,33 @@ func TestDeleteAgent(t *testing.T) {
 		}
 	}
 
+	// Should not appear in admin listing either (default excludes deleted).
+	adminRows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{})
+	if err != nil {
+		t.Fatalf("ListAgents admin: %v", err)
+	}
+	for _, r := range adminRows {
+		if r.ID == ag.ID {
+			t.Error("deleted agent still appears in admin listing")
+		}
+	}
+
+	// Opting in with IncludeDeleted should surface the row.
+	includedRows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{IncludeDeleted: true})
+	if err != nil {
+		t.Fatalf("ListAgents IncludeDeleted: %v", err)
+	}
+	found := false
+	for _, r := range includedRows {
+		if r.ID == ag.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("deleted agent missing from listing even with IncludeDeleted=true")
+	}
+
 	// Double-delete should return ErrNotFound.
 	if err := sharedDB.DeleteAgent(ctx, ag.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("second delete: expected ErrNotFound, got %v", err)

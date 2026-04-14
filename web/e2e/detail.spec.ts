@@ -236,9 +236,14 @@ test.describe('Public detail pages', () => {
     await page.getByRole('tab', { name: /installation/i }).click()
     await expect(page.getByText(/@e2e\/detail-mcp@1\.0\.0/).first()).toBeVisible({ timeout: 10_000 })
 
-    // JSON tab shows the raw server document somewhere in its body.
+    // JSON tab renders the raw server document inside a <pre> block. The
+    // slug appears in other places on the page (sticky header, dialogs), so
+    // scope the assertion to the active JSON panel's <pre> element.
     await page.getByRole('tab', { name: /json/i }).click()
-    await expect(page.getByText(new RegExp(MCP_SLUG))).toBeVisible({ timeout: 10_000 })
+    const jsonPre = page.locator('[role="tabpanel"][data-state="active"] pre')
+    await expect(jsonPre).toBeVisible({ timeout: 10_000 })
+    await expect(jsonPre).toContainText(MCP_SLUG)
+    await expect(jsonPre).toContainText('@e2e/detail-mcp')
   })
 
   // ── Agent detail page ─────────────────────────────────────────────────

@@ -34,17 +34,18 @@ type AgentRow struct {
 
 // ListAgentsParams controls filtering and pagination for ListAgents.
 type ListAgentsParams struct {
-	PublicOnly bool
-	Namespace  string
-	Status     string // filter by status: "draft" | "published" | "deprecated" | "" (all)
-	Visibility string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
-	Query      string
-	Limit      int32
-	Cursor     string
+	PublicOnly     bool
+	Namespace      string
+	Status         string // filter by status: "draft" | "published" | "deprecated" | "" (all non-deleted)
+	Visibility     string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
+	Query          string
+	Limit          int32
+	Cursor         string
 	Sort           string     // sort order: "created_at_desc" (default), "updated_at_desc", "published_at_desc", "name_asc", "name_desc"
 	Featured       *bool      // when non-nil, filter by featured flag
 	Tag            string     // when non-empty, filter to agents that contain this tag
 	PublishedSince *time.Time // when non-nil, only entries whose latest version was published after this time
+	IncludeDeleted bool       // when true, include agents with status='deleted'
 }
 
 // ListAgents returns a paginated list of agents and the total count of rows
@@ -77,6 +78,12 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	if p.Status != "" {
 		filterWhere += fmt.Sprintf(" AND a.status = $%d", argN)
 		filterArgs = append(filterArgs, p.Status)
+		argN++
+		countArgN++
+	} else if !p.IncludeDeleted {
+		// By default, exclude deleted agents.
+		filterWhere += fmt.Sprintf(" AND a.status != $%d", argN)
+		filterArgs = append(filterArgs, "deleted")
 		argN++
 		countArgN++
 	}
