@@ -1,0 +1,121 @@
+name: CI
+
+# Fast-running quality gates for pull requests. Runs in parallel with the
+# slower e2e workflow; both must pass to merge.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Go server: vet, build, unit + integration tests ───────────────────────────
+  server:
+    name: Server (Go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: go vet
+        working-directory: server
+        run: go vet ./...
+
+      - name: go build
+        working-directory: server
+        run: go build ./...
+
+      # testcontainers-go spins up Postgres automatically via the Docker daemon
+      # that GitHub-hosted runners provide out of the box.
+      - name: go test
+        working-directory: server
+        run: go test -race -count=1 ./...
+
+  # ── Web: lint, typecheck, unit tests ─────────────────────────────────────────
+  web:
+    name: Web (Vite + React)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      # Generate TypeScript types from the OpenAPI spec before typecheck/lint
+      # so src/lib/schema.d.ts exists (it's gitignored).
+      - name: Generate OpenAPI types
+        working-directory: web
+        run: npm run generate
+
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+      # `npm run build` runs `tsc -b && vite build`; vitest doesn't typecheck,
+      # so the build step is the authoritative typecheck gate.
+      - name: Typecheck + build
+        working-directory: web
+        run: npm run build
+
+      - name: Unit tests
+        working-directory: web
+        run: npm test
+
+  # ── Helm chart: lint + template rendering ────────────────────────────────────
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: latest
+
+      - name: helm lint
+        run: helm lint deploy/helm/ai-registry
+
+      # Render with default values and with each optional feature enabled, so
+      # template errors in opt-in paths (httpRoute, cnpg, bootstrap) fail CI.
+      - name: helm template (defaults)
+        run: helm template test deploy/helm/ai-registry
+
+      - name: helm template (httpRoute)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set httpRoute.enabled=true \
+            --set httpRoute.gatewayRef.name=test-gateway
+
+      - name: helm template (cnpg)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set cnpg.enabled=true
+
+      - name: helm template (bootstrap sample data)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set server.bootstrap.enabled=true \
+            --set server.bootstrap.sampleData=true
