@@ -305,6 +305,58 @@ Query** — a plain SPA served as static files from nginx.
 | CORS during dev (Vite proxy vs browser) | Vite `server.proxy` routes all `/api/v1/*` through Node — no CORS headers needed in dev |
 | `/.well-known/*` paths | Nginx proxy block covers them in production; Vite proxy in dev |
 
+### v0.2.2 — Coverage depth (next patch)
+
+v0.2.1 backfilled the obvious surface-level gaps. v0.2.2 should push deeper
+into the test pyramid where v0.2.1 only scratched the surface. Scope is
+test-only — no shipping features in this release unless they fall out of
+fixing a bug surfaced by the new tests.
+
+**Web — admin depth**
+- [ ] Interactive coverage on `admin/mcp/detail.tsx` and `admin/agents/detail.tsx`:
+      per-version publish, deprecation, edit-in-place, status transitions, and
+      the lifecycle stepper. Today these files only have render-and-link smoke
+      tests.
+- [ ] Real flow for `admin/api-keys.tsx` (currently a single `it.skip` waiting
+      on Phase 5). Lifts as soon as the API-key endpoints land.
+- [ ] Extract the shadcn/Radix Select jsdom shims (`hasPointerCapture`,
+      `releasePointerCapture`, `scrollIntoView`) into `web/src/test/setup.ts`
+      so individual test files stop re-declaring them.
+- [ ] OIDC token refresh / expired-session paths in `AuthContext` —
+      `accessTokenExpiring` event, silent-renew failure, logout-on-401.
+
+**Server — protocol & spec conformance**
+- [ ] OTel span emission tests: every HTTP handler must produce a span with
+      the documented attributes (per CLAUDE.md "every new handler gets a
+      span"). Use the OTel test SDK / in-memory exporter.
+- [ ] Migration tests: forward apply of every numbered migration against a
+      fresh testcontainers Postgres, plus idempotency (running `Migrate`
+      twice must be a no-op).
+- [ ] `/v0/` MCP wire-format conformance suite — assert the exact response
+      shape from the MCP registry spec (`{servers, metadata: {count, nextCursor}}`,
+      single-object detail, `_meta`, `packages[].registryType`, etc.).
+- [ ] A2A Agent Card schema conformance — validate the per-agent
+      `/.well-known/agent-card.json` and the global card against the pinned
+      a2a-project June 2025 schema (decision G).
+- [ ] `openapi.yaml` ↔ handler contract test: every documented path/operation
+      must have a matching route, and every registered route must be
+      documented. Catches drift between spec and implementation.
+- [ ] Router-level test for `PublicRateLimitRPM` wiring — a test request
+      loop that proves the env/YAML value reaches the per-IP bucket and
+      changes the cutoff.
+
+**Server — write paths**
+- [ ] Audit every `POST` / `PATCH` / `DELETE` handler for untested error
+      branches (RFC 7807 problem responses, 409 conflicts, 422 validation,
+      403 admin-guard short-circuits). Today happy paths and 404s are well
+      covered, error branches less so.
+
+**Definition of done for v0.2.2**
+- Coverage report shows no admin page below 80 % statement coverage.
+- Every handler has at least one OTel span assertion.
+- `/v0/` and A2A conformance suites are in CI and gating.
+- `openapi.yaml` ↔ router contract test is in CI and gating.
+
 ### Phase 7 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
 - Signed publishes (sigstore/cosign).

@@ -41,7 +41,9 @@ export default defineConfig({
         storageState: "e2e/.auth/admin.json",
       },
       dependencies: ["setup"],
-      testMatch: /admin\.spec\.ts/,
+      // Anchor on a path separator so this does not also match
+      // coverage-admin.spec.ts (which is owned by the coverage-admin project).
+      testMatch: /(^|\/)admin\.spec\.ts$/,
     },
     {
       name: "admin-stats",
@@ -57,7 +59,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
       },
-      testMatch: /public\.spec\.ts/,
+      testMatch: /(^|\/)public\.spec\.ts$/,
     },
     // Detail-page tests seed their own data via the admin API, so they need
     // the authenticated storage state. The page navigations themselves target
@@ -70,6 +72,30 @@ export default defineConfig({
       },
       dependencies: ["setup"],
       testMatch: /detail\.spec\.ts/,
+    },
+    // Admin-side coverage gaps (search/filter, bulk actions, UI publish,
+    // error states). Uses the admin storageState and mutates DB state, so
+    // it runs serially after setup.
+    {
+      name: "coverage-admin",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /coverage-admin\.spec\.ts/,
+    },
+    // Public-side coverage gaps (publisher detail, theme toggle, public
+    // search, private/missing 404). Seeds via the admin API but navigates
+    // as a public visitor.
+    {
+      name: "coverage-public",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /coverage-public\.spec\.ts/,
     },
   ],
 })

@@ -54,6 +54,11 @@ type HTTPConfig struct {
 	// trusted for rate-limiting IP extraction. Parsed and stored as a string;
 	// the caller parses it into *net.IPNet via net.ParseCIDR.
 	TrustedProxyCIDR string
+	// PublicRateLimitRPM is the per-IP request budget for unauthenticated
+	// reads on /api/v1, expressed in requests per minute. Defaults to 1000.
+	// Bumped from the original 100 because the e2e suite + browser-based
+	// SPAs can comfortably exceed the lower bound under normal use.
+	PublicRateLimitRPM int
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -81,12 +86,13 @@ type LogConfig struct {
 // whatever value was pre-populated (the built-in default).
 
 type fileHTTPConfig struct {
-	Addr             string   `yaml:"addr"`
-	ReadTimeout      string   `yaml:"read_timeout"`
-	WriteTimeout     string   `yaml:"write_timeout"`
-	IdleTimeout      string   `yaml:"idle_timeout"`
-	CORSOrigins      []string `yaml:"cors_origins"`
-	TrustedProxyCIDR string   `yaml:"trusted_proxy_cidr"`
+	Addr               string   `yaml:"addr"`
+	ReadTimeout        string   `yaml:"read_timeout"`
+	WriteTimeout       string   `yaml:"write_timeout"`
+	IdleTimeout        string   `yaml:"idle_timeout"`
+	CORSOrigins        []string `yaml:"cors_origins"`
+	TrustedProxyCIDR   string   `yaml:"trusted_proxy_cidr"`
+	PublicRateLimitRPM int      `yaml:"public_rate_limit_rpm"`
 }
 
 type fileDatabaseConfig struct {
@@ -124,10 +130,11 @@ type fileConfig struct {
 func defaultFileConfig() fileConfig {
 	return fileConfig{
 		HTTP: fileHTTPConfig{
-			Addr:         ":8081",
-			ReadTimeout:  "30s",
-			WriteTimeout: "30s",
-			IdleTimeout:  "120s",
+			Addr:               ":8081",
+			ReadTimeout:        "30s",
+			WriteTimeout:       "30s",
+			IdleTimeout:        "120s",
+			PublicRateLimitRPM: 1000,
 		},
 		Database: fileDatabaseConfig{
 			MaxConns: 25,
@@ -176,12 +183,13 @@ func Load(configFile string) (*Config, error) {
 	// Build final config: env vars win over file values.
 	cfg := &Config{
 		HTTP: HTTPConfig{
-			Addr:             envString("HTTP_ADDR", fc.HTTP.Addr),
-			ReadTimeout:      envDuration("HTTP_READ_TIMEOUT", readTimeout),
-			WriteTimeout:     envDuration("HTTP_WRITE_TIMEOUT", writeTimeout),
-			IdleTimeout:      envDuration("HTTP_IDLE_TIMEOUT", idleTimeout),
-			CORSOrigins:      envStringSlice("CORS_ALLOWED_ORIGINS", fc.HTTP.CORSOrigins),
-			TrustedProxyCIDR: envString("TRUSTED_PROXY_CIDR", fc.HTTP.TrustedProxyCIDR),
+			Addr:               envString("HTTP_ADDR", fc.HTTP.Addr),
+			ReadTimeout:        envDuration("HTTP_READ_TIMEOUT", readTimeout),
+			WriteTimeout:       envDuration("HTTP_WRITE_TIMEOUT", writeTimeout),
+			IdleTimeout:        envDuration("HTTP_IDLE_TIMEOUT", idleTimeout),
+			CORSOrigins:        envStringSlice("CORS_ALLOWED_ORIGINS", fc.HTTP.CORSOrigins),
+			TrustedProxyCIDR:   envString("TRUSTED_PROXY_CIDR", fc.HTTP.TrustedProxyCIDR),
+			PublicRateLimitRPM: envInt("PUBLIC_RATE_LIMIT_RPM", fc.HTTP.PublicRateLimitRPM),
 		},
 		Database: DatabaseConfig{
 			URL:      envString("DATABASE_URL", fc.Database.URL),

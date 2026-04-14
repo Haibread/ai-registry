@@ -33,6 +33,8 @@ func newMCPRouter() *chi.Mux {
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish", h.PublishVersion)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/deprecate", h.DeprecateServer)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/visibility", h.SetVisibility)
+	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/view", h.RecordView)
+	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/copy", h.RecordCopy)
 	return r
 }
 
@@ -812,6 +814,78 @@ func TestMCPHandler_DeleteServer_NotFound(t *testing.T) {
 	resetTables(t)
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/mcp/servers/ns/missing", nil)
 	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+// ─── RecordView / RecordCopy ───────────────────────────────────────────────
+
+func TestMCPHandler_RecordView_OK(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "rv-ns", "rv-srv")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/rv-ns/rv-srv/view", nil)
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Increment must have hit the DB.
+	got, err := testDB.GetMCPServer(context.Background(), "rv-ns", "rv-srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer: %v", err)
+	}
+	if got.ViewCount != 1 {
+		t.Errorf("view_count = %d, want 1", got.ViewCount)
+	}
+	if got.CopyCount != 0 {
+		t.Errorf("copy_count = %d, want 0 (view must not touch copy)", got.CopyCount)
+	}
+}
+
+func TestMCPHandler_RecordView_NotFound(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "rv-nf", "rv-nf")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/rv-nf/missing/view", nil)
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestMCPHandler_RecordCopy_OK(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "rc-ns", "rc-srv")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/rc-ns/rc-srv/copy", nil)
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+
+	got, err := testDB.GetMCPServer(context.Background(), "rc-ns", "rc-srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer: %v", err)
+	}
+	if got.CopyCount != 1 {
+		t.Errorf("copy_count = %d, want 1", got.CopyCount)
+	}
+	if got.ViewCount != 0 {
+		t.Errorf("view_count = %d, want 0 (copy must not touch view)", got.ViewCount)
+	}
+}
+
+func TestMCPHandler_RecordCopy_NotFound(t *testing.T) {
+	resetTables(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/nope/nope/copy", nil)
 	rec := httptest.NewRecorder()
 	newMCPRouter().ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {

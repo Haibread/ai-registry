@@ -21,15 +21,18 @@ import (
 
 // RouterDeps bundles the dependencies injected into the router.
 type RouterDeps struct {
-	Logger       *slog.Logger
-	DB           *store.DB
-	Metrics      *observability.Metrics
-	AuthConf     auth.Config
-	CORSOrigins  []string
+	Logger      *slog.Logger
+	DB          *store.DB
+	Metrics     *observability.Metrics
+	AuthConf    auth.Config
+	CORSOrigins []string
 	// TrustedProxy, when non-nil, is the CIDR from which X-Forwarded-For
 	// headers are trusted for client IP extraction in rate limiting.
 	// Set via TRUSTED_PROXY_CIDR env var. Leave nil when not behind a proxy.
 	TrustedProxy *net.IPNet
+	// PublicRateLimitRPM is the per-IP request budget for unauthenticated
+	// reads on /api/v1, in requests per minute. Zero falls back to 1000.
+	PublicRateLimitRPM int
 }
 
 // NewRouter builds and returns the chi router with all middleware and routes.
@@ -102,7 +105,11 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", cardH.PerAgentCard)
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
-	publicRL := middleware.RateLimit(100, time.Minute, deps.Metrics, deps.TrustedProxy)
+	publicRLMax := deps.PublicRateLimitRPM
+	if publicRLMax <= 0 {
+		publicRLMax = 1000
+	}
+	publicRL := middleware.RateLimit(publicRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
 
 		// Publishers

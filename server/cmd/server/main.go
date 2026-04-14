@@ -124,8 +124,9 @@ func run() error {
 			OIDCJWKSUrl:  cfg.Auth.OIDCJWKSUrl,
 			OIDCClientID: cfg.Auth.OIDCClientID,
 		},
-		CORSOrigins:  cfg.HTTP.CORSOrigins,
-		TrustedProxy: trustedProxy,
+		CORSOrigins:        cfg.HTTP.CORSOrigins,
+		TrustedProxy:       trustedProxy,
+		PublicRateLimitRPM: cfg.HTTP.PublicRateLimitRPM,
 	})
 	srv := registryhttp.NewServer(handler, registryhttp.ServerConfig{
 		Addr:         cfg.HTTP.Addr,

@@ -31,8 +31,11 @@ func newAgentRouter() *chi.Mux {
 	r.Post("/api/v1/agents/{namespace}/{slug}/versions", h.CreateVersion)
 	r.Get("/api/v1/agents/{namespace}/{slug}/versions/{version}", h.GetVersion)
 	r.Post("/api/v1/agents/{namespace}/{slug}/versions/{version}/publish", h.PublishVersion)
+	r.Patch("/api/v1/agents/{namespace}/{slug}/versions/{version}/status", h.PatchVersionStatus)
 	r.Post("/api/v1/agents/{namespace}/{slug}/deprecate", h.DeprecateAgent)
 	r.Post("/api/v1/agents/{namespace}/{slug}/visibility", h.SetVisibility)
+	r.Post("/api/v1/agents/{namespace}/{slug}/view", h.RecordView)
+	r.Post("/api/v1/agents/{namespace}/{slug}/copy", h.RecordCopy)
 	return r
 }
 
@@ -817,6 +820,205 @@ func TestAgentHandler_DeleteAgent_NotFound(t *testing.T) {
 	req = req.WithContext(adminAgentCtx())
 	rec := httptest.NewRecorder()
 	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+// ─── RecordView / RecordCopy ───────────────────────────────────────────────
+
+func TestAgentHandler_RecordView_OK(t *testing.T) {
+	resetTables(t)
+	seedAgent(t, "rv-ag-ns", "rv-ag")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/rv-ag-ns/rv-ag/view", nil)
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+
+	got, err := testDB.GetAgent(context.Background(), "rv-ag-ns", "rv-ag", false)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if got.ViewCount != 1 {
+		t.Errorf("view_count = %d, want 1", got.ViewCount)
+	}
+	if got.CopyCount != 0 {
+		t.Errorf("copy_count = %d, want 0 (view must not touch copy)", got.CopyCount)
+	}
+}
+
+func TestAgentHandler_RecordView_NotFound(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "rv-ag-nf", "rv-ag-nf")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/rv-ag-nf/missing/view", nil)
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestAgentHandler_RecordCopy_OK(t *testing.T) {
+	resetTables(t)
+	seedAgent(t, "rc-ag-ns", "rc-ag")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/rc-ag-ns/rc-ag/copy", nil)
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body: %s", rec.Code, rec.Body.String())
+	}
+
+	got, err := testDB.GetAgent(context.Background(), "rc-ag-ns", "rc-ag", false)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if got.CopyCount != 1 {
+		t.Errorf("copy_count = %d, want 1", got.CopyCount)
+	}
+	if got.ViewCount != 0 {
+		t.Errorf("view_count = %d, want 0 (copy must not touch view)", got.ViewCount)
+	}
+}
+
+func TestAgentHandler_RecordCopy_NotFound(t *testing.T) {
+	resetTables(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/nope/nope/copy", nil)
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+// ─── PatchVersionStatus ────────────────────────────────────────────────────
+
+// seedPublishedAgentVersion creates an agent, a draft version, and publishes it.
+func seedPublishedAgentVersion(t *testing.T, ns, slug, ver string) {
+	t.Helper()
+	seedAgent(t, ns, slug)
+	createAgentVersion(t, ns, slug, ver)
+
+	r := newAgentRouter()
+	url := fmt.Sprintf("/api/v1/agents/%s/%s/versions/%s/publish", ns, slug, ver)
+	req := httptest.NewRequest(http.MethodPost, url, nil)
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("seedPublishedAgentVersion publish: %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAgentHandler_PatchVersionStatus_Deprecate(t *testing.T) {
+	resetTables(t)
+	seedPublishedAgentVersion(t, "ag-pvs", "ag-pvs", "1.0.0")
+
+	body, _ := json.Marshal(map[string]string{
+		"status":        "deprecated",
+		"statusMessage": "use 2.x",
+	})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/api/v1/agents/ag-pvs/ag-pvs/versions/1.0.0/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Status        string `json:"status"`
+		StatusMessage string `json:"status_message"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Status != "deprecated" {
+		t.Errorf("status = %q, want deprecated", resp.Status)
+	}
+	if resp.StatusMessage != "use 2.x" {
+		t.Errorf("status_message = %q, want %q", resp.StatusMessage, "use 2.x")
+	}
+}
+
+func TestAgentHandler_PatchVersionStatus_InvalidStatus(t *testing.T) {
+	resetTables(t)
+	seedPublishedAgentVersion(t, "ag-pvs-inv", "ag-pvs-inv", "1.0.0")
+
+	body, _ := json.Marshal(map[string]string{"status": "bogus"})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/api/v1/agents/ag-pvs-inv/ag-pvs-inv/versions/1.0.0/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestAgentHandler_PatchVersionStatus_ActiveWithMessageRejected(t *testing.T) {
+	resetTables(t)
+	seedPublishedAgentVersion(t, "ag-pvs-am", "ag-pvs-am", "1.0.0")
+
+	body, _ := json.Marshal(map[string]string{
+		"status":        "active",
+		"statusMessage": "should not be set",
+	})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/api/v1/agents/ag-pvs-am/ag-pvs-am/versions/1.0.0/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestAgentHandler_PatchVersionStatus_VersionNotFound(t *testing.T) {
+	resetTables(t)
+	seedPublishedAgentVersion(t, "ag-pvs-nf", "ag-pvs-nf", "1.0.0")
+
+	body, _ := json.Marshal(map[string]string{"status": "deprecated"})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/api/v1/agents/ag-pvs-nf/ag-pvs-nf/versions/9.9.9/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestAgentHandler_PatchVersionStatus_AgentNotFound(t *testing.T) {
+	resetTables(t)
+	// No agent seeded at all.
+
+	body, _ := json.Marshal(map[string]string{"status": "deprecated"})
+	req := httptest.NewRequest(http.MethodPatch,
+		"/api/v1/agents/ghost-ns/ghost-ag/versions/1.0.0/status",
+		bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
 	}

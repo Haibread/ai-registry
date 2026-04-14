@@ -768,3 +768,91 @@ func TestDeleteMCPServer_NotFound(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestIncrementMCPServerViewCount(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "view-mcp-ns", "View MCP Corp")
+
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "view-srv", Name: "View Server",
+	}); err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	got, err := sharedDB.GetMCPServer(ctx, "view-mcp-ns", "view-srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer: %v", err)
+	}
+	if got.ViewCount != 0 {
+		t.Errorf("initial view_count = %d, want 0", got.ViewCount)
+	}
+
+	for i := 1; i <= 3; i++ {
+		if err := sharedDB.IncrementMCPServerViewCount(ctx, "view-mcp-ns", "view-srv"); err != nil {
+			t.Fatalf("IncrementMCPServerViewCount #%d: %v", i, err)
+		}
+		got, err = sharedDB.GetMCPServer(ctx, "view-mcp-ns", "view-srv", false)
+		if err != nil {
+			t.Fatalf("GetMCPServer after increment #%d: %v", i, err)
+		}
+		if got.ViewCount != i {
+			t.Errorf("after increment #%d view_count = %d, want %d", i, got.ViewCount, i)
+		}
+	}
+
+	if got.CopyCount != 0 {
+		t.Errorf("copy_count = %d, want 0 (view increments must not touch copy)", got.CopyCount)
+	}
+}
+
+func TestIncrementMCPServerViewCount_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	if err := sharedDB.IncrementMCPServerViewCount(ctx, "no-ns", "no-srv"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+
+	insertPublisher(t, "known-ns", "Known")
+	if err := sharedDB.IncrementMCPServerViewCount(ctx, "known-ns", "missing-srv"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound for unknown slug under known namespace, got %v", err)
+	}
+}
+
+func TestIncrementMCPServerCopyCount(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "copy-mcp-ns", "Copy MCP Corp")
+
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "copy-srv", Name: "Copy Server",
+	}); err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	for i := 1; i <= 2; i++ {
+		if err := sharedDB.IncrementMCPServerCopyCount(ctx, "copy-mcp-ns", "copy-srv"); err != nil {
+			t.Fatalf("IncrementMCPServerCopyCount #%d: %v", i, err)
+		}
+	}
+
+	got, err := sharedDB.GetMCPServer(ctx, "copy-mcp-ns", "copy-srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer: %v", err)
+	}
+	if got.CopyCount != 2 {
+		t.Errorf("copy_count = %d, want 2", got.CopyCount)
+	}
+	if got.ViewCount != 0 {
+		t.Errorf("view_count = %d, want 0 (copy increments must not touch view)", got.ViewCount)
+	}
+}
+
+func TestIncrementMCPServerCopyCount_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	if err := sharedDB.IncrementMCPServerCopyCount(ctx, "nope", "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}

@@ -2,6 +2,56 @@
 
 All notable changes to this project are documented here.
 
+## v0.2.1
+
+Coverage backfill release. No user-visible feature changes — the focus is on
+filling in test gaps left by the v0.2.0 sprint and tightening one piece of
+operator config that showed up under load.
+
+### 🧪 Tests added
+
+- **Server (Go):** new handler tests for `view_count` / `copy_count` event
+  recording on both MCP servers and agents, and parity tests for
+  `PATCH /v0/servers/{ns}/{slug}/versions/{version}/status`. Store-level tests
+  for the matching repository methods.
+- **Web (Vitest):** ~18 new test files covering every admin page (`new` /
+  `list` / `detail` for publishers, MCP servers, and agents), the admin
+  dashboard, layout, and api-keys placeholder, plus shared components
+  (server-card, agent-card, theme-toggle, delete-button, deprecate-button,
+  raw-json-viewer, install-command, activity-strip, related-entries,
+  section-header). Vitest run is now 64 files / 473 passing / 1 skipped
+  (Phase 5 api-keys flow).
+- **Web (Playwright):** new `coverage-admin.spec.ts` and `coverage-public.spec.ts`
+  suites — bulk actions, publish-via-UI through the new-form flow, and a
+  22-server pagination walkthrough on the public MCP list. Full Playwright
+  suite is now 50 tests across 7 projects, all green.
+
+### 🔧 Server
+
+- **Configurable public rate limit.** The per-IP budget for unauthenticated
+  reads on `/api/v1` is now driven by `PUBLIC_RATE_LIMIT_RPM` (env) /
+  `http.public_rate_limit_rpm` (YAML), defaulting to **1000 req/min** (was a
+  hard-coded 100). Documented in `deploy/.env.example`. The previous limit
+  was easy to trip from a browser SPA or the e2e suite under normal use.
+
+### 🐛 Fixes
+
+- Playwright `testMatch` regexes were unanchored and silently pulled
+  `coverage-admin.spec.ts` into the `admin` project (and similarly for
+  `public`), causing duplicate runs and project-config mismatches. Now
+  anchored with `(^|\/)admin\.spec\.ts$`.
+- A handful of public-page locators were ambiguous (`getByText(slug)` matched
+  both the Name and the Namespace/Slug cell; `getByLabel('Search')` matched
+  checkbox aria-labels). Switched to role-based locators with `exact: true`.
+
+### ⚠️ Upgrade notes
+
+No schema changes. No breaking API changes. Operators running behind the
+default rate limit will see the public budget rise from 100 to 1000 req/min
+per IP — pin `PUBLIC_RATE_LIMIT_RPM=100` if you want the old behaviour.
+
+**Full changelog:** `v0.2.0...v0.2.1`
+
 ## v0.2.0
 
 Major UX overhaul of the public browse experience, plus new admin workflow tooling and a richer server API.

@@ -678,3 +678,96 @@ func TestDeleteAgent_NotFound(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestIncrementAgentViewCount(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "view-ns", "View Corp")
+
+	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: "view-agent", Name: "View Agent",
+	}); err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+
+	// Baseline.
+	got, err := sharedDB.GetAgent(ctx, "view-ns", "view-agent", false)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if got.ViewCount != 0 {
+		t.Errorf("initial view_count = %d, want 0", got.ViewCount)
+	}
+
+	// Three successive increments should be monotonic.
+	for i := 1; i <= 3; i++ {
+		if err := sharedDB.IncrementAgentViewCount(ctx, "view-ns", "view-agent"); err != nil {
+			t.Fatalf("IncrementAgentViewCount #%d: %v", i, err)
+		}
+		got, err = sharedDB.GetAgent(ctx, "view-ns", "view-agent", false)
+		if err != nil {
+			t.Fatalf("GetAgent after increment #%d: %v", i, err)
+		}
+		if got.ViewCount != i {
+			t.Errorf("after increment #%d view_count = %d, want %d", i, got.ViewCount, i)
+		}
+	}
+
+	// Copy count should not be affected.
+	if got.CopyCount != 0 {
+		t.Errorf("copy_count = %d, want 0 (view increments must not touch copy)", got.CopyCount)
+	}
+}
+
+func TestIncrementAgentViewCount_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	// No publisher, no agent.
+	if err := sharedDB.IncrementAgentViewCount(ctx, "missing-ns", "missing-slug"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound for unknown agent, got %v", err)
+	}
+
+	// Publisher exists but agent does not.
+	insertPublisher(t, "exists-ns", "Exists")
+	if err := sharedDB.IncrementAgentViewCount(ctx, "exists-ns", "missing-slug"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound for unknown slug under known namespace, got %v", err)
+	}
+}
+
+func TestIncrementAgentCopyCount(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "copy-ns", "Copy Corp")
+
+	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: "copy-agent", Name: "Copy Agent",
+	}); err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+
+	for i := 1; i <= 2; i++ {
+		if err := sharedDB.IncrementAgentCopyCount(ctx, "copy-ns", "copy-agent"); err != nil {
+			t.Fatalf("IncrementAgentCopyCount #%d: %v", i, err)
+		}
+	}
+
+	got, err := sharedDB.GetAgent(ctx, "copy-ns", "copy-agent", false)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if got.CopyCount != 2 {
+		t.Errorf("copy_count = %d, want 2", got.CopyCount)
+	}
+	if got.ViewCount != 0 {
+		t.Errorf("view_count = %d, want 0 (copy increments must not touch view)", got.ViewCount)
+	}
+}
+
+func TestIncrementAgentCopyCount_NotFound(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	if err := sharedDB.IncrementAgentCopyCount(ctx, "nope", "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}

@@ -31,6 +31,7 @@ func TestLoad_Defaults(t *testing.T) {
 		{"log level", cfg.Log.Level, "info"},
 		{"db max conns", cfg.Database.MaxConns, int32(25)},
 		{"db min conns", cfg.Database.MinConns, int32(5)},
+		{"public rate limit RPM default", cfg.HTTP.PublicRateLimitRPM, 1000},
 	}
 
 	for _, tt := range tests {
@@ -49,6 +50,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("OTEL_SERVICE_NAME", "my-service")
 	t.Setenv("DATABASE_MAX_CONNS", "50")
+	t.Setenv("PUBLIC_RATE_LIMIT_RPM", "5000")
 
 	cfg, err := config.Load("")
 	if err != nil {
@@ -64,6 +66,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 		{"log level override", cfg.Log.Level, "debug"},
 		{"OTel service name override", cfg.OTel.ServiceName, "my-service"},
 		{"db max conns override", cfg.Database.MaxConns, int32(50)},
+		{"public rate limit RPM override", cfg.HTTP.PublicRateLimitRPM, 5000},
 	}
 
 	for _, tt := range tests {
