@@ -14,7 +14,12 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm",
+      // `cursor-pointer` is explicit — Tailwind v4's preflight sets
+      // `button { cursor: default }`, so the select trigger hovers with
+      // an arrow cursor and doesn't read as clickable.
+      // `disabled:cursor-not-allowed` below still overrides it when the
+      // trigger is disabled.
+      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm cursor-pointer",
       "ring-offset-background placeholder:text-muted-foreground",
       "focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2",
       "disabled:cursor-not-allowed disabled:opacity-50",
