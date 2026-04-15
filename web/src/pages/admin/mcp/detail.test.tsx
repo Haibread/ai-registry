@@ -45,7 +45,8 @@ const sampleServer = {
   updated_at: '2026-04-02T10:00:00Z',
   latest_version: {
     version: '1.2.3',
-    runtime: 'node',
+    // `runtime` = MCP transport mechanism (see server/internal/domain/mcp.go).
+    runtime: 'http',
     protocol_version: '2025-06-18',
     published_at: '2026-04-02T10:00:00Z',
     packages: [],

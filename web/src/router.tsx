@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { RequireAuth } from '@/auth/RequireAuth'
 import HomePage from '@/pages/home'
@@ -10,20 +11,35 @@ import MCPDetailPage from '@/pages/mcp/detail'
 import AgentListPage from '@/pages/agents/list'
 import AgentDetailPage from '@/pages/agents/detail'
 import { AuthCallback } from '@/auth/AuthCallback'
-import AdminLayout from '@/pages/admin/layout'
-import AdminDashboard from '@/pages/admin/dashboard'
-import AdminMCPList from '@/pages/admin/mcp/list'
-import AdminMCPDetail from '@/pages/admin/mcp/detail'
-import AdminMCPNew from '@/pages/admin/mcp/new'
-import AdminAgentList from '@/pages/admin/agents/list'
-import AdminAgentDetail from '@/pages/admin/agents/detail'
-import AdminAgentNew from '@/pages/admin/agents/new'
-import AdminPublisherList from '@/pages/admin/publishers/list'
-import AdminPublisherDetail from '@/pages/admin/publishers/detail'
-import AdminPublisherNew from '@/pages/admin/publishers/new'
-import AdminApiKeys from '@/pages/admin/api-keys'
-import AdminReports from '@/pages/admin/reports'
 import NotFoundPage from '@/pages/not-found'
+
+// Admin pages are code-split: the admin bundle is only fetched when an
+// authenticated user navigates to /admin/*. First-time public visitors never
+// pay the cost of the admin surface (forms, editors, bulk actions).
+const AdminLayout = lazy(() => import('@/pages/admin/layout'))
+const AdminDashboard = lazy(() => import('@/pages/admin/dashboard'))
+const AdminMCPList = lazy(() => import('@/pages/admin/mcp/list'))
+const AdminMCPDetail = lazy(() => import('@/pages/admin/mcp/detail'))
+const AdminMCPNew = lazy(() => import('@/pages/admin/mcp/new'))
+const AdminAgentList = lazy(() => import('@/pages/admin/agents/list'))
+const AdminAgentDetail = lazy(() => import('@/pages/admin/agents/detail'))
+const AdminAgentNew = lazy(() => import('@/pages/admin/agents/new'))
+const AdminPublisherList = lazy(() => import('@/pages/admin/publishers/list'))
+const AdminPublisherDetail = lazy(() => import('@/pages/admin/publishers/detail'))
+const AdminPublisherNew = lazy(() => import('@/pages/admin/publishers/new'))
+const AdminApiKeys = lazy(() => import('@/pages/admin/api-keys'))
+const AdminReports = lazy(() => import('@/pages/admin/reports'))
+
+// Minimal fallback shown while an admin chunk is loading. Intentionally tiny —
+// the admin surface is gated behind auth and the chunks are small, so a full
+// skeleton screen would flash unnecessarily.
+function AdminLoading() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
+      Loading…
+    </div>
+  )
+}
 
 export function AppRoutes() {
   return (
@@ -42,7 +58,9 @@ export function AppRoutes() {
         path="/admin"
         element={
           <RequireAuth>
-            <AdminLayout />
+            <Suspense fallback={<AdminLoading />}>
+              <AdminLayout />
+            </Suspense>
           </RequireAuth>
         }
       >

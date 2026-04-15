@@ -115,8 +115,8 @@ describe('VersionHistory', () => {
 
 describe('VersionHistoryView compare mode', () => {
   const versions = [
-    { id: 'v1', version: '1.0.0', runtime: 'node', published_at: '2025-01-15T00:00:00Z' },
-    { id: 'v2', version: '0.9.0', runtime: 'python', published_at: '2024-12-01T00:00:00Z' },
+    { id: 'v1', version: '1.0.0', runtime: 'http', published_at: '2025-01-15T00:00:00Z' },
+    { id: 'v2', version: '0.9.0', runtime: 'stdio', published_at: '2024-12-01T00:00:00Z' },
   ]
 
   it('does not show compare toggle for a single version', () => {

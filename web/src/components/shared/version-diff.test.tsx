@@ -6,8 +6,8 @@ describe('VersionDiff', () => {
   it('shows a "no differences" message when versions are equivalent', () => {
     render(
       <VersionDiff
-        a={{ version: '1.0.0', runtime: 'node', protocol_version: '2025-03-26' }}
-        b={{ version: '1.0.1', runtime: 'node', protocol_version: '2025-03-26' }}
+        a={{ version: '1.0.0', runtime: 'http', protocol_version: '2025-03-26' }}
+        b={{ version: '1.0.1', runtime: 'http', protocol_version: '2025-03-26' }}
       />,
     )
     expect(screen.getByText(/no differences in structured fields/i)).toBeInTheDocument()
@@ -16,13 +16,13 @@ describe('VersionDiff', () => {
   it('renders old → new for changed scalar fields', () => {
     render(
       <VersionDiff
-        a={{ version: '1.0.0', runtime: 'node', protocol_version: '2025-03-26' }}
-        b={{ version: '1.0.1', runtime: 'python', protocol_version: '2025-03-26' }}
+        a={{ version: '1.0.0', runtime: 'http', protocol_version: '2025-03-26' }}
+        b={{ version: '1.0.1', runtime: 'stdio', protocol_version: '2025-03-26' }}
       />,
     )
     expect(screen.getByTestId('diff-field-list')).toBeInTheDocument()
-    expect(screen.getByText('node')).toBeInTheDocument()
-    expect(screen.getByText('python')).toBeInTheDocument()
+    expect(screen.getByText('http')).toBeInTheDocument()
+    expect(screen.getByText('stdio')).toBeInTheDocument()
   })
 
   it('stringifies nested object differences', () => {

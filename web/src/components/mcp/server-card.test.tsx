@@ -23,7 +23,11 @@ function makeServer(overrides: Partial<MCPServer> = {}): MCPServer {
     homepage_url: 'https://acme.dev/files',
     latest_version: {
       version: '2.0.0',
-      runtime: 'node',
+      // `runtime` in this codebase = MCP transport mechanism (see
+      // server/internal/domain/mcp.go). Use the schema-valid enum, not a
+      // language name — the as-MCPServer cast was hiding bogus 'node' values.
+      runtime: 'http',
+      protocol_version: '2025-03-26',
       packages: [
         {
           registryType: 'npm',
@@ -47,7 +51,7 @@ describe('ServerCard', () => {
     expect(screen.getByText('Files Server')).toBeInTheDocument()
     expect(screen.getByText('acme')).toBeInTheDocument()
     expect(screen.getByText('v2.0.0')).toBeInTheDocument()
-    expect(screen.getByText('node')).toBeInTheDocument()
+    expect(screen.getByText('http')).toBeInTheDocument()
   })
 
   it('shows remote transport type and endpoint', () => {

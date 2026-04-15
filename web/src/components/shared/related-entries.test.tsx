@@ -23,12 +23,17 @@ const mcpBase = {
   namespace: 'acme',
   slug: 'other',
   name: 'Other Server',
-  status: 'active',
+  status: 'published',
   verified: false,
   view_count: 0,
   updated_at: '2025-01-01T00:00:00Z',
   created_at: '2025-01-01T00:00:00Z',
-  latest_version: { version: '1.0.0', runtime: 'node', packages: [] },
+  latest_version: {
+    version: '1.0.0',
+    runtime: 'http',
+    protocol_version: '2025-03-26',
+    packages: [],
+  },
 }
 
 const agentBase = {
@@ -36,12 +41,12 @@ const agentBase = {
   namespace: 'acme',
   slug: 'other-bot',
   name: 'Other Bot',
-  status: 'active',
+  status: 'published',
   verified: false,
   view_count: 0,
   updated_at: '2025-01-01T00:00:00Z',
   created_at: '2025-01-01T00:00:00Z',
-  latest_version: { version: '1.0.0', skills: [] },
+  latest_version: { version: '1.0.0', endpoint_url: '', skills: [] },
 }
 
 describe('RelatedEntries', () => {
