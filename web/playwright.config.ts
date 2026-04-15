@@ -20,7 +20,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? "github" : "list",
+  // In CI: emit both GitHub annotations (inline in the run log) AND an HTML
+  // report so the `upload-artifact` step in .github/workflows/e2e.yml has
+  // something to publish. `open: 'never'` stops Playwright from trying to
+  // launch a browser on the headless runner.
+  reporter: process.env.CI
+    ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]
+    : 'list',
 
   use: {
     baseURL: BASE_URL,
