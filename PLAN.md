@@ -357,6 +357,140 @@ fixing a bug surfaced by the new tests.
 - `/v0/` and A2A conformance suites are in CI and gating.
 - `openapi.yaml` ↔ router contract test is in CI and gating.
 
+### v0.3.0 — Browse polish (next minor)
+
+v0.2.x was a coverage sprint. v0.3.0 is the first release that actually
+changes what users see — four additive UX wins on the public browse
+experience, zero breaking changes, zero new non-negotiables.
+
+Features accepted into scope (refused / deferred items tracked in
+`docs/future-multi-environment.md` and in session notes):
+
+- Per-entry activity feed on detail pages
+- Namespace landing pages (`/mcp/{namespace}` and `/agents/{namespace}`)
+- Card redesign (aligned tag row, status pill, inline metadata strip)
+- Tool/skill count on list cards
+
+Out of scope for v0.3.0 — each has its own reason and stays parked until
+we decide otherwise:
+
+- **Runtime usage / call-count metrics** — belongs on the API gateway
+  once we have one. Do not fake it with copy_count.
+- **Computed "registry score"** — the composite-score design wasn't
+  landed. Do not ship a half-baked number.
+- **Multi-environment entries** — design note in
+  `docs/future-multi-environment.md`; do not implement until we
+  revisit deliberately.
+- **Access requests / grants / policies / publisher approval queue** —
+  out of charter; we're a catalog, not an enterprise control plane.
+
+Ordering is deliberate: low-risk UX wins first so we can ship each one
+independently and gather feedback before committing to the activity-feed
+work. Each item below is a self-contained task; the user validates each
+before the next one starts.
+
+**Task 1 — Tool/skill count on list cards (smallest, ships first)**
+- [ ] Agent card (`web/src/components/shared/agent-card.tsx`): surface
+      `skills.length` as an inline metric (e.g. `5 skills`). Data is
+      already on the `Agent` root, no API change needed.
+- [ ] MCP card (`web/src/components/shared/server-card.tsx`): surface a
+      tool count when derivable from the server's latest published
+      version's `capabilities.tools[]`. Because `capabilities` is a
+      free-form JSONB blob (decision F), the chip MUST gracefully hide
+      when the field is absent or the array has an unexpected shape —
+      never show `0 tools` for a server that just didn't populate the
+      field.
+- [ ] If the list payload doesn't already include enough to compute the
+      count, add a derived `tool_count` / `skill_count` integer field to
+      the list response (NOT to the detail response — detail already
+      has the full data). Update OpenAPI.
+- [ ] Unit tests on both card components for the "has count",
+      "zero count", and "unknown / hide chip" branches.
+
+**Task 2 — Card redesign**
+- [ ] Refactor `server-card.tsx` and `agent-card.tsx` to the aligned
+      layout: icon + title + publisher row, description, tag row
+      (status pill + transport/visibility + category tags), inline
+      metadata strip at the bottom (tool/skill count + version +
+      freshness).
+- [ ] Status pill uses colour from the lifecycle state (`draft`,
+      `published`, `deprecated`); reuse `badge-variants.ts` rather
+      than adding a new primitive.
+- [ ] Card is fully keyboard-focusable and the whole card is the link
+      target (today some children compete for click). Verify with an
+      a11y smoke test: `getByRole('link', { name: /.../ })` reaches
+      the detail page.
+- [ ] Update existing card tests; add a snapshot-free DOM test for the
+      new metadata strip so it's enforced structurally, not visually.
+- [ ] No API change. Pure CSS/Tailwind + component surgery.
+
+**Task 3 — Namespace landing pages**
+- [ ] New web route `/mcp/:namespace` and `/agents/:namespace`. URLs
+      already match the slug pattern we publish today.
+- [ ] New page components that call `GET /api/v1/mcp/servers?namespace=X`
+      (and the agents equivalent) — the server-side filter already
+      exists, no new endpoint needed.
+- [ ] Page header shows the publisher behind the namespace via
+      `GET /api/v1/publishers/{slug}` (call in parallel with the list
+      fetch; render skeleton until both resolve).
+- [ ] Empty-state copy when the namespace has zero entries of the
+      requested kind (vs. the namespace not existing — those are
+      different, render a 404 for the latter).
+- [ ] Breadcrumbs: `Home › MCP Servers › {namespace}` so users can
+      escape back to the flat list.
+- [ ] Link to the namespace page from every card's publisher row and
+      from the detail-page publisher row.
+- [ ] Vitest coverage for the new page (render, loading, empty, 404,
+      links out).
+- [ ] Playwright smoke: land on `/mcp/{seeded-ns}`, assert the seeded
+      entries appear, assert a link to a detail page works.
+
+**Task 4 — Per-entry activity feed (biggest, ships last)**
+- [ ] New public endpoint
+      `GET /v0/mcp/servers/{ns}/{slug}/activity` (and the agents
+      equivalent) that projects from `audit_log` filtered by
+      `resource_type` + `resource_id`, returning a trimmed public
+      view: `{id, action, created_at, actor_display_name}`. Must NOT
+      expose `actor_email` or `actor_subject`; show a coarse
+      "Publisher" / "Admin" label instead, derived from metadata.
+- [ ] Rate-limit the new endpoint on the same per-IP bucket as other
+      public reads.
+- [ ] OpenAPI entry for both endpoints. Router contract test catches
+      drift (already in place from v0.2.2).
+- [ ] Handler tests: empty, populated, cursor pagination, unknown
+      resource returns 404, privacy-scrub assertion (actor_email /
+      actor_subject MUST NOT appear in the response body).
+- [ ] Web: new "Activity" section on MCP + agent detail pages,
+      rendered under the existing tabs (not inside them — it's
+      cross-version). Paginated, loads 10 entries at a time with a
+      "Show more" button. Reuses the existing date/time formatting
+      from the version history component.
+- [ ] Make the same feed filterable on the existing admin `/audit`
+      page so the admin view can drill from the global log into a
+      single entry's history (and vice versa).
+- [ ] Vitest coverage for the new section (loading, empty, populated,
+      load-more, privacy scrub — "actor_email" substring MUST NOT
+      appear in the DOM).
+
+**Cross-cutting chores**
+- [ ] `CHANGELOG.md` entry with one section per task.
+- [ ] Include the already-shipped pointer-cursor fix
+      (`button-variants.ts`, `tabs.tsx`, `select.tsx`) under a "UX
+      polish" sub-section of the changelog. It was an out-of-band
+      patch but users will notice it on this release.
+- [ ] OpenAPI + TS types regenerated.
+- [ ] Coverage floors stay green.
+
+**Definition of done for v0.3.0**
+- All four task groups land behind per-task validation gates.
+- No admin page drops below the 80 % floor set in v0.2.2.
+- Go coverage floor stays ≥ 70 % after the new handler lands.
+- `openapi.yaml` is in sync with the new activity endpoints, verified
+  by the existing contract test.
+- Playwright smoke exercises at least one namespace landing page and
+  one detail page with activity visible.
+- Changelog + git tag + GitHub release published.
+
 ### Phase 7 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
 - Signed publishes (sigstore/cosign).
