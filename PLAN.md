@@ -362,6 +362,10 @@ fixing a bug surfaced by the new tests.
 - Signed publishes (sigstore/cosign).
 - Webhooks on publish events.
 - Federation with the public MCP registry.
+- **Multi-environment entries** (dev/staging/prod per entry, each with
+  its own URL/transport/auth/version pin). Design note + open questions
+  parked in `docs/future-multi-environment.md` — do not implement until
+  we revisit deliberately.
 
 ## 6. Resolved decisions
 
