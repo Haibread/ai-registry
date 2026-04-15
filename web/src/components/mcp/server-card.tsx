@@ -4,7 +4,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/copy-button'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
-import { formatDate, formatCount, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
+import { formatCount, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type MCPServer = components['schemas']['MCPServer']

@@ -1,3 +1,10 @@
+// `AuthContext.tsx` colocates the `AuthProvider` component with the
+// `useAuth` hook, the `getUserManager` helper, and the `resetManagerForTesting`
+// escape hatch. Splitting them into separate files would require updating ~20
+// import sites across the app for a marginal HMR benefit (auth state is
+// resolved once at app start; a full reload on edits here is acceptable).
+/* eslint-disable react-refresh/only-export-components */
+
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts'
 

@@ -3,7 +3,8 @@ import { render, screen, act } from '@testing-library/react'
 import { StickyDetailHeader } from './sticky-detail-header'
 import React from 'react'
 
-// We can't easily test IntersectionObserver in jsdom, so we mock it.
+// We can't easily test IntersectionObserver in jsdom, so we mock it via
+// vi.stubGlobal (the idiomatic vitest API for swapping out globals).
 let observerCallback: IntersectionObserverCallback
 let mockObserve: ReturnType<typeof vi.fn>
 let mockDisconnect: ReturnType<typeof vi.fn>
@@ -11,14 +12,17 @@ let mockDisconnect: ReturnType<typeof vi.fn>
 beforeEach(() => {
   mockObserve = vi.fn()
   mockDisconnect = vi.fn()
-  ;(globalThis as any).IntersectionObserver = vi.fn((cb: IntersectionObserverCallback) => {
-    observerCallback = cb
-    return { observe: mockObserve, disconnect: mockDisconnect, unobserve: vi.fn() }
-  })
+  vi.stubGlobal(
+    'IntersectionObserver',
+    vi.fn((cb: IntersectionObserverCallback) => {
+      observerCallback = cb
+      return { observe: mockObserve, disconnect: mockDisconnect, unobserve: vi.fn() }
+    }),
+  )
 })
 
 afterEach(() => {
-  delete (globalThis as any).IntersectionObserver
+  vi.unstubAllGlobals()
 })
 
 describe('StickyDetailHeader', () => {

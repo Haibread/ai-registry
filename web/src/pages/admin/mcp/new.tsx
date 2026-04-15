@@ -5,7 +5,6 @@ import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
   Select,
@@ -116,7 +115,7 @@ export default function AdminMCPNew() {
       if (!versionRes.ok) {
         if (versionRes.status === 401) { await clearSession(); return { namespace: ns, slug } }
         let msg = `Failed to create version (HTTP ${versionRes.status}).`
-        try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch {}
+        try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch { /* body not JSON — keep default msg */ }
         throw { step: 'version', message: msg }
       }
 

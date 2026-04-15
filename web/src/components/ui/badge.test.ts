@@ -1,7 +1,7 @@
 /**
  * badge.test.ts
  *
- * Tests for the two pure mapping functions exported from badge.tsx.
+ * Tests for the two pure mapping functions exported from badge-variants.ts.
  *
  * These functions are called on every list and detail page to determine
  * the colour of status and visibility badges. A wrong mapping (e.g. a
@@ -11,7 +11,7 @@
 // @vitest-environment node
 
 import { describe, it, expect } from "vitest"
-import { statusVariant, visibilityVariant } from "./badge"
+import { statusVariant, visibilityVariant } from "./badge-variants"
 
 describe("statusVariant", () => {
   it("maps 'published' to success (green)", () => {

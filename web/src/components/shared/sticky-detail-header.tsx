@@ -5,7 +5,7 @@
  * Uses IntersectionObserver on a sentinel element (the title).
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/copy-button'
 import { ResourceIcon } from '@/components/ui/resource-icon'

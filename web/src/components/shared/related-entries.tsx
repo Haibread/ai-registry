@@ -8,6 +8,10 @@ import { useQuery } from '@tanstack/react-query'
 import { ServerCard } from '@/components/mcp/server-card'
 import { AgentCard } from '@/components/agents/agent-card'
 import { getPublicClient } from '@/lib/api-client'
+import type { components } from '@/lib/schema'
+
+type MCPServer = components['schemas']['MCPServer']
+type Agent = components['schemas']['Agent']
 
 interface RelatedEntriesProps {
   type: 'mcp' | 'agent'
@@ -18,9 +22,12 @@ interface RelatedEntriesProps {
 export function RelatedEntries({ type, namespace, currentSlug }: RelatedEntriesProps) {
   const api = getPublicClient()
 
+  // Discriminate at the query level so `data` has a precise type downstream.
+  // TanStack Query caches by queryKey, so separating the two shapes into
+  // distinct queries also avoids cross-entity cache pollution.
   const { data } = useQuery({
     queryKey: ['related', type, namespace, currentSlug],
-    queryFn: async () => {
+    queryFn: async (): Promise<MCPServer[] | Agent[]> => {
       if (type === 'mcp') {
         const r = await api.GET('/api/v1/mcp/servers', {
           params: { query: { namespace, limit: 4 } },
@@ -42,13 +49,13 @@ export function RelatedEntries({ type, namespace, currentSlug }: RelatedEntriesP
         More from {namespace}
       </h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {data.map((entry) =>
-          type === 'mcp' ? (
-            <ServerCard key={entry.id} server={entry as any} />
-          ) : (
-            <AgentCard key={entry.id} agent={entry as any} />
-          ),
-        )}
+        {type === 'mcp'
+          ? (data as MCPServer[]).map((entry) => (
+              <ServerCard key={entry.id} server={entry} />
+            ))
+          : (data as Agent[]).map((entry) => (
+              <AgentCard key={entry.id} agent={entry} />
+            ))}
       </div>
     </div>
   )

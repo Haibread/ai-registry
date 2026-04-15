@@ -118,7 +118,7 @@ export default function AdminAgentNew() {
       if (!versionRes.ok) {
         if (versionRes.status === 401) { await clearSession(); return { namespace: ns, slug } }
         let msg = `Failed to create version (HTTP ${versionRes.status}).`
-        try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch {}
+        try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch { /* body not JSON — keep default msg */ }
         throw { step: 'version', message: msg }
       }
 

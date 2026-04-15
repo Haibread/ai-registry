@@ -53,8 +53,10 @@ const DEBOUNCE_MS = 300
 export function FilterBar({
   q: initialQ = '',
   namespace: initialNamespace = '',
-  status: initialStatus = '',
-  visibility: initialVisibility = '',
+  // status & visibility are read straight from the URL below and the
+  // <select>s are uncontrolled, so no local state / initial values are
+  // needed — the props stay in FilterBarProps for parity with q/namespace
+  // but we don't destructure them here.
   statusOptions,
   showVisibility = false,
   searchPlaceholder = 'Search…',
@@ -74,13 +76,11 @@ export function FilterBar({
 
   // Keep local text state in sync when the URL changes externally (browser
   // back/forward).
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const p = new URLSearchParams(search)
     setQ(p.get('q') ?? '')
     setNamespace(p.get('namespace') ?? '')
   }, [search])
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Debounce timer ref — shared across q and namespace.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)

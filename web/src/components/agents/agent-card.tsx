@@ -3,7 +3,7 @@ import { ExternalLink, Eye, Braces, Cpu, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
-import { formatDate, formatCount } from '@/lib/utils'
+import { formatCount } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type Agent = components['schemas']['Agent']

@@ -15,6 +15,20 @@ import { VersionDiff } from './version-diff'
 import { getPublicClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 
+/**
+ * VersionLike is the structural shape this component actually reads.
+ * Both MCPServerVersion and AgentVersion satisfy it; using a local
+ * structural type avoids dragging full schema unions through the view.
+ */
+interface VersionLike {
+  id?: string
+  version: string
+  status?: string
+  published_at?: string
+  // Extra fields are passed through to VersionDiff unchanged.
+  [key: string]: unknown
+}
+
 interface VersionHistoryProps {
   type: 'mcp' | 'agent'
   namespace: string
@@ -54,18 +68,21 @@ export function VersionHistory({ type, namespace, slug, latestVersion }: Version
     )
   }
 
-  const raw = data as Record<string, unknown> | unknown[] | undefined
-  const versions: any[] = Array.isArray(raw)
+  // The openapi-typescript generated union for versions is a heavy discriminated
+  // shape; normalize to either a bare array or { items: [] } and treat the rows
+  // structurally as VersionLike.
+  const raw = data as VersionLike[] | { items?: VersionLike[] } | undefined
+  const versions: VersionLike[] = Array.isArray(raw)
     ? raw
-    : Array.isArray((raw as any)?.items)
-      ? (raw as any).items
+    : Array.isArray(raw?.items)
+      ? raw.items
       : []
 
   return <VersionHistoryView versions={versions} latestVersion={latestVersion} />
 }
 
 interface VersionHistoryViewProps {
-  versions: any[]
+  versions: VersionLike[]
   latestVersion?: string
 }
 
@@ -86,9 +103,9 @@ export function VersionHistoryView({ versions, latestVersion }: VersionHistoryVi
   }
 
   const canCompare = versions.length >= 2
-  const selectedVersions = selected
+  const selectedVersions: VersionLike[] = selected
     .map((id) => versions.find((v) => String(v.id ?? v.version) === id))
-    .filter(Boolean) as any[]
+    .filter((v): v is VersionLike => v !== undefined)
 
   return (
     <div className="space-y-4">
@@ -114,7 +131,7 @@ export function VersionHistoryView({ versions, latestVersion }: VersionHistoryVi
       )}
 
       <div className="space-y-0">
-        {versions.map((v: any, i: number) => {
+        {versions.map((v, i) => {
           const isLatest = v.version === latestVersion
           const isPublished = !!v.published_at
           const key = String(v.id ?? v.version ?? i)

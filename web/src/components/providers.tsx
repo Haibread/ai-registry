@@ -1,3 +1,8 @@
+// Colocates `ThemeProvider` with the `useTheme` hook. Splitting them would
+// mean chasing the `useTheme` import across a handful of files for a marginal
+// HMR benefit — theme state survives a full reload anyway via localStorage.
+/* eslint-disable react-refresh/only-export-components */
+
 import { createContext, useContext, useEffect, useState } from 'react'
 
 type Theme = 'light' | 'dark' | 'system'
