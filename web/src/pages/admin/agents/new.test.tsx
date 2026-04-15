@@ -3,18 +3,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-// Radix Select uses pointer APIs not implemented in jsdom
-beforeEach(() => {
-  if (!(Element.prototype as unknown as { hasPointerCapture?: unknown }).hasPointerCapture) {
-    ;(Element.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = () => false
-  }
-  if (!(Element.prototype as unknown as { releasePointerCapture?: unknown }).releasePointerCapture) {
-    ;(Element.prototype as unknown as { releasePointerCapture: () => void }).releasePointerCapture = () => {}
-  }
-  if (!(Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView) {
-    ;(Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {}
-  }
-})
+// Radix Select pointer-API shims live in src/test/setup.ts — they are
+// applied once at vitest startup, no per-file boilerplate needed.
 
 vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token', clearSession: vi.fn() }),

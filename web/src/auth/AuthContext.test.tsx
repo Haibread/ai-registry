@@ -139,6 +139,123 @@ describe('AuthProvider — login() with no UserManager', () => {
   })
 })
 
+describe('AuthProvider — event wiring and session lifecycle', () => {
+  // `oidc-client-ts` drives token refresh by firing `addUserLoaded` whenever
+  // a new access token lands (initial sign-in, silent renew). Logout and
+  // expired-session paths fire `addUserUnloaded`. The tests below capture
+  // the callbacks the provider registers and invoke them directly — that
+  // proves the handlers are wired correctly without having to mock the
+  // entire oidc-client-ts renewal state machine.
+
+  it('exposes the new access token when oidc-client-ts fires addUserLoaded (silent renew path)', async () => {
+    let loadedCallback: ((u: { access_token: string }) => void) | undefined
+    const um = makeUserManager()
+    um.events.addUserLoaded = vi.fn((cb: (u: { access_token: string }) => void) => {
+      loadedCallback = cb
+    }) as never
+    mockConfigJson(um)
+
+    renderAuth()
+
+    // Wait for the provider to finish its initial getUser() → isLoading=false.
+    await waitFor(() =>
+      expect(screen.getByTestId('loading').textContent).toBe('false'),
+    )
+    expect(loadedCallback).toBeTypeOf('function')
+    expect(screen.getByTestId('token').textContent).toBe('')
+
+    // Simulate a silent renew completing: oidc-client-ts calls the callback
+    // we registered in useEffect.
+    act(() => {
+      loadedCallback!({ access_token: 'refreshed-token-v2' })
+    })
+
+    await waitFor(() =>
+      expect(screen.getByTestId('token').textContent).toBe('refreshed-token-v2'),
+    )
+  })
+
+  it('clears the access token when oidc-client-ts fires addUserUnloaded (expired session / logout)', async () => {
+    let loadedCallback: ((u: { access_token: string }) => void) | undefined
+    let unloadedCallback: (() => void) | undefined
+    const um = makeUserManager()
+    um.events.addUserLoaded = vi.fn((cb: (u: { access_token: string }) => void) => {
+      loadedCallback = cb
+    }) as never
+    um.events.addUserUnloaded = vi.fn((cb: () => void) => {
+      unloadedCallback = cb
+    }) as never
+    mockConfigJson(um)
+
+    renderAuth()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('loading').textContent).toBe('false'),
+    )
+
+    // Seed a "logged-in" state first so the clear is observable.
+    act(() => {
+      loadedCallback!({ access_token: 'token-before-expiry' })
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('token').textContent).toBe('token-before-expiry'),
+    )
+
+    // Now the session expires / user logs out — oidc-client-ts fires
+    // addUserUnloaded. The provider must drop user state so RequireAuth
+    // re-redirects and consumers stop sending stale Bearer tokens.
+    act(() => {
+      unloadedCallback!()
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('token').textContent).toBe(''),
+    )
+  })
+
+  it('unsubscribes from both events on unmount (no leaked handlers between remounts)', async () => {
+    const um = makeUserManager()
+    mockConfigJson(um)
+
+    const { unmount } = renderAuth()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('loading').textContent).toBe('false'),
+    )
+
+    // Both add* were called exactly once during the effect.
+    expect(um.events.addUserLoaded).toHaveBeenCalledOnce()
+    expect(um.events.addUserUnloaded).toHaveBeenCalledOnce()
+
+    // Unmount runs the effect cleanup, which must remove the handlers.
+    unmount()
+    expect(um.events.removeUserLoaded).toHaveBeenCalledOnce()
+    expect(um.events.removeUserUnloaded).toHaveBeenCalledOnce()
+
+    // And crucially, both remove* received the SAME callbacks that add*
+    // received — a common subtle bug is to pass a fresh arrow function on
+    // cleanup, which is a silent no-op at the oidc-client-ts level.
+    const loadedAdded = (um.events.addUserLoaded as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0]
+    const loadedRemoved = (um.events.removeUserLoaded as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0]
+    expect(loadedRemoved).toBe(loadedAdded)
+  })
+
+  it('hydrates the initial token from UserManager.getUser() when a session is already in storage', async () => {
+    const um = makeUserManager({
+      getUser: vi.fn().mockResolvedValue({ access_token: 'persisted-token' } as never),
+    })
+    mockConfigJson(um)
+
+    renderAuth()
+
+    // The provider's Step-2 effect calls getUser() and stashes the result;
+    // the derived accessToken in context reflects it once the promise resolves.
+    await waitFor(() =>
+      expect(screen.getByTestId('token').textContent).toBe('persisted-token'),
+    )
+    expect(screen.getByTestId('loading').textContent).toBe('false')
+  })
+})
+
 describe('AuthProvider — login() with UserManager ready', () => {
   it('calls signinRedirect when UserManager is ready', async () => {
     const um = makeUserManager()
