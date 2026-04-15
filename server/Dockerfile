@@ -2,7 +2,7 @@
 # Multi-stage build: compile in the Go toolchain image, ship in distroless.
 
 # ── Build stage ───────────────────────────────────────────────────────────────
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /src
 
