@@ -70,6 +70,31 @@ export function getInstallCommand(pkg: PackageEntry): string {
 }
 
 /**
+ * Count the tools declared by an MCP server's `capabilities` blob.
+ *
+ * `capabilities` is typed as free-form JSON in the spec (decision F), so
+ * the field is `{[key: string]: unknown}` on the generated type. We cannot
+ * assume `tools` is an array — publishers may omit it, ship it as an
+ * object, or encode it some other way.
+ *
+ * Returns:
+ *   - `null` when the count is *unknown* (field absent, wrong shape).
+ *     Cards MUST hide the chip in this case — showing "0 tools" for a
+ *     server that just didn't populate the field would falsely advertise
+ *     a capability-free server.
+ *   - a non-negative integer when `capabilities.tools` is a valid array.
+ *     `0` is still a "known" value and distinct from `null`; individual
+ *     call sites decide whether to render a chip for the zero case.
+ */
+export function countMcpTools(capabilities: unknown): number | null {
+  if (capabilities == null || typeof capabilities !== "object") return null
+  const caps = capabilities as Record<string, unknown>
+  const tools = caps.tools
+  if (!Array.isArray(tools)) return null
+  return tools.length
+}
+
+/**
  * Map a registryType to a short ecosystem label used in badges.
  */
 export function ecosystemLabel(registryType: string): string {

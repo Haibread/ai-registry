@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Eye, GitFork, Braces, Link2 } from 'lucide-react'
+import { ExternalLink, Eye, GitFork, Braces, Link2, Cpu } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/copy-button'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
-import { formatCount, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
+import { formatCount, ecosystemLabel, isRemoteTransport, countMcpTools } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type MCPServer = components['schemas']['MCPServer']
@@ -24,6 +24,12 @@ export function ServerCard({ server }: ServerCardProps) {
   const remotePkg = lv?.packages?.find(p => isRemoteTransport(p.transport.type) && p.transport.url) ?? null
   const endpointUrl = remotePkg?.transport.url ?? null
   const transportType = remotePkg?.transport.type ?? null
+
+  // `capabilities` is free-form JSON (decision F); `countMcpTools` returns
+  // `null` when the `tools` array isn't derivable. Hide the chip in that
+  // case and for the zero-tool case — mirrors agent-card.tsx, which also
+  // only renders the skills chip when the count is non-zero.
+  const toolCount = countMcpTools(lv?.capabilities)
 
   return (
     <Card className="flex flex-col hover:shadow-md transition-shadow group relative">
@@ -57,7 +63,7 @@ export function ServerCard({ server }: ServerCardProps) {
           /{server.slug}
         </div>
 
-        {/* Runtime + one ecosystem chip */}
+        {/* Runtime + one ecosystem chip + (optional) tool count */}
         {lv && (
           <div className="flex flex-wrap gap-1 pt-1">
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
@@ -66,6 +72,16 @@ export function ServerCard({ server }: ServerCardProps) {
             {ecosystem && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                 {ecosystem}
+              </Badge>
+            )}
+            {toolCount !== null && toolCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] px-1.5 py-0 flex items-center gap-1"
+                aria-label={`${toolCount} tool${toolCount !== 1 ? 's' : ''}`}
+              >
+                <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
+                {toolCount} tool{toolCount !== 1 ? 's' : ''}
               </Badge>
             )}
           </div>

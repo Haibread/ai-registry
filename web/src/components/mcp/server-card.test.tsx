@@ -99,4 +99,108 @@ describe('ServerCard', () => {
     expect(screen.queryByRole('link', { name: /view repository/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /view documentation/i })).not.toBeInTheDocument()
   })
+
+  // ── Tool count chip ──
+  // `capabilities` is free-form JSON in the spec (decision F). The chip
+  // must only render when a `tools` array is present *and* non-empty —
+  // an absent field, a wrong-shape field, and a zero-length array all
+  // hide the chip so a server that simply didn't populate the field is
+  // not falsely advertised as tool-free.
+
+  it('renders the tool count chip when capabilities.tools is a populated array', () => {
+    const server = makeServer({
+      latest_version: {
+        version: '2.0.0',
+        runtime: 'http',
+        protocol_version: '2025-03-26',
+        packages: [
+          {
+            registryType: 'npm',
+            identifier: '@acme/files',
+            version: '2.0.0',
+            transport: { type: 'stdio' },
+          },
+        ],
+        capabilities: {
+          tools: [{ name: 'read' }, { name: 'write' }, { name: 'list' }],
+        },
+      },
+    })
+    renderWithRouter(<ServerCard server={server} />)
+    expect(screen.getByText(/3 tools/)).toBeInTheDocument()
+  })
+
+  it('pluralises correctly for a single tool', () => {
+    const server = makeServer({
+      latest_version: {
+        version: '2.0.0',
+        runtime: 'http',
+        protocol_version: '2025-03-26',
+        packages: [
+          { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
+        ],
+        capabilities: { tools: [{ name: 'solo' }] },
+      },
+    })
+    renderWithRouter(<ServerCard server={server} />)
+    // Exactly "1 tool" (no 's'). Use a regex anchored on word-boundary to
+    // avoid matching "1 tools".
+    expect(screen.getByText(/\b1 tool\b/)).toBeInTheDocument()
+    expect(screen.queryByText(/1 tools/)).not.toBeInTheDocument()
+  })
+
+  it('hides the chip when capabilities is absent', () => {
+    renderWithRouter(<ServerCard server={makeServer()} />)
+    expect(screen.queryByText(/tool(s)?/i)).not.toBeInTheDocument()
+  })
+
+  it('hides the chip when capabilities.tools is absent', () => {
+    const server = makeServer({
+      latest_version: {
+        version: '2.0.0',
+        runtime: 'http',
+        protocol_version: '2025-03-26',
+        packages: [
+          { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
+        ],
+        capabilities: { resources: [] },
+      },
+    })
+    renderWithRouter(<ServerCard server={server} />)
+    expect(screen.queryByText(/tool(s)?/i)).not.toBeInTheDocument()
+  })
+
+  it('hides the chip when capabilities.tools is the wrong shape', () => {
+    const server = makeServer({
+      latest_version: {
+        version: '2.0.0',
+        runtime: 'http',
+        protocol_version: '2025-03-26',
+        packages: [
+          { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
+        ],
+        // Publishers sometimes ship tools as a map — we can't count
+        // reliably, so the chip must hide rather than show "0 tools".
+        capabilities: { tools: { read: {}, write: {} } },
+      },
+    })
+    renderWithRouter(<ServerCard server={server} />)
+    expect(screen.queryByText(/tool(s)?/i)).not.toBeInTheDocument()
+  })
+
+  it('hides the chip when capabilities.tools is an empty array', () => {
+    const server = makeServer({
+      latest_version: {
+        version: '2.0.0',
+        runtime: 'http',
+        protocol_version: '2025-03-26',
+        packages: [
+          { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
+        ],
+        capabilities: { tools: [] },
+      },
+    })
+    renderWithRouter(<ServerCard server={server} />)
+    expect(screen.queryByText(/tool(s)?/i)).not.toBeInTheDocument()
+  })
 })
