@@ -169,11 +169,12 @@ describe('MCPDetailPage', () => {
     expect(screen.getByText('2025-03-26')).toBeInTheDocument()
   })
 
-  it('renders the tab navigation: Overview, Installation, Versions, JSON', async () => {
+  it('renders the tab navigation: Overview, Installation, Tools, Versions, JSON', async () => {
     renderDetail()
     await screen.findByRole('heading', { name: /filesystem mcp server/i })
     expect(screen.getByRole('tab', { name: /overview/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /installation/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^tools/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /versions/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /json/i })).toBeInTheDocument()
   })
@@ -271,6 +272,90 @@ describe('MCPDetailPage — remote transport', () => {
   })
 })
 
+describe('MCPDetailPage — tools tab', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPOST.mockResolvedValue({})
+  })
+
+  it('shows the tool count on the tab trigger when tools are present', async () => {
+    primeGET({
+      ...STDIO_SERVER,
+      latest_version: {
+        ...STDIO_SERVER.latest_version,
+        tools: [
+          { name: 'read_file', description: 'Read a file' },
+          { name: 'write_file', description: 'Write a file' },
+        ],
+      },
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+    // Tab label is "Tools (2)" when populated.
+    expect(screen.getByRole('tab', { name: /tools \(2\)/i })).toBeInTheDocument()
+  })
+
+  it('renders a card per tool with name and description', async () => {
+    const user = userEvent.setup()
+    primeGET({
+      ...STDIO_SERVER,
+      latest_version: {
+        ...STDIO_SERVER.latest_version,
+        tools: [
+          { name: 'read_file', description: 'Read a file from disk' },
+          { name: 'write_file', description: 'Write a file to disk' },
+        ],
+      },
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+
+    await user.click(screen.getByRole('tab', { name: /^tools/i }))
+
+    expect(screen.getByText('read_file')).toBeInTheDocument()
+    expect(screen.getByText('write_file')).toBeInTheDocument()
+    expect(screen.getByText(/read a file from disk/i)).toBeInTheDocument()
+    expect(screen.getByText(/write a file to disk/i)).toBeInTheDocument()
+  })
+
+  it('renders the empty state when tools is absent or empty', async () => {
+    const user = userEvent.setup()
+    // Default STDIO_SERVER has no `tools` field.
+    primeGET(STDIO_SERVER)
+    renderDetail()
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+
+    await user.click(screen.getByRole('tab', { name: /^tools/i }))
+
+    expect(screen.getByText(/no tools declared/i)).toBeInTheDocument()
+  })
+
+  it('renders annotation badges for truthy boolean annotations', async () => {
+    const user = userEvent.setup()
+    primeGET({
+      ...STDIO_SERVER,
+      latest_version: {
+        ...STDIO_SERVER.latest_version,
+        tools: [
+          {
+            name: 'delete_file',
+            description: 'Delete a file',
+            annotations: { destructive: true, idempotent: false },
+          },
+        ],
+      },
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+
+    await user.click(screen.getByRole('tab', { name: /^tools/i }))
+
+    // Truthy annotation surfaces as a badge; falsy one is hidden.
+    expect(screen.getByText('destructive')).toBeInTheDocument()
+    expect(screen.queryByText('idempotent')).not.toBeInTheDocument()
+  })
+})
+
 describe('MCPDetailPage — tab spacing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -293,7 +378,7 @@ describe('MCPDetailPage — tab spacing', () => {
     // Overview is the default active tab.
     expect(activePanelClass()).toMatch(/\bmt-6\b/)
 
-    for (const name of [/installation/i, /versions/i, /json/i]) {
+    for (const name of [/installation/i, /^tools/i, /versions/i, /json/i]) {
       await user.click(screen.getByRole('tab', { name }))
       expect(activePanelClass()).toMatch(/\bmt-6\b/)
     }

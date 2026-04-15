@@ -8,7 +8,7 @@
 // @vitest-environment node
 
 import { describe, it, expect } from "vitest"
-import { cn, formatDate, formatCount, getInstallCommand, ecosystemLabel, isRemoteTransport, countMcpTools } from "./utils"
+import { cn, formatDate, formatCount, getInstallCommand, ecosystemLabel, isRemoteTransport } from "./utils"
 import type { components } from "@/lib/schema"
 
 type PackageEntry = components["schemas"]["PackageEntry"]
@@ -231,48 +231,3 @@ describe("formatCount", () => {
   })
 })
 
-// ── countMcpTools ─────────────────────────────────────────────────────────────
-
-describe("countMcpTools", () => {
-  it("returns null for null / undefined / non-object capabilities", () => {
-    expect(countMcpTools(null)).toBeNull()
-    expect(countMcpTools(undefined)).toBeNull()
-    expect(countMcpTools("not an object")).toBeNull()
-    expect(countMcpTools(42)).toBeNull()
-  })
-
-  it("returns null when the tools field is absent", () => {
-    expect(countMcpTools({})).toBeNull()
-    expect(countMcpTools({ resources: [] })).toBeNull()
-  })
-
-  it("returns null when the tools field is the wrong shape", () => {
-    // Publishers may ship tools as an object (indexed by name) or as a
-    // string — neither is something we can count reliably, so the chip
-    // must hide rather than show "0 tools".
-    expect(countMcpTools({ tools: {} })).toBeNull()
-    expect(countMcpTools({ tools: "search,code" })).toBeNull()
-    expect(countMcpTools({ tools: 5 })).toBeNull()
-  })
-
-  it("returns 0 for an empty tools array (known-empty ≠ unknown)", () => {
-    expect(countMcpTools({ tools: [] })).toBe(0)
-  })
-
-  it("returns the array length for a populated tools array", () => {
-    expect(countMcpTools({ tools: [{ name: "a" }] })).toBe(1)
-    expect(
-      countMcpTools({ tools: [{ name: "a" }, { name: "b" }, { name: "c" }] })
-    ).toBe(3)
-  })
-
-  it("does not care about other top-level capability fields", () => {
-    const caps = {
-      tools: [{ name: "a" }, { name: "b" }],
-      resources: [{ uri: "a" }],
-      prompts: [{ name: "p" }],
-      logging: {},
-    }
-    expect(countMcpTools(caps)).toBe(2)
-  })
-})

@@ -101,13 +101,14 @@ describe('ServerCard', () => {
   })
 
   // ── Tool count chip ──
-  // `capabilities` is free-form JSON in the spec (decision F). The chip
-  // must only render when a `tools` array is present *and* non-empty —
-  // an absent field, a wrong-shape field, and a zero-length array all
-  // hide the chip so a server that simply didn't populate the field is
+  // After migration 000007 the registry stores a first-class `tools[]` field
+  // on the latest version (distinct from `capabilities.tools`, which is the
+  // MCP spec capability-negotiation flag). The chip renders only when the
+  // array is present *and* non-empty — an absent field and a zero-length
+  // array both hide it so a server that simply didn't declare tools is
   // not falsely advertised as tool-free.
 
-  it('renders the tool count chip when capabilities.tools is a populated array', () => {
+  it('renders the tool count chip when latest_version.tools is a populated array', () => {
     const server = makeServer({
       latest_version: {
         version: '2.0.0',
@@ -121,13 +122,46 @@ describe('ServerCard', () => {
             transport: { type: 'stdio' },
           },
         ],
-        capabilities: {
-          tools: [{ name: 'read' }, { name: 'write' }, { name: 'list' }],
-        },
+        tools: [{ name: 'read' }, { name: 'write' }, { name: 'list' }],
       },
     })
     renderWithRouter(<ServerCard server={server} />)
     expect(screen.getByText(/3 tools/)).toBeInTheDocument()
+  })
+
+  it('renders up to 3 tool-name chips alongside the count (mirrors agent-card skills+tags row)', () => {
+    const server = makeServer({
+      latest_version: {
+        version: '2.0.0',
+        runtime: 'http',
+        protocol_version: '2025-03-26',
+        packages: [
+          {
+            registryType: 'npm',
+            identifier: '@acme/files',
+            version: '2.0.0',
+            transport: { type: 'stdio' },
+          },
+        ],
+        tools: [
+          { name: 'read_file' },
+          { name: 'write_file' },
+          { name: 'list_directory' },
+          { name: 'delete_file' }, // should NOT render — only first 3
+          { name: 'watch_path' },
+        ],
+      },
+    })
+    renderWithRouter(<ServerCard server={server} />)
+    // Count chip still renders.
+    expect(screen.getByText(/5 tools/)).toBeInTheDocument()
+    // First 3 tool names render as their own chips.
+    expect(screen.getByText('read_file')).toBeInTheDocument()
+    expect(screen.getByText('write_file')).toBeInTheDocument()
+    expect(screen.getByText('list_directory')).toBeInTheDocument()
+    // 4th + 5th tool names do NOT render on the card — they'd bloat the row.
+    expect(screen.queryByText('delete_file')).not.toBeInTheDocument()
+    expect(screen.queryByText('watch_path')).not.toBeInTheDocument()
   })
 
   it('pluralises correctly for a single tool', () => {
@@ -139,7 +173,7 @@ describe('ServerCard', () => {
         packages: [
           { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
         ],
-        capabilities: { tools: [{ name: 'solo' }] },
+        tools: [{ name: 'solo' }],
       },
     })
     renderWithRouter(<ServerCard server={server} />)
@@ -149,12 +183,13 @@ describe('ServerCard', () => {
     expect(screen.queryByText(/1 tools/)).not.toBeInTheDocument()
   })
 
-  it('hides the chip when capabilities is absent', () => {
+  it('hides the chip when latest_version.tools is absent', () => {
+    // Default makeServer() has no `tools` field on latest_version.
     renderWithRouter(<ServerCard server={makeServer()} />)
-    expect(screen.queryByText(/tool(s)?/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\btool(s)?\b/i)).not.toBeInTheDocument()
   })
 
-  it('hides the chip when capabilities.tools is absent', () => {
+  it('hides the chip when latest_version.tools is an empty array', () => {
     const server = makeServer({
       latest_version: {
         version: '2.0.0',
@@ -163,14 +198,17 @@ describe('ServerCard', () => {
         packages: [
           { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
         ],
-        capabilities: { resources: [] },
+        tools: [],
       },
     })
     renderWithRouter(<ServerCard server={server} />)
-    expect(screen.queryByText(/tool(s)?/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\btool(s)?\b/i)).not.toBeInTheDocument()
   })
 
-  it('hides the chip when capabilities.tools is the wrong shape', () => {
+  it('ignores capabilities.tools (the MCP capability-negotiation flag)', () => {
+    // The old reading treated `capabilities.tools` as the tool list. It is
+    // actually `{listChanged: bool}` and must never drive the chip — the
+    // `tools[]` field is the only source of truth now.
     const server = makeServer({
       latest_version: {
         version: '2.0.0',
@@ -179,28 +217,11 @@ describe('ServerCard', () => {
         packages: [
           { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
         ],
-        // Publishers sometimes ship tools as a map — we can't count
-        // reliably, so the chip must hide rather than show "0 tools".
-        capabilities: { tools: { read: {}, write: {} } },
+        capabilities: { tools: { listChanged: true } },
+        // tools intentionally omitted
       },
     })
     renderWithRouter(<ServerCard server={server} />)
-    expect(screen.queryByText(/tool(s)?/i)).not.toBeInTheDocument()
-  })
-
-  it('hides the chip when capabilities.tools is an empty array', () => {
-    const server = makeServer({
-      latest_version: {
-        version: '2.0.0',
-        runtime: 'http',
-        protocol_version: '2025-03-26',
-        packages: [
-          { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
-        ],
-        capabilities: { tools: [] },
-      },
-    })
-    renderWithRouter(<ServerCard server={server} />)
-    expect(screen.queryByText(/tool(s)?/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\btool(s)?\b/i)).not.toBeInTheDocument()
   })
 })

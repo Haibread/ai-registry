@@ -124,6 +124,98 @@ describe('AdminMCPNew', () => {
     })
   })
 
+  it('sends the parsed tools array in the version POST body', async () => {
+    const { container } = renderPage()
+    await waitFor(() => expect(mockGET).toHaveBeenCalled())
+
+    await selectNamespace()
+    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
+    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
+    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
+    fireEvent.change(container.querySelector('#tools') as HTMLTextAreaElement, {
+      target: {
+        value: JSON.stringify([
+          { name: 'read_file', description: 'Read a file' },
+          { name: 'write_file', description: 'Write a file' },
+        ]),
+      },
+    })
+
+    fireEvent.submit(container.querySelector('form')!)
+
+    await waitFor(() => {
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+      const versionCall = fetchMock.mock.calls.find(
+        (c) => c[0] === '/api/v1/mcp/servers/acme/my-srv/versions',
+      )
+      expect(versionCall).toBeDefined()
+      const body = JSON.parse((versionCall![1] as RequestInit).body as string)
+      expect(body.tools).toEqual([
+        { name: 'read_file', description: 'Read a file' },
+        { name: 'write_file', description: 'Write a file' },
+      ])
+    })
+  })
+
+  it('omits the tools field when the textarea is empty', async () => {
+    const { container } = renderPage()
+    await waitFor(() => expect(mockGET).toHaveBeenCalled())
+
+    await selectNamespace()
+    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
+    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
+    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
+    // tools field intentionally left blank
+
+    fireEvent.submit(container.querySelector('form')!)
+
+    await waitFor(() => {
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+      const versionCall = fetchMock.mock.calls.find(
+        (c) => c[0] === '/api/v1/mcp/servers/acme/my-srv/versions',
+      )
+      expect(versionCall).toBeDefined()
+      const body = JSON.parse((versionCall![1] as RequestInit).body as string)
+      expect(body).not.toHaveProperty('tools')
+    })
+  })
+
+  it('shows a parse error when tools is invalid JSON', async () => {
+    const { container } = renderPage()
+    await waitFor(() => expect(mockGET).toHaveBeenCalled())
+
+    await selectNamespace()
+    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
+    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
+    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
+    fireEvent.change(container.querySelector('#tools') as HTMLTextAreaElement, {
+      target: { value: 'not-valid-json{' },
+    })
+
+    fireEvent.submit(container.querySelector('form')!)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/tools field must be valid json/i)
+  })
+
+  it('rejects a non-array tools value client-side', async () => {
+    const { container } = renderPage()
+    await waitFor(() => expect(mockGET).toHaveBeenCalled())
+
+    await selectNamespace()
+    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
+    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
+    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
+    fireEvent.change(container.querySelector('#tools') as HTMLTextAreaElement, {
+      target: { value: '{"name":"oops"}' },
+    })
+
+    fireEvent.submit(container.querySelector('form')!)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/tools field must be a json array/i)
+  })
+
   it('shows error alert when POST returns an error', async () => {
     mockPOST.mockResolvedValueOnce({ data: undefined, error: { title: 'Slug already exists' } })
     const { container } = renderPage()

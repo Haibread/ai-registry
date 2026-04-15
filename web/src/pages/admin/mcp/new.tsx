@@ -99,6 +99,22 @@ export default function AdminMCPNew() {
           }]
         : []
 
+      // `tools` — client-side JSON parse so structural mistakes surface here
+      // instead of as a generic 422 from the backend. Empty string → omit.
+      // The backend validator (domain.ValidateTools) re-checks on write.
+      const toolsRaw = ((formData.get('tools') as string) ?? '').trim()
+      let tools: unknown = undefined
+      if (toolsRaw !== '') {
+        try {
+          tools = JSON.parse(toolsRaw)
+        } catch {
+          throw { step: 'version', message: 'Tools field must be valid JSON (an array of tool objects).' }
+        }
+        if (!Array.isArray(tools)) {
+          throw { step: 'version', message: 'Tools field must be a JSON array.' }
+        }
+      }
+
       const versionRes = await fetch(`/api/v1/mcp/servers/${ns}/${slug}/versions`, {
         method: 'POST',
         headers: {
@@ -110,6 +126,7 @@ export default function AdminMCPNew() {
           runtime,
           protocol_version: protocolVersion,
           ...(packages.length > 0 ? { packages } : {}),
+          ...(tools !== undefined ? { tools } : {}),
         }),
       })
       if (!versionRes.ok) {
@@ -343,6 +360,33 @@ export default function AdminMCPNew() {
                   Leave blank for stdio servers. Required for remote transports.
                 </p>
               </div>
+            </div>
+
+            {/* ── Tools (optional) ─────────────────────────────────────────
+                Publisher-declared list of tools this server exposes. Stored
+                as a first-class JSONB field on the version row (see migration
+                000007) — NOT the same as the MCP spec's capability-negotiation
+                `capabilities.tools` flag. Paste a JSON array of MCPTool
+                objects here; `name` is required and must be unique. */}
+            <div className="rounded-md border border-dashed p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="tools" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Tools (optional)
+                </Label>
+              </div>
+              <textarea
+                id="tools"
+                name="tools"
+                rows={6}
+                spellCheck={false}
+                placeholder={'[\n  {\n    "name": "read_file",\n    "description": "Read a file from disk",\n    "input_schema": { "type": "object" }\n  }\n]'}
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+              />
+              <p className="text-xs text-muted-foreground">
+                JSON array of tools published by this server (e.g. from <code className="font-mono">tools/list</code>).
+                Each item needs a unique <code className="font-mono">name</code>.
+                Not to be confused with <code className="font-mono">capabilities.tools</code>, which is the MCP spec's capability-negotiation flag.
+              </p>
             </div>
 
             <div className="flex items-center gap-2">

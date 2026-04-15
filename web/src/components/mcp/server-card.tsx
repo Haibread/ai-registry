@@ -4,7 +4,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/copy-button'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
-import { formatCount, ecosystemLabel, isRemoteTransport, countMcpTools } from '@/lib/utils'
+import { formatCount, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type MCPServer = components['schemas']['MCPServer']
@@ -25,11 +25,11 @@ export function ServerCard({ server }: ServerCardProps) {
   const endpointUrl = remotePkg?.transport.url ?? null
   const transportType = remotePkg?.transport.type ?? null
 
-  // `capabilities` is free-form JSON (decision F); `countMcpTools` returns
-  // `null` when the `tools` array isn't derivable. Hide the chip in that
-  // case and for the zero-tool case — mirrors agent-card.tsx, which also
-  // only renders the skills chip when the count is non-zero.
-  const toolCount = countMcpTools(lv?.capabilities)
+  // `tools` is a first-class JSONB array on the latest version (see
+  // migration 000007). Hide the chip when the field is absent or empty —
+  // mirrors agent-card.tsx, which also only renders the skills chip when
+  // the count is non-zero.
+  const toolCount = lv?.tools?.length ?? 0
 
   return (
     <Card className="flex flex-col hover:shadow-md transition-shadow group relative">
@@ -63,7 +63,7 @@ export function ServerCard({ server }: ServerCardProps) {
           /{server.slug}
         </div>
 
-        {/* Runtime + one ecosystem chip + (optional) tool count */}
+        {/* Runtime + one ecosystem chip */}
         {lv && (
           <div className="flex flex-wrap gap-1 pt-1">
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
@@ -74,16 +74,30 @@ export function ServerCard({ server }: ServerCardProps) {
                 {ecosystem}
               </Badge>
             )}
-            {toolCount !== null && toolCount > 0 && (
+          </div>
+        )}
+
+        {/* Tool count + top tool names — mirrors the agent-card skills row,
+            where `[Cpu N skills]` sits alongside up to 3 tag badges pulled
+            from `skills.flatMap(s => s.tags)`. Tools don't carry tags, so we
+            use the tool names themselves as the companion chips — unique
+            within a server and informative at a glance. */}
+        {toolCount > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex items-center gap-1">
+              <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
+              {toolCount} tool{toolCount !== 1 ? 's' : ''}
+            </Badge>
+            {lv?.tools?.slice(0, 3).map((tool) => (
               <Badge
-                variant="secondary"
-                className="text-[10px] px-1.5 py-0 flex items-center gap-1"
-                aria-label={`${toolCount} tool${toolCount !== 1 ? 's' : ''}`}
+                key={tool.name}
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 font-mono"
+                title={tool.description || tool.name}
               >
-                <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
-                {toolCount} tool{toolCount !== 1 ? 's' : ''}
+                {tool.name}
               </Badge>
-            )}
+            ))}
           </div>
         )}
       </CardHeader>
