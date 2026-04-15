@@ -1735,6 +1735,33 @@ components:
         transport:
           $ref: "#/components/schemas/PackageTransport"
 
+    MCPTool:
+      type: object
+      description: >
+        Publisher-declared tool exposed by an MCP server. This is a registry
+        extension — the MCP spec itself returns the live tool list at runtime
+        via the `tools/list` method. Storing the declared list here lets the
+        UI show tool counts and descriptions without connecting to a running
+        server. Structural requirements: `name` is required and unique within
+        the enclosing array; `input_schema`, if present, must be a JSON
+        Schema object.
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Unique tool name within the server
+        description:
+          type: string
+          description: Human-readable tool description
+        input_schema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema describing the tool's input arguments
+        annotations:
+          type: object
+          additionalProperties: true
+          description: MCP spec tool annotations (e.g. destructive, idempotent)
+
     MCPServerLatestVersion:
       type: object
       required: [version, runtime, protocol_version]
@@ -1753,7 +1780,14 @@ components:
         capabilities:
           type: object
           additionalProperties: true
-          description: MCP server capabilities (tools, resources, prompts, etc.)
+          description: >
+            MCP capability-negotiation object (e.g. `{tools:{listChanged:true}}`).
+            NOT a list of tools — see the `tools` field for that.
+        tools:
+          type: array
+          description: Publisher-declared list of tools this server exposes.
+          items:
+            $ref: "#/components/schemas/MCPTool"
         published_at:
           type: string
           format: date-time
@@ -1867,6 +1901,11 @@ components:
         capabilities:
           type: object
           additionalProperties: true
+        tools:
+          type: array
+          description: Publisher-declared list of tools this server exposes.
+          items:
+            $ref: "#/components/schemas/MCPTool"
         checksum:
           type: string
         signature:
@@ -1912,6 +1951,11 @@ components:
         capabilities:
           type: object
           additionalProperties: true
+        tools:
+          type: array
+          description: Publisher-declared list of tools this server exposes.
+          items:
+            $ref: "#/components/schemas/MCPTool"
         checksum:
           type: string
         signature:

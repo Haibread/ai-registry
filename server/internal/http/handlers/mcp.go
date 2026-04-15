@@ -301,6 +301,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Runtime         string          `json:"runtime"`
 		Packages        json.RawMessage `json:"packages"`
 		Capabilities    json.RawMessage `json:"capabilities"`
+		Tools           json.RawMessage `json:"tools"`
 		ProtocolVersion string          `json:"protocol_version"`
 		Checksum        string          `json:"checksum"`
 		Signature       string          `json:"signature"`
@@ -321,6 +322,10 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
+	if err := domain.ValidateTools(body.Tools); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		return
+	}
 
 	v, err := h.db.CreateMCPServerVersion(r.Context(), store.CreateMCPServerVersionParams{
 		ServerID:        srv.ID,
@@ -328,6 +333,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Runtime:         domain.Runtime(body.Runtime),
 		Packages:        body.Packages,
 		Capabilities:    body.Capabilities,
+		Tools:           body.Tools,
 		ProtocolVersion: body.ProtocolVersion,
 		Checksum:        body.Checksum,
 		Signature:       body.Signature,
@@ -598,12 +604,21 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 		"updated_at":   srv.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if lv := srv.LatestVersion; lv != nil {
+		// `tools` is always an array at the DB layer (NOT NULL DEFAULT '[]'),
+		// so we can emit it directly. Emit even when empty so the UI can
+		// distinguish "declared zero tools" from "endpoint didn't include the
+		// field" in a future transport refactor.
+		tools := lv.Tools
+		if len(tools) == 0 {
+			tools = json.RawMessage("[]")
+		}
 		m["latest_version"] = map[string]any{
 			"version":          lv.Version,
 			"runtime":          string(lv.Runtime),
 			"protocol_version": lv.ProtocolVersion,
 			"packages":         lv.Packages,
 			"capabilities":     lv.Capabilities,
+			"tools":            tools,
 			"published_at":     lv.PublishedAt,
 		}
 	}

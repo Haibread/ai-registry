@@ -856,3 +856,176 @@ func TestIncrementMCPServerCopyCount_NotFound(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
+
+// TestMCPServerVersion_ToolsRoundTrip verifies that the new tools JSONB column
+// is persisted as submitted and returned verbatim through every read path:
+// version GET, version list, GetMCPServer, GetMCPServerByID, and ListMCPServers.
+// Regression guard — forgetting to add `tools` to any of those SELECTs would
+// silently null out the field on read.
+func TestMCPServerVersion_ToolsRoundTrip(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "tools-ns", "Tools Corp")
+
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "tooly", Name: "Tooly",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	toolsIn := json.RawMessage(`[
+		{"name":"read_file","description":"reads a file"},
+		{"name":"write_file","description":"writes a file","input_schema":{"type":"object"}}
+	]`)
+
+	ver, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+		ServerID:        srv.ID,
+		Version:         "1.0.0",
+		Runtime:         domain.RuntimeStdio,
+		Packages:        validPackages,
+		Tools:           toolsIn,
+		ProtocolVersion: "2024-11-05",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServerVersion: %v", err)
+	}
+	if err := sharedDB.PublishMCPServerVersion(ctx, srv.ID, "1.0.0"); err != nil {
+		t.Fatalf("PublishMCPServerVersion: %v", err)
+	}
+	if err := sharedDB.SetMCPServerVisibility(ctx, srv.ID, domain.VisibilityPublic); err != nil {
+		t.Fatalf("SetMCPServerVisibility: %v", err)
+	}
+
+	// assertTwoTools verifies that the raw JSON has exactly the two tool
+	// names we sent in. We unmarshal rather than string-compare so
+	// whitespace and key ordering from pg don't break the test.
+	assertTwoTools := func(where string, raw json.RawMessage) {
+		t.Helper()
+		if len(raw) == 0 {
+			t.Errorf("%s: tools is empty (was stripped on the read path)", where)
+			return
+		}
+		var tools []map[string]any
+		if err := json.Unmarshal(raw, &tools); err != nil {
+			t.Errorf("%s: tools is not a JSON array: %v (%s)", where, err, string(raw))
+			return
+		}
+		if len(tools) != 2 {
+			t.Errorf("%s: expected 2 tools, got %d (%s)", where, len(tools), string(raw))
+			return
+		}
+		names := []string{fmt.Sprint(tools[0]["name"]), fmt.Sprint(tools[1]["name"])}
+		if names[0] != "read_file" || names[1] != "write_file" {
+			t.Errorf("%s: tool names = %v, want [read_file write_file]", where, names)
+		}
+	}
+
+	// 1. Raw create return value.
+	assertTwoTools("CreateMCPServerVersion return", ver.Tools)
+
+	// 2. GetMCPServerVersion.
+	got, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "1.0.0")
+	if err != nil {
+		t.Fatalf("GetMCPServerVersion: %v", err)
+	}
+	assertTwoTools("GetMCPServerVersion", got.Tools)
+
+	// 3. ListMCPServerVersions.
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	if err != nil {
+		t.Fatalf("ListMCPServerVersions: %v", err)
+	}
+	if len(versions) != 1 {
+		t.Fatalf("expected 1 version, got %d", len(versions))
+	}
+	assertTwoTools("ListMCPServerVersions[0]", versions[0].Tools)
+
+	// 4. GetMCPServer (latest-version projection).
+	row, err := sharedDB.GetMCPServer(ctx, "tools-ns", "tooly", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer: %v", err)
+	}
+	if row.LatestVersion == nil {
+		t.Fatal("GetMCPServer: latest version is nil")
+	}
+	assertTwoTools("GetMCPServer.LatestVersion", row.LatestVersion.Tools)
+
+	// 5. GetMCPServerByID (latest-version projection).
+	row2, err := sharedDB.GetMCPServerByID(ctx, srv.ID)
+	if err != nil {
+		t.Fatalf("GetMCPServerByID: %v", err)
+	}
+	if row2.LatestVersion == nil {
+		t.Fatal("GetMCPServerByID: latest version is nil")
+	}
+	assertTwoTools("GetMCPServerByID.LatestVersion", row2.LatestVersion.Tools)
+
+	// 6. ListMCPServers (public path).
+	listed, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{PublicOnly: true})
+	if err != nil {
+		t.Fatalf("ListMCPServers: %v", err)
+	}
+	var found *store.MCPServerRow
+	for i := range listed {
+		if listed[i].ID == srv.ID {
+			found = &listed[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("ListMCPServers: server not present in results")
+	}
+	if found.LatestVersion == nil {
+		t.Fatal("ListMCPServers: latest version is nil")
+	}
+	assertTwoTools("ListMCPServers[.].LatestVersion", found.LatestVersion.Tools)
+}
+
+// TestMCPServerVersion_ToolsDefaultEmptyArray verifies that omitting the Tools
+// param defaults the column to an empty array (not NULL), matching the
+// migration's NOT NULL DEFAULT '[]'::jsonb and the in-code default. This
+// protects the UI from having to distinguish "no tools" from "unset".
+func TestMCPServerVersion_ToolsDefaultEmptyArray(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "tools-default-ns", "Default Corp")
+
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "default-srv", Name: "Default",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	ver, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+		ServerID:        srv.ID,
+		Version:         "0.1.0",
+		Runtime:         domain.RuntimeStdio,
+		Packages:        validPackages,
+		ProtocolVersion: "2024-11-05",
+		// Tools intentionally omitted.
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServerVersion: %v", err)
+	}
+
+	var arr []any
+	if err := json.Unmarshal(ver.Tools, &arr); err != nil {
+		t.Fatalf("returned Tools should be a JSON array, got %q: %v", string(ver.Tools), err)
+	}
+	if len(arr) != 0 {
+		t.Errorf("expected empty tools array, got %v", arr)
+	}
+
+	got, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "0.1.0")
+	if err != nil {
+		t.Fatalf("GetMCPServerVersion: %v", err)
+	}
+	if err := json.Unmarshal(got.Tools, &arr); err != nil {
+		t.Fatalf("read-back Tools should be a JSON array, got %q: %v", string(got.Tools), err)
+	}
+	if len(arr) != 0 {
+		t.Errorf("expected empty tools array on read-back, got %v", arr)
+	}
+}

@@ -1,0 +1,31 @@
+-- 000007_mcp_tools.up.sql
+-- Adds a structured tools[] field to MCP server versions.
+--
+-- Until v0.3.0 the registry stored only `capabilities` (free-form MCP
+-- capability-negotiation flags) on each version. `capabilities.tools` is
+-- the per-spec object `{listChanged: bool}` that declares the server
+-- supports tool listing — NOT a list of tools. The actual tool list is
+-- only returned at runtime by calling `tools/list` on the live MCP server.
+--
+-- This migration adds a first-class `tools` JSONB column so publishers
+-- can declare the tools their server exposes at registration time. The
+-- shape is a JSON array of objects:
+--
+--   [
+--     {
+--       "name":         "read_file",                      -- required, unique within the array
+--       "description":  "Reads a file from disk",         -- optional
+--       "input_schema": { ... JSON Schema ... },          -- optional
+--       "annotations":  { "destructive": false, ... }     -- optional (MCP spec annotations)
+--     },
+--     ...
+--   ]
+--
+-- Structural validation (name required, names unique, input_schema must be
+-- a JSON object if present) happens in domain.ValidateTools; the DB only
+-- guarantees well-formed JSON via the JSONB column type.
+--
+-- Default is an empty array so existing versions don't need a backfill.
+
+ALTER TABLE mcp_server_versions
+    ADD COLUMN tools JSONB NOT NULL DEFAULT '[]'::jsonb;
