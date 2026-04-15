@@ -23,7 +23,13 @@ export default defineConfig({
         "src/test/**",
         "src/**/*.d.ts",
         "src/lib/schema.d.ts",
-        "src/pages/**", // Pages tested via E2E
+        // Public user pages are covered by Playwright e2e, not vitest.
+        // Admin pages DO get unit tests (detail.test.tsx, list.test.tsx,
+        // new.test.tsx, ...) and must be measured against the v0.2.2 DoD
+        // floor of 80 % statements per admin page — hence the explicit
+        // negation below.
+        "src/pages/!(admin)/**",
+        "src/pages/*.tsx",
       ],
     },
   },
