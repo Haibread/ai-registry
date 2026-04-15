@@ -7,6 +7,14 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  # actions/upload-artifact@v5 still bundles Node.js 20. GitHub is force-cutting
+  # Node 20 runners on June 2, 2026; this env var opts the action into the
+  # Node 24 runner early. See .github/workflows/publish.yml for the same
+  # escape hatch used for the docker/* actions.
+  # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   e2e:
     name: Playwright E2E
