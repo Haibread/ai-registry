@@ -35,8 +35,31 @@ type RouterDeps struct {
 	PublicRateLimitRPM int
 }
 
-// NewRouter builds and returns the chi router with all middleware and routes.
+// NewRouter builds and returns the fully wrapped HTTP handler: the chi router
+// with all middleware and routes, wrapped in otelhttp instrumentation.
 func NewRouter(deps RouterDeps) http.Handler {
+	mux := buildMux(deps)
+	return otelhttp.NewHandler(mux, "",
+		otelhttp.WithSpanNameFormatter(func(_ string, req *http.Request) string {
+			rctx := chi.RouteContext(req.Context())
+			if rctx != nil && rctx.RoutePattern() != "" {
+				return req.Method + " " + rctx.RoutePattern()
+			}
+			return req.Method + " " + req.URL.Path
+		}),
+	)
+}
+
+// NewRouterForTest returns the raw *chi.Mux without the otelhttp wrapper so
+// tests can use chi.Walk to enumerate registered routes. Production code
+// should always call NewRouter instead.
+func NewRouterForTest(deps RouterDeps) *chi.Mux {
+	return buildMux(deps)
+}
+
+// buildMux constructs the chi router with middleware and routes. It is the
+// unwrapped inner of NewRouter, exported to tests via NewRouterForTest.
+func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Auth validator ────────────────────────────────────────────────────────
 	jwksCache := auth.NewJWKSCache(deps.AuthConf.JWKSEndpoint(), 0)
 	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer)
@@ -188,14 +211,5 @@ func NewRouter(deps RouterDeps) http.Handler {
 		})
 	})
 
-	// ── Wrap with OTel HTTP instrumentation ───────────────────────────────────
-	return otelhttp.NewHandler(r, "",
-		otelhttp.WithSpanNameFormatter(func(_ string, req *http.Request) string {
-			rctx := chi.RouteContext(req.Context())
-			if rctx != nil && rctx.RoutePattern() != "" {
-				return req.Method + " " + rctx.RoutePattern()
-			}
-			return req.Method + " " + req.URL.Path
-		}),
-	)
+	return r
 }
