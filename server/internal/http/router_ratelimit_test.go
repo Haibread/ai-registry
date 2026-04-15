@@ -1,6 +1,8 @@
 package http_test
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +10,15 @@ import (
 	"github.com/haibread/ai-registry/internal/auth"
 	stdhttp "github.com/haibread/ai-registry/internal/http"
 )
+
+// discardLogger returns a slog.Logger that swallows everything. The router's
+// RequestLogger middleware calls Logger.InfoContext unconditionally; without a
+// non-nil logger every request panics inside chi.Recoverer. Tests that don't
+// care about log output use this to keep test output clean while still
+// exercising the full production middleware stack.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 // TestPublicRateLimitRPM_WiredToMiddleware proves that the RouterDeps field
 // PublicRateLimitRPM actually reaches the per-IP bucket. It is easy to break
@@ -26,6 +37,7 @@ func TestPublicRateLimitRPM_WiredToMiddleware(t *testing.T) {
 	const limit = 2
 
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
+		Logger:             discardLogger(),
 		AuthConf:           auth.Config{OIDCIssuer: "https://example.invalid"},
 		PublicRateLimitRPM: limit,
 	})
@@ -68,6 +80,7 @@ func TestPublicRateLimitRPM_WiredToMiddleware(t *testing.T) {
 // redundant with the explicit test above).
 func TestPublicRateLimitRPM_ZeroDefaultsTo1000(t *testing.T) {
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
+		Logger:             discardLogger(),
 		AuthConf:           auth.Config{OIDCIssuer: "https://example.invalid"},
 		PublicRateLimitRPM: 0, // must NOT be interpreted as "allow zero"
 	})

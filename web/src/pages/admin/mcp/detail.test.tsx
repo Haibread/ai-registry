@@ -7,6 +7,12 @@ vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token' }),
 }))
 
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return { ...actual, useNavigate: () => mockNavigate }
+})
+
 const mockGET = vi.fn()
 const mockPOST = vi.fn()
 const mockPATCH = vi.fn()
@@ -59,7 +65,7 @@ describe('AdminMCPDetail', () => {
     mockGET.mockResolvedValue({ data: sampleServer })
     mockPOST.mockResolvedValue({})
     mockPATCH.mockResolvedValue({})
-    mockDELETE.mockResolvedValue({})
+    mockDELETE.mockResolvedValue({ data: {}, error: undefined })
   })
 
   it('fetches the server detail on mount', async () => {
@@ -131,5 +137,101 @@ describe('AdminMCPDetail', () => {
     mockGET.mockRejectedValueOnce(new Error('nope'))
     renderPage()
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+  })
+
+  // ─── Lifecycle / delete / error-surfacing coverage (v0.2.2) ───────────────
+  //
+  // The previous batch covered the happy-path flows (visibility, deprecate,
+  // PATCH edit). What was missing — and is what makes the admin page actually
+  // trustworthy — is the LifecycleStepper transition (which lives in a
+  // separate component and is wired via a render-prop callback), the edit
+  // cancel flow (state must reset without firing a mutation), the full
+  // delete-confirm → DELETE → navigate chain, and the failure path where a
+  // mutation errors out and the UI surfaces a retry hint.
+
+  it('deprecates via the LifecycleStepper Deprecated transition', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    // The LifecycleStepper renders a clickable button for each target state.
+    // `defaultAllowedTransitions('published')` returns ['deprecated'], so the
+    // Deprecated stage should be clickable and fire the same POST that the
+    // DeprecateButton does — but WITHOUT going through window.confirm.
+    // The button's text content is "Deprecated" and only the clickable
+    // target has `title="Transition to …"`; querying by title keeps this
+    // unambiguous without reaching into classnames.
+    const transitionBtn = screen.getByTitle(/transition to deprecated/i)
+    fireEvent.click(transitionBtn)
+
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/deprecate',
+        { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
+      )
+    })
+  })
+
+  it('opens and cancels the edit form without firing a PATCH', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    // The edit form's own heading anchors the assertion — it is *inside* the
+    // form, not the top-level page heading.
+    expect(screen.getByRole('heading', { name: /edit mcp server/i })).toBeInTheDocument()
+
+    // There are now TWO "cancel"-shaped buttons once the form is open: the
+    // in-form Cancel, and the top-level "Cancel edit" toggle. Click the form's
+    // Cancel — that's the one the user actually reaches for.
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: /edit mcp server/i })).not.toBeInTheDocument(),
+    )
+    expect(mockPATCH).not.toHaveBeenCalled()
+  })
+
+  it('deletes the server and navigates back to the list when confirmed', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    await waitFor(() => {
+      expect(mockDELETE).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}',
+        { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
+      )
+    })
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/admin/mcp')
+    })
+    confirmSpy.mockRestore()
+  })
+
+  it('does not delete when the user declines the confirm dialog', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    // Nothing to wait for — the user said no, so the call should never happen.
+    // Give React Query a microtask to settle, then assert.
+    await Promise.resolve()
+    expect(mockDELETE).not.toHaveBeenCalled()
+    expect(mockNavigate).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('surfaces an "Action failed" message when visibility mutation rejects', async () => {
+    mockPOST.mockRejectedValueOnce(new Error('boom'))
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByRole('button', { name: /make private/i }))
+
+    expect(await screen.findByText(/action failed/i)).toBeInTheDocument()
   })
 })
