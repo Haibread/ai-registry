@@ -19,7 +19,7 @@ services:
 
   # ── Keycloak (dev mode, built-in H2 DB) ────────────────────────────────────
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0
+    image: quay.io/keycloak/keycloak:26.6
     command: start-dev --import-realm
     restart: unless-stopped
     environment:
@@ -85,7 +85,7 @@ services:
 
   # ── OTel Collector (observability profile) ──────────────────────────────────
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.120.0
+    image: otel/opentelemetry-collector-contrib:0.150.1
     profiles: [observability]
     restart: unless-stopped
     command: --config /etc/otel/config.yaml
