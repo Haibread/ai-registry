@@ -195,13 +195,57 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MC
 }
 
 func upsertMCPVersion(ctx context.Context, db *store.DB, serverID string, v MCPVersionSpec, logger *slog.Logger) error {
-	// Skip if version already exists.
+	// Tools: marshal the publisher-declared list (possibly empty) and run
+	// it through domain.ValidateTools so bootstrap catches structural
+	// mistakes at load time rather than letting the UI render garbage.
+	// Marshaled up front so both the "create new version" path and the
+	// "backfill tools on existing version" path can use the same bytes.
+	var tools json.RawMessage
+	if v.Tools != nil {
+		var err error
+		tools, err = json.Marshal(v.Tools)
+		if err != nil {
+			return fmt.Errorf("marshalling tools: %w", err)
+		}
+		if err := domain.ValidateTools(tools); err != nil {
+			return fmt.Errorf("validating tools: %w", err)
+		}
+	}
+
+	// Does the version already exist?
 	var exists bool
 	_ = db.Pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM mcp_server_versions WHERE server_id = $1 AND version = $2)`,
 		serverID, v.Version,
 	).Scan(&exists)
 	if exists {
+		// Existing version: normally immutable, but we allow a narrow
+		// backfill for `tools` when the stored array is empty and the
+		// spec now declares a non-empty list. This lets a stack that was
+		// seeded before the tools field existed catch up on the next
+		// bootstrap run without wiping the database. We do NOT touch
+		// packages, runtime, capabilities, or protocol_version — those
+		// stay frozen to preserve the MCP publish-immutability contract.
+		if len(v.Tools) > 0 {
+			var current []byte
+			if err := db.Pool.QueryRow(ctx,
+				`SELECT tools FROM mcp_server_versions WHERE server_id = $1 AND version = $2`,
+				serverID, v.Version,
+			).Scan(&current); err == nil && isEmptyJSONArray(current) {
+				if _, err := db.Pool.Exec(ctx,
+					`UPDATE mcp_server_versions SET tools = $1, updated_at = now()
+					 WHERE server_id = $2 AND version = $3`,
+					tools, serverID, v.Version,
+				); err != nil {
+					return fmt.Errorf("backfilling tools: %w", err)
+				}
+				logger.Info("bootstrap: backfilled mcp version tools",
+					slog.String("server", serverID),
+					slog.String("version", v.Version),
+					slog.Int("tool_count", len(v.Tools)))
+				return nil
+			}
+		}
 		logger.Info("bootstrap: mcp version already exists, skipping",
 			slog.String("server", serverID), slog.String("version", v.Version))
 		return nil
@@ -231,6 +275,7 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID string, v MCPV
 		Runtime:         runtime,
 		Packages:        packages,
 		Capabilities:    capabilities,
+		Tools:           tools,
 		ProtocolVersion: protocolVersion,
 	})
 	if err != nil {
@@ -402,6 +447,22 @@ func upsertAgentVersion(ctx context.Context, db *store.DB, agentID string, v Age
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// isEmptyJSONArray returns true if raw is JSON-equivalent to an empty array.
+// Accepts `null`, `[]`, and `[ ]` (with interior whitespace). Used by the
+// tools-backfill path in upsertMCPVersion to decide whether it's safe to
+// overwrite the stored value.
+func isEmptyJSONArray(raw []byte) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var v []json.RawMessage
+	if err := json.Unmarshal(raw, &v); err != nil {
+		// Not an array at all — don't touch it.
+		return false
+	}
+	return len(v) == 0
+}
 
 // deriveRuntime infers the server runtime from the first package's transport type.
 func deriveRuntime(packages []PackageSpec) domain.Runtime {

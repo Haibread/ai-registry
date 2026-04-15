@@ -2,6 +2,7 @@ package bootstrap_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,11 @@ import (
 	"github.com/haibread/ai-registry/internal/bootstrap"
 	"github.com/haibread/ai-registry/internal/store"
 )
+
+// jsonUnmarshal is a tiny helper to keep the backfill test readable — it
+// lets assertions do `jsonUnmarshal(raw, &out)` without repeating the type
+// assertion at every call site.
+func jsonUnmarshal(raw []byte, v any) error { return json.Unmarshal(raw, v) }
 
 // ── shared DB for integration tests ──────────────────────────────────────────
 
@@ -481,6 +487,125 @@ agents: []
 	}
 	if len(versions) != 1 {
 		t.Errorf("version count = %d, want 1 (idempotency check)", len(versions))
+	}
+}
+
+// TestRun_BackfillsToolsOnExistingVersion verifies that re-running bootstrap
+// after the `tools` field was added to the spec backfills the empty array
+// stored on an existing published version. This is the path that unblocks a
+// stack seeded on an older version of the code from showing tool counts
+// without wiping the database.
+func TestRun_BackfillsToolsOnExistingVersion(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	// First run: no tools declared. This simulates a stack seeded before
+	// the `tools` field existed — the row ends up with `tools = '[]'`.
+	specV1 := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+mcp_servers:
+  - publisher: "acme"
+    slug: "srv"
+    name: "Server"
+    description: "desc"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        packages:
+          - registry_type: "npm"
+            identifier: "@acme/srv"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+agents: []
+`)
+	s1, err := bootstrap.LoadSpec(specV1)
+	if err != nil {
+		t.Fatalf("LoadSpec v1 error = %v", err)
+	}
+	if err := bootstrap.Run(ctx, sharedDB, s1, nil); err != nil {
+		t.Fatalf("Run v1 error = %v", err)
+	}
+
+	srv, err := sharedDB.GetMCPServer(ctx, "acme", "srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer error = %v", err)
+	}
+	if got := string(srv.LatestVersion.Tools); got != "" && got != "[]" {
+		t.Fatalf("initial tools = %q, want empty array", got)
+	}
+
+	// Second run: same version, now with a tools array declared. The
+	// backfill path must replace the stored empty array with the new list.
+	specV2 := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+mcp_servers:
+  - publisher: "acme"
+    slug: "srv"
+    name: "Server"
+    description: "desc"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        packages:
+          - registry_type: "npm"
+            identifier: "@acme/srv"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+        tools:
+          - name: "read_file"
+            description: "Read a file"
+          - name: "write_file"
+            description: "Write a file"
+agents: []
+`)
+	s2, err := bootstrap.LoadSpec(specV2)
+	if err != nil {
+		t.Fatalf("LoadSpec v2 error = %v", err)
+	}
+	if err := bootstrap.Run(ctx, sharedDB, s2, nil); err != nil {
+		t.Fatalf("Run v2 error = %v", err)
+	}
+
+	// The stored tools array should now carry both entries.
+	srv2, err := sharedDB.GetMCPServer(ctx, "acme", "srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer after backfill error = %v", err)
+	}
+	var toolsOut []map[string]any
+	if err := jsonUnmarshal(srv2.LatestVersion.Tools, &toolsOut); err != nil {
+		t.Fatalf("unmarshal tools after backfill: %v (raw=%s)", err, string(srv2.LatestVersion.Tools))
+	}
+	if len(toolsOut) != 2 {
+		t.Fatalf("tool count after backfill = %d, want 2 (raw=%s)", len(toolsOut), string(srv2.LatestVersion.Tools))
+	}
+	if toolsOut[0]["name"] != "read_file" || toolsOut[1]["name"] != "write_file" {
+		t.Errorf("unexpected tool names after backfill: %+v", toolsOut)
+	}
+
+	// Third run with the SAME tools should be a no-op: the backfill path
+	// only fires when the stored array is empty, so the existing content
+	// is preserved and no error is returned.
+	if err := bootstrap.Run(ctx, sharedDB, s2, nil); err != nil {
+		t.Fatalf("Run v2 (idempotent) error = %v", err)
+	}
+	srv3, err := sharedDB.GetMCPServer(ctx, "acme", "srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer after idempotent run error = %v", err)
+	}
+	var toolsOut3 []map[string]any
+	if err := jsonUnmarshal(srv3.LatestVersion.Tools, &toolsOut3); err != nil {
+		t.Fatalf("unmarshal tools after idempotent run: %v", err)
+	}
+	if len(toolsOut3) != 2 {
+		t.Errorf("tool count after idempotent run = %d, want 2", len(toolsOut3))
 	}
 }
 
