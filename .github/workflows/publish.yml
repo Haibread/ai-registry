@@ -18,6 +18,13 @@ env:
   # OCI registry paths must be all-lowercase; lowercasing is applied per-job
   # via a dedicated step that overwrites IMAGE_PREFIX in $GITHUB_ENV.
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/ai-registry
+  # docker/build-push-action, docker/login-action, and docker/metadata-action
+  # still bundle Node.js 20. GitHub is force-cutting Node 20 runners on
+  # June 2, 2026; this env var opts those actions into the Node 24 runner
+  # early (documented as the interim fix in the deprecation post until the
+  # docker org ships Node-24-native bundles).
+  # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ── Server image ─────────────────────────────────────────────────────────────
