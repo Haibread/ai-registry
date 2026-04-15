@@ -941,15 +941,35 @@ func TestV0Conformance_GetServer_PackageShape(t *testing.T) {
 	body := decodeJSON(t, rec.Body)
 	server := body["server"].(map[string]any)
 	packages, ok := server["packages"].([]any)
-	if !ok || len(packages) == 0 {
-		t.Skip("no packages present in seeded server — skipping package shape test")
+	// The shared seeder uses validPackages (mcp_test.go) which always has one
+	// npm stdio entry, so the only way this branch triggers is if the seeder
+	// regressed. Fail loudly rather than silently skipping — a silent skip
+	// would hide a serialization bug on the /v0/ wire format, and that's
+	// precisely what this suite exists to catch.
+	if !ok {
+		t.Fatalf("server.packages must be a JSON array; got %T (%v)", server["packages"], server["packages"])
+	}
+	if len(packages) == 0 {
+		t.Fatal("server.packages is empty — seeder regression: expected validPackages to have at least one entry")
 	}
 
 	pkg := packages[0].(map[string]any)
-	for _, required := range []string{"registryType", "identifier", "transport"} {
+	// registryType + identifier + transport are the three fields the spec
+	// requires on every package entry. transport itself is an object; we drill
+	// one level deeper because a missing transport.type is the exact bug this
+	// test needs to catch (the handler currently defaults it to "stdio" when
+	// absent, which would mask the problem in production).
+	for _, required := range []string{"registryType", "identifier", "version", "transport"} {
 		if _, ok := pkg[required]; !ok {
 			t.Errorf("package missing required field %q", required)
 		}
+	}
+	transport, ok := pkg["transport"].(map[string]any)
+	if !ok {
+		t.Fatalf("package.transport must be an object; got %T", pkg["transport"])
+	}
+	if _, ok := transport["type"]; !ok {
+		t.Error("package.transport.type is required by the MCP spec")
 	}
 }
 

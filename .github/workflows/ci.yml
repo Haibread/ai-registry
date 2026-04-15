@@ -37,7 +37,42 @@ jobs:
       # that GitHub-hosted runners provide out of the box.
       - name: go test
         working-directory: server
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      # Explicit conformance + contract suite run. Everything under this step
+      # already ran as part of `go test ./...` above — the repeat is deliberate
+      # so the CI log surfaces these tests by name. If the /v0/ wire-format
+      # conformance, A2A Agent Card schema, OpenAPI↔router contract, or the
+      # admin-guard router contract are ever deleted or renamed without
+      # updating this step, CI fails loudly instead of silently passing.
+      - name: Contract & conformance suites (named)
+        working-directory: server
+        run: |
+          set -euo pipefail
+          go test -count=1 -v \
+            -run '^(TestV0Conformance_|TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
+            ./internal/http/handlers/...
+          go test -count=1 -v \
+            -run '^(TestOpenAPIContract_MatchesRouter$|TestAllWriteRoutesRequireAdmin$|TestPublicWriteRoutesBypassAdmin$)' \
+            ./internal/http/
+
+      # Coverage floor — catches silent test deletions that drop overall
+      # coverage without anything else noticing. The floor is intentionally
+      # below the current number so normal development doesn't bounce off
+      # it; the goal is to detect regressions, not to gate every PR on a
+      # moving target. Raise this value when the real number climbs so the
+      # gate keeps providing signal.
+      - name: Coverage floor
+        working-directory: server
+        run: |
+          set -euo pipefail
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "total coverage: ${total}%"
+          floor=70.0
+          awk -v t="$total" -v f="$floor" 'BEGIN { exit (t+0 >= f+0) ? 0 : 1 }' || {
+            echo "::error::Go coverage ${total}% is below the floor of ${floor}%"
+            exit 1
+          }
 
   # ── Web: lint, typecheck, unit tests ─────────────────────────────────────────
   web:
