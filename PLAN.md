@@ -389,23 +389,61 @@ independently and gather feedback before committing to the activity-feed
 work. Each item below is a self-contained task; the user validates each
 before the next one starts.
 
-**Task 1 — Tool/skill count on list cards (smallest, ships first)**
-- [ ] Agent card (`web/src/components/shared/agent-card.tsx`): surface
-      `skills.length` as an inline metric (e.g. `5 skills`). Data is
-      already on the `Agent` root, no API change needed.
-- [ ] MCP card (`web/src/components/shared/server-card.tsx`): surface a
-      tool count when derivable from the server's latest published
-      version's `capabilities.tools[]`. Because `capabilities` is a
-      free-form JSONB blob (decision F), the chip MUST gracefully hide
-      when the field is absent or the array has an unexpected shape —
-      never show `0 tools` for a server that just didn't populate the
-      field.
-- [ ] If the list payload doesn't already include enough to compute the
-      count, add a derived `tool_count` / `skill_count` integer field to
-      the list response (NOT to the detail response — detail already
-      has the full data). Update OpenAPI.
-- [ ] Unit tests on both card components for the "has count",
-      "zero count", and "unknown / hide chip" branches.
+**Task 1 — Real MCP tools field end-to-end** ✅ **SHIPPED**
+
+Originally scoped as a lightweight chip reading `capabilities.tools[]` from
+the free-form capabilities JSONB. During implementation we discovered the
+MCP spec uses `capabilities.tools` as a capability-negotiation flag
+(`{listChanged: bool}`), NOT a tool list — the actual list is only returned
+at runtime via `tools/list`. Option C ("real typed `tools[]` field stored
+in DB") was chosen so the registry can display tool counts and metadata
+offline, and to end the semantic collision with the spec's capabilities
+flag.
+
+Shipped surface:
+- [x] Migration `000007_mcp_tools` adds `tools JSONB NOT NULL DEFAULT '[]'`
+      to `mcp_server_versions`. Additive, no backfill needed.
+- [x] `domain.MCPTool` struct + `domain.ValidateTools` (non-empty name,
+      unique within array, optional `description` / `input_schema` /
+      `annotations`). Allows empty array so servers that simply don't
+      declare tools are valid.
+- [x] Store layer: `LatestMCPVersion.Tools` raw field, lateral sub-select
+      adds `v.tools` to all three server read paths, `CreateMCPServerVersion`
+      accepts `Tools` and defaults to `[]` when omitted. Integration-test
+      coverage via `TestMCPServerVersion_ToolsRoundTrip` (6 read paths) and
+      `TestMCPServerVersion_ToolsDefaultEmptyArray`.
+- [x] Handler: `POST /api/v1/mcp/servers/{ns}/{slug}/versions` accepts
+      `tools`, validates via `ValidateTools`, persists; `serverToResponse`
+      projects `tools` onto `latest_version` defaulting to `[]`. New tests:
+      `TestMCPHandler_CreateVersion_WithTools`,
+      `TestMCPHandler_CreateVersion_InvalidTools`,
+      `TestMCPHandler_GetServer_IncludesToolsOnLatestVersion`.
+- [x] OpenAPI: new `MCPTool` schema component; `tools` field added to
+      `MCPServerLatestVersion`, `MCPServerVersion`, and
+      `CreateMCPServerVersionRequest`. Capabilities description rewritten
+      to call out the distinction explicitly. v0 spec endpoints
+      unchanged — they stay strictly MCP-spec shaped.
+- [x] Bootstrap: `MCPVersionSpec.Tools` YAML field + validation at load
+      time. Sample YAML populated with realistic tools for 7 versions
+      across 6 servers (filesystem, computer-use, github, web-search,
+      postgres, kubernetes) so local dev has data to render.
+- [x] Agent card chip unchanged (already uses typed `skills.length`).
+      MCP card chip rewired: `toolCount = lv?.tools?.length ?? 0`, chip
+      hides when absent or empty. Regression test confirms
+      `capabilities.tools: {listChanged: true}` alone does NOT render the
+      chip (new test: "ignores capabilities.tools").
+- [x] MCP server detail page: new Tools tab between Installation and
+      Versions. Renders one card per tool (name + description +
+      annotation badges + collapsible input_schema viewer), with an
+      empty state referencing the spec's runtime `tools/list` path.
+      Tab label shows count (`Tools (3)`) when populated.
+- [x] Admin new-server form: JSON textarea for declaring tools when
+      creating the first version. Client-side parse + array check
+      returns inline errors before the POST; backend re-validates via
+      `ValidateTools`.
+- [x] Utility cleanup: `countMcpTools` helper and its test block removed
+      from `web/src/lib/utils.ts` / `utils.test.ts` — the typed field
+      replaces the shape-guessing heuristic entirely.
 
 **Task 2 — Card redesign**
 - [ ] Refactor `server-card.tsx` and `agent-card.tsx` to the aligned
