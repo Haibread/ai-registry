@@ -126,7 +126,7 @@ export default function AgentDetailPage() {
           segments={[
             { label: 'Home', href: '/' },
             { label: 'Agents', href: '/agents' },
-            { label: data.namespace, href: `/agents?namespace=${data.namespace}` },
+            { label: data.namespace, href: `/agents/${data.namespace}` },
             { label: data.slug },
           ]}
         />
@@ -157,7 +157,7 @@ export default function AgentDetailPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm text-muted-foreground font-mono">
-              <Link to={`/agents?namespace=${data.namespace}`} className="hover:text-foreground transition-colors">
+              <Link to={`/agents/${data.namespace}`} className="hover:text-foreground transition-colors">
                 {data.namespace}
               </Link>
               /{data.slug}

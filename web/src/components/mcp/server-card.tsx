@@ -55,7 +55,7 @@ export function ServerCard({ server }: ServerCardProps) {
         </div>
         <div className="text-xs text-muted-foreground font-mono relative z-10">
           <Link
-            to={`/mcp?namespace=${server.namespace}`}
+            to={`/mcp/${server.namespace}`}
             className="hover:text-foreground transition-colors"
           >
             {server.namespace}

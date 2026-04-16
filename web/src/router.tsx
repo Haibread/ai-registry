@@ -7,8 +7,10 @@ import GettingStartedPage from '@/pages/getting-started'
 import ChangelogPage from '@/pages/changelog'
 import PublisherDetailPage from '@/pages/publishers/detail'
 import MCPListPage from '@/pages/mcp/list'
+import MCPNamespacePage from '@/pages/mcp/namespace'
 import MCPDetailPage from '@/pages/mcp/detail'
 import AgentListPage from '@/pages/agents/list'
+import AgentNamespacePage from '@/pages/agents/namespace'
 import AgentDetailPage from '@/pages/agents/detail'
 import { AuthCallback } from '@/auth/AuthCallback'
 import NotFoundPage from '@/pages/not-found'
@@ -50,8 +52,10 @@ export function AppRoutes() {
       <Route path="/changelog" element={<ChangelogPage />} />
       <Route path="/publishers/:slug" element={<PublisherDetailPage />} />
       <Route path="/mcp" element={<MCPListPage />} />
+      <Route path="/mcp/:namespace" element={<MCPNamespacePage />} />
       <Route path="/mcp/:ns/:slug" element={<MCPDetailPage />} />
       <Route path="/agents" element={<AgentListPage />} />
+      <Route path="/agents/:namespace" element={<AgentNamespacePage />} />
       <Route path="/agents/:ns/:slug" element={<AgentDetailPage />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
