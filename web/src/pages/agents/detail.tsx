@@ -37,7 +37,8 @@ import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { PublisherSidebar } from '@/components/shared/publisher-sidebar'
 import { StatTile } from '@/components/shared/stat-tile'
 import { SectionHeader } from '@/components/shared/section-header'
-import { ActivityStrip } from '@/components/shared/activity-strip'
+import { EngagementStrip } from '@/components/shared/engagement-strip'
+import { ActivityFeed } from '@/components/shared/activity-feed'
 import { RelatedEntries } from '@/components/shared/related-entries'
 import { VersionHistory } from '@/components/shared/version-history'
 import { StickyDetailHeader } from '@/components/shared/sticky-detail-header'
@@ -185,6 +186,12 @@ export default function AgentDetailPage() {
         </div>
 
         {data.description && <p className="text-muted-foreground max-w-prose">{data.description}</p>}
+
+        {/* README — the publisher's narrative description. Rendered near
+            the top of the page (above the tabs) so it's always visible,
+            regardless of which tab the reader has open. Fills the page
+            container width — MarkdownRenderer already sets max-w-none. */}
+        {data.readme && <MarkdownRenderer content={data.readme} />}
 
         <Separator />
 
@@ -362,26 +369,24 @@ export default function AgentDetailPage() {
               </div>
             </section>
 
-            {/* ─── Activity ───
+            {/* ─── Engagement ───
                 De-emphasized engagement footnote. Kept as a compact inline
                 strip because skills and capabilities matter more than vanity
                 counts on this page. */}
-            <ActivityStrip
+            <EngagementStrip
               viewCount={data.view_count ?? 0}
               copyCount={data.copy_count ?? 0}
               createdAt={data.created_at}
               updatedAt={data.updated_at}
             />
 
-            {/* README */}
-            {data.readme && (
-              <>
-                <Separator />
-                <div className="max-w-prose">
-                  <MarkdownRenderer content={data.readme} />
-                </div>
-              </>
-            )}
+            {/* ─── Activity ───
+                Privacy-scrubbed lifecycle feed of this agent's mutations. */}
+            <ActivityFeed
+              resourceType="agent"
+              namespace={ns}
+              slug={slug}
+            />
           </TabsContent>
 
           {/* ── Skills Tab ── */}

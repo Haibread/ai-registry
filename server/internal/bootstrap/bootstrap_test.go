@@ -11,6 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/haibread/ai-registry/internal/bootstrap"
+	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
@@ -896,5 +897,122 @@ agents: []
 	}
 	if len(versions) != 1 || versions[0].Status != "deprecated" {
 		t.Errorf("version status = %q, want deprecated", versions[0].Status)
+	}
+}
+
+// TestRun_EmitsAuditEvents verifies that the bootstrap loader writes
+// synthetic audit events that mirror what the real admin handlers would emit.
+// Without these, a fresh stack's /audit page and public activity feeds are
+// empty — which defeats the whole point of seeding demo data.
+//
+// Also asserts idempotency: re-running bootstrap with an already-seeded
+// database must not double-emit any event, because the create paths are
+// gated on whether the row existed before the run.
+func TestRun_EmitsAuditEvents(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	path := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+    verified: true
+
+mcp_servers:
+  - publisher: "acme"
+    slug: "audit-srv"
+    name: "Audit MCP"
+    description: "seeded"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        packages:
+          - registry_type: "npm"
+            identifier: "@acme/audit-srv"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+
+agents:
+  - publisher: "acme"
+    slug: "audit-agent"
+    name: "Audit Agent"
+    description: "seeded"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        endpoint_url: "https://agents.acme.com/audit"
+        skills:
+          - id: "s1"
+            name: "S1"
+            description: "skill"
+            tags: ["x"]
+        authentication:
+          - scheme: "Bearer"
+`)
+	spec, err := bootstrap.LoadSpec(path)
+	if err != nil {
+		t.Fatalf("LoadSpec() error = %v", err)
+	}
+	if err := bootstrap.Run(ctx, sharedDB, spec, nil); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// Pull everything that landed in the audit log. Order is newest-first.
+	events, err := sharedDB.ListAuditEvents(ctx, store.ListAuditParams{Limit: 100})
+	if err != nil {
+		t.Fatalf("ListAuditEvents() error = %v", err)
+	}
+
+	// Expected event counts per action for a single run of the spec above.
+	want := map[domain.AuditAction]int{
+		domain.ActionPublisherCreated:      1,
+		domain.ActionMCPServerCreated:      1,
+		domain.ActionMCPServerVisibility:   1, // flipped public on create
+		domain.ActionMCPVersionCreated:     1,
+		domain.ActionMCPVersionPublished:   1,
+		domain.ActionAgentCreated:          1,
+		domain.ActionAgentVisibility:       1,
+		domain.ActionAgentVersionCreated:   1,
+		domain.ActionAgentVersionPublished: 1,
+	}
+
+	gotCounts := map[domain.AuditAction]int{}
+	for _, e := range events {
+		gotCounts[e.Action]++
+	}
+	for action, n := range want {
+		if gotCounts[action] != n {
+			t.Errorf("action %q: got %d events, want %d", action, gotCounts[action], n)
+		}
+	}
+
+	// Every bootstrap-synthesized event must carry the synthetic actor so
+	// admins can tell seeded activity from real mutations.
+	for _, e := range events {
+		if e.ActorSubject != "system:bootstrap" {
+			t.Errorf("actor_subject = %q, want system:bootstrap (event %s)", e.ActorSubject, e.Action)
+		}
+		if e.ActorEmail != "bootstrap@ai-registry.local" {
+			t.Errorf("actor_email = %q, want bootstrap@ai-registry.local (event %s)", e.ActorEmail, e.Action)
+		}
+		if src, _ := e.Metadata["source"].(string); src != "bootstrap" {
+			t.Errorf("metadata.source = %v, want bootstrap (event %s)", e.Metadata["source"], e.Action)
+		}
+	}
+
+	// Second run — must NOT re-emit any events; everything already exists.
+	before := len(events)
+	if err := bootstrap.Run(ctx, sharedDB, spec, nil); err != nil {
+		t.Fatalf("idempotent Run() error = %v", err)
+	}
+	after, err := sharedDB.ListAuditEvents(ctx, store.ListAuditParams{Limit: 100})
+	if err != nil {
+		t.Fatalf("ListAuditEvents() after 2nd run error = %v", err)
+	}
+	if len(after) != before {
+		t.Errorf("audit event count = %d after re-run, want %d (idempotency broken)", len(after), before)
 	}
 }

@@ -60,11 +60,26 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 	// ── Publishers ────────────────────────────────────────────────────────────
 	pubIDs := make(map[string]string, len(spec.Publishers))
 	for _, p := range spec.Publishers {
-		id, err := upsertPublisher(ctx, db, p)
+		id, created, err := upsertPublisher(ctx, db, p)
 		if err != nil {
 			return fmt.Errorf("bootstrap: publisher %q: %w", p.Slug, err)
 		}
 		pubIDs[p.Slug] = id
+		if created {
+			// Seed the audit log so the admin /audit page and public
+			// activity feeds are populated on a fresh stack. Only on
+			// first creation — re-runs must stay idempotent.
+			logBootstrapAudit(ctx, db, domain.AuditEvent{
+				Action:       domain.ActionPublisherCreated,
+				ResourceType: "publisher",
+				ResourceID:   id,
+				ResourceSlug: p.Slug,
+				Metadata: map[string]any{
+					"name":     p.Name,
+					"verified": p.Verified,
+				},
+			})
+		}
 		logger.Info("bootstrap: publisher ready", slog.String("slug", p.Slug))
 	}
 
@@ -74,7 +89,7 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		if !ok {
 			return fmt.Errorf("bootstrap: mcp_server %q references unknown publisher %q", s.Slug, s.Publisher)
 		}
-		if err := upsertMCPServer(ctx, db, pubID, s, logger); err != nil {
+		if err := upsertMCPServer(ctx, db, pubID, s.Publisher, s, logger); err != nil {
 			return fmt.Errorf("bootstrap: mcp_server %q: %w", s.Slug, err)
 		}
 	}
@@ -85,7 +100,7 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		if !ok {
 			return fmt.Errorf("bootstrap: agent %q references unknown publisher %q", a.Slug, a.Publisher)
 		}
-		if err := upsertAgent(ctx, db, pubID, a, logger); err != nil {
+		if err := upsertAgent(ctx, db, pubID, a.Publisher, a, logger); err != nil {
 			return fmt.Errorf("bootstrap: agent %q: %w", a.Slug, err)
 		}
 	}
@@ -98,31 +113,65 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 	return nil
 }
 
+// ── audit (bootstrap-synthesized) ─────────────────────────────────────────────
+
+// bootstrapActorSubject / bootstrapActorEmail are the synthetic identity stamped
+// onto every audit event the bootstrap loader writes. They're deliberately
+// colon-prefixed / .local-suffixed so an admin can distinguish seed events
+// from real user actions in the /audit UI, and so they can never collide with
+// a Keycloak UUID or real email.
+const (
+	bootstrapActorSubject = "system:bootstrap"
+	bootstrapActorEmail   = "bootstrap@ai-registry.local"
+)
+
+// logBootstrapAudit writes a synthetic audit event for a seeded mutation, so
+// the /audit page and public activity feed have real rows on a fresh stack.
+// We always tag metadata with `source: "bootstrap"` — the public feed's
+// metadata allowlist doesn't include "source", so this marker stays
+// admin-only while still appearing for operators reviewing the audit log.
+func logBootstrapAudit(ctx context.Context, db *store.DB, e domain.AuditEvent) {
+	if e.ActorSubject == "" {
+		e.ActorSubject = bootstrapActorSubject
+	}
+	if e.ActorEmail == "" {
+		e.ActorEmail = bootstrapActorEmail
+	}
+	if e.Metadata == nil {
+		e.Metadata = map[string]any{}
+	}
+	if _, ok := e.Metadata["source"]; !ok {
+		e.Metadata["source"] = "bootstrap"
+	}
+	db.LogAuditEvent(ctx, e)
+}
+
 // ── publishers ────────────────────────────────────────────────────────────────
 
-func upsertPublisher(ctx context.Context, db *store.DB, p PublisherSpec) (string, error) {
+func upsertPublisher(ctx context.Context, db *store.DB, p PublisherSpec) (string, bool, error) {
 	id := store.NewULID()
 	verified := p.Verified
-	_, err := db.Pool.Exec(ctx,
+	tag, err := db.Pool.Exec(ctx,
 		`INSERT INTO publishers (id, slug, name, verified, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, NOW(), NOW())
 		 ON CONFLICT (slug) DO NOTHING`,
 		id, p.Slug, p.Name, verified,
 	)
 	if err != nil {
-		return "", fmt.Errorf("upserting publisher: %w", err)
+		return "", false, fmt.Errorf("upserting publisher: %w", err)
 	}
+	created := tag.RowsAffected() > 0
 	// Fetch the real ID (may differ if the row already existed).
 	var realID string
 	if err := db.Pool.QueryRow(ctx, `SELECT id FROM publishers WHERE slug = $1`, p.Slug).Scan(&realID); err != nil {
-		return "", fmt.Errorf("fetching publisher id: %w", err)
+		return "", false, fmt.Errorf("fetching publisher id: %w", err)
 	}
-	return realID, nil
+	return realID, created, nil
 }
 
 // ── MCP servers ───────────────────────────────────────────────────────────────
 
-func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MCPServerSpec, logger *slog.Logger) error {
+func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSlug string, s MCPServerSpec, logger *slog.Logger) error {
 	// Check if the server already exists.
 	var serverID string
 	created := false
@@ -148,12 +197,41 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MC
 		serverID = srv.ID
 		created = true
 
+		// Seed the audit log — mirrors what the real admin create handler
+		// writes, so a fresh stack's /audit page and per-entry activity
+		// feed have something to show.
+		logBootstrapAudit(ctx, db, domain.AuditEvent{
+			Action:       domain.ActionMCPServerCreated,
+			ResourceType: "mcp_server",
+			ResourceID:   serverID,
+			ResourceNS:   publisherSlug,
+			ResourceSlug: s.Slug,
+			Metadata: map[string]any{
+				"name": s.Name,
+			},
+		})
+
 		vis := domain.VisibilityPrivate
 		if s.Public {
 			vis = domain.VisibilityPublic
 		}
 		if err := db.SetMCPServerVisibility(ctx, serverID, vis); err != nil {
 			return fmt.Errorf("setting visibility: %w", err)
+		}
+		if s.Public {
+			// Servers are created private; flipping to public is a
+			// distinct audit event.
+			logBootstrapAudit(ctx, db, domain.AuditEvent{
+				Action:       domain.ActionMCPServerVisibility,
+				ResourceType: "mcp_server",
+				ResourceID:   serverID,
+				ResourceNS:   publisherSlug,
+				ResourceSlug: s.Slug,
+				Metadata: map[string]any{
+					"from": string(domain.VisibilityPrivate),
+					"to":   string(domain.VisibilityPublic),
+				},
+			})
 		}
 		// Apply v0.2 metadata fields (featured / verified / tags / readme)
 		// via direct SQL — the CreateMCPServer helper predates these columns.
@@ -178,7 +256,7 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MC
 
 	// Apply versions (idempotent per-version check inside).
 	for _, v := range s.Versions {
-		if err := upsertMCPVersion(ctx, db, serverID, v, logger); err != nil {
+		if err := upsertMCPVersion(ctx, db, serverID, publisherSlug, s.Slug, v, logger); err != nil {
 			return fmt.Errorf("version %q: %w", v.Version, err)
 		}
 	}
@@ -189,12 +267,19 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID string, s MC
 		if err := db.SetMCPServerStatus(ctx, serverID, domain.StatusDeprecated); err != nil {
 			return fmt.Errorf("deprecating server: %w", err)
 		}
+		logBootstrapAudit(ctx, db, domain.AuditEvent{
+			Action:       domain.ActionMCPServerDeprecated,
+			ResourceType: "mcp_server",
+			ResourceID:   serverID,
+			ResourceNS:   publisherSlug,
+			ResourceSlug: s.Slug,
+		})
 	}
 
 	return nil
 }
 
-func upsertMCPVersion(ctx context.Context, db *store.DB, serverID string, v MCPVersionSpec, logger *slog.Logger) error {
+func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug, serverSlug string, v MCPVersionSpec, logger *slog.Logger) error {
 	// Tools: marshal the publisher-declared list (possibly empty) and run
 	// it through domain.ValidateTools so bootstrap catches structural
 	// mistakes at load time rather than letting the UI render garbage.
@@ -282,12 +367,36 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID string, v MCPV
 		return fmt.Errorf("creating version: %w", err)
 	}
 
+	// Draft creation audit event, mirroring what the real create-version
+	// handler writes. Kept out of the publicActionWhitelist in the public
+	// activity handler — drafts shouldn't leak to unauthenticated viewers.
+	logBootstrapAudit(ctx, db, domain.AuditEvent{
+		Action:       domain.ActionMCPVersionCreated,
+		ResourceType: "mcp_server",
+		ResourceID:   serverID,
+		ResourceNS:   publisherSlug,
+		ResourceSlug: serverSlug,
+		Metadata: map[string]any{
+			"version": ver.Version,
+		},
+	})
+
 	status := strings.ToLower(v.Status)
 	switch status {
 	case "published", "deprecated":
 		if err := db.PublishMCPServerVersion(ctx, serverID, ver.Version); err != nil {
 			return fmt.Errorf("publishing version: %w", err)
 		}
+		logBootstrapAudit(ctx, db, domain.AuditEvent{
+			Action:       domain.ActionMCPVersionPublished,
+			ResourceType: "mcp_server",
+			ResourceID:   serverID,
+			ResourceNS:   publisherSlug,
+			ResourceSlug: serverSlug,
+			Metadata: map[string]any{
+				"version": ver.Version,
+			},
+		})
 		if status == "deprecated" {
 			if err := db.SetMCPVersionStatus(ctx, serverID, ver.Version,
 				domain.VersionStatusDeprecated, v.StatusMessage); err != nil {
@@ -310,7 +419,7 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID string, v MCPV
 
 // ── agents ────────────────────────────────────────────────────────────────────
 
-func upsertAgent(ctx context.Context, db *store.DB, publisherID string, a AgentSpec, logger *slog.Logger) error {
+func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug string, a AgentSpec, logger *slog.Logger) error {
 	var agentID string
 	created := false
 	err := db.Pool.QueryRow(ctx,
@@ -332,12 +441,36 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID string, a AgentS
 		agentID = ag.ID
 		created = true
 
+		logBootstrapAudit(ctx, db, domain.AuditEvent{
+			Action:       domain.ActionAgentCreated,
+			ResourceType: "agent",
+			ResourceID:   agentID,
+			ResourceNS:   publisherSlug,
+			ResourceSlug: a.Slug,
+			Metadata: map[string]any{
+				"name": a.Name,
+			},
+		})
+
 		vis := domain.VisibilityPrivate
 		if a.Public {
 			vis = domain.VisibilityPublic
 		}
 		if err := db.SetAgentVisibility(ctx, agentID, vis); err != nil {
 			return fmt.Errorf("setting visibility: %w", err)
+		}
+		if a.Public {
+			logBootstrapAudit(ctx, db, domain.AuditEvent{
+				Action:       domain.ActionAgentVisibility,
+				ResourceType: "agent",
+				ResourceID:   agentID,
+				ResourceNS:   publisherSlug,
+				ResourceSlug: a.Slug,
+				Metadata: map[string]any{
+					"from": string(domain.VisibilityPrivate),
+					"to":   string(domain.VisibilityPublic),
+				},
+			})
 		}
 		// Apply v0.2 metadata fields (featured / verified / tags / readme)
 		// via direct SQL — the CreateAgent helper predates these columns.
@@ -362,7 +495,7 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID string, a AgentS
 
 	// Apply versions (idempotent per-version check inside).
 	for _, v := range a.Versions {
-		if err := upsertAgentVersion(ctx, db, agentID, v, logger); err != nil {
+		if err := upsertAgentVersion(ctx, db, agentID, publisherSlug, a.Slug, v, logger); err != nil {
 			return fmt.Errorf("version %q: %w", v.Version, err)
 		}
 	}
@@ -373,12 +506,19 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID string, a AgentS
 		if err := db.DeprecateAgent(ctx, agentID); err != nil {
 			return fmt.Errorf("deprecating agent: %w", err)
 		}
+		logBootstrapAudit(ctx, db, domain.AuditEvent{
+			Action:       domain.ActionAgentDeprecated,
+			ResourceType: "agent",
+			ResourceID:   agentID,
+			ResourceNS:   publisherSlug,
+			ResourceSlug: a.Slug,
+		})
 	}
 
 	return nil
 }
 
-func upsertAgentVersion(ctx context.Context, db *store.DB, agentID string, v AgentVersionSpec, logger *slog.Logger) error {
+func upsertAgentVersion(ctx context.Context, db *store.DB, agentID, publisherSlug, agentSlug string, v AgentVersionSpec, logger *slog.Logger) error {
 	var exists bool
 	_ = db.Pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM agent_versions WHERE agent_id = $1 AND version = $2)`,
@@ -420,12 +560,33 @@ func upsertAgentVersion(ctx context.Context, db *store.DB, agentID string, v Age
 		return fmt.Errorf("creating version: %w", err)
 	}
 
+	logBootstrapAudit(ctx, db, domain.AuditEvent{
+		Action:       domain.ActionAgentVersionCreated,
+		ResourceType: "agent",
+		ResourceID:   agentID,
+		ResourceNS:   publisherSlug,
+		ResourceSlug: agentSlug,
+		Metadata: map[string]any{
+			"version": ver.Version,
+		},
+	})
+
 	status := strings.ToLower(v.Status)
 	switch status {
 	case "published", "deprecated":
 		if err := db.PublishAgentVersion(ctx, agentID, ver.Version); err != nil {
 			return fmt.Errorf("publishing version: %w", err)
 		}
+		logBootstrapAudit(ctx, db, domain.AuditEvent{
+			Action:       domain.ActionAgentVersionPublished,
+			ResourceType: "agent",
+			ResourceID:   agentID,
+			ResourceNS:   publisherSlug,
+			ResourceSlug: agentSlug,
+			Metadata: map[string]any{
+				"version": ver.Version,
+			},
+		})
 		if status == "deprecated" {
 			if err := db.SetAgentVersionStatus(ctx, agentID, ver.Version,
 				domain.VersionStatusDeprecated, v.StatusMessage); err != nil {

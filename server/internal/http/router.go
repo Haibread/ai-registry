@@ -157,6 +157,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				r.With(auth.RequireAdmin).Post("/visibility", mcpH.SetVisibility)
 				r.With(publicRL).Post("/view", mcpH.RecordView)
 				r.With(publicRL).Post("/copy", mcpH.RecordCopy)
+				r.With(publicRL).Get("/activity", mcpH.ListMCPServerActivity)
 
 				r.Route("/versions", func(r chi.Router) {
 					r.With(publicRL).Get("/", mcpH.ListVersions)
@@ -180,6 +181,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
 				r.With(publicRL).Post("/view", agentH.RecordView)
 				r.With(publicRL).Post("/copy", agentH.RecordCopy)
+				r.With(publicRL).Get("/activity", agentH.ListAgentActivity)
 
 				r.Route("/versions", func(r chi.Router) {
 					r.With(publicRL).Get("/", agentH.ListVersions)
