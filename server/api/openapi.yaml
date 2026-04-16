@@ -528,6 +528,33 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/mcp/servers/{namespace}/{slug}/activity:
+    get:
+      operationId: listMCPServerActivity
+      summary: Public activity feed for an MCP server
+      description: >
+        Returns a chronological feed of lifecycle events for the given
+        server (creation, publish, deprecation, visibility changes, etc.).
+        Actor identity is scrubbed — only a coarse role label is exposed.
+        Public, rate-limited.
+      tags: [mcp]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of public activity events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicActivityEventList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /api/v1/mcp/servers/{namespace}/{slug}/versions:
     get:
       operationId: listMCPServerVersions
@@ -885,6 +912,33 @@ paths:
           description: Copy recorded
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /api/v1/agents/{namespace}/{slug}/activity:
+    get:
+      operationId: listAgentActivity
+      summary: Public activity feed for an agent
+      description: >
+        Returns a chronological feed of lifecycle events for the given
+        agent (creation, publish, deprecation, visibility changes, etc.).
+        Actor identity is scrubbed — only a coarse role label is exposed.
+        Public, rate-limited.
+      tags: [agents]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of public activity events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicActivityEventList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/agents/{namespace}/{slug}/versions:
     get:
@@ -2246,6 +2300,51 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AuditEvent"
+        next_cursor:
+          type: string
+
+    PublicActivityEvent:
+      type: object
+      description: >
+        A privacy-scrubbed view of an audit event suitable for public
+        consumption. Actor identity (email, subject) is NEVER exposed;
+        only a coarse `actor_role` label is returned.
+      required: [id, action, actor_role, created_at]
+      properties:
+        id:
+          type: string
+          description: ULID of the underlying audit event
+        action:
+          type: string
+          description: Normalized action key (e.g. mcp_server_version.published)
+        actor_role:
+          type: string
+          enum: [publisher, admin]
+          description: >
+            Coarse label. "publisher" when the actor is acting on a
+            resource in their own publisher namespace; "admin" otherwise.
+        version:
+          type: string
+          description: Semantic version, when the event relates to a specific version
+        metadata:
+          type: object
+          description: >
+            Scrubbed metadata. Only a whitelisted subset of keys is ever
+            included (e.g. `from`, `to`, `visibility`, `reason`). Any key
+            not on the whitelist is dropped server-side.
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    PublicActivityEventList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicActivityEvent"
         next_cursor:
           type: string
 

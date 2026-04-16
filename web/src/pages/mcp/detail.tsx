@@ -34,7 +34,8 @@ import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { PublisherSidebar } from '@/components/shared/publisher-sidebar'
 import { StatTile } from '@/components/shared/stat-tile'
 import { SectionHeader } from '@/components/shared/section-header'
-import { ActivityStrip } from '@/components/shared/activity-strip'
+import { EngagementStrip } from '@/components/shared/engagement-strip'
+import { ActivityFeed } from '@/components/shared/activity-feed'
 import { RelatedEntries } from '@/components/shared/related-entries'
 import { VersionHistory } from '@/components/shared/version-history'
 import { StickyDetailHeader } from '@/components/shared/sticky-detail-header'
@@ -170,6 +171,12 @@ export default function MCPDetailPage() {
         </div>
 
         {data.description && <p className="text-muted-foreground max-w-prose">{data.description}</p>}
+
+        {/* README — the publisher's narrative description. Rendered near
+            the top of the page (above the tabs) so it's always visible,
+            regardless of which tab the reader has open. Fills the page
+            container width — MarkdownRenderer already sets max-w-none. */}
+        {data.readme && <MarkdownRenderer content={data.readme} />}
 
         <Separator />
 
@@ -321,26 +328,27 @@ export default function MCPDetailPage() {
               </div>
             </section>
 
-            {/* ─── Activity ───
+            {/* ─── Engagement ───
                 Low-priority engagement numbers + timestamps rendered as a
                 compact inline strip. No card, no emphasis — these are here
                 for reference, not as the page's headline. */}
-            <ActivityStrip
+            <EngagementStrip
               viewCount={data.view_count ?? 0}
               copyCount={data.copy_count ?? 0}
               createdAt={data.created_at}
               updatedAt={data.updated_at}
             />
 
-            {/* README */}
-            {data.readme && (
-              <>
-                <Separator />
-                <div className="max-w-prose">
-                  <MarkdownRenderer content={data.readme} />
-                </div>
-              </>
-            )}
+            {/* ─── Activity ───
+                Privacy-scrubbed lifecycle feed: creation, publishes,
+                deprecations, visibility changes. Backed by the public
+                per-resource /activity endpoint so it stays in sync with
+                the audit log without exposing actor identity. */}
+            <ActivityFeed
+              resourceType="mcp"
+              namespace={ns}
+              slug={slug}
+            />
           </TabsContent>
 
           {/* ── Installation Tab ── */}

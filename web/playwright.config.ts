@@ -103,5 +103,17 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /coverage-public\.spec\.ts/,
     },
+    // Per-entry activity feed + admin /audit page smoke tests. Seeds via the
+    // admin API (which generates real audit rows) then inspects both the
+    // privacy-scrubbed public feed and the full-fidelity admin view.
+    {
+      name: "activity",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /activity\.spec\.ts/,
+    },
   ],
 })
