@@ -142,7 +142,7 @@ export default function PublisherDetailPage() {
             </h2>
             {mcpServers.length > 0 && (
               <Button variant="ghost" size="sm" asChild>
-                <Link to={`/mcp?namespace=${slug}`}>View all →</Link>
+                <Link to={`/mcp/${slug}`}>View all →</Link>
               </Button>
             )}
           </div>
@@ -175,7 +175,7 @@ export default function PublisherDetailPage() {
             </h2>
             {agents.length > 0 && (
               <Button variant="ghost" size="sm" asChild>
-                <Link to={`/agents?namespace=${slug}`}>View all →</Link>
+                <Link to={`/agents/${slug}`}>View all →</Link>
               </Button>
             )}
           </div>

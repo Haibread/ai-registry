@@ -120,7 +120,7 @@ export default function MCPDetailPage() {
           segments={[
             { label: 'Home', href: '/' },
             { label: 'MCP Servers', href: '/mcp' },
-            { label: data.namespace, href: `/mcp?namespace=${data.namespace}` },
+            { label: data.namespace, href: `/mcp/${data.namespace}` },
             { label: data.slug },
           ]}
         />
@@ -138,7 +138,7 @@ export default function MCPDetailPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm text-muted-foreground font-mono">
-              <Link to={`/mcp?namespace=${data.namespace}`} className="hover:text-foreground transition-colors">
+              <Link to={`/mcp/${data.namespace}`} className="hover:text-foreground transition-colors">
                 {data.namespace}
               </Link>
               /{data.slug}

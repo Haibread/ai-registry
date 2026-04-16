@@ -43,7 +43,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         </div>
         <div className="text-xs text-muted-foreground font-mono relative z-10">
           <Link
-            to={`/agents?namespace=${agent.namespace}`}
+            to={`/agents/${agent.namespace}`}
             className="hover:text-foreground transition-colors"
           >
             {agent.namespace}
