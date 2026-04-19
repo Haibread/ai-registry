@@ -59,7 +59,9 @@ describe('HomePage', () => {
 
   it('renders the hero description', () => {
     renderHome()
-    expect(screen.getByText(/centralized catalog of mcp servers and ai agents/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/catalog of model context protocol servers and a2a agents/i),
+    ).toBeInTheDocument()
   })
 
   it('exposes an MCP Servers entry point via the header nav', () => {
@@ -91,11 +93,13 @@ describe('HomePage', () => {
     expect(screen.getByRole('button', { name: /what are mcp and a2a/i })).toBeInTheDocument()
   })
 
-  it('shows stat placeholders before data loads', () => {
+  it('omits the inline stats line until public-stats resolves', () => {
+    // Stats are rendered inline as "N MCP servers · N agents · N publishers".
+    // Before the query resolves, no counts are shown. The section previously
+    // displayed three em-dash placeholders; the editorial header now renders
+    // nothing until data is available.
     renderHome()
-    // The em-dash placeholders
-    const dashes = screen.getAllByText('—')
-    expect(dashes.length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText(/\bMCP servers\s·/i)).not.toBeInTheDocument()
   })
 
   it('renders "View all" links for both sections', () => {

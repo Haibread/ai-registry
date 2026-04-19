@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Eye, GitFork, Braces, Link2, Cpu, Boxes } from 'lucide-react'
+import { ExternalLink, Eye, GitFork, Braces, Link2, Cpu } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/copy-button'
@@ -35,13 +35,10 @@ export function ServerCard({ server }: ServerCardProps) {
     <Card className="flex flex-col hover:shadow-md transition-shadow group relative">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-base leading-snug flex items-center gap-2 min-w-0">
-            <div className="rounded-md bg-primary/10 p-1.5 shrink-0" aria-hidden="true">
-              <Boxes className="h-4 w-4 text-primary" />
-            </div>
+          <CardTitle className="text-base leading-snug min-w-0">
             <Link
               to={to}
-              className="truncate hover:text-primary transition-colors after:absolute after:inset-0 after:content-['']"
+              className="truncate block hover:text-primary transition-colors after:absolute after:inset-0 after:content-['']"
             >
               {server.name}
             </Link>
@@ -117,7 +114,7 @@ export function ServerCard({ server }: ServerCardProps) {
         <CardContent className="pt-0 pb-3">
           <div className="flex items-center gap-2 min-w-0">
             {transportType && (
-              <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-sans font-semibold text-primary/80">
+              <span className="shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground">
                 {transportType}
               </span>
             )}

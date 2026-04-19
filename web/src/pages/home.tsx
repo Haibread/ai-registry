@@ -1,14 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Building2, TrendingUp } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CardGridSkeleton } from '@/components/ui/card-grid-skeleton'
-import { ResourceIcon } from '@/components/ui/resource-icon'
 import { SearchBar } from '@/components/ui/search-bar'
 import { ProtocolExplainer } from '@/components/home/protocol-explainer'
-import { ServerCard } from '@/components/mcp/server-card'
+import { ServerListItem } from '@/components/mcp/server-list-item'
 import { AgentCard } from '@/components/agents/agent-card'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
@@ -88,11 +86,11 @@ export default function HomePage() {
     ? (updatedAgents?.items ?? [])
     : hasFeaturedAgents ? featuredAgents!.items! : (recentAgents?.items ?? [])
   const mcpLabel = listingView === 'updated'
-    ? 'Recently Updated MCP Servers'
-    : hasFeaturedMcp ? 'Featured MCP Servers' : 'Recent MCP Servers'
+    ? 'Recently updated MCP servers'
+    : hasFeaturedMcp ? 'Featured MCP servers' : 'Recent MCP servers'
   const agentLabel = listingView === 'updated'
-    ? 'Recently Updated Agents'
-    : hasFeaturedAgents ? 'Featured Agents' : 'Recent Agents'
+    ? 'Recently updated agents'
+    : hasFeaturedAgents ? 'Featured agents' : 'Recent agents'
   const isLoadingMcp = listingView === 'updated'
     ? updatedMcp === undefined
     : featuredMcp === undefined
@@ -100,143 +98,103 @@ export default function HomePage() {
     ? updatedAgents === undefined
     : featuredAgents === undefined
 
+  const statParts: string[] = []
+  if (stats?.mcp_servers != null) statParts.push(`${stats.mcp_servers.toLocaleString()} MCP servers`)
+  if (stats?.agents != null) statParts.push(`${stats.agents.toLocaleString()} agents`)
+  if (stats?.publishers != null) statParts.push(`${stats.publishers.toLocaleString()} publishers`)
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1">
-        {/* Hero */}
-        <section className="border-b bg-muted/30 py-16">
-          <div className="container text-center space-y-6">
-            <h1 className="text-4xl font-bold tracking-tight">AI Registry</h1>
-            <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-              A centralized catalog of MCP servers and AI agents. Discover, publish, and integrate.
+        {/* Hero — editorial, left-aligned, inline stats */}
+        <section className="border-b">
+          <div className="container max-w-4xl py-12 md:py-16">
+            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
+              AI Registry
+            </h1>
+            <p className="mt-3 max-w-2xl text-base md:text-lg text-muted-foreground">
+              A catalog of Model Context Protocol servers and A2A agents. Browse
+              what's published, read the cards, and wire things up.
             </p>
-            <SearchBar />
-          </div>
-        </section>
-
-        {/* Stats */}
-        <section className="border-b py-8">
-          <div className="container grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
-            <Link to="/mcp" className="group">
-              <Card className="h-full transition-shadow hover:shadow-md">
-                <CardHeader className="pt-4 pb-1">
-                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-center gap-1.5 group-hover:text-primary transition-colors">
-                    <ResourceIcon type="mcp-server" className="h-3.5 w-3.5" /> MCP Servers
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <p className="text-2xl font-bold text-center">{stats?.mcp_servers ?? '—'}</p>
-                  <p className="text-[10px] text-center text-green-600 dark:text-green-400 flex items-center justify-center gap-0.5 mt-0.5 min-h-[14px]">
-                    {stats?.new_mcp_servers_this_week != null && stats.new_mcp_servers_this_week > 0 && (
-                      <>
-                        <TrendingUp className="h-2.5 w-2.5" />+{stats.new_mcp_servers_this_week} this week
-                      </>
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-            <Link to="/agents" className="group">
-              <Card className="h-full transition-shadow hover:shadow-md">
-                <CardHeader className="pt-4 pb-1">
-                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-center gap-1.5 group-hover:text-primary transition-colors">
-                    <ResourceIcon type="agent" className="h-3.5 w-3.5" /> Agents
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <p className="text-2xl font-bold text-center">{stats?.agents ?? '—'}</p>
-                  <p className="text-[10px] text-center text-green-600 dark:text-green-400 flex items-center justify-center gap-0.5 mt-0.5 min-h-[14px]">
-                    {stats?.new_agents_this_week != null && stats.new_agents_this_week > 0 && (
-                      <>
-                        <TrendingUp className="h-2.5 w-2.5" />+{stats.new_agents_this_week} this week
-                      </>
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-            <Card className="h-full">
-              <CardHeader className="pt-4 pb-1">
-                <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5" /> Publishers
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pb-4">
-                <p className="text-2xl font-bold text-center">{stats?.publishers ?? '—'}</p>
-                <p className="text-[10px] text-center text-green-600 dark:text-green-400 flex items-center justify-center gap-0.5 mt-0.5 min-h-[14px]">
-                  {stats?.new_publishers_this_week != null && stats.new_publishers_this_week > 0 && (
-                    <>
-                      <TrendingUp className="h-2.5 w-2.5" />+{stats.new_publishers_this_week} this week
-                    </>
-                  )}
-                </p>
-              </CardContent>
-            </Card>
+            {statParts.length > 0 ? (
+              <p className="mt-4 text-sm text-muted-foreground">
+                {statParts.join(' · ')}
+              </p>
+            ) : (
+              <p className="mt-4 text-sm text-muted-foreground">&nbsp;</p>
+            )}
+            <div className="mt-6 max-w-xl">
+              <SearchBar />
+            </div>
           </div>
         </section>
 
         {/* Protocol explainer */}
-        <section className="py-6">
-          <div className="container max-w-2xl">
+        <section className="border-b">
+          <div className="container max-w-4xl py-6">
             <ProtocolExplainer />
           </div>
         </section>
 
         {/* View toggle */}
-        <div className="container flex justify-center py-2">
-          <div className="inline-flex items-center gap-1 rounded-lg border p-1">
+        <div className="container max-w-4xl flex justify-end pt-8 pb-2">
+          <div className="inline-flex items-center gap-1 rounded-md border p-0.5 text-xs">
             <button
               type="button"
               onClick={() => setListingView('featured')}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              className={`rounded px-2.5 py-1 font-medium transition-colors ${
                 listingView === 'featured'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              Featured / New
+              Featured
             </button>
             <button
               type="button"
               onClick={() => setListingView('updated')}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              className={`rounded px-2.5 py-1 font-medium transition-colors ${
                 listingView === 'updated'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              Recently Updated
+              Recently updated
             </button>
           </div>
         </div>
 
-        {/* MCP Servers */}
-        <section className="py-10 border-b">
-          <div className="container">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold">{mcpLabel}</h2>
+        {/* MCP Servers — dense list */}
+        <section className="py-6 border-b">
+          <div className="container max-w-4xl">
+            <div className="flex items-baseline justify-between mb-2">
+              <h2 className="text-lg font-semibold tracking-tight">{mcpLabel}</h2>
               <Button variant="ghost" size="sm" asChild>
                 <Link to="/mcp" className="flex items-center gap-1">View all <ArrowRight className="h-4 w-4" /></Link>
               </Button>
             </div>
             {isLoadingMcp ? (
-              <CardGridSkeleton count={6} />
+              <div className="space-y-4 py-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-14 animate-pulse rounded bg-muted/50" />
+                ))}
+              </div>
             ) : mcpServers.length > 0 ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {mcpServers.map((s) => <ServerCard key={s.id} server={s} />)}
+              <div className="divide-y">
+                {mcpServers.map((s) => <ServerListItem key={s.id} server={s} />)}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No MCP servers published yet.</p>
+              <p className="text-sm text-muted-foreground py-8">No MCP servers published yet.</p>
             )}
           </div>
         </section>
 
-        {/* Agents */}
+        {/* Agents — cards for visual contrast */}
         <section className="py-10">
-          <div className="container">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold">{agentLabel}</h2>
+          <div className="container max-w-6xl">
+            <div className="flex items-baseline justify-between mb-4">
+              <h2 className="text-lg font-semibold tracking-tight">{agentLabel}</h2>
               <Button variant="ghost" size="sm" asChild>
                 <Link to="/agents" className="flex items-center gap-1">View all <ArrowRight className="h-4 w-4" /></Link>
               </Button>
@@ -248,7 +206,7 @@ export default function HomePage() {
                 {agents.map((a) => <AgentCard key={a.id} agent={a} />)}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No agents published yet.</p>
+              <p className="text-sm text-muted-foreground py-8">No agents published yet.</p>
             )}
           </div>
         </section>

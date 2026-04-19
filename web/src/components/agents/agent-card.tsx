@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Eye, Braces, Cpu, Link2, Bot } from 'lucide-react'
+import { ExternalLink, Eye, Braces, Cpu, Link2 } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
@@ -20,13 +20,10 @@ export function AgentCard({ agent }: AgentCardProps) {
     <Card className="flex flex-col hover:shadow-md transition-shadow group relative">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-base leading-snug flex items-center gap-2 min-w-0">
-            <div className="rounded-md bg-primary/10 p-1.5 shrink-0" aria-hidden="true">
-              <Bot className="h-4 w-4 text-primary" />
-            </div>
+          <CardTitle className="text-base leading-snug min-w-0">
             <Link
               to={to}
-              className="truncate hover:text-primary transition-colors after:absolute after:inset-0 after:content-['']"
+              className="truncate block hover:text-primary transition-colors after:absolute after:inset-0 after:content-['']"
             >
               {agent.name}
             </Link>
