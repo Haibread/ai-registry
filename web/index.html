@@ -4,6 +4,35 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Registry</title>
+    <!--
+      Apply the theme class before the first paint to prevent a white flash
+      (FOUC) on refresh. This must run synchronously in <head>, before any
+      stylesheet or React code — `useEffect` in ThemeProvider runs after the
+      first render, which is too late.
+
+      Mirrors the logic in `src/components/providers.tsx`: read the stored
+      preference (defaulting to 'system'), resolve 'system' against the OS,
+      and toggle the `dark` class on <html>. Also sets `color-scheme` so
+      native UI (scrollbars, form controls) matches on the very first paint.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme')
+          var theme = stored === 'light' || stored === 'dark' || stored === 'system'
+            ? stored
+            : 'system'
+          var isDark = theme === 'dark' || (
+            theme === 'system' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches
+          )
+          if (isDark) document.documentElement.classList.add('dark')
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
+        } catch (_) {
+          // localStorage can throw in sandboxed contexts; fall back to light.
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
