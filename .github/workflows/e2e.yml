@@ -83,6 +83,20 @@ jobs:
              done'
           echo "Web ready."
 
+      # Fast smoke test against the public read surface — catches gross
+      # regressions (5xx, missing routes, latency spikes) before the slower
+      # Playwright suite runs. Uses Grafana's official setup action so we
+      # avoid the apt/gpg dance. Thresholds live in the script itself.
+      - name: Set up k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 smoke
+        uses: grafana/run-k6-action@v1
+        env:
+          BASE_URL: http://localhost:3000
+        with:
+          path: test/load/smoke.js
+
       - name: Install web dependencies
         working-directory: web
         run: npm ci
