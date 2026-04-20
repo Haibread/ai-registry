@@ -8,7 +8,38 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs of this workflow for the same ref. Pushing a new
+# commit to a PR supersedes the previous run; keeping only the latest saves
+# runner minutes and prevents stale green/red statuses from racing.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # ── Secret scanning ──────────────────────────────────────────────────────────
+  # Scans the diff (on PRs) or the whole history (on push to main) for leaked
+  # credentials. Runs early and fast so a bad commit is caught before the
+  # heavier jobs waste runner minutes.
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # gitleaks needs full history on push events to detect secrets
+          # introduced in older commits; shallow is fine for pull_request
+          # because the action auto-diffs against the base ref.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Exit non-zero on any finding.
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+
   # ── Go server: vet, build, unit + integration tests ───────────────────────────
   server:
     name: Server (Go)
@@ -73,6 +104,37 @@ jobs:
             echo "::error::Go coverage ${total}% is below the floor of ${floor}%"
             exit 1
           }
+
+  # ── OpenAPI ↔ router contract ────────────────────────────────────────────────
+  # Dedicated, fast job that only runs the OpenAPI↔router and A2A Agent Card
+  # conformance suites. Duplicates what the server job covers, but surfaces
+  # the result as its own required check so a spec drift is obvious in the
+  # PR UI without digging into a long log.
+  contract:
+    name: API contract (OpenAPI + A2A)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Run contract & conformance tests
+        working-directory: server
+        run: |
+          set -euo pipefail
+          go test -count=1 -v \
+            -run '^(TestOpenAPIContract_MatchesRouter$|TestAllWriteRoutesRequireAdmin$|TestPublicWriteRoutesBypassAdmin$)' \
+            ./internal/http/
+          go test -count=1 -v \
+            -run '^(TestV0Conformance_|TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
+            ./internal/http/handlers/...
 
   # ── Web: lint, typecheck, unit tests ─────────────────────────────────────────
   web:
@@ -154,3 +216,36 @@ jobs:
           helm template test deploy/helm/ai-registry \
             --set server.bootstrap.enabled=true \
             --set server.bootstrap.sampleData=true
+
+      # Schema-validate the rendered Kubernetes manifests. helm lint catches
+      # chart-authoring issues but not bad spec fields; kubeconform checks
+      # every rendered manifest against the published Kubernetes OpenAPI
+      # schemas. Includes the CNPG and Prometheus Operator CRD schemas so
+      # opt-in paths validate too.
+      - name: Install kubeconform
+        run: |
+          curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xzf - kubeconform
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: kubeconform (defaults)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            | kubeconform -strict -summary -ignore-missing-schemas \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+      - name: kubeconform (all opt-ins)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set httpRoute.enabled=true \
+            --set httpRoute.gatewayRef.name=test-gateway \
+            --set cnpg.enabled=true \
+            --set server.bootstrap.enabled=true \
+            --set server.bootstrap.sampleData=true \
+            --set server.serviceMonitor.enabled=true \
+            --set server.podDisruptionBudget.enabled=true \
+            --set web.podDisruptionBudget.enabled=true \
+            | kubeconform -strict -summary -ignore-missing-schemas \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'

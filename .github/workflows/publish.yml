@@ -13,6 +13,13 @@ on:
     branches: [main]
     tags: ['v*.*.*']
 
+# Serialise publishes per ref. Two pushes to main that race would otherwise
+# both compete to overwrite :latest; with cancel-in-progress=false the later
+# build queues behind the earlier one instead of clobbering it.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   # OCI registry paths must be all-lowercase; lowercasing is applied per-job
@@ -67,6 +74,21 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=main-,enable={{is_default_branch}},format=short
 
+      - name: Compute build metadata
+        id: bmeta
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VER="${{ github.ref_name }}"
+            VER="${VER#v}"
+          else
+            VER="main-$(echo "${{ github.sha }}" | cut -c1-7)"
+          fi
+          {
+            echo "version=${VER}"
+            echo "commit=${{ github.sha }}"
+            echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push server image
         id: build
         uses: docker/build-push-action@v6
@@ -76,6 +98,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.bmeta.outputs.version }}
+            COMMIT=${{ steps.bmeta.outputs.commit }}
+            BUILD_TIME=${{ steps.bmeta.outputs.build_time }}
           # BuildKit layer cache via GitHub Actions cache backend.
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
@@ -132,6 +158,69 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
+  # ── Image vulnerability scan ─────────────────────────────────────────────────
+  # Runs Trivy against both images after they are pushed. Results are uploaded
+  # to GitHub's Code Scanning dashboard as SARIF so CVEs show up in the Security
+  # tab and on PRs. Failures do not block the publish (continue-on-error) —
+  # this is a detection gate, not a deploy gate. Tighten later by dropping the
+  # flag once the baseline CVE count is at zero.
+  scan-images:
+    name: Scan images (Trivy)
+    runs-on: ubuntu-latest
+    needs: [build-server, build-web]
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [server, web]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Lowercase IMAGE_PREFIX
+        run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image reference
+        id: ref
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+            TAG="${TAG#v}"
+          else
+            TAG="latest"
+          fi
+          echo "image=${IMAGE_PREFIX}/${{ matrix.image }}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
+
   # ── Helm chart ───────────────────────────────────────────────────────────────
   publish-chart:
     name: Publish Helm chart
@@ -175,6 +264,19 @@ jobs:
 
           echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
           echo "app_version=${APP_VERSION}"     >> "$GITHUB_OUTPUT"
+
+      # Rewrite Chart.yaml in place before packaging so that the tarball's
+      # Chart.yaml reflects the real build version. `helm package` already
+      # overrides these fields via --version / --app-version, but writing the
+      # file too keeps `helm inspect` / `helm show chart` honest downstream
+      # and avoids the stale "0.1.0 / latest" shipping inside the tarball.
+      - name: Stamp Chart.yaml
+        run: |
+          sed -i -E \
+            -e "s/^version:.*/version: ${{ steps.versions.outputs.chart_version }}/" \
+            -e "s/^appVersion:.*/appVersion: \"${{ steps.versions.outputs.app_version }}\"/" \
+            deploy/helm/ai-registry/Chart.yaml
+          grep -E '^(version|appVersion):' deploy/helm/ai-registry/Chart.yaml
 
       - name: Package chart
         run: |

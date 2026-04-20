@@ -20,6 +20,15 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
+// Build metadata, injected at link time via -ldflags "-X main.Version=… …".
+// Defaults make local `go run` / `go build` produce a legible identity without
+// requiring the ldflags dance. The publish workflow passes real values.
+var (
+	Version   = "dev"
+	Commit    = "none"
+	BuildTime = "unknown"
+)
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("fatal error", slog.String("error", err.Error()))
@@ -50,12 +59,23 @@ func run() error {
 	// ── Logger ───────────────────────────────────────────────────────────────
 	logger := observability.NewLogger(cfg.Log.Level)
 	slog.SetDefault(logger)
+	logger.Info("starting ai-registry server",
+		slog.String("version", Version),
+		slog.String("commit", Commit),
+		slog.String("built", BuildTime),
+	)
 
 	// ── OTel ─────────────────────────────────────────────────────────────────
+	// Prefer the ldflags-injected Version over the config default; operators
+	// can still override with OTEL_SERVICE_VERSION.
+	serviceVersion := cfg.OTel.ServiceVersion
+	if os.Getenv("OTEL_SERVICE_VERSION") == "" && Version != "dev" {
+		serviceVersion = Version
+	}
 	ctx := context.Background()
 	otelShutdown, err := observability.Setup(ctx, observability.Config{
 		ServiceName:    cfg.OTel.ServiceName,
-		ServiceVersion: cfg.OTel.ServiceVersion,
+		ServiceVersion: serviceVersion,
 		OTLPEndpoint:   cfg.OTel.OTLPEndpoint,
 		LogLevel:       cfg.Log.Level,
 	})

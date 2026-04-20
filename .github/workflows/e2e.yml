@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # actions/upload-artifact@v5 still bundles Node.js 20. GitHub is force-cutting
   # Node 20 runners on June 2, 2026; this env var opts the action into the

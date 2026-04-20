@@ -1,0 +1,27 @@
+# Exclude files that bloat the build context or shouldn't be in the image.
+.git
+.gitignore
+.github
+.dockerignore
+Dockerfile
+
+# Local env and secrets — must never reach an image layer.
+.env
+.env.*
+*.env
+
+# Go test output and coverage
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Editor / IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
