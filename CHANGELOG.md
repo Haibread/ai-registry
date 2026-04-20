@@ -2,6 +2,94 @@
 
 All notable changes to this project are documented here.
 
+## v0.3.1
+
+Security bugfix release. Four high-severity findings from an internal
+security review are fixed; no feature changes. All API shapes stable.
+
+### 🔐 JWT audience binding (H1)
+
+The JWT validator now enforces the `aud` claim when `OIDC_AUDIENCE` is
+set. Previously the server accepted any token minted by the configured
+issuer, even one intended for a different client on the same realm —
+a straight violation of the MCP authorization spec (OAuth 2.1
+resource indicators).
+
+- `auth.Validator` takes an `audience` string; when non-empty it is
+  passed to `jwt.WithAudience` during parse.
+- `OIDC_AUDIENCE` wired through env (`OIDC_AUDIENCE`), YAML
+  (`auth.oidc_audience`), and defaults — per the CLAUDE.md config
+  rule. Example + `.env.example` updated.
+- Keycloak dev realm (`deploy/keycloak-realm-dev.json`) now emits
+  tokens with `aud=ai-registry-server` via an inline
+  `oidc-audience-mapper` on both `ai-registry-web` and
+  `ai-registry-cli` clients.
+- Docker Compose (`dev`, prod, CI) and Helm default
+  `OIDC_AUDIENCE=ai-registry-server`.
+- Tests: reject tokens missing `aud`, reject tokens with wrong `aud`,
+  accept tokens with matching `aud`, and the audience check is
+  skipped when `OIDC_AUDIENCE` is empty (dev-only escape hatch).
+
+### 🔒 SPA token storage defaults to sessionStorage (H2)
+
+Access and refresh tokens were previously held in `localStorage`,
+meaning any XSS on the admin UI could exfiltrate them and reuse them
+across tabs indefinitely. The SPA now defaults to `sessionStorage`
+(scoped to a single tab, cleared on close), and `localStorage` is an
+opt-in chosen by the server.
+
+- `GET /config.json` returns a new `auth_storage` field
+  (`"session"` | `"local"`, default `"session"`). The server rejects
+  any other value and falls back to `"session"`.
+- `oidc-client-ts` `UserManager` is constructed with a
+  `WebStorageStateStore` backed by the chosen store.
+- The Playwright-friendly `"local"` mode is still available for E2E
+  because `storageState()` only captures `localStorage`. CI compose
+  sets `AUTH_STORAGE=local`; no production deployment should.
+- `AUTH_STORAGE` wired through env + YAML + default per CLAUDE.md.
+- Tests: defaults to sessionStorage, honours `auth_storage=local`
+  when served, coerces unknown values back to `"session"`.
+
+### 🛰 Trusted-proxy gate on reporter IPs (H3)
+
+`POST /reports` (user bug/abuse reports) was honouring
+`X-Forwarded-For` from every client, letting anyone forge the
+`reporter_ip` column. The endpoint now goes through the existing
+`middleware.ClientIP` helper, which only accepts XFF / X-Real-IP
+from peers inside `TRUSTED_PROXY_CIDR`.
+
+- `middleware.ClientIP` was exported so handlers share the same
+  trust policy as the rate-limit middleware.
+- `ReportHandlers` takes a `*net.IPNet` at construction; `nil`
+  disables proxy trust entirely (safe default).
+- The ad-hoc `reporterIP` helper was deleted.
+- Tests: XFF ignored when no trusted proxy configured; XFF honoured
+  only when the remote peer is inside the configured CIDR.
+
+### 🌐 CORS never allows credentials (H4)
+
+Our API is bearer-only — no cookies — so echoing
+`Access-Control-Allow-Credentials: true` was a latent footgun in
+case a future change ever added cookie auth. The middleware now
+guarantees the header is never set, and wildcard origins emit a
+literal `*` instead of reflecting the request `Origin`.
+
+- `slices.Contains(allowedOrigins, "*")` → `Allow-Origin: *`, no
+  `Vary`.
+- Non-wildcard match → `Allow-Origin: <origin>` + `Vary: Origin`.
+- No code path sets `Allow-Credentials`, and a regression test pins
+  the invariant.
+
+### 🧪 Verification
+
+- Unit tests: 9 Go packages green (`go test -count=1 ./...`), 539/540
+  Vitest (`web` unit + component), `tsc --noEmit` clean, ESLint 0
+  warnings.
+- End-to-end against a fresh Keycloak re-import: admin token →
+  `GET /api/v1/stats` 200; non-admin token → 403; anonymous → 401;
+  issued access tokens carry `aud=ai-registry-server` and
+  `realm_access.roles`.
+
 ## v0.3.0
 
 Browse-polish release. Three of the four v0.3.0 tasks from `PLAN.md`
