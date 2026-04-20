@@ -60,6 +60,12 @@ services:
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ai-registry-server}
       DATABASE_URL: ${DATABASE_URL:-postgres://registry:registry@postgres:5432/registry?sslmode=disable}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      # Public-facing base URL of the stack. Required — the A2A global agent
+      # card handler returns HTTP 500 when unset rather than silently
+      # advertising a localhost URL to external consumers. Defaults to the
+      # nginx port mapping below so `docker compose up` and CI both work
+      # out of the box; override in .env for non-localhost deployments.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
     ports:
       - "8081:8081"
     depends_on:

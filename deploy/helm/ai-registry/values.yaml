@@ -54,6 +54,11 @@ server:
   # CIDR of the trusted reverse proxy for real-IP extraction via X-Forwarded-For.
   # Example: "10.0.0.0/8"
   trustedProxyCIDR: ""
+  # [REQUIRED] Public-facing base URL of the deployment. Used by the A2A
+  # global agent card and OAuth protected-resource metadata. Must be the
+  # externally reachable URL (what clients use), not an in-cluster address.
+  # Example: "https://registry.example.com"
+  publicBaseURL: ""
 
   # ── Observability ────────────────────────────────────────────────────────
   # Structured log level: debug | info | warn | error

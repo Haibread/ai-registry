@@ -15,6 +15,9 @@ data:
   {{- if .Values.server.trustedProxyCIDR }}
   TRUSTED_PROXY_CIDR: {{ .Values.server.trustedProxyCIDR | quote }}
   {{- end }}
+  {{- if .Values.server.publicBaseURL }}
+  PUBLIC_BASE_URL: {{ .Values.server.publicBaseURL | quote }}
+  {{- end }}
 
   # ── Auth (OIDC) ───────────────────────────────────────────────────────────
   OIDC_ISSUER: {{ .Values.server.oidcIssuer | quote }}
