@@ -19,13 +19,17 @@ const (
 
 // Validator validates incoming JWTs and populates request context with claims.
 type Validator struct {
-	jwks   *JWKSCache
-	issuer string
+	jwks     *JWKSCache
+	issuer   string
+	audience string
 }
 
 // NewValidator creates a Validator using the provided JWKSCache and issuer.
-func NewValidator(jwks *JWKSCache, issuer string) *Validator {
-	return &Validator{jwks: jwks, issuer: issuer}
+// When audience is non-empty, tokens whose `aud` claim does not contain it are
+// rejected — required by the MCP authorization spec (OAuth 2.1 resource
+// indicators) to prevent cross-client token reuse.
+func NewValidator(jwks *JWKSCache, issuer, audience string) *Validator {
+	return &Validator{jwks: jwks, issuer: issuer, audience: audience}
 }
 
 // Authenticate is chi middleware that parses the Bearer token when present.
@@ -40,13 +44,21 @@ func (v *Validator) Authenticate(next http.Handler) http.Handler {
 		}
 
 		claims := &KeycloakClaims{}
+		parseOpts := []jwt.ParserOption{
+			jwt.WithIssuedAt(),
+			jwt.WithIssuer(v.issuer),
+			jwt.WithExpirationRequired(),
+		}
+		if v.audience != "" {
+			parseOpts = append(parseOpts, jwt.WithAudience(v.audience))
+		}
 		_, err := jwt.ParseWithClaims(token, claims, func(t *jwt.Token) (any, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 				return nil, jwt.ErrSignatureInvalid
 			}
 			kid, _ := t.Header["kid"].(string)
 			return v.jwks.GetKey(r.Context(), kid)
-		}, jwt.WithIssuedAt(), jwt.WithIssuer(v.issuer), jwt.WithExpirationRequired())
+		}, parseOpts...)
 
 		if err != nil {
 			// A token was provided but is invalid (expired, bad signature, etc.).

@@ -103,7 +103,7 @@ func buildSecureRouter(t *testing.T) (http.Handler, func([]string) string) {
 	t.Cleanup(jwksSrv.Close)
 
 	cache := auth.NewJWKSCache(jwksSrv.URL, time.Minute)
-	validator := auth.NewValidator(cache, issuer)
+	validator := auth.NewValidator(cache, issuer, "")
 
 	mcpH := handlers.NewMCPHandlers(testDB, testDB, nil)
 	agentH := handlers.NewAgentHandlers(testDB, testDB, nil)

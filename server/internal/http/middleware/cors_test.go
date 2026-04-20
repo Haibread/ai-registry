@@ -38,6 +38,15 @@ func TestCORS_OriginInAllowList(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != origin {
 		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, origin)
 	}
+	// H4: the API is bearer-only. Setting Allow-Credentials: true here would
+	// let an allowlisted-but-XSS-compromised origin's JS make authenticated
+	// fetch calls with cookies. We never emit it.
+	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+		t.Errorf("Access-Control-Allow-Credentials = %q, want unset (bearer-only API)", got)
+	}
+	if got := rec.Header().Get("Vary"); got != "Origin" {
+		t.Errorf("Vary = %q, want %q to prevent cross-origin cache poisoning", got, "Origin")
+	}
 }
 
 func TestCORS_OriginNotInAllowList(t *testing.T) {
@@ -129,8 +138,46 @@ func TestCORS_Wildcard(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rec.Code)
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://any-origin.com" {
-		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, "http://any-origin.com")
+	// H4: a wildcard allowlist must emit literal "*", not echo the origin.
+	// Echoing origin while wildcard is configured paired with Allow-Credentials
+	// would be a browser-rejected misconfig; emitting "*" makes the public
+	// intent explicit and prevents any credentialed request from succeeding.
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want %q (wildcard allowlist)", got, "*")
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+		t.Errorf("Access-Control-Allow-Credentials = %q, want unset (invalid with wildcard)", got)
+	}
+}
+
+// TestCORS_NoCredentialsEver locks in the H4 invariant: we never emit
+// Access-Control-Allow-Credentials, regardless of origin or method, because
+// the API authenticates via the Authorization header (bearer token), not
+// cookies. Reversing this would expand the XSS blast radius across every
+// allowlisted origin.
+func TestCORS_NoCredentialsEver(t *testing.T) {
+	cases := []struct {
+		name    string
+		allow   []string
+		origin  string
+		method  string
+	}{
+		{"GET allowed origin", []string{"http://example.com"}, "http://example.com", http.MethodGet},
+		{"preflight allowed origin", []string{"http://example.com"}, "http://example.com", http.MethodOptions},
+		{"GET wildcard", []string{"*"}, "http://any-origin.com", http.MethodGet},
+		{"preflight wildcard", []string{"*"}, "http://any-origin.com", http.MethodOptions},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := middleware.CORS(tc.allow)(okHandler())
+			req := httptest.NewRequest(tc.method, "/", nil)
+			req.Header.Set("Origin", tc.origin)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+				t.Errorf("Access-Control-Allow-Credentials = %q, want unset", got)
+			}
+		})
 	}
 }
 

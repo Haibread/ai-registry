@@ -10,18 +10,24 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/haibread/ai-registry/internal/domain"
+	"github.com/haibread/ai-registry/internal/http/middleware"
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
 // ReportHandlers serves the community issue-report API.
 type ReportHandlers struct {
-	db *store.DB
+	db           *store.DB
+	trustedProxy *net.IPNet
 }
 
-// NewReportHandlers creates a ReportHandlers with the given store.
-func NewReportHandlers(db *store.DB) *ReportHandlers {
-	return &ReportHandlers{db: db}
+// NewReportHandlers creates a ReportHandlers with the given store. When
+// trustedProxy is non-nil, X-Forwarded-For is honoured for reporter IP
+// extraction from connections originating inside that CIDR. Pass nil when
+// the server is directly internet-facing so untrusted clients cannot spoof
+// their reporter IP via a forged XFF header.
+func NewReportHandlers(db *store.DB, trustedProxy *net.IPNet) *ReportHandlers {
+	return &ReportHandlers{db: db, trustedProxy: trustedProxy}
 }
 
 // allowed issue types — keep short, structured, and stable. Free-form
@@ -96,7 +102,7 @@ func (h *ReportHandlers) CreateReport(w http.ResponseWriter, r *http.Request) {
 		ResourceID:   body.ResourceID,
 		IssueType:    body.IssueType,
 		Description:  body.Description,
-		ReporterIP:   reporterIP(r),
+		ReporterIP:   middleware.ClientIP(r, h.trustedProxy),
 	})
 	if err != nil {
 		internalError(w, r, err)
@@ -210,21 +216,3 @@ func reportToResponse(r *domain.Report, includeIP bool) map[string]any {
 	return m
 }
 
-// reporterIP extracts a best-effort client IP for logging in the reports
-// table. We mirror the rate-limiter's logic at a lower fidelity: trust the
-// first XFF entry if present, otherwise fall back to RemoteAddr's host.
-// This value is stored for abuse-tracking only and never exposed to
-// non-admins.
-func reporterIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if idx := strings.Index(xff, ","); idx >= 0 {
-			return strings.TrimSpace(xff[:idx])
-		}
-		return strings.TrimSpace(xff)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}

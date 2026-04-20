@@ -19,6 +19,19 @@ type Config struct {
 	// It is served as-is via GET /config.json so the SPA can bootstrap its
 	// OIDC client without baking configuration into the Docker image.
 	OIDCClientID string
+
+	// OIDCAudience is the expected `aud` claim value on incoming access tokens.
+	// When set, tokens whose `aud` does not contain this value are rejected.
+	// Required by the MCP authorization spec (OAuth 2.1 resource indicators /
+	// audience binding) to prevent tokens minted for other clients on the same
+	// realm from being accepted here. Leave empty only in dev when every token
+	// in the realm targets this resource.
+	OIDCAudience string
+
+	// AuthStorage is the SPA token-store selector exposed via /config.json:
+	// "session" (default, XSS-safer) or "local" (E2E only — localStorage is
+	// captured by Playwright's storageState).
+	AuthStorage string
 }
 
 // JWKSEndpoint returns the URL to fetch Keycloak signing keys from.

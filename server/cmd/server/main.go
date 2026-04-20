@@ -123,6 +123,8 @@ func run() error {
 			OIDCIssuer:   cfg.Auth.OIDCIssuer,
 			OIDCJWKSUrl:  cfg.Auth.OIDCJWKSUrl,
 			OIDCClientID: cfg.Auth.OIDCClientID,
+			OIDCAudience: cfg.Auth.OIDCAudience,
+			AuthStorage:  cfg.Auth.AuthStorage,
 		},
 		CORSOrigins:        cfg.HTTP.CORSOrigins,
 		TrustedProxy:       trustedProxy,

@@ -60,7 +60,7 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 
 **Infra** — docker-compose (dev / ci / prod) · Helm chart with optional CNPG-managed PostgreSQL cluster, HTTPRoute, and Ingress · Keycloak for local OIDC · OTel Collector
 
-**API spec** — Hand-written OpenAPI 3.1 at `server/api/openapi.yaml` (**57 operations**), embedded into the binary and served live at `/openapi.yaml`. Server types and the TypeScript client are generated from the spec. A bijection test ensures the router and spec never drift.
+**API spec** — Hand-written OpenAPI 3.1 at `server/api/openapi.yaml` (**59 operations**), embedded into the binary and served live at `/openapi.yaml`. Server types and the TypeScript client are generated from the spec. A bijection test ensures the router and spec never drift.
 
 ---
 
@@ -182,7 +182,7 @@ See `deploy/config.example.yaml` and `deploy/.env.example` for the full list. Se
 
 ## API surface
 
-57 operations across these tags:
+59 operations across these tags:
 
 | Tag          | Purpose                                                        |
 | ---          | ---                                                            |

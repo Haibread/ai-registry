@@ -54,6 +54,9 @@ services:
       OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-ai-registry-web}
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs}
+      # Enforce OAuth 2.1 audience binding (MCP auth spec). Matches the
+      # ai-registry-server-audience client scope defined in the realm import.
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ai-registry-server}
       DATABASE_URL: ${DATABASE_URL:-postgres://registry:registry@postgres:5432/registry?sslmode=disable}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       # Mount the example bootstrap file and enable it automatically in dev.

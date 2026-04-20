@@ -16,6 +16,10 @@ import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts'
 interface AppConfig {
   oidc_issuer: string
   oidc_client_id: string
+  // 'session' (default) scopes tokens to the current tab — the secure default.
+  // 'local' is an E2E-only escape hatch so Playwright's storageState() can
+  // capture the authenticated session; the server ships 'session' in prod.
+  auth_storage?: 'session' | 'local'
 }
 
 let _managerPromise: Promise<UserManager> | undefined
@@ -33,8 +37,13 @@ export function getUserManager(): Promise<UserManager> {
       return res.json() as Promise<AppConfig>
     })
     .then(
-      ({ oidc_issuer, oidc_client_id }) =>
-        new UserManager({
+      ({ oidc_issuer, oidc_client_id, auth_storage }) => {
+        // Default to sessionStorage so OIDC tokens are scoped to the current
+        // tab. The server only returns 'local' when explicitly configured for
+        // Playwright e2e runs (AUTH_STORAGE=local), where storageState() must
+        // be able to capture the authenticated session.
+        const store = auth_storage === 'local' ? window.localStorage : window.sessionStorage
+        return new UserManager({
           authority: oidc_issuer,
           client_id: oidc_client_id,
           redirect_uri: window.location.origin + '/auth/callback',
@@ -42,11 +51,9 @@ export function getUserManager(): Promise<UserManager> {
           response_type: 'code',
           scope: 'openid profile email',
           automaticSilentRenew: true,
-          // oidc-client-ts v3 defaults to sessionStorage, which is not
-          // captured by Playwright's storageState(). Use localStorage so that
-          // E2E tests can save and restore the authenticated session.
-          userStore: new WebStorageStateStore({ store: window.localStorage }),
-        }),
+          userStore: new WebStorageStateStore({ store }),
+        })
+      },
     )
     .catch((err) => {
       // Reset so the next call retries rather than replaying the rejection.

@@ -62,7 +62,7 @@ func NewRouterForTest(deps RouterDeps) *chi.Mux {
 func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Auth validator ────────────────────────────────────────────────────────
 	jwksCache := auth.NewJWKSCache(deps.AuthConf.JWKSEndpoint(), 0)
-	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer)
+	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCAudience)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)
@@ -72,7 +72,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger)
-	reportH := handlers.NewReportHandlers(deps.DB)
+	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
 
 	r := chi.NewRouter()
@@ -94,7 +94,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r.Get("/openapi.yaml", handlers.OpenAPISpec)
 	r.Get("/docs", handlers.SwaggerUI)
 	// Public runtime config consumed by the browser SPA (OIDC bootstrap).
-	r.Get("/config.json", handlers.ConfigJSON(deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCClientID))
+	r.Get("/config.json", handlers.ConfigJSON(deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCClientID, deps.AuthConf.AuthStorage))
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
 	r.Get("/.well-known/oauth-protected-resource", handlers.OAuthProtectedResource)

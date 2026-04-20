@@ -10,6 +10,12 @@ name: ai-registry-ci
 
 services:
   server:
+    # E2E runs authenticate via the real OIDC flow and persist the session via
+    # Playwright's storageState(), which only captures localStorage. Set
+    # AUTH_STORAGE=local for CI so the SPA exposes its OIDC tokens where
+    # Playwright can see them. Production must keep the 'session' default.
+    environment:
+      AUTH_STORAGE: local
     depends_on:
       postgres:
         condition: service_started

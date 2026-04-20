@@ -74,7 +74,14 @@ func newFakeJWKSServer(t *testing.T, priv *rsa.PrivateKey, kid string) *httptest
 // signJWT creates and signs a JWT with the given private key, kid, issuer, and roles.
 func signJWT(t *testing.T, priv *rsa.PrivateKey, kid, issuer string, roles []string) string {
 	t.Helper()
-	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+	return signJWTWithAudience(t, priv, kid, issuer, "", roles)
+}
+
+// signJWTWithAudience signs a JWT with an explicit `aud` claim. Pass audience=""
+// to omit the claim entirely.
+func signJWTWithAudience(t *testing.T, priv *rsa.PrivateKey, kid, issuer, audience string, roles []string) string {
+	t.Helper()
+	claims := jwt.MapClaims{
 		"iss": issuer,
 		"sub": "user-123",
 		"iat": time.Now().Unix(),
@@ -82,7 +89,11 @@ func signJWT(t *testing.T, priv *rsa.PrivateKey, kid, issuer string, roles []str
 		"realm_access": map[string]interface{}{
 			"roles": roles,
 		},
-	})
+	}
+	if audience != "" {
+		claims["aud"] = audience
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = kid
 
 	signed, err := tok.SignedString(priv)
@@ -96,7 +107,15 @@ func signJWT(t *testing.T, priv *rsa.PrivateKey, kid, issuer string, roles []str
 func buildValidator(t *testing.T, jwksURL, issuer string) *auth.Validator {
 	t.Helper()
 	cache := auth.NewJWKSCache(jwksURL, time.Minute)
-	return auth.NewValidator(cache, issuer)
+	return auth.NewValidator(cache, issuer, "")
+}
+
+// buildValidatorWithAudience is like buildValidator but also enforces a
+// required JWT audience claim.
+func buildValidatorWithAudience(t *testing.T, jwksURL, issuer, audience string) *auth.Validator {
+	t.Helper()
+	cache := auth.NewJWKSCache(jwksURL, time.Minute)
+	return auth.NewValidator(cache, issuer, audience)
 }
 
 // ---------------------------------------------------------------------------
@@ -440,6 +459,104 @@ func TestIsAdminFromContext_FalseWhenNonAdminClaimsSet(t *testing.T) {
 	ctx := auth.ContextWithClaims(context.Background(), claims)
 	if auth.IsAdminFromContext(ctx) {
 		t.Error("IsAdminFromContext should return false for non-admin claims")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Audience validation
+// ---------------------------------------------------------------------------
+
+func TestAuthenticate_AudienceMatches(t *testing.T) {
+	priv := generateTestKey(t)
+	const kid = "k1"
+	const issuer = "http://keycloak/realms/test"
+	const audience = "ai-registry-server"
+
+	jwksSrv := newFakeJWKSServer(t, priv, kid)
+	defer jwksSrv.Close()
+
+	v := buildValidatorWithAudience(t, jwksSrv.URL, issuer, audience)
+	token := signJWTWithAudience(t, priv, kid, issuer, audience, []string{"admin"})
+
+	var capturedCtx context.Context
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedCtx = r.Context()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	v.Authenticate(next).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	if claims, ok := auth.ClaimsFromContext(capturedCtx); !ok || claims == nil {
+		t.Error("expected claims in context for matching-audience JWT")
+	}
+}
+
+func TestAuthenticate_AudienceMismatch(t *testing.T) {
+	priv := generateTestKey(t)
+	const kid = "k1"
+	const issuer = "http://keycloak/realms/test"
+
+	jwksSrv := newFakeJWKSServer(t, priv, kid)
+	defer jwksSrv.Close()
+
+	// Validator expects this resource's audience; token was minted for a
+	// different client on the same realm (the class of attack H1 addresses).
+	v := buildValidatorWithAudience(t, jwksSrv.URL, issuer, "ai-registry-server")
+	token := signJWTWithAudience(t, priv, kid, issuer, "some-other-client", []string{"admin"})
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	v.Authenticate(next).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+	if nextCalled {
+		t.Error("next handler must not be called for wrong-audience JWT")
+	}
+}
+
+func TestAuthenticate_AudienceMissing(t *testing.T) {
+	priv := generateTestKey(t)
+	const kid = "k1"
+	const issuer = "http://keycloak/realms/test"
+
+	jwksSrv := newFakeJWKSServer(t, priv, kid)
+	defer jwksSrv.Close()
+
+	// Validator requires an audience; token has no `aud` claim at all.
+	v := buildValidatorWithAudience(t, jwksSrv.URL, issuer, "ai-registry-server")
+	token := signJWTWithAudience(t, priv, kid, issuer, "", []string{"admin"})
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	v.Authenticate(next).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+	if nextCalled {
+		t.Error("next handler must not be called for missing-audience JWT")
 	}
 }
 

@@ -40,6 +40,20 @@ type AuthConfig struct {
 	// Served via GET /config.json so the frontend can bootstrap its OIDC
 	// client at runtime without baking the value into the Docker image.
 	OIDCClientID string
+
+	// OIDCAudience is the expected `aud` value on incoming access tokens.
+	// When non-empty, tokens missing this audience are rejected — required by
+	// the MCP authorization spec (OAuth 2.1 resource indicators / audience
+	// binding) to prevent tokens minted for unrelated clients on the same
+	// realm from being accepted at this resource server.
+	OIDCAudience string
+
+	// AuthStorage controls where the browser SPA persists OIDC tokens.
+	// "session" (the default) scopes tokens to the browser tab, limiting
+	// XSS-exfiltration blast radius. "local" is an E2E escape hatch —
+	// Playwright's storageState() captures localStorage across contexts, so
+	// the e2e stack sets AUTH_STORAGE=local. Never use "local" in production.
+	AuthStorage string
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -115,6 +129,8 @@ type fileAuthConfig struct {
 	OIDCIssuer   string `yaml:"oidc_issuer"`
 	OIDCJWKSUrl  string `yaml:"oidc_jwks_url"`
 	OIDCClientID string `yaml:"oidc_client_id"`
+	OIDCAudience string `yaml:"oidc_audience"`
+	AuthStorage  string `yaml:"auth_storage"`
 }
 
 type fileConfig struct {
@@ -208,6 +224,8 @@ func Load(configFile string) (*Config, error) {
 			OIDCIssuer:   envString("OIDC_ISSUER", fc.Auth.OIDCIssuer),
 			OIDCJWKSUrl:  envString("OIDC_JWKS_URL", fc.Auth.OIDCJWKSUrl),
 			OIDCClientID: envString("OIDC_CLIENT_ID", fc.Auth.OIDCClientID),
+			OIDCAudience: envString("OIDC_AUDIENCE", fc.Auth.OIDCAudience),
+			AuthStorage:  envString("AUTH_STORAGE", fc.Auth.AuthStorage),
 		},
 	}
 
