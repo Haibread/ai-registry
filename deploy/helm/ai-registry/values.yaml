@@ -85,12 +85,14 @@ server:
   # rest, bursty under admin writes / migrations. Override before going to
   # production with real traffic data. Requests must be set (not {}) so the
   # HPA can compute target utilisation and the scheduler can bin-pack.
+  # Deliberately no CPU limit — CPU throttling under CFS quota degrades
+  # latency worse than the oversubscription it prevents. Memory IS limited
+  # so a leak can't take down the node.
   resources:
     requests:
       cpu: 100m
       memory: 128Mi
     limits:
-      cpu: 500m
       memory: 256Mi
 
   podAnnotations: {}
@@ -225,12 +227,12 @@ web:
     port: 8080  # nginx-unprivileged listens on 8080 (non-root cannot bind < 1024)
 
   # nginx serving static SPA assets + proxying a few endpoints — tiny footprint.
+  # See server.resources for why CPU limits are intentionally omitted.
   resources:
     requests:
       cpu: 50m
       memory: 64Mi
     limits:
-      cpu: 200m
       memory: 128Mi
 
   podAnnotations: {}
