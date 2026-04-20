@@ -1,0 +1,37 @@
+{{- if .Values.server.serviceMonitor.enabled -}}
+# Prometheus Operator ServiceMonitor.
+# Rendered only when serviceMonitor.enabled=true. Requires the CRD from the
+# kube-prometheus-stack / Prometheus Operator to be installed in-cluster.
+# Users without the operator should scrape via pod annotations or leave this
+# disabled.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ai-registry.server.fullname" . }}
+  namespace: {{ default .Release.Namespace .Values.server.serviceMonitor.namespace }}
+  labels:
+    {{- include "ai-registry.server.labels" . | nindent 4 }}
+    {{- with .Values.server.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "ai-registry.server.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.server.serviceMonitor.path | default "/metrics" }}
+      interval: {{ .Values.server.serviceMonitor.interval | default "30s" }}
+      scrapeTimeout: {{ .Values.server.serviceMonitor.scrapeTimeout | default "10s" }}
+      {{- with .Values.server.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

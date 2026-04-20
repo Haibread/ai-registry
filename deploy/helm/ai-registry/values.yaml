@@ -81,15 +81,17 @@ server:
     type: ClusterIP
     port: 8080
 
-  resources: {}
-  # Example:
-  # resources:
-  #   limits:
-  #     cpu: 500m
-  #     memory: 256Mi
-  #   requests:
-  #     cpu: 100m
-  #     memory: 128Mi
+  # Conservative defaults sized for the registry workload: almost idle at
+  # rest, bursty under admin writes / migrations. Override before going to
+  # production with real traffic data. Requests must be set (not {}) so the
+  # HPA can compute target utilisation and the scheduler can bin-pack.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
   podAnnotations: {}
   podLabels: {}
@@ -156,7 +158,12 @@ server:
     targetCPUUtilizationPercentage: 70
     # targetMemoryUtilizationPercentage: 80
 
+  # PDB is only rendered when enabled=true AND (replicaCount > 1 OR autoscaling
+  # is enabled). With a single replica, a minAvailable=1 PDB blocks node drains
+  # indefinitely — see https://kubernetes.io/docs/tasks/run-application/configure-pdb/.
+  # Bump replicaCount or enable autoscaling before enabling this in production.
   podDisruptionBudget:
+    enabled: false
     minAvailable: 1
 
   serviceAccount:
@@ -166,6 +173,19 @@ server:
     annotations: {}
     # Override the name (defaults to fullname-backend)
     name: ""
+
+  # ── Prometheus ServiceMonitor ────────────────────────────────────────────
+  # Opt-in resource for the Prometheus Operator. Leave disabled unless the
+  # operator (and its CRDs) is installed in the target cluster.
+  serviceMonitor:
+    enabled: false
+    # namespace: ""          # Defaults to the release namespace.
+    # path: /metrics
+    # interval: 30s
+    # scrapeTimeout: 10s
+    # additionalLabels: {}   # e.g. { release: kube-prometheus-stack }
+    # relabelings: []
+    # metricRelabelings: []
 
   # ── Escape hatches ───────────────────────────────────────────────────────
   # Extra environment variables injected into the server container.
@@ -204,7 +224,14 @@ web:
     type: ClusterIP
     port: 8080  # nginx-unprivileged listens on 8080 (non-root cannot bind < 1024)
 
-  resources: {}
+  # nginx serving static SPA assets + proxying a few endpoints — tiny footprint.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 
   podAnnotations: {}
   podLabels: {}
@@ -261,7 +288,9 @@ web:
     targetCPUUtilizationPercentage: 70
     # targetMemoryUtilizationPercentage: 80
 
+  # See note on server.podDisruptionBudget above.
   podDisruptionBudget:
+    enabled: false
     minAvailable: 1
 
   serviceAccount:
