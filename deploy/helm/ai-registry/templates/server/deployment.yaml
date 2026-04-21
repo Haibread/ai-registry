@@ -79,7 +79,7 @@ spec:
                   name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
                   key: password
             - name: DATABASE_URL
-              value: "postgresql://$(_PG_USER):$(_PG_PASSWORD)@{{ include "ai-registry.cnpg.clusterName" . }}-rw.{{ .Release.Namespace }}.svc:5432/{{ .Values.cnpg.initdb.database }}?sslmode=require"
+              value: "postgres://$(_PG_USER):$(_PG_PASSWORD)@{{ include "ai-registry.cnpg.clusterName" . }}-rw.{{ .Release.Namespace }}.svc:5432/{{ .Values.cnpg.initdb.database }}?sslmode=require"
             {{- else if .Values.server.databaseUrl }}
             - name: DATABASE_URL
               valueFrom:
