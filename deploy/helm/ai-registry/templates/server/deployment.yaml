@@ -66,11 +66,20 @@ spec:
                   name: {{ .Values.server.databaseUrlSecret }}
                   key: DATABASE_URL
             {{- else if .Values.cnpg.enabled }}
-            - name: DATABASE_URL
+            # CNPG's superuser secret.uri hardcodes dbname=*; rebuild the DSN
+            # so it targets the initdb database instead.
+            - name: _PG_USER
               valueFrom:
                 secretKeyRef:
                   name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
-                  key: uri
+                  key: username
+            - name: _PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
+                  key: password
+            - name: DATABASE_URL
+              value: "postgresql://$(_PG_USER):$(_PG_PASSWORD)@{{ include "ai-registry.cnpg.clusterName" . }}-rw.{{ .Release.Namespace }}.svc:5432/{{ .Values.cnpg.initdb.database }}?sslmode=require"
             {{- else if .Values.server.databaseUrl }}
             - name: DATABASE_URL
               valueFrom:

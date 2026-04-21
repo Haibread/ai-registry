@@ -34,10 +34,8 @@ spec:
   # Use the official CNPG image for the specified Postgres major version.
   imageName: {{ printf "ghcr.io/cloudnative-pg/postgresql:%s" .Values.cnpg.postgresVersion }}
 
-  # Managed superuser secret (referenced by backend deployment).
-  superuserSecret:
-    name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
-
   # Allow the CNPG operator to connect as superuser (needed for migrations).
+  # When enabled and superuserSecret is unset, CNPG auto-generates
+  # "<clusterName>-superuser" — which is what the server deployment references.
   enableSuperuserAccess: {{ .Values.cnpg.enableSuperuserAccess }}
 {{- end }}
