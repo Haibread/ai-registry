@@ -314,7 +314,7 @@ web:
 # Ingress (nginx / classic)
 # ----------------------------------------------------------------------------
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations: {}
   # Example annotations for cert-manager + nginx:
