@@ -2,6 +2,44 @@
 
 All notable changes to this project are documented here.
 
+## v0.3.2
+
+Helm-chart-only patch release. Four fixes that unblock a fresh
+`cnpg.enabled=true` install; no server/web/API changes.
+
+### 🐘 CNPG superuser secret is auto-created again
+
+The Cluster resource set `spec.superuserSecret.name`, which CNPG
+interprets as "the user is providing this secret" and suppresses
+auto-generation. A fresh install therefore left the backend pod stuck
+in `CreateContainerConfigError` with `secret
+"<cluster>-superuser" not found`.
+
+- `superuserSecret` removed from `templates/cnpg-cluster.yaml`. CNPG
+  now auto-generates `<clusterName>-superuser` as intended.
+- Unused `cnpg.superuserSecretName` value and helper branch deleted;
+  the helper always returns `<clusterName>-superuser`.
+
+### 🎯 DATABASE_URL targets the actual database
+
+CNPG's auto-generated superuser `uri` hardcodes `dbname=*` (wildcard),
+so even once the secret existed the server crashed on start with
+`database "*" does not exist`.
+
+- Backend deployment now builds `DATABASE_URL` from the superuser
+  secret's `username` + `password`, the CNPG `-rw` service, and
+  `cnpg.initdb.database`. The `uri` key is no longer consumed.
+- Scheme is `postgres://` — `golang-migrate` registers its driver
+  under `postgres` and fails on `postgresql://` with
+  `unknown driver postgresql`.
+
+### 🚪 Ingress disabled by default
+
+`ingress.enabled` now defaults to `false`, matching the existing
+`httpRoute.enabled=false` and `cnpg.enabled=false` defaults.
+Operators opt in to the networking path they actually use instead of
+discovering a stray Ingress resource on first install.
+
 ## v0.3.1
 
 Security bugfix release. Four high-severity findings from an internal
