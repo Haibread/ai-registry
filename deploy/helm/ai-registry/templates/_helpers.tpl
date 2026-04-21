@@ -133,13 +133,9 @@ CNPG helpers
 {{- end }}
 
 {{/*
-CNPG superuser secret name — defaults to "<clusterName>-superuser" which is
-what CNPG creates automatically.
+CNPG superuser secret name — always "<clusterName>-superuser",
+the secret CNPG auto-creates when enableSuperuserAccess is true.
 */}}
 {{- define "ai-registry.cnpg.superuserSecretName" -}}
-{{- if .Values.cnpg.superuserSecretName }}
-{{- .Values.cnpg.superuserSecretName }}
-{{- else }}
 {{- printf "%s-superuser" (include "ai-registry.cnpg.clusterName" .) }}
-{{- end }}
 {{- end }}

@@ -376,10 +376,6 @@ cnpg:
       shared_buffers: "256MB"
 
   # Allow the CNPG operator to connect as the superuser (needed for migrations).
+  # CNPG auto-creates "<clusterName>-superuser" which the backend deployment
+  # references to build DATABASE_URL.
   enableSuperuserAccess: true
-
-  # Name of the superuser secret CNPG will create (referenced as DATABASE_URL
-  # source in the backend deployment when cnpg.enabled=true).
-  # CNPG creates a secret named "<clusterName>-superuser" automatically.
-  # Override only if you need a specific secret name.
-  superuserSecretName: ""
