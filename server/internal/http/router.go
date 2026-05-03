@@ -69,6 +69,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	v0H := handlers.NewV0MCPHandlers(deps.DB, deps.DB)
 	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB, deps.Metrics)
 	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
+	wsH := handlers.NewWorkspaceHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger)
@@ -142,6 +143,15 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
 			r.With(auth.RequireAdmin).Patch("/{slug}", pubH.PatchPublisher)
 			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
+
+			// Workspaces under a publisher (ADR 0001).
+			r.Route("/{publisher_slug}/workspaces", func(r chi.Router) {
+				r.With(publicRL).Get("/", wsH.ListWorkspaces)
+				r.With(auth.RequireAdmin).Post("/", wsH.CreateWorkspace)
+				r.With(publicRL).Get("/{workspace_slug}", wsH.GetWorkspace)
+				r.With(auth.RequireAdmin).Patch("/{workspace_slug}", wsH.PatchWorkspace)
+				r.With(auth.RequireAdmin).Delete("/{workspace_slug}", wsH.DeleteWorkspace)
+			})
 		})
 
 		// MCP servers
