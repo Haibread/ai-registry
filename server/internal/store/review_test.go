@@ -305,3 +305,156 @@ func TestRejectMCPVersion_StateMismatchOnDraft(t *testing.T) {
 		t.Errorf("err = %v, want ErrReviewStateMismatch", err)
 	}
 }
+
+// ── Agent version workflow ──────────────────────────────────────────────
+
+func seedDraftAgentVersion(t *testing.T, ctx context.Context, ns, slug, ver string) string {
+	t.Helper()
+	pubID := insertPublisher(t, ns, ns)
+	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: slug, Name: slug,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+	if _, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
+		AgentID:            ag.ID,
+		Version:            ver,
+		EndpointURL:        "https://agent.example/api",
+		Skills:             json.RawMessage(`[{"id":"s1","name":"s","description":"d","tags":["x"]}]`),
+		DefaultInputModes:  []string{"text/plain"},
+		DefaultOutputModes: []string{"text/plain"},
+		ProtocolVersion:    "0.3.0",
+	}); err != nil {
+		t.Fatalf("CreateAgentVersion: %v", err)
+	}
+	return ag.ID
+}
+
+func readAgentReviewState(t *testing.T, ctx context.Context, agentID, version string) (state string, revision int, reason string, publishedAt *string) {
+	t.Helper()
+	var pa *string
+	err := sharedDB.Pool.QueryRow(ctx, `
+		SELECT review_state, revision, coalesce(rejection_reason,''),
+		       to_char(published_at, 'YYYY-MM-DD"T"HH24:MI:SS')
+		FROM agent_versions WHERE agent_id=$1 AND version=$2`,
+		agentID, version,
+	).Scan(&state, &revision, &reason, &pa)
+	if err != nil {
+		t.Fatalf("read agent review state: %v", err)
+	}
+	return state, revision, reason, pa
+}
+
+func TestSubmitAgentVersion_DraftToPending(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	state, _, _, _ := readAgentReviewState(t, ctx, agID, "0.1.0")
+	if state != "pending_review" {
+		t.Errorf("state = %q, want pending_review", state)
+	}
+}
+
+func TestApproveAgentVersion_HappyPath(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	if err := sharedDB.ApproveAgentVersion(ctx, agID, "0.1.0", 1, reviewer()); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	state, _, _, pa := readAgentReviewState(t, ctx, agID, "0.1.0")
+	if state != "none" {
+		t.Errorf("state = %q, want none", state)
+	}
+	if pa == nil {
+		t.Errorf("published_at should be set")
+	}
+
+	// Parent agent status should have flipped to 'published'.
+	var st string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT status FROM agents WHERE id=$1`, agID).Scan(&st); err != nil {
+		t.Fatalf("read agent status: %v", err)
+	}
+	if st != "published" {
+		t.Errorf("agent.status = %q, want published", st)
+	}
+}
+
+func TestApproveAgentVersion_RevisionMismatch(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	err := sharedDB.ApproveAgentVersion(ctx, agID, "0.1.0", 99, reviewer())
+	if !errors.Is(err, store.ErrReviewRevisionMismatch) {
+		t.Errorf("err = %v, want ErrReviewRevisionMismatch", err)
+	}
+}
+
+func TestRejectAgentVersion_HappyPath(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	if err := sharedDB.RejectAgentVersion(ctx, agID, "0.1.0", 1, "needs polish", reviewer()); err != nil {
+		t.Fatalf("reject: %v", err)
+	}
+	state, _, reason, _ := readAgentReviewState(t, ctx, agID, "0.1.0")
+	if state != "rejected" {
+		t.Errorf("state = %q, want rejected", state)
+	}
+	if reason != "needs polish" {
+		t.Errorf("reason = %q", reason)
+	}
+}
+
+func TestWithdrawAgentVersion_PendingToDraft(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	if err := sharedDB.WithdrawAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("withdraw: %v", err)
+	}
+	state, _, _, _ := readAgentReviewState(t, ctx, agID, "0.1.0")
+	if state != "none" {
+		t.Errorf("state = %q, want none", state)
+	}
+}
+
+func TestSubmitAgentVersion_StackingRejectedByPartialUniqueIndex(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+	if _, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
+		AgentID:            agID,
+		Version:            "0.2.0",
+		EndpointURL:        "https://agent.example/api",
+		Skills:             json.RawMessage(`[{"id":"s1","name":"s","description":"d","tags":["x"]}]`),
+		DefaultInputModes:  []string{"text/plain"},
+		DefaultOutputModes: []string{"text/plain"},
+		ProtocolVersion:    "0.3.0",
+	}); err != nil {
+		t.Fatalf("create v0.2.0: %v", err)
+	}
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit v0.1.0: %v", err)
+	}
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.2.0", actor()); !errors.Is(err, store.ErrConflict) {
+		t.Errorf("expected ErrConflict, got %v", err)
+	}
+}

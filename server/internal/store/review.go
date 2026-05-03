@@ -257,6 +257,223 @@ func diagnoseMCPApproveMiss(ctx context.Context, db *DB, serverID, version strin
 	return ErrReviewStateMismatch
 }
 
+// ── Agent versions: workflow ─────────────────────────────────────────────
+
+// SubmitAgentVersion is the agent equivalent of SubmitMCPVersion.
+func (db *DB) SubmitAgentVersion(ctx context.Context, agentID, version string, a Actor) error {
+	ctx, span := startSpan(ctx, "SubmitAgentVersion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agent_versions
+		SET review_state       = 'pending_review',
+		    submitted_at       = NOW(),
+		    submitted_by       = $3,
+		    submitted_by_email = $4,
+		    rejection_reason   = NULL,
+		    updated_at         = NOW()
+		WHERE agent_id = $1
+		  AND version  = $2
+		  AND review_state IN ('none', 'rejected')
+		  AND published_at IS NULL`,
+		agentID, version, a.Subject, a.Email)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			recordErr(span, ErrConflict)
+			return ErrConflict
+		}
+		recordErr(span, err)
+		return fmt.Errorf("submitting agent version: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseAgentReviewMiss(ctx, db, agentID, version)
+	}
+	return nil
+}
+
+// WithdrawAgentVersion is the agent equivalent of WithdrawMCPVersion.
+func (db *DB) WithdrawAgentVersion(ctx context.Context, agentID, version string, _ Actor) error {
+	ctx, span := startSpan(ctx, "WithdrawAgentVersion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agent_versions
+		SET review_state       = 'none',
+		    submitted_at       = NULL,
+		    submitted_by       = NULL,
+		    submitted_by_email = NULL,
+		    updated_at         = NOW()
+		WHERE agent_id = $1
+		  AND version  = $2
+		  AND review_state = 'pending_review'`,
+		agentID, version)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("withdrawing agent version: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseAgentReviewMiss(ctx, db, agentID, version)
+	}
+	return nil
+}
+
+// ApproveAgentVersion is the agent equivalent of ApproveMCPVersion.
+func (db *DB) ApproveAgentVersion(ctx context.Context, agentID, version string, expectedRevision int, a Actor) error {
+	ctx, span := startSpan(ctx, "ApproveAgentVersion")
+	defer span.End()
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE agent_versions
+		SET review_state      = 'none',
+		    reviewed_at       = NOW(),
+		    reviewed_by       = $3,
+		    reviewed_by_email = $4,
+		    review_decision   = 'approved',
+		    published_at      = COALESCE(published_at, NOW()),
+		    updated_at        = NOW()
+		WHERE agent_id     = $1
+		  AND version      = $2
+		  AND review_state = 'pending_review'
+		  AND revision     = $5`,
+		agentID, version, a.Subject, a.Email, expectedRevision)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("approving agent version: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		if err := diagnoseAgentApproveMissTx(ctx, tx, agentID, version, expectedRevision); err != nil {
+			recordErr(span, err)
+			return err
+		}
+		return ErrReviewStateMismatch
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE agents SET status='published', updated_at=NOW() WHERE id=$1 AND status='draft'`,
+		agentID); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("promoting agent status: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
+// RejectAgentVersion is the agent equivalent of RejectMCPVersion.
+func (db *DB) RejectAgentVersion(ctx context.Context, agentID, version string, expectedRevision int, reason string, a Actor) error {
+	ctx, span := startSpan(ctx, "RejectAgentVersion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agent_versions
+		SET review_state      = 'rejected',
+		    reviewed_at       = NOW(),
+		    reviewed_by       = $3,
+		    reviewed_by_email = $4,
+		    review_decision   = 'rejected',
+		    rejection_reason  = $5,
+		    updated_at        = NOW()
+		WHERE agent_id     = $1
+		  AND version      = $2
+		  AND review_state = 'pending_review'
+		  AND revision     = $6`,
+		agentID, version, a.Subject, a.Email, reason, expectedRevision)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("rejecting agent version: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseAgentApproveMiss(ctx, db, agentID, version, expectedRevision)
+	}
+	return nil
+}
+
+func diagnoseAgentReviewMiss(ctx context.Context, db *DB, agentID, version string) error {
+	var (
+		state       string
+		publishedAt *time.Time
+	)
+	err := db.Pool.QueryRow(ctx,
+		`SELECT review_state, published_at FROM agent_versions
+		 WHERE agent_id = $1 AND version = $2`,
+		agentID, version).Scan(&state, &publishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("diagnosing agent review miss: %w", err)
+	}
+	if publishedAt != nil {
+		return ErrAlreadyPublished
+	}
+	return ErrReviewStateMismatch
+}
+
+func diagnoseAgentApproveMiss(ctx context.Context, db *DB, agentID, version string, expectedRevision int) error {
+	var (
+		state       string
+		revision    int
+		publishedAt *time.Time
+	)
+	err := db.Pool.QueryRow(ctx,
+		`SELECT review_state, revision, published_at FROM agent_versions
+		 WHERE agent_id = $1 AND version = $2`,
+		agentID, version).Scan(&state, &revision, &publishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("diagnosing agent approve miss: %w", err)
+	}
+	if publishedAt != nil {
+		return ErrAlreadyPublished
+	}
+	if state != string(domain.ReviewStatePendingReview) {
+		return ErrReviewStateMismatch
+	}
+	if revision != expectedRevision {
+		return ErrReviewRevisionMismatch
+	}
+	return ErrReviewStateMismatch
+}
+
+func diagnoseAgentApproveMissTx(ctx context.Context, tx pgx.Tx, agentID, version string, expectedRevision int) error {
+	var (
+		state       string
+		revision    int
+		publishedAt *time.Time
+	)
+	err := tx.QueryRow(ctx,
+		`SELECT review_state, revision, published_at FROM agent_versions
+		 WHERE agent_id = $1 AND version = $2`,
+		agentID, version).Scan(&state, &revision, &publishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("diagnosing agent approve miss: %w", err)
+	}
+	if publishedAt != nil {
+		return ErrAlreadyPublished
+	}
+	if state != string(domain.ReviewStatePendingReview) {
+		return ErrReviewStateMismatch
+	}
+	if revision != expectedRevision {
+		return ErrReviewRevisionMismatch
+	}
+	return ErrReviewStateMismatch
+}
+
 // diagnoseMCPApproveMissTx is the in-transaction variant used by
 // ApproveMCPVersion (the read must see the same snapshot as the failed
 // UPDATE).
