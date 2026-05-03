@@ -269,6 +269,88 @@ func (db *DB) UpdateWorkspace(ctx context.Context, workspaceID string, p UpdateW
 	return &w, nil
 }
 
+// LookupGroupNameByMCPServerNS returns the workspace group_name for the
+// MCP server addressed by (publisher_slug, server_slug). Used by the
+// RequireWorkspaceWrite middleware on routes shaped
+// /api/v1/mcp/servers/{namespace}/{slug}/...
+//
+// Returns:
+//   - empty string + nil error when the workspace's group_name is NULL
+//     (admin-only workspace);
+//   - empty string + ErrNotFound when the server doesn't exist (let the
+//     handler 404 normally; admins still pass through the middleware);
+//   - any other error wrapped with context.
+func (db *DB) LookupGroupNameByMCPServerNS(ctx context.Context, namespace, slug string) (string, error) {
+	ctx, span := startSpan(ctx, "LookupGroupNameByMCPServerNS")
+	defer span.End()
+
+	var groupName string
+	err := db.Pool.QueryRow(ctx, `
+		SELECT coalesce(w.group_name, '')
+		FROM mcp_servers s
+		JOIN publishers p  ON p.id = s.publisher_id
+		JOIN workspaces w  ON w.id = s.workspace_id
+		WHERE p.slug = $1 AND s.slug = $2`,
+		namespace, slug).Scan(&groupName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
+		return "", ErrNotFound
+	}
+	if err != nil {
+		recordErr(span, err)
+		return "", fmt.Errorf("looking up mcp server group: %w", err)
+	}
+	return groupName, nil
+}
+
+// LookupGroupNameByAgentNS is the agent equivalent of
+// LookupGroupNameByMCPServerNS.
+func (db *DB) LookupGroupNameByAgentNS(ctx context.Context, namespace, slug string) (string, error) {
+	ctx, span := startSpan(ctx, "LookupGroupNameByAgentNS")
+	defer span.End()
+
+	var groupName string
+	err := db.Pool.QueryRow(ctx, `
+		SELECT coalesce(w.group_name, '')
+		FROM agents a
+		JOIN publishers p  ON p.id = a.publisher_id
+		JOIN workspaces w  ON w.id = a.workspace_id
+		WHERE p.slug = $1 AND a.slug = $2`,
+		namespace, slug).Scan(&groupName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
+		return "", ErrNotFound
+	}
+	if err != nil {
+		recordErr(span, err)
+		return "", fmt.Errorf("looking up agent group: %w", err)
+	}
+	return groupName, nil
+}
+
+// LookupGroupNameByMCPServerID is the ULID-keyed equivalent of
+// LookupGroupNameByMCPServerNS, for /v0/servers/{id} style routes.
+func (db *DB) LookupGroupNameByMCPServerID(ctx context.Context, serverID string) (string, error) {
+	ctx, span := startSpan(ctx, "LookupGroupNameByMCPServerID")
+	defer span.End()
+
+	var groupName string
+	err := db.Pool.QueryRow(ctx, `
+		SELECT coalesce(w.group_name, '')
+		FROM mcp_servers s
+		JOIN workspaces w ON w.id = s.workspace_id
+		WHERE s.id = $1`, serverID).Scan(&groupName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
+		return "", ErrNotFound
+	}
+	if err != nil {
+		recordErr(span, err)
+		return "", fmt.Errorf("looking up mcp server group by id: %w", err)
+	}
+	return groupName, nil
+}
+
 // ensureDefaultWorkspaceID returns the ULID of the publisher's `default`
 // workspace, creating it lazily if it does not yet exist. This mirrors
 // the BackfillWorkspaces logic for a single publisher and is the path

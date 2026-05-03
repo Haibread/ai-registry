@@ -463,6 +463,97 @@ func TestCreateAgent_PopulatesWorkspaceID(t *testing.T) {
 	}
 }
 
+func TestLookupGroupNameByMCPServerNS(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "acme", "Acme")
+
+	// Workspace bound to a group.
+	bound, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pubID, Slug: "claude-team", Name: "Claude team",
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if _, err := sharedDB.UpdateWorkspace(ctx, bound.ID, store.UpdateWorkspaceParams{
+		Name: bound.Name, GroupName: "claude-team-grp",
+	}); err != nil {
+		t.Fatalf("set group: %v", err)
+	}
+
+	// MCP server in the bound workspace.
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, WorkspaceID: bound.ID, Slug: "weather", Name: "Weather",
+	}); err != nil {
+		t.Fatalf("create server: %v", err)
+	}
+
+	got, err := sharedDB.LookupGroupNameByMCPServerNS(ctx, "acme", "weather")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if got != "claude-team-grp" {
+		t.Errorf("group = %q, want claude-team-grp", got)
+	}
+
+	// Server in a workspace with NULL group_name → "".
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "barometer", Name: "Barometer",
+	}); err != nil {
+		t.Fatalf("create default-ws server: %v", err)
+	}
+	got, err = sharedDB.LookupGroupNameByMCPServerNS(ctx, "acme", "barometer")
+	if err != nil {
+		t.Fatalf("lookup default-ws: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected empty group for default workspace, got %q", got)
+	}
+
+	// Missing server → ErrNotFound.
+	if _, err := sharedDB.LookupGroupNameByMCPServerNS(ctx, "acme", "missing"); err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+	// Missing publisher → ErrNotFound.
+	if _, err := sharedDB.LookupGroupNameByMCPServerNS(ctx, "missing", "weather"); err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound for unknown publisher, got %v", err)
+	}
+}
+
+func TestLookupGroupNameByAgentNS(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "acme", "Acme")
+	w, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pubID, Slug: "claude-team", Name: "Claude team",
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if _, err := sharedDB.UpdateWorkspace(ctx, w.ID, store.UpdateWorkspaceParams{
+		Name: w.Name, GroupName: "claude-team-grp",
+	}); err != nil {
+		t.Fatalf("set group: %v", err)
+	}
+	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, WorkspaceID: w.ID, Slug: "planner", Name: "Planner",
+	}); err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	got, err := sharedDB.LookupGroupNameByAgentNS(ctx, "acme", "planner")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if got != "claude-team-grp" {
+		t.Errorf("group = %q, want claude-team-grp", got)
+	}
+
+	if _, err := sharedDB.LookupGroupNameByAgentNS(ctx, "acme", "missing"); err != store.ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestDeleteWorkspace_NotFound(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
