@@ -7,6 +7,7 @@ import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { LifecycleStepper } from '@/components/admin/lifecycle-stepper'
 import { DeprecateButton } from '@/components/admin/deprecate-button'
 import { DeleteButton } from '@/components/admin/delete-button'
+import { RequestDeletionButton } from '@/components/admin/request-deletion-button'
 import { VersionsSection } from '@/components/admin/versions-section'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
@@ -311,6 +312,12 @@ export default function AdminAgentDetail() {
             />
           )}
 
+          <RequestDeletionButton
+            kind="agent"
+            namespace={data.namespace}
+            slug={data.slug}
+            entityName={data.name}
+          />
           <DeleteButton
             onDelete={() => deleteMutation.mutate()}
             entityName={data.name}
