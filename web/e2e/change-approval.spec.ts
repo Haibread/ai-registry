@@ -158,6 +158,15 @@ test.describe('Change-approval workflow', () => {
     const body = (await resp.json()) as { type: string; status: number }
     expect(body.status).toBe(409)
     expect(body.type, 'discriminator type').toMatch(/review-revision-mismatch$/)
+
+    // Withdraw so the partial-unique pending_review constraint releases
+    // and subsequent tests can submit a different version on this entry.
+    resp = await apiPost(
+      page,
+      `/api/v1/mcp/servers/${PUB}/${MCP}/versions/1.2.0/withdraw`,
+      {},
+    )
+    expect(resp.status(), 'withdraw').toBe(204)
   })
 
   test('approve already-approved version returns 409 already-published or state-mismatch', async ({ page }) => {
