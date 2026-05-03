@@ -32,6 +32,11 @@ const (
 	ActionPublisherCreated AuditAction = "publisher.created"
 	ActionPublisherUpdated AuditAction = "publisher.updated"
 	ActionPublisherDeleted AuditAction = "publisher.deleted"
+
+	// Workspace actions
+	ActionWorkspaceCreated AuditAction = "workspace.created"
+	ActionWorkspaceUpdated AuditAction = "workspace.updated"
+	ActionWorkspaceDeleted AuditAction = "workspace.deleted"
 )
 
 // AuditEvent is a single immutable entry in the audit log.

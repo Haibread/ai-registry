@@ -69,11 +69,28 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	v0H := handlers.NewV0MCPHandlers(deps.DB, deps.DB)
 	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB, deps.Metrics)
 	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
+	wsH := handlers.NewWorkspaceHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger)
 	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
+
+	// Workspace lookup adapters bind the auth.WorkspaceLookup signature to
+	// concrete URL patterns. RequireWorkspaceWrite uses these to resolve
+	// the workspace's group_name without consuming the request body.
+	mcpServerNSLookup := func(r *http.Request) (string, error) {
+		ns := chi.URLParam(r, "namespace")
+		slug := chi.URLParam(r, "slug")
+		return deps.DB.LookupGroupNameByMCPServerNS(r.Context(), ns, slug)
+	}
+	agentNSLookup := func(r *http.Request) (string, error) {
+		ns := chi.URLParam(r, "namespace")
+		slug := chi.URLParam(r, "slug")
+		return deps.DB.LookupGroupNameByAgentNS(r.Context(), ns, slug)
+	}
+	requireMCPServerNS := auth.RequireWorkspaceWrite(mcpServerNSLookup)
+	requireAgentNS := auth.RequireWorkspaceWrite(agentNSLookup)
 
 	r := chi.NewRouter()
 
@@ -109,14 +126,14 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// Name-based routes (spec-preferred: namespace/slug path)
 		r.Route("/servers/{namespace}/{slug}", func(r chi.Router) {
 			r.Get("/", v0H.GetServerByName)
-			r.With(auth.RequireAdmin).Patch("/status", v0H.PatchServerStatus)
+			r.With(requireMCPServerNS).Patch("/status", v0H.PatchServerStatus)
 			r.Route("/versions", func(r chi.Router) {
 				r.Get("/", v0H.ListServerVersions)
 				r.Route("/{version}", func(r chi.Router) {
 					r.Get("/", v0H.GetServerVersion)
-					r.With(auth.RequireAdmin).Put("/", v0H.UpdateServerVersion)
-					r.With(auth.RequireAdmin).Delete("/", v0H.DeleteServerVersion)
-					r.With(auth.RequireAdmin).Patch("/status", v0H.PatchVersionStatus)
+					r.With(requireMCPServerNS).Put("/", v0H.UpdateServerVersion)
+					r.With(requireMCPServerNS).Delete("/", v0H.DeleteServerVersion)
+					r.With(requireMCPServerNS).Patch("/status", v0H.PatchVersionStatus)
 				})
 			})
 		})
@@ -142,6 +159,18 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
 			r.With(auth.RequireAdmin).Patch("/{slug}", pubH.PatchPublisher)
 			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
+
+			// Workspaces under a publisher (ADR 0001).
+			r.Route("/{publisher_slug}/workspaces", func(r chi.Router) {
+				r.With(publicRL).Get("/", wsH.ListWorkspaces)
+				r.With(auth.RequireAdmin).Post("/", wsH.CreateWorkspace)
+				r.With(publicRL).Get("/{workspace_slug}", wsH.GetWorkspace)
+				r.With(auth.RequireAdmin).Patch("/{workspace_slug}", wsH.PatchWorkspace)
+				r.With(auth.RequireAdmin).Delete("/{workspace_slug}", wsH.DeleteWorkspace)
+				// Workspace-scoped resource lists.
+				r.With(publicRL).Get("/{workspace_slug}/servers", wsH.ListWorkspaceServers)
+				r.With(publicRL).Get("/{workspace_slug}/agents", wsH.ListWorkspaceAgents)
+			})
 		})
 
 		// MCP servers
@@ -151,9 +180,14 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", mcpH.GetServer)
-				r.With(auth.RequireAdmin).Patch("/", mcpH.PatchServer)
-				r.With(auth.RequireAdmin).Delete("/", mcpH.DeleteServer)
-				r.With(auth.RequireAdmin).Post("/deprecate", mcpH.DeprecateServer)
+				// Edits delegate to RequireWorkspaceWrite so that publisher
+				// group members can author content for their workspace.
+				// Admin override is built in.
+				r.With(requireMCPServerNS).Patch("/", mcpH.PatchServer)
+				r.With(requireMCPServerNS).Delete("/", mcpH.DeleteServer)
+				r.With(requireMCPServerNS).Post("/deprecate", mcpH.DeprecateServer)
+				// Visibility flips are admin-only by policy: they affect
+				// public exposure, not just authoring.
 				r.With(auth.RequireAdmin).Post("/visibility", mcpH.SetVisibility)
 				r.With(publicRL).Post("/view", mcpH.RecordView)
 				r.With(publicRL).Post("/copy", mcpH.RecordCopy)
@@ -161,9 +195,9 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 				r.Route("/versions", func(r chi.Router) {
 					r.With(publicRL).Get("/", mcpH.ListVersions)
-					r.With(auth.RequireAdmin).Post("/", mcpH.CreateVersion)
+					r.With(requireMCPServerNS).Post("/", mcpH.CreateVersion)
 					r.With(publicRL).Get("/{version}", mcpH.GetVersion)
-					r.With(auth.RequireAdmin).Post("/{version}/publish", mcpH.PublishVersion)
+					r.With(requireMCPServerNS).Post("/{version}/publish", mcpH.PublishVersion)
 				})
 			})
 		})
@@ -175,9 +209,9 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", agentH.GetAgent)
-				r.With(auth.RequireAdmin).Patch("/", agentH.PatchAgent)
-				r.With(auth.RequireAdmin).Delete("/", agentH.DeleteAgent)
-				r.With(auth.RequireAdmin).Post("/deprecate", agentH.DeprecateAgent)
+				r.With(requireAgentNS).Patch("/", agentH.PatchAgent)
+				r.With(requireAgentNS).Delete("/", agentH.DeleteAgent)
+				r.With(requireAgentNS).Post("/deprecate", agentH.DeprecateAgent)
 				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
 				r.With(publicRL).Post("/view", agentH.RecordView)
 				r.With(publicRL).Post("/copy", agentH.RecordCopy)
@@ -185,10 +219,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 				r.Route("/versions", func(r chi.Router) {
 					r.With(publicRL).Get("/", agentH.ListVersions)
-					r.With(auth.RequireAdmin).Post("/", agentH.CreateVersion)
+					r.With(requireAgentNS).Post("/", agentH.CreateVersion)
 					r.With(publicRL).Get("/{version}", agentH.GetVersion)
-					r.With(auth.RequireAdmin).Post("/{version}/publish", agentH.PublishVersion)
-					r.With(auth.RequireAdmin).Patch("/{version}/status", agentH.PatchVersionStatus)
+					r.With(requireAgentNS).Post("/{version}/publish", agentH.PublishVersion)
+					r.With(requireAgentNS).Patch("/{version}/status", agentH.PatchVersionStatus)
 				})
 			})
 		})

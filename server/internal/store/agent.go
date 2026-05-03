@@ -36,6 +36,7 @@ type AgentRow struct {
 type ListAgentsParams struct {
 	PublicOnly     bool
 	Namespace      string
+	WorkspaceID    string // filter by workspace ULID (optional). Applied independently of Namespace.
 	Status         string // filter by status: "draft" | "published" | "deprecated" | "" (all non-deleted)
 	Visibility     string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string
@@ -90,6 +91,12 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
+		argN++
+		countArgN++
+	}
+	if p.WorkspaceID != "" {
+		filterWhere += fmt.Sprintf(" AND a.workspace_id = $%d", argN)
+		filterArgs = append(filterArgs, p.WorkspaceID)
 		argN++
 		countArgN++
 	}
@@ -362,6 +369,10 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 // CreateAgentParams holds the fields needed to insert a new agent.
 type CreateAgentParams struct {
 	PublisherID string
+	// WorkspaceID is optional: empty falls back to the publisher's
+	// `default` workspace, created lazily on demand. Hierarchical
+	// handlers pass this explicitly from the URL.
+	WorkspaceID string
 	Slug        string
 	Name        string
 	Description string
@@ -372,13 +383,23 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 	ctx, span := startSpan(ctx, "CreateAgent")
 	defer span.End()
 
+	wsID := p.WorkspaceID
+	if wsID == "" {
+		var err error
+		wsID, err = db.ensureDefaultWorkspaceID(ctx, p.PublisherID)
+		if err != nil {
+			recordErr(span, err)
+			return nil, err
+		}
+	}
+
 	id := NewULID()
 	now := time.Now().UTC()
 
 	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO agents (id, publisher_id, slug, name, description, visibility, status, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,'private','draft',$6,$6)`,
-		id, p.PublisherID, p.Slug, p.Name, p.Description, now,
+		INSERT INTO agents (id, publisher_id, workspace_id, slug, name, description, visibility, status, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,'private','draft',$7,$7)`,
+		id, p.PublisherID, wsID, p.Slug, p.Name, p.Description, now,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError

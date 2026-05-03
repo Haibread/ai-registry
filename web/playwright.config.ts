@@ -115,5 +115,17 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /activity\.spec\.ts/,
     },
+    // Workspaces API surface (ADR 0001 + ADR 0002). No UI yet — the spec
+    // drives the live stack via the admin API and asserts publisher →
+    // workspace → resource → group binding end-to-end.
+    {
+      name: "workspaces",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /workspaces\.spec\.ts/,
+    },
   ],
 })

@@ -256,6 +256,180 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  # ── Workspaces (under a publisher; see ADR 0001) ──────────────────────────
+
+  /api/v1/publishers/{publisher_slug}/workspaces:
+    get:
+      operationId: listWorkspaces
+      summary: List workspaces under a publisher
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of workspaces
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createWorkspace
+      summary: Create a workspace under a publisher (admin only)
+      tags: [workspaces]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+      responses:
+        "201":
+          description: Workspace created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}:
+    get:
+      operationId: getWorkspace
+      summary: Get a workspace by (publisher slug, workspace slug)
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+      responses:
+        "200":
+          description: Workspace detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: patchWorkspace
+      summary: Update a workspace's metadata (admin only)
+      tags: [workspaces]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                contact:
+                  type: string
+                group_name:
+                  type: string
+                  description: |
+                    Bind the workspace to a Keycloak group (ADR 0002).
+                    Empty string clears the binding, returning the
+                    workspace to admin-only.
+      responses:
+        "200":
+          description: Updated workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteWorkspace
+      summary: Delete a workspace (admin only)
+      description: Hard-deletes the workspace. Returns 409 if any MCP server or agent still references it.
+      tags: [workspaces]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+      responses:
+        "204":
+          description: Workspace deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/servers:
+    get:
+      operationId: listWorkspaceServers
+      summary: List MCP servers under a workspace
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of MCP servers in the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPServerList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/agents:
+    get:
+      operationId: listWorkspaceAgents
+      summary: List agents under a workspace
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of agents in the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── MCP Servers ───────────────────────────────────────────────────────────
 
   /api/v1/mcp/servers:
@@ -1632,6 +1806,18 @@ components:
       description: ULID of the MCP server
       schema:
         type: string
+    PublisherSlugParam:
+      name: publisher_slug
+      in: path
+      required: true
+      schema:
+        type: string
+    WorkspaceSlugParam:
+      name: workspace_slug
+      in: path
+      required: true
+      schema:
+        type: string
     LimitParam:
       name: limit
       in: query
@@ -1761,6 +1947,66 @@ components:
           type: string
         total_count:
           type: integer
+
+    # ── Workspaces (ADR 0001) ───────────────────────────────────────────────
+
+    Workspace:
+      type: object
+      required: [id, publisher_id, slug, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          description: ULID
+        publisher_id:
+          type: string
+          description: ULID of the parent publisher
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        contact:
+          type: string
+        group_name:
+          type: string
+          description: |
+            Keycloak group whose members can write to this workspace's
+            resources (ADR 0002). Empty / absent means the workspace is
+            admin-only. Bare group name; the Keycloak group-membership
+            mapper must emit the `groups` JWT claim with full path
+            disabled.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateWorkspaceRequest:
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z0-9-]+$"
+        name:
+          type: string
+        description:
+          type: string
+        contact:
+          type: string
+
+    WorkspaceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Workspace"
+        next_cursor:
+          type: string
 
     # ── MCP Servers ─────────────────────────────────────────────────────────
 

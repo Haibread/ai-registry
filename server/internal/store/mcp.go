@@ -41,6 +41,7 @@ type LatestMCPVersion struct {
 type ListMCPServersParams struct {
 	PublicOnly     bool       // when true, only visibility='public' rows are returned
 	Namespace      string     // filter by publisher slug (optional)
+	WorkspaceID    string     // filter by workspace ULID (optional). Applied independently of Namespace.
 	Status         string     // filter by status: "draft" | "published" | "deprecated" | "" (all)
 	Visibility     string     // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string     // full-text search term (optional)
@@ -111,6 +112,12 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
+		argN++
+		countArgN++
+	}
+	if p.WorkspaceID != "" {
+		filterWhere += fmt.Sprintf(" AND s.workspace_id = $%d", argN)
+		filterArgs = append(filterArgs, p.WorkspaceID)
 		argN++
 		countArgN++
 	}
@@ -499,6 +506,10 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 // CreateMCPServerParams holds the fields needed to insert a new MCP server.
 type CreateMCPServerParams struct {
 	PublisherID string
+	// WorkspaceID is optional: empty falls back to the publisher's
+	// `default` workspace (created lazily via ensureDefaultWorkspaceID).
+	// New hierarchical handlers pass this explicitly from the URL.
+	WorkspaceID string
 	Slug        string
 	Name        string
 	Description string
@@ -513,15 +524,25 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 	ctx, span := startSpan(ctx, "CreateMCPServer")
 	defer span.End()
 
+	wsID := p.WorkspaceID
+	if wsID == "" {
+		var err error
+		wsID, err = db.ensureDefaultWorkspaceID(ctx, p.PublisherID)
+		if err != nil {
+			recordErr(span, err)
+			return nil, err
+		}
+	}
+
 	id := NewULID()
 	now := time.Now().UTC()
 
 	_, err := db.Pool.Exec(ctx, `
 		INSERT INTO mcp_servers
-		    (id, publisher_id, slug, name, description, homepage_url, repo_url, license,
+		    (id, publisher_id, workspace_id, slug, name, description, homepage_url, repo_url, license,
 		     visibility, status, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'private','draft',$9,$9)`,
-		id, p.PublisherID, p.Slug, p.Name,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'private','draft',$10,$10)`,
+		id, p.PublisherID, wsID, p.Slug, p.Name,
 		p.Description, p.HomepageURL, p.RepoURL, p.License, now,
 	)
 	if err != nil {
