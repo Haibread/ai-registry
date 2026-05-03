@@ -9,10 +9,9 @@ type KeycloakClaims struct {
 	Email       string      `json:"email"`
 	RealmAccess RealmAccess `json:"realm_access"`
 	// Groups carries the Keycloak group memberships used for per-workspace
-	// authorization (ADR 0002). The Keycloak group-membership mapper must
-	// emit a claim named "groups" with bare group names (Full group path
-	// disabled). The configurable claim name (AUTH_GROUPS_CLAIM) is
-	// deferred — see ADR 0002 for the contract.
+	// authorization. The Keycloak group-membership mapper must emit a
+	// claim named "groups" with bare group names (Full group path
+	// disabled).
 	Groups []string `json:"groups"`
 }
 
@@ -33,7 +32,7 @@ func (c *KeycloakClaims) IsAdmin() bool {
 
 // HasGroup reports whether the token carries membership in the named
 // Keycloak group. Used by RequireWorkspaceWrite to authorize non-admin
-// writes against a workspace's group_name binding (ADR 0002).
+// writes against a workspace's group_name binding.
 func (c *KeycloakClaims) HasGroup(name string) bool {
 	if name == "" {
 		return false

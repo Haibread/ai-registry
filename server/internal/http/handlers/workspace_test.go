@@ -1,6 +1,6 @@
 package handlers_test
 
-// Tests for the workspace handlers introduced in ADR 0001.
+// Tests for the workspace CRUD handlers.
 
 import (
 	"bytes"

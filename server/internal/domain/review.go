@@ -2,8 +2,8 @@ package domain
 
 import "time"
 
-// ReviewState captures the change-approval workflow position of a version
-// row. See ADR 0003. The column is orthogonal to the existing version
+// ReviewState captures the change-approval workflow position of a
+// version row. The column is orthogonal to the existing version
 // `Status` and `PublishedAt` fields — a non-`none` review state always
 // implies `PublishedAt IS NULL` (enforced by a CHECK constraint).
 type ReviewState string
@@ -32,7 +32,7 @@ type ReviewMetadata struct {
 	Revision         int
 	SubmittedAt      *time.Time
 	SubmittedBy      string // JWT subject (UUID)
-	SubmittedByEmail string // denormalised at action time (ADR 0003)
+	SubmittedByEmail string // denormalised at action time
 	ReviewedAt       *time.Time
 	ReviewedBy       string
 	ReviewedByEmail  string

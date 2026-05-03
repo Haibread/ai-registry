@@ -66,7 +66,7 @@ func TestRequireAdmin_AdminClaims(t *testing.T) {
 	}
 }
 
-// ── RequireWorkspaceWrite (ADR 0002) ───────────────────────────────────────
+// ── RequireWorkspaceWrite ──────────────────────────────────────────────────
 
 func runRequireWorkspaceWrite(t *testing.T, claims *auth.KeycloakClaims, group string, lookupErr error) (status int, called bool) {
 	t.Helper()
@@ -160,7 +160,7 @@ func TestRequireWorkspaceWrite_LookupErrorIs500(t *testing.T) {
 	}
 }
 
-// ── RequireReviewer (ADR 0003) ──────────────────────────────────────────
+// ── RequireReviewer ─────────────────────────────────────────────────────
 
 func runRequireReviewer(t *testing.T, claims *auth.KeycloakClaims, configuredGroup string) (status int, called bool) {
 	t.Helper()

@@ -1,5 +1,5 @@
 -- 000010_change_approval.up.sql
--- Phase 7.3 (per ADR 0003): change-approval workflow.
+-- Phase 7.3: change-approval workflow.
 --
 -- Adds an orthogonal `review_state` column to each version table, plus
 -- denormalised audit columns recording who submitted / reviewed each

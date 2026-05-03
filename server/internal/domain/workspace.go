@@ -2,10 +2,9 @@ package domain
 
 import "time"
 
-// Workspace is the team-level grouping under a publisher. See ADR 0001.
-//
-// A workspace owns MCP servers and agents; the publisher is reached by
-// joining through workspaces.publisher_id.
+// Workspace is the team-level grouping under a publisher. A workspace
+// owns MCP servers and agents; the publisher is reached by joining
+// through workspaces.publisher_id.
 type Workspace struct {
 	ID          string
 	PublisherID string

@@ -30,9 +30,9 @@ var ErrReviewRevisionMismatch = errors.New("version revision was bumped since th
 // specific 409 type if desired.
 var ErrAlreadyPublished = errors.New("version is already published")
 
-// Actor identifies who performed a review action. The pair is denormalised
-// into the version row's audit columns at action time, so later Keycloak
-// email changes do not rewrite history (ADR 0003).
+// Actor identifies who performed a review action. The pair is
+// denormalised into the version row's audit columns at action time so
+// later Keycloak email changes do not rewrite history.
 type Actor struct {
 	Subject string
 	Email   string
@@ -77,9 +77,9 @@ func (db *DB) SubmitMCPVersion(ctx context.Context, serverID, version string, a 
 }
 
 // WithdrawMCPVersion transitions a PendingReview version back to Draft
-// (review_state='none'), clearing the submitted-* audit columns. Revision
-// is intentionally left in place — it monotonically grows across the
-// version's whole lifetime per ADR 0003.
+// (review_state='none'), clearing the submitted-* audit columns.
+// Revision is intentionally left in place — it monotonically grows
+// across the version's whole lifetime.
 func (db *DB) WithdrawMCPVersion(ctx context.Context, serverID, version string, _ Actor) error {
 	ctx, span := startSpan(ctx, "WithdrawMCPVersion")
 	defer span.End()
@@ -166,10 +166,10 @@ func (db *DB) ApproveMCPVersion(ctx context.Context, serverID, version string, e
 	return nil
 }
 
-// RejectMCPVersion transitions a PendingReview version to Rejected with
-// the supplied reason. The revision check is the same as approve — both
-// share the conditional-UPDATE pattern that closes the simultaneous-
-// reviewer race (ADR 0003).
+// RejectMCPVersion transitions a PendingReview version to Rejected
+// with the supplied reason. The revision check is the same as approve
+// — both share the conditional-UPDATE pattern that closes the
+// simultaneous-reviewer race.
 func (db *DB) RejectMCPVersion(ctx context.Context, serverID, version string, expectedRevision int, reason string, a Actor) error {
 	ctx, span := startSpan(ctx, "RejectMCPVersion")
 	defer span.End()
@@ -203,9 +203,8 @@ func (db *DB) RejectMCPVersion(ctx context.Context, serverID, version string, ex
 // RequestMCPDeletion marks an MCP server as having a pending deletion
 // review. Returns ErrConflict if a deletion is already pending or the
 // entry is already soft-deleted; ErrNotFound if the row doesn't exist.
-//
-// Per ADR 0003 the entry stays visible on public reads (the current
-// published version is unchanged) until the deletion is approved.
+// The entry stays visible on public reads (the current published
+// version is unchanged) until the deletion is approved.
 func (db *DB) RequestMCPDeletion(ctx context.Context, serverID string, a Actor) error {
 	ctx, span := startSpan(ctx, "RequestMCPDeletion")
 	defer span.End()

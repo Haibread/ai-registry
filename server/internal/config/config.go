@@ -56,10 +56,10 @@ type AuthConfig struct {
 	AuthStorage string
 
 	// ReviewerGroup is the Keycloak group that gates the change-approval
-	// workflow (ADR 0003). Members of this group can approve / reject
-	// version submissions and pending deletions for any workspace.
-	// Default: "registry-reviewers". Configurable via env+YAML+default
-	// per CLAUDE.md's configuration rule.
+	// workflow. Members of this group can approve / reject version
+	// submissions and pending deletions for any workspace. Default:
+	// "registry-reviewers". Configurable via env + YAML + default per
+	// CLAUDE.md's configuration rule.
 	ReviewerGroup string
 }
 

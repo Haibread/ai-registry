@@ -38,7 +38,7 @@ const (
 	ActionWorkspaceUpdated AuditAction = "workspace.updated"
 	ActionWorkspaceDeleted AuditAction = "workspace.deleted"
 
-	// Change-approval workflow actions (ADR 0003).
+	// Change-approval workflow actions.
 	ActionMCPVersionSubmitted    AuditAction = "mcp_server_version.submitted"
 	ActionMCPVersionWithdrawn    AuditAction = "mcp_server_version.withdrawn"
 	ActionMCPVersionApproved     AuditAction = "mcp_server_version.approved"

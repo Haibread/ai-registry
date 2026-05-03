@@ -34,10 +34,10 @@ type Config struct {
 	AuthStorage string
 
 	// ReviewerGroup is the Keycloak group that gates the change-approval
-	// workflow (ADR 0003). Members of this group can approve / reject
-	// version submissions and pending deletions. Default:
-	// "registry-reviewers". The empty string disables the workflow path
-	// (everything falls back to RequireAdmin).
+	// workflow. Members of this group can approve / reject version
+	// submissions and pending deletions. Default: "registry-reviewers".
+	// The empty string disables the workflow path (everything falls back
+	// to RequireAdmin).
 	ReviewerGroup string
 }
 

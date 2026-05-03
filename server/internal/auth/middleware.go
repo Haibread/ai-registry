@@ -86,8 +86,8 @@ func (v *Validator) Authenticate(next http.Handler) http.Handler {
 // not an authorization decision.
 type WorkspaceLookup func(*http.Request) (groupName string, err error)
 
-// RequireWorkspaceWrite is chi middleware (ADR 0002) that authorizes a
-// write request against a workspace's group_name binding. The contract:
+// RequireWorkspaceWrite is chi middleware that authorizes a write
+// request against a workspace's group_name binding. The contract:
 //
 //   - Admins (realm role "admin") always pass.
 //   - Non-admins pass only when the workspace's group_name is non-empty
@@ -126,9 +126,9 @@ func RequireWorkspaceWrite(lookup WorkspaceLookup) func(http.Handler) http.Handl
 	}
 }
 
-// RequireReviewer returns chi middleware (ADR 0003) that gates a route to
-// admins or members of the configured reviewer group. Group name is
-// passed as an argument because it is configured per-deployment via
+// RequireReviewer returns chi middleware that gates a route to admins
+// or members of the configured reviewer group. Group name is passed as
+// an argument because it is configured per-deployment via
 // AUTH_REVIEWER_GROUP / auth.reviewer_group (default "registry-reviewers").
 // When the group is empty or the JWT carries no matching membership, only
 // admins pass.

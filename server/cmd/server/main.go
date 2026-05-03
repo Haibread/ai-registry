@@ -112,7 +112,7 @@ func run() error {
 	}
 	logger.Info("migrations complete")
 
-	// ── Workspace backfill (idempotent; ADR 0001 step 2) ─────────────────────
+	// ── Workspace backfill (idempotent) ──────────────────────────────────────
 	// Ensures every publisher has a `default` workspace and that every
 	// resource row has a non-NULL workspace_id. Safe to re-run on every boot;
 	// on a steady-state DB this is a no-op (zero rows updated).
