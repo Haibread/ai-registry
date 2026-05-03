@@ -526,6 +526,51 @@ func TestRejectMCPDeletion_ClearsRequest(t *testing.T) {
 	}
 }
 
+// Public-read leakage check: after a workflow approve-delete, the entry
+// must not appear in public list endpoints. This guards against the
+// classic "deleted via workflow but still visible" regression — the
+// approve handler relies on `status='deleted'` doing double duty so
+// every read site that already filters legacy tombstones keeps working.
+func TestApproveMCPDeletion_HidesFromPublicReads(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+		t.Fatalf("submit version: %v", err)
+	}
+	if err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer()); err != nil {
+		t.Fatalf("approve version: %v", err)
+	}
+	// Make the entry public so the default PublicOnly filter would
+	// otherwise return it.
+	if err := sharedDB.SetMCPServerVisibility(ctx, srvID, domain.VisibilityPublic); err != nil {
+		t.Fatalf("set visibility: %v", err)
+	}
+
+	rows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{PublicOnly: true, Limit: 50})
+	if err != nil {
+		t.Fatalf("list before delete: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 published+public server before delete, got %d", len(rows))
+	}
+
+	if err := sharedDB.RequestMCPDeletion(ctx, srvID, actor()); err != nil {
+		t.Fatalf("request delete: %v", err)
+	}
+	if err := sharedDB.ApproveMCPDeletion(ctx, srvID, reviewer()); err != nil {
+		t.Fatalf("approve delete: %v", err)
+	}
+
+	rows, _, err = sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{PublicOnly: true, Limit: 50})
+	if err != nil {
+		t.Fatalf("list after delete: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("expected 0 servers in public list after workflow delete, got %d", len(rows))
+	}
+}
+
 func TestApproveAgentDeletion_SoftDeletes(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

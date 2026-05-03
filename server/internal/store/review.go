@@ -230,8 +230,10 @@ func (db *DB) RequestMCPDeletion(ctx context.Context, serverID string, a Actor) 
 }
 
 // ApproveMCPDeletion confirms a pending deletion: the entry's
-// deleted_at is set so the public read filter excludes it. The
-// deletion_requested_* columns are intentionally retained as audit.
+// deleted_at is set, and `status` is also flipped to 'deleted' so the
+// existing read-path filters (which all check `status != 'deleted'`)
+// exclude the row without further changes. The deletion_requested_*
+// columns are intentionally retained as audit.
 func (db *DB) ApproveMCPDeletion(ctx context.Context, serverID string, _ Actor) error {
 	ctx, span := startSpan(ctx, "ApproveMCPDeletion")
 	defer span.End()
@@ -239,6 +241,7 @@ func (db *DB) ApproveMCPDeletion(ctx context.Context, serverID string, _ Actor) 
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE mcp_servers
 		SET deleted_at = NOW(),
+		    status     = 'deleted',
 		    updated_at = NOW()
 		WHERE id = $1
 		  AND deletion_requested_at IS NOT NULL
@@ -329,6 +332,8 @@ func (db *DB) RequestAgentDeletion(ctx context.Context, agentID string, a Actor)
 }
 
 // ApproveAgentDeletion is the agent equivalent of ApproveMCPDeletion.
+// Sets both deleted_at and status='deleted' so existing read filters
+// keep working without any change.
 func (db *DB) ApproveAgentDeletion(ctx context.Context, agentID string, _ Actor) error {
 	ctx, span := startSpan(ctx, "ApproveAgentDeletion")
 	defer span.End()
@@ -336,6 +341,7 @@ func (db *DB) ApproveAgentDeletion(ctx context.Context, agentID string, _ Actor)
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE agents
 		SET deleted_at = NOW(),
+		    status     = 'deleted',
 		    updated_at = NOW()
 		WHERE id = $1
 		  AND deletion_requested_at IS NOT NULL
