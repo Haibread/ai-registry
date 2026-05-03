@@ -37,6 +37,23 @@ const (
 	ActionWorkspaceCreated AuditAction = "workspace.created"
 	ActionWorkspaceUpdated AuditAction = "workspace.updated"
 	ActionWorkspaceDeleted AuditAction = "workspace.deleted"
+
+	// Change-approval workflow actions (ADR 0003).
+	ActionMCPVersionSubmitted    AuditAction = "mcp_server_version.submitted"
+	ActionMCPVersionWithdrawn    AuditAction = "mcp_server_version.withdrawn"
+	ActionMCPVersionApproved     AuditAction = "mcp_server_version.approved"
+	ActionMCPVersionRejected     AuditAction = "mcp_server_version.rejected"
+	ActionMCPDeletionRequested   AuditAction = "mcp_server.deletion_requested"
+	ActionMCPDeletionApproved    AuditAction = "mcp_server.deletion_approved"
+	ActionMCPDeletionRejected    AuditAction = "mcp_server.deletion_rejected"
+
+	ActionAgentVersionSubmitted  AuditAction = "agent_version.submitted"
+	ActionAgentVersionWithdrawn  AuditAction = "agent_version.withdrawn"
+	ActionAgentVersionApproved   AuditAction = "agent_version.approved"
+	ActionAgentVersionRejected   AuditAction = "agent_version.rejected"
+	ActionAgentDeletionRequested AuditAction = "agent.deletion_requested"
+	ActionAgentDeletionApproved  AuditAction = "agent.deletion_approved"
+	ActionAgentDeletionRejected  AuditAction = "agent.deletion_rejected"
 )
 
 // AuditEvent is a single immutable entry in the audit log.
