@@ -646,6 +646,86 @@ func TestApproveAgentDeletion_SoftDeletes(t *testing.T) {
 	}
 }
 
+// Exercise the agent-side diagnostic functions (non-Tx variants) that
+// the happy paths don't touch. Each test forces a 0-row UPDATE so the
+// store falls through to the diagnose* helper.
+func TestSubmitAgentVersion_DiagnoseHelpers(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+
+	// Submit twice → second hits diagnoseAgentReviewMiss because the
+	// row is no longer in 'none'/'rejected'.
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("first submit: %v", err)
+	}
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); !errors.Is(err, store.ErrReviewStateMismatch) {
+		t.Errorf("err = %v, want ErrReviewStateMismatch via diagnoseAgentReviewMiss", err)
+	}
+
+	// SubmitAgentVersion with unknown id → diagnoseAgentReviewMiss returns NotFound.
+	if err := sharedDB.SubmitAgentVersion(ctx, "01J0NOPE0000000000000NOPE0", "0.1.0", actor()); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRejectAgentVersion_DiagnoseHelpersNonTx(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+
+	// RejectAgentVersion runs without a transaction wrapper, so its
+	// 0-row path goes through diagnoseAgentApproveMiss (the non-Tx
+	// variant). Reject a Draft → state-mismatch.
+	if err := sharedDB.RejectAgentVersion(ctx, agID, "0.1.0", 1, "no", reviewer()); !errors.Is(err, store.ErrReviewStateMismatch) {
+		t.Errorf("err = %v, want ErrReviewStateMismatch via diagnoseAgentApproveMiss", err)
+	}
+
+	// Submit then reject with stale revision → revision-mismatch via
+	// the same path.
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	if err := sharedDB.RejectAgentVersion(ctx, agID, "0.1.0", 99, "stale", reviewer()); !errors.Is(err, store.ErrReviewRevisionMismatch) {
+		t.Errorf("err = %v, want ErrReviewRevisionMismatch", err)
+	}
+
+	// Reject a not-found row → not-found.
+	if err := sharedDB.RejectAgentVersion(ctx, "01J0NOPE0000000000000NOPE0", "0.1.0", 1, "x", reviewer()); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestAgentDeletion_DiagnoseHelpers(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+
+	// Approve when no request is pending → ErrConflict via
+	// diagnoseAgentDeletionMiss.
+	if err := sharedDB.ApproveAgentDeletion(ctx, agID, reviewer()); !errors.Is(err, store.ErrConflict) {
+		t.Errorf("err = %v, want ErrConflict (no pending)", err)
+	}
+
+	// Reject when no request is pending → same diagnostic.
+	if err := sharedDB.RejectAgentDeletion(ctx, agID, reviewer()); !errors.Is(err, store.ErrConflict) {
+		t.Errorf("err = %v, want ErrConflict (reject with no pending)", err)
+	}
+
+	// Request twice → second hits diagnoseAgentDeletionMiss.
+	if err := sharedDB.RequestAgentDeletion(ctx, agID, actor()); err != nil {
+		t.Fatalf("first request: %v", err)
+	}
+	if err := sharedDB.RequestAgentDeletion(ctx, agID, actor()); !errors.Is(err, store.ErrConflict) {
+		t.Errorf("err = %v, want ErrConflict (already pending)", err)
+	}
+
+	// Operate on a non-existent agent → not-found.
+	if err := sharedDB.RequestAgentDeletion(ctx, "01J0NOPE0000000000000NOPE0", actor()); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestSubmitAgentVersion_StackingRejectedByPartialUniqueIndex(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
