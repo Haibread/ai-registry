@@ -140,6 +140,31 @@ paths:
 
   # ── Publishers ────────────────────────────────────────────────────────────
 
+  # ── Review queue ───────────────────────────────────────────────────────────
+
+  /api/v1/review-queue:
+    get:
+      operationId: listReviewQueue
+      summary: List pending review items across the registry (reviewer)
+      description: >
+        Returns versions in `pending_review` and entries with pending
+        deletions, newest first, paginated. The discriminator `kind`
+        identifies the row type so the client can render the right
+        action affordances. Reviewer or admin gated.
+      tags: [review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated review queue
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReviewQueueList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/v1/publishers:
     get:
       operationId: listPublishers
@@ -2326,6 +2351,42 @@ components:
             entry's `deletion_requested_*` columns are cleared on
             success; the reason is captured in the audit log.
 
+    ReviewQueueItem:
+      type: object
+      required: [kind, publisher_slug, entry_slug, entry_id, submitted_at]
+      properties:
+        kind:
+          type: string
+          enum: [mcp_version, agent_version, mcp_deletion, agent_deletion]
+        publisher_slug: { type: string }
+        entry_slug: { type: string }
+        entry_id: { type: string, description: ULID of the entry }
+        version:
+          type: string
+          description: |
+            Present on `*_version` items, absent on `*_deletion` items.
+        revision:
+          type: integer
+          description: |
+            Present on `*_version` items only.
+        submitted_at: { type: string, format: date-time }
+        submitted_by:
+          type: string
+          description: JWT subject of the submitter (UUID).
+        submitted_by_email:
+          type: string
+          description: Email captured at submission time.
+
+    ReviewQueueList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ReviewQueueItem" }
+        next_cursor:
+          type: string
+
     ReviewProblem:
       description: |
         RFC 7807 problem detail returned by the change-approval
@@ -2610,6 +2671,41 @@ components:
         published_at:
           type: string
           format: date-time
+        review_state:
+          type: string
+          enum: [none, pending_review, rejected]
+          description: |
+            Change-approval workflow state, orthogonal to `status` and
+            `published_at`. Omitted on rows that have never been part of
+            the workflow (review_state='none' before any submit).
+        revision:
+          type: integer
+          minimum: 1
+          description: |
+            Revision counter the reviewer must echo back when calling
+            approve/reject; bumps on every content edit.
+        submitted_at:
+          type: string
+          format: date-time
+        submitted_by:
+          type: string
+          description: JWT subject (UUID) of the submitter.
+        submitted_by_email:
+          type: string
+          description: Email captured at submission time.
+        reviewed_at:
+          type: string
+          format: date-time
+        reviewed_by:
+          type: string
+        reviewed_by_email:
+          type: string
+        review_decision:
+          type: string
+          enum: [approved, rejected]
+        rejection_reason:
+          type: string
+          description: Free-text reason persisted on the rejected version row.
         created_at:
           type: string
           format: date-time
@@ -2828,6 +2924,31 @@ components:
         published_at:
           type: string
           format: date-time
+        review_state:
+          type: string
+          enum: [none, pending_review, rejected]
+        revision:
+          type: integer
+          minimum: 1
+        submitted_at:
+          type: string
+          format: date-time
+        submitted_by:
+          type: string
+        submitted_by_email:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+        reviewed_by:
+          type: string
+        reviewed_by_email:
+          type: string
+        review_decision:
+          type: string
+          enum: [approved, rejected]
+        rejection_reason:
+          type: string
         created_at:
           type: string
           format: date-time

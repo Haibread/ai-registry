@@ -401,6 +401,148 @@ func diagnoseAgentDeletionMiss(ctx context.Context, db *DB, agentID string) erro
 	return ErrConflict
 }
 
+// ── Review queue ─────────────────────────────────────────────────────────
+
+// ReviewQueueItemKind discriminates the kinds of items that show up in
+// the reviewer's queue.
+type ReviewQueueItemKind string
+
+const (
+	ReviewQueueItemMCPVersion   ReviewQueueItemKind = "mcp_version"
+	ReviewQueueItemAgentVersion ReviewQueueItemKind = "agent_version"
+	ReviewQueueItemMCPDeletion  ReviewQueueItemKind = "mcp_deletion"
+	ReviewQueueItemAgentDeletion ReviewQueueItemKind = "agent_deletion"
+)
+
+// ReviewQueueItem is a flattened entry in the reviewer's queue. Version
+// items have non-empty Version and a Revision >= 1; deletion items have
+// empty Version and Revision == 0.
+type ReviewQueueItem struct {
+	Kind             ReviewQueueItemKind
+	PublisherSlug    string
+	EntrySlug        string
+	EntryID          string
+	Version          string
+	Revision         int
+	SubmittedAt      time.Time
+	SubmittedBy      string
+	SubmittedByEmail string
+}
+
+// ListReviewQueueParams paginates the queue. The cursor is the
+// (submitted_at, entry_id, version) triple of the last item from the
+// previous page. Cursor uses the same compact encoding as other list
+// queries.
+type ListReviewQueueParams struct {
+	Limit  int32
+	Cursor string
+}
+
+// ListReviewQueue returns pending_review versions and pending deletions
+// across all workspaces, newest first. The query unions the four
+// sources (MCP version, agent version, MCP deletion, agent deletion)
+// and sorts by the submission / request timestamp.
+//
+// Reviewers and admins are the only legitimate callers; the handler
+// gates this endpoint with RequireReviewer.
+func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]ReviewQueueItem, error) {
+	ctx, span := startSpan(ctx, "ListReviewQueue")
+	defer span.End()
+
+	if p.Limit <= 0 || p.Limit > 100 {
+		p.Limit = 20
+	}
+
+	args := []any{}
+	argN := 1
+	cursorClause := ""
+	if p.Cursor != "" {
+		at, id, err := decodeCursor(p.Cursor)
+		if err == nil {
+			cursorClause = fmt.Sprintf(" WHERE (submitted_at, entry_id) < ($%d, $%d)", argN, argN+1)
+			args = append(args, at, id)
+			argN += 2
+		}
+	}
+
+	args = append(args, p.Limit)
+	q := fmt.Sprintf(`
+		WITH q AS (
+		    SELECT 'mcp_version'::text   AS kind,
+		           p.slug                AS publisher_slug,
+		           s.slug                AS entry_slug,
+		           s.id                  AS entry_id,
+		           v.version             AS version,
+		           v.revision            AS revision,
+		           v.submitted_at        AS submitted_at,
+		           coalesce(v.submitted_by, '')       AS submitted_by,
+		           coalesce(v.submitted_by_email, '') AS submitted_by_email
+		    FROM mcp_server_versions v
+		    JOIN mcp_servers s ON s.id = v.server_id
+		    JOIN publishers  p ON p.id = s.publisher_id
+		    WHERE v.review_state = 'pending_review' AND v.submitted_at IS NOT NULL
+
+		    UNION ALL
+		    SELECT 'agent_version'::text, p.slug, a.slug, a.id,
+		           av.version, av.revision, av.submitted_at,
+		           coalesce(av.submitted_by, ''), coalesce(av.submitted_by_email, '')
+		    FROM agent_versions av
+		    JOIN agents     a ON a.id = av.agent_id
+		    JOIN publishers p ON p.id = a.publisher_id
+		    WHERE av.review_state = 'pending_review' AND av.submitted_at IS NOT NULL
+
+		    UNION ALL
+		    SELECT 'mcp_deletion'::text, p.slug, s.slug, s.id,
+		           '', 0, s.deletion_requested_at,
+		           coalesce(s.deletion_requested_by, ''), coalesce(s.deletion_requested_by_email, '')
+		    FROM mcp_servers s
+		    JOIN publishers p ON p.id = s.publisher_id
+		    WHERE s.deletion_requested_at IS NOT NULL AND s.deleted_at IS NULL
+
+		    UNION ALL
+		    SELECT 'agent_deletion'::text, p.slug, a.slug, a.id,
+		           '', 0, a.deletion_requested_at,
+		           coalesce(a.deletion_requested_by, ''), coalesce(a.deletion_requested_by_email, '')
+		    FROM agents a
+		    JOIN publishers p ON p.id = a.publisher_id
+		    WHERE a.deletion_requested_at IS NOT NULL AND a.deleted_at IS NULL
+		)
+		SELECT kind, publisher_slug, entry_slug, entry_id, version, revision,
+		       submitted_at, submitted_by, submitted_by_email
+		FROM q
+		%s
+		ORDER BY submitted_at DESC, entry_id DESC
+		LIMIT $%d`, cursorClause, argN)
+
+	rows, err := db.Pool.Query(ctx, q, args...)
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("listing review queue: %w", err)
+	}
+	defer rows.Close()
+
+	var result []ReviewQueueItem
+	for rows.Next() {
+		var it ReviewQueueItem
+		var kind string
+		if err := rows.Scan(
+			&kind, &it.PublisherSlug, &it.EntrySlug, &it.EntryID,
+			&it.Version, &it.Revision, &it.SubmittedAt,
+			&it.SubmittedBy, &it.SubmittedByEmail,
+		); err != nil {
+			recordErr(span, err)
+			return nil, fmt.Errorf("scanning review queue row: %w", err)
+		}
+		it.Kind = ReviewQueueItemKind(kind)
+		result = append(result, it)
+	}
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return result, nil
+}
+
 // ── Diagnostics: turn a 0-row UPDATE into a meaningful sentinel ──────────
 
 // diagnoseMCPReviewMiss is the SELECT-discriminator for submit/withdraw —

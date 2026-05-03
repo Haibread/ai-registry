@@ -154,6 +154,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	publicRL := middleware.RateLimit(publicRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
 
+		// Review queue (reviewer-gated, lists pending versions and
+		// pending deletions across all workspaces).
+		r.With(requireReviewer).Get("/review-queue", revH.ListReviewQueue)
+
 		// Publishers
 		r.Route("/publishers", func(r chi.Router) {
 			r.With(publicRL).Get("/", pubH.ListPublishers)

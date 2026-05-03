@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -72,6 +73,65 @@ func writeReviewProblem(w http.ResponseWriter, r *http.Request, err error) bool 
 		return false
 	}
 	return true
+}
+
+// ── Review queue ────────────────────────────────────────────────────────
+
+// ListReviewQueue: GET /api/v1/review-queue
+//
+// Reviewer-gated endpoint that lists pending_review versions and
+// pending deletions across the entire registry, newest first. Each
+// entry carries a `kind` discriminator so the UI can render the right
+// row type.
+func (h *ReviewHandlers) ListReviewQueue(w http.ResponseWriter, r *http.Request) {
+	limit := int32(20)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = int32(n)
+		}
+	}
+
+	rows, err := h.db.ListReviewQueue(r.Context(), store.ListReviewQueueParams{
+		Limit:  limit + 1,
+		Cursor: r.URL.Query().Get("cursor"),
+	})
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	var nextCursor string
+	if int32(len(rows)) > limit {
+		rows = rows[:limit]
+		last := rows[len(rows)-1]
+		nextCursor = store.EncodeCursor(last.SubmittedAt, last.EntryID)
+	}
+
+	items := make([]map[string]any, 0, len(rows))
+	for _, it := range rows {
+		entry := map[string]any{
+			"kind":               string(it.Kind),
+			"publisher_slug":     it.PublisherSlug,
+			"entry_slug":         it.EntrySlug,
+			"entry_id":           it.EntryID,
+			"submitted_at":       it.SubmittedAt,
+			"submitted_by":       it.SubmittedBy,
+			"submitted_by_email": it.SubmittedByEmail,
+		}
+		// Version-flavored items carry a version + revision; deletion-
+		// flavored items don't (revision is meaningless and the version
+		// field is empty by convention).
+		if it.Version != "" {
+			entry["version"] = it.Version
+			entry["revision"] = it.Revision
+		}
+		items = append(items, entry)
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"items":       items,
+		"next_cursor": nextCursor,
+	})
 }
 
 // ── MCP server version flow ─────────────────────────────────────────────

@@ -526,6 +526,59 @@ func TestRejectMCPDeletion_ClearsRequest(t *testing.T) {
 	}
 }
 
+func TestListReviewQueue_UnionsAllFourSources(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	// MCP version: pending_review.
+	srvA := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.SubmitMCPVersion(ctx, srvA, "1.0.0", actor()); err != nil {
+		t.Fatalf("submit mcp version: %v", err)
+	}
+	// MCP deletion: pending request.
+	srvB := seedDraftMCPVersion(t, ctx, "globex", "barometer", "1.0.0")
+	if err := sharedDB.RequestMCPDeletion(ctx, srvB, actor()); err != nil {
+		t.Fatalf("request mcp deletion: %v", err)
+	}
+	// Agent version: pending_review.
+	agA := seedDraftAgentVersion(t, ctx, "initech", "planner", "0.1.0")
+	if err := sharedDB.SubmitAgentVersion(ctx, agA, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit agent version: %v", err)
+	}
+	// Agent deletion: pending request.
+	agB := seedDraftAgentVersion(t, ctx, "umbrella", "sweeper", "0.1.0")
+	if err := sharedDB.RequestAgentDeletion(ctx, agB, actor()); err != nil {
+		t.Fatalf("request agent deletion: %v", err)
+	}
+
+	// Approved versions and rejected ones must not appear in the queue.
+	srvC := seedDraftMCPVersion(t, ctx, "soylent", "ignored", "1.0.0")
+	if err := sharedDB.SubmitMCPVersion(ctx, srvC, "1.0.0", actor()); err != nil {
+		t.Fatalf("submit ignored: %v", err)
+	}
+	if err := sharedDB.ApproveMCPVersion(ctx, srvC, "1.0.0", 1, reviewer()); err != nil {
+		t.Fatalf("approve ignored: %v", err)
+	}
+
+	items, err := sharedDB.ListReviewQueue(ctx, store.ListReviewQueueParams{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListReviewQueue: %v", err)
+	}
+	if len(items) != 4 {
+		t.Errorf("expected 4 items (1 mcp ver + 1 mcp del + 1 ag ver + 1 ag del), got %d", len(items))
+	}
+	kinds := map[store.ReviewQueueItemKind]int{}
+	for _, it := range items {
+		kinds[it.Kind]++
+	}
+	if kinds[store.ReviewQueueItemMCPVersion] != 1 ||
+		kinds[store.ReviewQueueItemAgentVersion] != 1 ||
+		kinds[store.ReviewQueueItemMCPDeletion] != 1 ||
+		kinds[store.ReviewQueueItemAgentDeletion] != 1 {
+		t.Errorf("unexpected kind distribution: %+v", kinds)
+	}
+}
+
 // Public-read leakage check: after a workflow approve-delete, the entry
 // must not appear in public list endpoints. This guards against the
 // classic "deleted via workflow but still visible" regression — the
