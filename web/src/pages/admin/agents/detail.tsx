@@ -7,6 +7,7 @@ import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { LifecycleStepper } from '@/components/admin/lifecycle-stepper'
 import { DeprecateButton } from '@/components/admin/deprecate-button'
 import { DeleteButton } from '@/components/admin/delete-button'
+import { VersionsSection } from '@/components/admin/versions-section'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -339,6 +340,10 @@ export default function AdminAgentDetail() {
           </a>
         </Button>
       </div>
+
+      <Separator />
+
+      <VersionsSection kind="agent" namespace={data.namespace} slug={data.slug} />
 
       <Separator />
 
