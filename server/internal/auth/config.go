@@ -33,6 +33,12 @@ type Config struct {
 	// captured by Playwright's storageState).
 	AuthStorage string
 
+	// GroupsClaim names the JSON key in the JWT payload that carries the
+	// user's group memberships. Default "groups". Operators override this
+	// when their Keycloak realm emits group memberships under a different
+	// name (e.g. "realm_groups"). Read by the JWT validator.
+	GroupsClaim string
+
 	// ReviewerGroup is the Keycloak group that gates the change-approval
 	// workflow. Members of this group can approve / reject version
 	// submissions and pending deletions. Default: "registry-reviewers".

@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -19,17 +21,27 @@ const (
 
 // Validator validates incoming JWTs and populates request context with claims.
 type Validator struct {
-	jwks     *JWKSCache
-	issuer   string
-	audience string
+	jwks        *JWKSCache
+	issuer      string
+	audience    string
+	groupsClaim string // JSON key in the token payload to read group memberships from; "groups" is the default
 }
 
 // NewValidator creates a Validator using the provided JWKSCache and issuer.
 // When audience is non-empty, tokens whose `aud` claim does not contain it are
 // rejected — required by the MCP authorization spec (OAuth 2.1 resource
 // indicators) to prevent cross-client token reuse.
-func NewValidator(jwks *JWKSCache, issuer, audience string) *Validator {
-	return &Validator{jwks: jwks, issuer: issuer, audience: audience}
+//
+// groupsClaim controls which JSON key in the token payload populates
+// KeycloakClaims.Groups. The default is "groups" (matches the json tag on
+// the typed struct); operators set AUTH_GROUPS_CLAIM when their Keycloak
+// realm emits group memberships under a different name. An empty string
+// is treated as the default.
+func NewValidator(jwks *JWKSCache, issuer, audience, groupsClaim string) *Validator {
+	if groupsClaim == "" {
+		groupsClaim = "groups"
+	}
+	return &Validator{jwks: jwks, issuer: issuer, audience: audience, groupsClaim: groupsClaim}
 }
 
 // Authenticate is chi middleware that parses the Bearer token when present.
@@ -69,10 +81,50 @@ func (v *Validator) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
+		// When operators configure a non-default groups-claim name (e.g. an
+		// IdP that emits "realm_groups" instead of "groups"), the typed
+		// parse above won't have populated KeycloakClaims.Groups. Re-parse
+		// the (already signature-verified) payload as a generic map and
+		// extract the configured field.
+		if v.groupsClaim != "groups" {
+			claims.Groups = extractGroupsClaim(token, v.groupsClaim)
+		}
+
 		ctx := context.WithValue(r.Context(), claimsKey, claims)
 		ctx = context.WithValue(ctx, isAdminKey, claims.IsAdmin())
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// extractGroupsClaim decodes the token payload (already validated by
+// ParseWithClaims) and returns the slice at the configured claim key.
+// Anything that isn't a JSON array of strings becomes an empty slice —
+// the caller should already treat a missing groups claim as "no
+// memberships" rather than as an error.
+func extractGroupsClaim(tokenString, claimName string) []string {
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 3 {
+		return nil
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return nil
+	}
+	arr, ok := raw[claimName].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, v := range arr {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // WorkspaceLookup resolves the request's target workspace. Implementations

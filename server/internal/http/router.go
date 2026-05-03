@@ -62,7 +62,7 @@ func NewRouterForTest(deps RouterDeps) *chi.Mux {
 func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Auth validator ────────────────────────────────────────────────────────
 	jwksCache := auth.NewJWKSCache(deps.AuthConf.JWKSEndpoint(), 0)
-	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCAudience)
+	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCAudience, deps.AuthConf.GroupsClaim)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)

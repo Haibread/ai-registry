@@ -161,6 +161,7 @@ func run() error {
 			OIDCClientID:  cfg.Auth.OIDCClientID,
 			OIDCAudience:  cfg.Auth.OIDCAudience,
 			AuthStorage:   cfg.Auth.AuthStorage,
+			GroupsClaim:   cfg.Auth.GroupsClaim,
 			ReviewerGroup: cfg.Auth.ReviewerGroup,
 		},
 		CORSOrigins:        cfg.HTTP.CORSOrigins,

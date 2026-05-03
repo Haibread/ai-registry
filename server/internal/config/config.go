@@ -48,6 +48,12 @@ type AuthConfig struct {
 	// realm from being accepted at this resource server.
 	OIDCAudience string
 
+	// GroupsClaim is the JWT payload key the validator reads group
+	// memberships from. Default "groups". Configurable via env+YAML+
+	// default per CLAUDE.md when an external IdP emits this claim
+	// under a different name.
+	GroupsClaim string
+
 	// AuthStorage controls where the browser SPA persists OIDC tokens.
 	// "session" (the default) scopes tokens to the browser tab, limiting
 	// XSS-exfiltration blast radius. "local" is an E2E escape hatch —
@@ -138,6 +144,7 @@ type fileAuthConfig struct {
 	OIDCClientID  string `yaml:"oidc_client_id"`
 	OIDCAudience  string `yaml:"oidc_audience"`
 	AuthStorage   string `yaml:"auth_storage"`
+	GroupsClaim   string `yaml:"groups_claim"`
 	ReviewerGroup string `yaml:"reviewer_group"`
 }
 
@@ -172,6 +179,7 @@ func defaultFileConfig() fileConfig {
 			Level: "info",
 		},
 		Auth: fileAuthConfig{
+			GroupsClaim:   "groups",
 			ReviewerGroup: "registry-reviewers",
 		},
 	}
@@ -237,6 +245,7 @@ func Load(configFile string) (*Config, error) {
 			OIDCClientID:  envString("OIDC_CLIENT_ID", fc.Auth.OIDCClientID),
 			OIDCAudience:  envString("OIDC_AUDIENCE", fc.Auth.OIDCAudience),
 			AuthStorage:   envString("AUTH_STORAGE", fc.Auth.AuthStorage),
+			GroupsClaim:   envString("AUTH_GROUPS_CLAIM", fc.Auth.GroupsClaim),
 			ReviewerGroup: envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
 		},
 	}
