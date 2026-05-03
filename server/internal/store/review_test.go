@@ -436,6 +436,118 @@ func TestWithdrawAgentVersion_PendingToDraft(t *testing.T) {
 	}
 }
 
+// ── Deletion flow ───────────────────────────────────────────────────────
+
+func TestRequestMCPDeletion_HappyPath(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.RequestMCPDeletion(ctx, srvID, actor()); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	var requestedAt *string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT to_char(deletion_requested_at,'YYYY-MM-DD"T"HH24:MI:SS') FROM mcp_servers WHERE id=$1`,
+		srvID,
+	).Scan(&requestedAt); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if requestedAt == nil {
+		t.Errorf("deletion_requested_at not set")
+	}
+}
+
+func TestRequestMCPDeletion_AlreadyPendingConflict(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.RequestMCPDeletion(ctx, srvID, actor()); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	if err := sharedDB.RequestMCPDeletion(ctx, srvID, actor()); !errors.Is(err, store.ErrConflict) {
+		t.Errorf("err = %v, want ErrConflict", err)
+	}
+}
+
+func TestApproveMCPDeletion_SoftDeletes(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.RequestMCPDeletion(ctx, srvID, actor()); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if err := sharedDB.ApproveMCPDeletion(ctx, srvID, reviewer()); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	var deletedAt *string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT to_char(deleted_at,'YYYY-MM-DD"T"HH24:MI:SS') FROM mcp_servers WHERE id=$1`,
+		srvID,
+	).Scan(&deletedAt); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if deletedAt == nil {
+		t.Errorf("deleted_at not set after approve")
+	}
+}
+
+func TestApproveMCPDeletion_NoPendingConflict(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.ApproveMCPDeletion(ctx, srvID, reviewer()); !errors.Is(err, store.ErrConflict) {
+		t.Errorf("err = %v, want ErrConflict (no pending)", err)
+	}
+}
+
+func TestRejectMCPDeletion_ClearsRequest(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.RequestMCPDeletion(ctx, srvID, actor()); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if err := sharedDB.RejectMCPDeletion(ctx, srvID, reviewer()); err != nil {
+		t.Fatalf("reject: %v", err)
+	}
+	var requestedAt, deletedAt *string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT to_char(deletion_requested_at,'YYYY-MM-DD"T"HH24:MI:SS'),
+		        to_char(deleted_at,'YYYY-MM-DD"T"HH24:MI:SS')
+		 FROM mcp_servers WHERE id=$1`, srvID,
+	).Scan(&requestedAt, &deletedAt); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if requestedAt != nil {
+		t.Errorf("deletion_requested_at = %v, want NULL after reject", requestedAt)
+	}
+	if deletedAt != nil {
+		t.Errorf("deleted_at = %v, want NULL after reject", deletedAt)
+	}
+}
+
+func TestApproveAgentDeletion_SoftDeletes(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
+	if err := sharedDB.RequestAgentDeletion(ctx, agID, actor()); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if err := sharedDB.ApproveAgentDeletion(ctx, agID, reviewer()); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	var deletedAt *string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT to_char(deleted_at,'YYYY-MM-DD"T"HH24:MI:SS') FROM agents WHERE id=$1`,
+		agID,
+	).Scan(&deletedAt); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if deletedAt == nil {
+		t.Errorf("deleted_at not set")
+	}
+}
+
 func TestSubmitAgentVersion_StackingRejectedByPartialUniqueIndex(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

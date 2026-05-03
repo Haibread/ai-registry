@@ -198,6 +198,204 @@ func (db *DB) RejectMCPVersion(ctx context.Context, serverID, version string, ex
 	return nil
 }
 
+// ── Deletion-request flow ────────────────────────────────────────────────
+
+// RequestMCPDeletion marks an MCP server as having a pending deletion
+// review. Returns ErrConflict if a deletion is already pending or the
+// entry is already soft-deleted; ErrNotFound if the row doesn't exist.
+//
+// Per ADR 0003 the entry stays visible on public reads (the current
+// published version is unchanged) until the deletion is approved.
+func (db *DB) RequestMCPDeletion(ctx context.Context, serverID string, a Actor) error {
+	ctx, span := startSpan(ctx, "RequestMCPDeletion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE mcp_servers
+		SET deletion_requested_at       = NOW(),
+		    deletion_requested_by       = $2,
+		    deletion_requested_by_email = $3,
+		    updated_at                  = NOW()
+		WHERE id = $1
+		  AND deletion_requested_at IS NULL
+		  AND deleted_at             IS NULL`,
+		serverID, a.Subject, a.Email)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("requesting mcp deletion: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseMCPDeletionMiss(ctx, db, serverID)
+	}
+	return nil
+}
+
+// ApproveMCPDeletion confirms a pending deletion: the entry's
+// deleted_at is set so the public read filter excludes it. The
+// deletion_requested_* columns are intentionally retained as audit.
+func (db *DB) ApproveMCPDeletion(ctx context.Context, serverID string, _ Actor) error {
+	ctx, span := startSpan(ctx, "ApproveMCPDeletion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE mcp_servers
+		SET deleted_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1
+		  AND deletion_requested_at IS NOT NULL
+		  AND deleted_at             IS NULL`, serverID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("approving mcp deletion: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseMCPDeletionMiss(ctx, db, serverID)
+	}
+	return nil
+}
+
+// RejectMCPDeletion clears a pending deletion request. The reason
+// (passed by the handler) lives in the audit log; the entry row drops
+// the request markers and stays visible.
+func (db *DB) RejectMCPDeletion(ctx context.Context, serverID string, _ Actor) error {
+	ctx, span := startSpan(ctx, "RejectMCPDeletion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE mcp_servers
+		SET deletion_requested_at       = NULL,
+		    deletion_requested_by       = NULL,
+		    deletion_requested_by_email = NULL,
+		    updated_at                  = NOW()
+		WHERE id = $1
+		  AND deletion_requested_at IS NOT NULL
+		  AND deleted_at             IS NULL`, serverID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("rejecting mcp deletion: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseMCPDeletionMiss(ctx, db, serverID)
+	}
+	return nil
+}
+
+func diagnoseMCPDeletionMiss(ctx context.Context, db *DB, serverID string) error {
+	var (
+		requestedAt *time.Time //nolint:wastedassign // scanned for symmetry; not consulted
+		deletedAt   *time.Time
+	)
+	_ = requestedAt
+	err := db.Pool.QueryRow(ctx,
+		`SELECT deletion_requested_at, deleted_at FROM mcp_servers WHERE id=$1`,
+		serverID).Scan(&requestedAt, &deletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("diagnosing deletion miss: %w", err)
+	}
+	// already-deleted is functionally not-found from a workflow standpoint.
+	if deletedAt != nil {
+		return ErrNotFound
+	}
+	// Either there's no pending request when one was expected, or there's
+	// a pending request when none was expected — both surface as conflict.
+	return ErrConflict
+}
+
+// RequestAgentDeletion is the agent equivalent of RequestMCPDeletion.
+func (db *DB) RequestAgentDeletion(ctx context.Context, agentID string, a Actor) error {
+	ctx, span := startSpan(ctx, "RequestAgentDeletion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agents
+		SET deletion_requested_at       = NOW(),
+		    deletion_requested_by       = $2,
+		    deletion_requested_by_email = $3,
+		    updated_at                  = NOW()
+		WHERE id = $1
+		  AND deletion_requested_at IS NULL
+		  AND deleted_at             IS NULL`,
+		agentID, a.Subject, a.Email)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("requesting agent deletion: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseAgentDeletionMiss(ctx, db, agentID)
+	}
+	return nil
+}
+
+// ApproveAgentDeletion is the agent equivalent of ApproveMCPDeletion.
+func (db *DB) ApproveAgentDeletion(ctx context.Context, agentID string, _ Actor) error {
+	ctx, span := startSpan(ctx, "ApproveAgentDeletion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agents
+		SET deleted_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1
+		  AND deletion_requested_at IS NOT NULL
+		  AND deleted_at             IS NULL`, agentID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("approving agent deletion: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseAgentDeletionMiss(ctx, db, agentID)
+	}
+	return nil
+}
+
+// RejectAgentDeletion is the agent equivalent of RejectMCPDeletion.
+func (db *DB) RejectAgentDeletion(ctx context.Context, agentID string, _ Actor) error {
+	ctx, span := startSpan(ctx, "RejectAgentDeletion")
+	defer span.End()
+
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE agents
+		SET deletion_requested_at       = NULL,
+		    deletion_requested_by       = NULL,
+		    deletion_requested_by_email = NULL,
+		    updated_at                  = NOW()
+		WHERE id = $1
+		  AND deletion_requested_at IS NOT NULL
+		  AND deleted_at             IS NULL`, agentID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("rejecting agent deletion: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return diagnoseAgentDeletionMiss(ctx, db, agentID)
+	}
+	return nil
+}
+
+func diagnoseAgentDeletionMiss(ctx context.Context, db *DB, agentID string) error {
+	var (
+		requestedAt *time.Time //nolint:wastedassign // scanned for symmetry; not consulted
+		deletedAt   *time.Time
+	)
+	_ = requestedAt
+	err := db.Pool.QueryRow(ctx,
+		`SELECT deletion_requested_at, deleted_at FROM agents WHERE id=$1`,
+		agentID).Scan(&requestedAt, &deletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("diagnosing deletion miss: %w", err)
+	}
+	if deletedAt != nil {
+		return ErrNotFound
+	}
+	return ErrConflict
+}
+
 // ── Diagnostics: turn a 0-row UPDATE into a meaningful sentinel ──────────
 
 // diagnoseMCPReviewMiss is the SELECT-discriminator for submit/withdraw —
