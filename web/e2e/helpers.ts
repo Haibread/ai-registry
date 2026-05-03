@@ -37,3 +37,18 @@ export async function apiGet(page: Page, path: string) {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+export async function apiPatch(page: Page, path: string, data: unknown) {
+  const token = await getAccessToken(page)
+  return page.request.patch(path, {
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    data,
+  })
+}
+
+export async function apiDelete(page: Page, path: string) {
+  const token = await getAccessToken(page)
+  return page.request.delete(path, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}

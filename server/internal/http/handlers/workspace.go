@@ -267,12 +267,15 @@ func (h *WorkspaceHandlers) ListWorkspaceServers(w http.ResponseWriter, r *http.
 		last := rows[len(rows)-1]
 		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
 	}
-	if rows == nil {
-		rows = []store.MCPServerRow{}
-	}
 
+	// Reuse serverToResponse so the JSON shape matches the canonical
+	// list endpoint (lowercase field names, latest_version object, etc.).
+	items := make([]map[string]any, 0, len(rows))
+	for i := range rows {
+		items = append(items, serverToResponse(&rows[i]))
+	}
 	writeJSON(w, r, http.StatusOK, map[string]any{
-		"items":       rows,
+		"items":       items,
 		"next_cursor": nextCursor,
 	})
 }
@@ -319,12 +322,13 @@ func (h *WorkspaceHandlers) ListWorkspaceAgents(w http.ResponseWriter, r *http.R
 		last := rows[len(rows)-1]
 		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
 	}
-	if rows == nil {
-		rows = []store.AgentRow{}
-	}
 
+	items := make([]map[string]any, 0, len(rows))
+	for i := range rows {
+		items = append(items, agentToResponse(&rows[i]))
+	}
 	writeJSON(w, r, http.StatusOK, map[string]any{
-		"items":       rows,
+		"items":       items,
 		"next_cursor": nextCursor,
 	})
 }

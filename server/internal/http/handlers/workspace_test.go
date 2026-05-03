@@ -363,7 +363,10 @@ func TestWorkspaceHandler_ListWorkspaceServers(t *testing.T) {
 		}
 	}
 
-	// team-a list should return 2.
+	// team-a list should return 2 with serialized field names matching the
+	// canonical list endpoint (lowercase). Asserting `slug` here catches
+	// regressions where the handler bypasses serverToResponse and the
+	// items come out as the raw Go struct (capitalized field names).
 	req := httptest.NewRequest(http.MethodGet,
 		"/api/v1/publishers/acme/workspaces/team-a/servers", nil)
 	rec := httptest.NewRecorder()
@@ -372,13 +375,24 @@ func TestWorkspaceHandler_ListWorkspaceServers(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	var body struct {
-		Items []any `json:"items"`
+		Items []struct {
+			ID   string `json:"id"`
+			Slug string `json:"slug"`
+		} `json:"items"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(body.Items) != 2 {
 		t.Errorf("team-a servers = %d, want 2", len(body.Items))
+	}
+	for i, it := range body.Items {
+		if it.ID == "" {
+			t.Errorf("team-a item %d: missing lowercase id field (response shape regression)", i)
+		}
+		if it.Slug == "" {
+			t.Errorf("team-a item %d: missing lowercase slug field (response shape regression)", i)
+		}
 	}
 
 	// team-b list should return 1.
@@ -433,13 +447,21 @@ func TestWorkspaceHandler_ListWorkspaceAgents(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	var body struct {
-		Items []any `json:"items"`
+		Items []struct {
+			ID   string `json:"id"`
+			Slug string `json:"slug"`
+		} `json:"items"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(body.Items) != 1 {
 		t.Errorf("team agents = %d, want 1", len(body.Items))
+	}
+	if len(body.Items) == 1 {
+		if body.Items[0].ID == "" || body.Items[0].Slug == "" {
+			t.Errorf("agent response missing lowercase id/slug fields: %+v", body.Items[0])
+		}
 	}
 }
 
