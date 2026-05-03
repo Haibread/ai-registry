@@ -616,8 +616,14 @@ paths:
           $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteMCPServer
-      summary: Soft-delete an MCP server (admin only)
-      description: Sets the server and all its versions to status='deleted'. The entry is no longer returned in public listings.
+      summary: Force-delete an MCP server (admin only — bypasses workflow)
+      description: |
+        Admin-only escape hatch that hard-tombstones the server and all its
+        versions to status='deleted' without going through the
+        change-approval workflow. Workspace group members must use
+        POST /api/v1/mcp/servers/{namespace}/{slug}/deletion-request and
+        wait for a reviewer's approve to delete; this endpoint is the
+        admin force-delete path.
       tags: [mcp]
       security:
         - bearerAuth: []
@@ -1175,8 +1181,14 @@ paths:
           $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteAgent
-      summary: Soft-delete an agent (admin only)
-      description: Sets the agent and all its versions to status='deleted'. The entry is no longer returned in public listings.
+      summary: Force-delete an agent (admin only — bypasses workflow)
+      description: |
+        Admin-only escape hatch that hard-tombstones the agent and all its
+        versions to status='deleted' without going through the
+        change-approval workflow. Workspace group members must use
+        POST /api/v1/agents/{namespace}/{slug}/deletion-request and wait
+        for a reviewer's approve to delete; this endpoint is the admin
+        force-delete path.
       tags: [agents]
       security:
         - bearerAuth: []

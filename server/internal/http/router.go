@@ -190,7 +190,12 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				// group members can author content for their workspace.
 				// Admin override is built in.
 				r.With(requireMCPServerNS).Patch("/", mcpH.PatchServer)
-				r.With(requireMCPServerNS).Delete("/", mcpH.DeleteServer)
+				// Legacy direct delete is admin-only: it bypasses the
+				// change-approval workflow (deletion-request /
+				// deletion-request/approve). Workspace group members
+				// must use the workflow path; admins keep this as a
+				// force-delete escape hatch.
+				r.With(auth.RequireAdmin).Delete("/", mcpH.DeleteServer)
 				r.With(requireMCPServerNS).Post("/deprecate", mcpH.DeprecateServer)
 				// Visibility flips are admin-only by policy: they affect
 				// public exposure, not just authoring.
@@ -225,7 +230,9 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", agentH.GetAgent)
 				r.With(requireAgentNS).Patch("/", agentH.PatchAgent)
-				r.With(requireAgentNS).Delete("/", agentH.DeleteAgent)
+				// Same reasoning as MCP servers: bypass-the-workflow path
+				// stays admin-only.
+				r.With(auth.RequireAdmin).Delete("/", agentH.DeleteAgent)
 				r.With(requireAgentNS).Post("/deprecate", agentH.DeprecateAgent)
 				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
 				r.With(publicRL).Post("/view", agentH.RecordView)
