@@ -384,6 +384,46 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/servers:
+    get:
+      operationId: listWorkspaceServers
+      summary: List MCP servers under a workspace
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of MCP servers in the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPServerList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/agents:
+    get:
+      operationId: listWorkspaceAgents
+      summary: List agents under a workspace
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of agents in the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── MCP Servers ───────────────────────────────────────────────────────────
 
   /api/v1/mcp/servers:

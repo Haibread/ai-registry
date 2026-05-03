@@ -36,6 +36,7 @@ type AgentRow struct {
 type ListAgentsParams struct {
 	PublicOnly     bool
 	Namespace      string
+	WorkspaceID    string // filter by workspace ULID (optional). Applied independently of Namespace.
 	Status         string // filter by status: "draft" | "published" | "deprecated" | "" (all non-deleted)
 	Visibility     string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string
@@ -90,6 +91,12 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
+		argN++
+		countArgN++
+	}
+	if p.WorkspaceID != "" {
+		filterWhere += fmt.Sprintf(" AND a.workspace_id = $%d", argN)
+		filterArgs = append(filterArgs, p.WorkspaceID)
 		argN++
 		countArgN++
 	}

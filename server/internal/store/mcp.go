@@ -41,6 +41,7 @@ type LatestMCPVersion struct {
 type ListMCPServersParams struct {
 	PublicOnly     bool       // when true, only visibility='public' rows are returned
 	Namespace      string     // filter by publisher slug (optional)
+	WorkspaceID    string     // filter by workspace ULID (optional). Applied independently of Namespace.
 	Status         string     // filter by status: "draft" | "published" | "deprecated" | "" (all)
 	Visibility     string     // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string     // full-text search term (optional)
@@ -111,6 +112,12 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
+		argN++
+		countArgN++
+	}
+	if p.WorkspaceID != "" {
+		filterWhere += fmt.Sprintf(" AND s.workspace_id = $%d", argN)
+		filterArgs = append(filterArgs, p.WorkspaceID)
 		argN++
 		countArgN++
 	}

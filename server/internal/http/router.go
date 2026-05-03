@@ -151,6 +151,9 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				r.With(publicRL).Get("/{workspace_slug}", wsH.GetWorkspace)
 				r.With(auth.RequireAdmin).Patch("/{workspace_slug}", wsH.PatchWorkspace)
 				r.With(auth.RequireAdmin).Delete("/{workspace_slug}", wsH.DeleteWorkspace)
+				// Workspace-scoped resource lists.
+				r.With(publicRL).Get("/{workspace_slug}/servers", wsH.ListWorkspaceServers)
+				r.With(publicRL).Get("/{workspace_slug}/agents", wsH.ListWorkspaceAgents)
 			})
 		})
 

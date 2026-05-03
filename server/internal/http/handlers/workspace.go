@@ -219,6 +219,111 @@ func (h *WorkspaceHandlers) PatchWorkspace(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, r, http.StatusOK, updated)
 }
 
+// ── GET /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/servers ──
+
+// ListWorkspaceServers returns the MCP servers under a given workspace.
+// Public read; admin not required.
+func (h *WorkspaceHandlers) ListWorkspaceServers(w http.ResponseWriter, r *http.Request) {
+	pubSlug := chi.URLParam(r, "publisher_slug")
+	wsSlug := chi.URLParam(r, "workspace_slug")
+
+	ws, err := h.db.ResolveWorkspace(r.Context(), pubSlug, wsSlug)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("workspace '%s/%s' does not exist", pubSlug, wsSlug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	limit := int32(20)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = int32(n)
+		}
+	}
+
+	rows, _, err := h.db.ListMCPServers(r.Context(), store.ListMCPServersParams{
+		WorkspaceID: ws.ID,
+		PublicOnly:  false, // workspace-scoped reads are admin-side; surface drafts.
+		Limit:       limit + 1,
+		Cursor:      r.URL.Query().Get("cursor"),
+	})
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	var nextCursor string
+	if int32(len(rows)) > limit {
+		rows = rows[:limit]
+		last := rows[len(rows)-1]
+		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
+	}
+	if rows == nil {
+		rows = []store.MCPServerRow{}
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"items":       rows,
+		"next_cursor": nextCursor,
+	})
+}
+
+// ── GET /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/agents ──
+
+// ListWorkspaceAgents returns the agents under a given workspace.
+func (h *WorkspaceHandlers) ListWorkspaceAgents(w http.ResponseWriter, r *http.Request) {
+	pubSlug := chi.URLParam(r, "publisher_slug")
+	wsSlug := chi.URLParam(r, "workspace_slug")
+
+	ws, err := h.db.ResolveWorkspace(r.Context(), pubSlug, wsSlug)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("workspace '%s/%s' does not exist", pubSlug, wsSlug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	limit := int32(20)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = int32(n)
+		}
+	}
+
+	rows, _, err := h.db.ListAgents(r.Context(), store.ListAgentsParams{
+		WorkspaceID: ws.ID,
+		PublicOnly:  false,
+		Limit:       limit + 1,
+		Cursor:      r.URL.Query().Get("cursor"),
+	})
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	var nextCursor string
+	if int32(len(rows)) > limit {
+		rows = rows[:limit]
+		last := rows[len(rows)-1]
+		nextCursor = store.EncodeCursor(last.CreatedAt, last.ID)
+	}
+	if rows == nil {
+		rows = []store.AgentRow{}
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"items":       rows,
+		"next_cursor": nextCursor,
+	})
+}
+
 // ── DELETE /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug} ───
 
 func (h *WorkspaceHandlers) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {

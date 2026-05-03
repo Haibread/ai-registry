@@ -25,6 +25,8 @@ func newWorkspaceRouter() *chi.Mux {
 		r.Get("/{workspace_slug}", h.GetWorkspace)
 		r.Patch("/{workspace_slug}", h.PatchWorkspace)
 		r.Delete("/{workspace_slug}", h.DeleteWorkspace)
+		r.Get("/{workspace_slug}/servers", h.ListWorkspaceServers)
+		r.Get("/{workspace_slug}/agents", h.ListWorkspaceAgents)
 	})
 	return r
 }
@@ -261,6 +263,120 @@ func TestWorkspaceHandler_DeleteEmpty(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("get-after-delete: status = %d, want 404", rec.Code)
+	}
+}
+
+func TestWorkspaceHandler_ListWorkspaceServers(t *testing.T) {
+	resetTables(t)
+	pubID := seedPublisher(t, "acme", "Acme")
+	r := newWorkspaceRouter()
+
+	// Create two workspaces under acme via the handler.
+	for _, slug := range []string{"team-a", "team-b"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/publishers/acme/workspaces",
+			bytes.NewBufferString(`{"slug":"`+slug+`","name":"`+slug+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("seed %s: %d", slug, rec.Code)
+		}
+	}
+
+	// Fetch each workspace ID so we can attach servers.
+	wsA, _ := testDB.ResolveWorkspace(context.Background(), "acme", "team-a")
+	wsB, _ := testDB.ResolveWorkspace(context.Background(), "acme", "team-b")
+
+	// Two servers in team-a, one in team-b.
+	for _, wsID := range []string{wsA.ID, wsA.ID, wsB.ID} {
+		_, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
+			PublisherID: pubID,
+			WorkspaceID: wsID,
+			Slug:        store.NewULID(), // unique
+			Name:        "n",
+		})
+		if err != nil {
+			t.Fatalf("create server: %v", err)
+		}
+	}
+
+	// team-a list should return 2.
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/acme/workspaces/team-a/servers", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body struct {
+		Items []any `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Errorf("team-a servers = %d, want 2", len(body.Items))
+	}
+
+	// team-b list should return 1.
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/acme/workspaces/team-b/servers", nil)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Errorf("team-b servers = %d, want 1", len(body.Items))
+	}
+
+	// Unknown workspace → 404.
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/acme/workspaces/missing/servers", nil)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("unknown workspace: status = %d, want 404", rec.Code)
+	}
+}
+
+func TestWorkspaceHandler_ListWorkspaceAgents(t *testing.T) {
+	resetTables(t)
+	pubID := seedPublisher(t, "acme", "Acme")
+	r := newWorkspaceRouter()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/publishers/acme/workspaces",
+		bytes.NewBufferString(`{"slug":"team","name":"Team"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("seed workspace: %d", rec.Code)
+	}
+	ws, _ := testDB.ResolveWorkspace(context.Background(), "acme", "team")
+
+	// One agent in team.
+	if _, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
+		PublisherID: pubID, WorkspaceID: ws.ID, Slug: "planner", Name: "Planner",
+	}); err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/acme/workspaces/team/agents", nil)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body struct {
+		Items []any `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Errorf("team agents = %d, want 1", len(body.Items))
 	}
 }
 
