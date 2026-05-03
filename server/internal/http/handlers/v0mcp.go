@@ -173,7 +173,11 @@ func (h *V0MCPHandlers) ListServerVersions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	vers, err := h.db.ListMCPServerVersions(r.Context(), srv.ID)
+	// /v0/ is the public spec-compat surface — only published versions
+	// belong on the wire. Filter at the store layer so the in-memory
+	// `if v.PublishedAt == nil { continue }` below becomes redundant
+	// rather than load-bearing.
+	vers, err := h.db.ListMCPServerVersions(r.Context(), srv.ID, true)
 	if err != nil {
 		writeV0Error(w, r, http.StatusInternalServerError, "failed to list versions")
 		return
@@ -231,7 +235,9 @@ func (h *V0MCPHandlers) GetServerVersion(w http.ResponseWriter, r *http.Request)
 	if version == "latest" {
 		ver, err = h.db.GetLatestPublishedVersion(r.Context(), srv.ID)
 	} else {
-		ver, err = h.db.GetMCPServerVersion(r.Context(), srv.ID, version)
+		// /v0/ is public spec-compat: never expose drafts / pending /
+		// rejected versions on this surface.
+		ver, err = h.db.GetMCPServerVersion(r.Context(), srv.ID, version, true)
 	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeV0Error(w, r, http.StatusNotFound, "version not found")
@@ -389,8 +395,10 @@ func (h *V0MCPHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Re-fetch the version and server to build the response.
-	ver, err := h.db.GetMCPServerVersion(r.Context(), srv.ID, version)
+	// Re-fetch the version and server to build the response. This is
+	// an admin-gated handler that may have just transitioned the row to
+	// a non-published state, so do not filter here.
+	ver, err := h.db.GetMCPServerVersion(r.Context(), srv.ID, version, false)
 	if err != nil {
 		writeV0Error(w, r, http.StatusInternalServerError, "failed to fetch updated version")
 		return
@@ -537,8 +545,9 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Re-fetch the version to get the published_at timestamp.
-	publishedVer, _ := h.db.GetMCPServerVersion(r.Context(), srv.ID, ver.Version)
+	// Re-fetch the version to get the published_at timestamp. Admin-
+	// gated handler — read all states.
+	publishedVer, _ := h.db.GetMCPServerVersion(r.Context(), srv.ID, ver.Version, false)
 
 	// Re-fetch the server to get updated status/timestamps.
 	updatedSrv, _ := h.db.GetMCPServer(r.Context(), namespace, slug, false)

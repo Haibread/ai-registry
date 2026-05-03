@@ -571,11 +571,18 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 	}, nil
 }
 
-// ListMCPServerVersions returns all versions for a given server ID, ordered by created_at.
-func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]domain.MCPServerVersion, error) {
+// ListMCPServerVersions returns versions for a given server ID, ordered
+// by created_at DESC. When publicOnly is true the result excludes
+// content that has not yet reached `published` (drafts, pending_review,
+// rejected) so the workflow does not leak to anonymous callers.
+func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string, publicOnly bool) ([]domain.MCPServerVersion, error) {
 	ctx, span := startSpan(ctx, "ListMCPServerVersions")
 	defer span.End()
 
+	where := "WHERE server_id = $1"
+	if publicOnly {
+		where += " AND published_at IS NOT NULL"
+	}
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
@@ -584,7 +591,7 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
 		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM mcp_server_versions
-		WHERE server_id = $1
+		`+where+`
 		ORDER BY created_at DESC`, serverID)
 	if err != nil {
 		recordErr(span, err)
@@ -608,11 +615,19 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 	return result, nil
 }
 
-// GetMCPServerVersion retrieves a specific version by server ID and semver string.
-func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string) (*domain.MCPServerVersion, error) {
+// GetMCPServerVersion retrieves a specific version by server ID and
+// semver string. When publicOnly is true the lookup pretends a non-
+// published row (draft / pending_review / rejected) does not exist —
+// the caller gets ErrNotFound, mirroring the pattern used by
+// GetMCPServer's publicOnly flag.
+func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string, publicOnly bool) (*domain.MCPServerVersion, error) {
 	ctx, span := startSpan(ctx, "GetMCPServerVersion")
 	defer span.End()
 
+	where := "WHERE server_id = $1 AND version = $2"
+	if publicOnly {
+		where += " AND published_at IS NOT NULL"
+	}
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
@@ -621,7 +636,7 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string)
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
 		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM mcp_server_versions
-		WHERE server_id = $1 AND version = $2`, serverID, version)
+		`+where, serverID, version)
 
 	v, err := scanVersion(row)
 	if errors.Is(err, pgx.ErrNoRows) {

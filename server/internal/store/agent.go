@@ -424,11 +424,18 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 	}, nil
 }
 
-// ListAgentVersions returns all versions for a given agent ID.
-func (db *DB) ListAgentVersions(ctx context.Context, agentID string) ([]domain.AgentVersion, error) {
+// ListAgentVersions returns versions for a given agent ID. When
+// publicOnly is true the result excludes content that has not reached
+// `published` (drafts, pending_review, rejected) so the workflow does
+// not leak to anonymous callers.
+func (db *DB) ListAgentVersions(ctx context.Context, agentID string, publicOnly bool) ([]domain.AgentVersion, error) {
 	ctx, span := startSpan(ctx, "ListAgentVersions")
 	defer span.End()
 
+	where := "WHERE agent_id = $1"
+	if publicOnly {
+		where += " AND published_at IS NOT NULL"
+	}
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
@@ -438,7 +445,7 @@ func (db *DB) ListAgentVersions(ctx context.Context, agentID string) ([]domain.A
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
 		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM agent_versions
-		WHERE agent_id = $1
+		`+where+`
 		ORDER BY created_at DESC`, agentID)
 	if err != nil {
 		recordErr(span, err)
@@ -462,11 +469,17 @@ func (db *DB) ListAgentVersions(ctx context.Context, agentID string) ([]domain.A
 	return result, nil
 }
 
-// GetAgentVersion retrieves a specific version by agent ID and semver string.
-func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string) (*domain.AgentVersion, error) {
+// GetAgentVersion retrieves a specific version by agent ID and semver
+// string. When publicOnly is true a non-published row appears as
+// ErrNotFound to the caller.
+func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string, publicOnly bool) (*domain.AgentVersion, error) {
 	ctx, span := startSpan(ctx, "GetAgentVersion")
 	defer span.End()
 
+	where := "WHERE agent_id = $1 AND version = $2"
+	if publicOnly {
+		where += " AND published_at IS NOT NULL"
+	}
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
@@ -476,7 +489,7 @@ func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string) (*do
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
 		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM agent_versions
-		WHERE agent_id = $1 AND version = $2`, agentID, version)
+		`+where, agentID, version)
 
 	v, err := scanAgentVersion(row)
 	if errors.Is(err, pgx.ErrNoRows) {
