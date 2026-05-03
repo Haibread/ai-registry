@@ -202,7 +202,7 @@ export default function AdminReviewQueue() {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Pending change-approval submissions and deletion requests across the
+        Pending change-approval entries and deletion requests across the
         registry, newest first. Approve sends the item live; reject returns
         it to draft (with the supplied reason recorded on the version).
       </p>

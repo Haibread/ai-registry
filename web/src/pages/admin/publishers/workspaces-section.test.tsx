@@ -152,7 +152,7 @@ describe('WorkspacesSection', () => {
       error: { status: 409, detail: 'workspace still has resources' },
     })
     renderSection()
-    const deleteTriggers = await screen.findAllByRole('button', { name: /^delete$/i })
+    const deleteTriggers = await screen.findAllByRole('button', { name: /delete workspace/i })
     fireEvent.click(deleteTriggers[0])
 
     expect(

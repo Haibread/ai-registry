@@ -228,6 +228,7 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
                         {isEditing ? 'Cancel' : 'Edit'}
                       </Button>
                       <DeleteButton
+                        label="Delete workspace"
                         onDelete={() => deleteMutation.mutate(ws.slug)}
                         entityName={ws.name}
                         isPending={

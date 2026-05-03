@@ -135,7 +135,7 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
         </h2>
       </div>
       <p className="text-sm text-muted-foreground">
-        Drafts are authored here and submitted for reviewer approval.
+        Drafts are authored here and sent for reviewer approval.
         Approve and reject happen on the{' '}
         <a href="/admin/review" className="text-primary hover:underline">
           review queue
