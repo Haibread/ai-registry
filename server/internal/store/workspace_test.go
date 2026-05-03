@@ -369,6 +369,100 @@ func TestBackfillWorkspaces_PreservesExistingDefault(t *testing.T) {
 	}
 }
 
+func TestCreateMCPServer_PopulatesWorkspaceID(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "acme", "Acme")
+
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID,
+		Slug:        "weather",
+		Name:        "Weather",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	// The lazy default workspace must now exist.
+	defaultWS, err := sharedDB.GetWorkspace(ctx, pubID, "default")
+	if err != nil {
+		t.Fatalf("expected lazy default workspace: %v", err)
+	}
+
+	// And the new server must point at it.
+	var wsID string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT workspace_id FROM mcp_servers WHERE id=$1`, srv.ID).Scan(&wsID); err != nil {
+		t.Fatalf("read workspace_id: %v", err)
+	}
+	if wsID != defaultWS.ID {
+		t.Errorf("server workspace_id = %s, want %s", wsID, defaultWS.ID)
+	}
+}
+
+func TestCreateMCPServer_RespectsExplicitWorkspaceID(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "acme", "Acme")
+	customWS, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pubID, Slug: "claude-team", Name: "Claude team",
+	})
+	if err != nil {
+		t.Fatalf("create custom workspace: %v", err)
+	}
+
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID,
+		WorkspaceID: customWS.ID,
+		Slug:        "weather",
+		Name:        "Weather",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	var wsID string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT workspace_id FROM mcp_servers WHERE id=$1`, srv.ID).Scan(&wsID); err != nil {
+		t.Fatalf("read workspace_id: %v", err)
+	}
+	if wsID != customWS.ID {
+		t.Errorf("server workspace_id = %s, want %s (custom)", wsID, customWS.ID)
+	}
+	// No 'default' workspace should have been created since one was supplied.
+	if _, err := sharedDB.GetWorkspace(ctx, pubID, "default"); err != store.ErrNotFound {
+		t.Errorf("unexpected default workspace creation: %v", err)
+	}
+}
+
+func TestCreateAgent_PopulatesWorkspaceID(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "acme", "Acme")
+
+	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID,
+		Slug:        "planner",
+		Name:        "Planner",
+	})
+	if err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+
+	defaultWS, err := sharedDB.GetWorkspace(ctx, pubID, "default")
+	if err != nil {
+		t.Fatalf("expected lazy default workspace: %v", err)
+	}
+	var wsID string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT workspace_id FROM agents WHERE id=$1`, ag.ID).Scan(&wsID); err != nil {
+		t.Fatalf("read workspace_id: %v", err)
+	}
+	if wsID != defaultWS.ID {
+		t.Errorf("agent workspace_id = %s, want %s", wsID, defaultWS.ID)
+	}
+}
+
 func TestDeleteWorkspace_NotFound(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

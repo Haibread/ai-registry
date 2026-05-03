@@ -251,6 +251,45 @@ func (db *DB) UpdateWorkspace(ctx context.Context, workspaceID string, p UpdateW
 	return &w, nil
 }
 
+// ensureDefaultWorkspaceID returns the ULID of the publisher's `default`
+// workspace, creating it lazily if it does not yet exist. This mirrors
+// the BackfillWorkspaces logic for a single publisher and is the path
+// CreateMCPServer / CreateAgent take when no explicit workspace is
+// supplied. The exec runs inside the caller's pgx connection so it can
+// be wrapped in a transaction if the caller has one.
+func (db *DB) ensureDefaultWorkspaceID(ctx context.Context, publisherID string) (string, error) {
+	var id string
+	err := db.Pool.QueryRow(ctx,
+		`SELECT id FROM workspaces WHERE publisher_id = $1 AND slug = 'default'`,
+		publisherID).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("looking up default workspace: %w", err)
+	}
+
+	// Lazy create. Same shape as BackfillWorkspaces' insert.
+	id = NewULID()
+	now := time.Now().UTC()
+	_, err = db.Pool.Exec(ctx, `
+		INSERT INTO workspaces
+			(id, publisher_id, slug, name, description, contact, created_at, updated_at)
+		VALUES ($1, $2, 'default', 'Default workspace', '', '', $3, $3)
+		ON CONFLICT (publisher_id, slug) DO NOTHING`,
+		id, publisherID, now)
+	if err != nil {
+		return "", fmt.Errorf("creating default workspace: %w", err)
+	}
+	// On conflict the insert is a no-op; re-read the existing row's id.
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT id FROM workspaces WHERE publisher_id = $1 AND slug = 'default'`,
+		publisherID).Scan(&id); err != nil {
+		return "", fmt.Errorf("re-reading default workspace id: %w", err)
+	}
+	return id, nil
+}
+
 // BackfillResult summarises a BackfillWorkspaces run.
 type BackfillResult struct {
 	WorkspacesCreated int
