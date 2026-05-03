@@ -13,7 +13,7 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
-// WorkspaceHandlers serves the workspace CRUD endpoints. See ADR 0001.
+// WorkspaceHandlers serves the workspace CRUD endpoints.
 type WorkspaceHandlers struct {
 	db    *store.DB
 	audit store.AuditLogger

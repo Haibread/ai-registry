@@ -86,8 +86,8 @@ func (v *Validator) Authenticate(next http.Handler) http.Handler {
 // not an authorization decision.
 type WorkspaceLookup func(*http.Request) (groupName string, err error)
 
-// RequireWorkspaceWrite is chi middleware (ADR 0002) that authorizes a
-// write request against a workspace's group_name binding. The contract:
+// RequireWorkspaceWrite is chi middleware that authorizes a write
+// request against a workspace's group_name binding. The contract:
 //
 //   - Admins (realm role "admin") always pass.
 //   - Non-admins pass only when the workspace's group_name is non-empty
@@ -119,6 +119,39 @@ func RequireWorkspaceWrite(lookup WorkspaceLookup) func(http.Handler) http.Handl
 			if groupName == "" || !claims.HasGroup(groupName) {
 				problem.Write(w, http.StatusForbidden, "forbidden",
 					"Insufficient permissions: workspace group membership required", r.URL.Path)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireReviewer returns chi middleware that gates a route to admins
+// or members of the configured reviewer group. Group name is passed as
+// an argument because it is configured per-deployment via
+// AUTH_REVIEWER_GROUP / auth.reviewer_group (default "registry-reviewers").
+// When the group is empty or the JWT carries no matching membership, only
+// admins pass.
+//
+// Wire this onto approve / reject endpoints and deletion-confirmation
+// routes. Publisher-side endpoints (submit, withdraw, edit,
+// request-deletion) keep using RequireWorkspaceWrite.
+func RequireReviewer(group string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := ClaimsFromContext(r.Context())
+			if !ok || claims == nil {
+				problem.Write(w, http.StatusUnauthorized, "unauthorized",
+					"Missing or invalid bearer token", r.URL.Path)
+				return
+			}
+			if claims.IsAdmin() {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if group == "" || !claims.HasGroup(group) {
+				problem.Write(w, http.StatusForbidden, "forbidden",
+					"Insufficient permissions: reviewer group membership required", r.URL.Path)
 				return
 			}
 			next.ServeHTTP(w, r)

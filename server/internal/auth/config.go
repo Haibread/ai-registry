@@ -32,6 +32,13 @@ type Config struct {
 	// "session" (default, XSS-safer) or "local" (E2E only — localStorage is
 	// captured by Playwright's storageState).
 	AuthStorage string
+
+	// ReviewerGroup is the Keycloak group that gates the change-approval
+	// workflow. Members of this group can approve / reject version
+	// submissions and pending deletions. Default: "registry-reviewers".
+	// The empty string disables the workflow path (everything falls back
+	// to RequireAdmin).
+	ReviewerGroup string
 }
 
 // JWKSEndpoint returns the URL to fetch Keycloak signing keys from.

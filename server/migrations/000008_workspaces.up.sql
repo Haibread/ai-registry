@@ -1,6 +1,6 @@
 -- 000008_workspaces.up.sql
--- Phase 7.1 step 1 (per ADR 0001): introduce the workspace entity between
--- publishers and resources.
+-- Phase 7.1 step 1: introduce the workspace entity between publishers
+-- and resources.
 --
 -- This migration is the SCHEMA half of a two-step rollout:
 --   1. (here) create the workspaces table; add nullable workspace_id to

@@ -579,7 +579,10 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM mcp_server_versions
 		WHERE server_id = $1
 		ORDER BY created_at DESC`, serverID)
@@ -613,7 +616,10 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string)
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND version = $2`, serverID, version)
 
@@ -637,7 +643,10 @@ func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -823,6 +832,9 @@ func scanVersion(s interface {
 		&v.ProtocolVersion, &v.Checksum, &v.Signature,
 		&v.Status, &v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
 		&v.StatusMessage, &v.StatusChangedAt,
+		&v.ReviewState, &v.Revision, &v.SubmittedAt, &v.SubmittedBy, &v.SubmittedByEmail,
+		&v.ReviewedAt, &v.ReviewedBy, &v.ReviewedByEmail,
+		&v.ReviewDecision, &v.RejectionReason,
 	)
 	return v, err
 }
@@ -881,7 +893,10 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 		WHERE server_id=$3 AND published_at IS NOT NULL
 		RETURNING id, server_id, version, runtime, packages, capabilities, tools,
 		          protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		          status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at`,
+		          status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
+		          review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		          reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		          coalesce(review_decision,''), coalesce(rejection_reason,'')`,
 		status, statusMessage, serverID)
 	if err != nil {
 		recordErr(span, err)

@@ -1,8 +1,8 @@
 /**
  * workspaces.spec.ts
  *
- * End-to-end tests for the workspace API surface introduced in ADR 0001
- * (Phase 7.1) and ADR 0002 (Phase 7.2). Workspaces have no UI yet, so
+ * End-to-end tests for the workspace API surface introduced in
+ * Phases 7.1 and 7.2. Workspaces have no UI yet, so
  * these tests drive the live stack via the admin API and assert the full
  * loop: publisher -> workspace -> resource -> group binding -> auth.
  *
@@ -89,7 +89,7 @@ test.describe('Workspaces API', () => {
     expect(resp.status()).toBe(409)
   })
 
-  test('admin sets and clears group_name on the workspace (ADR 0002)', async ({ page }) => {
+  test('admin sets and clears group_name on the workspace', async ({ page }) => {
     let resp = await apiPatch(
       page,
       `/api/v1/publishers/${PUBLISHER_SLUG}/workspaces/${WORKSPACE_SLUG}`,

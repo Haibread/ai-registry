@@ -10,8 +10,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Workspace is the full workspace row returned by list/get queries. See
-// ADR 0001 — Workspaces under publishers.
+// Workspace is the full workspace row returned by list/get queries.
+// Workspaces are the team-level grouping under a publisher and own the
+// MCP servers and agents in the registry.
 type Workspace struct {
 	ID          string    `json:"id"`
 	PublisherID string    `json:"publisher_id"`
@@ -20,7 +21,7 @@ type Workspace struct {
 	Description string    `json:"description,omitempty"`
 	Contact     string    `json:"contact,omitempty"`
 	// GroupName is the Keycloak group whose members can write to this
-	// workspace's resources (ADR 0002). NULL/empty means admin-only.
+	// workspace's resources. NULL/empty means admin-only.
 	GroupName string    `json:"group_name,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -48,8 +49,8 @@ type UpdateWorkspaceParams struct {
 	Name        string
 	Description string
 	Contact     string
-	// GroupName binds the workspace to a Keycloak group (ADR 0002).
-	// Empty string clears the binding (workspace becomes admin-only).
+	// GroupName binds the workspace to a Keycloak group. Empty string
+	// clears the binding (workspace becomes admin-only).
 	GroupName string
 }
 
@@ -500,14 +501,13 @@ func (db *DB) BackfillWorkspaces(ctx context.Context) (BackfillResult, error) {
 	return res, nil
 }
 
-// DeleteWorkspace hard-deletes a workspace. Returns ErrConflict if any MCP
-// server or agent still references the workspace (regardless of status —
-// even tombstoned rows hold the FK).
-//
-// Per ADR 0001, workspace deletion requires the workspace to be empty.
-// During the transitional period before the finalising migration, a
-// resource may have NULL workspace_id (legacy publisher-keyed rows that
-// haven't been backfilled); those do not count against this check.
+// DeleteWorkspace hard-deletes a workspace. Returns ErrConflict if any
+// MCP server or agent still references the workspace (regardless of
+// status — even tombstoned rows hold the FK). Workspace deletion
+// requires the workspace to be empty. During the transitional period
+// before the finalising migration, a resource may have NULL
+// workspace_id (legacy publisher-keyed rows that haven't been
+// backfilled); those do not count against this check.
 func (db *DB) DeleteWorkspace(ctx context.Context, workspaceID string) error {
 	ctx, span := startSpan(ctx, "DeleteWorkspace")
 	defer span.End()

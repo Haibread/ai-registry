@@ -270,9 +270,9 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 	// Purge any workspaces owned by this publisher. After the resource
 	// purges above the workspaces are guaranteed empty (the active-count
 	// check earlier ensured no active resource holds a workspace_id FK,
-	// and tombstoned ones were just deleted). The workspace → publisher FK
-	// is also ON DELETE RESTRICT, so this must run before the publisher
-	// delete. See ADR 0001 — publisher deletion is a multi-step cleanup.
+	// and tombstoned ones were just deleted). The workspace → publisher
+	// FK is also ON DELETE RESTRICT, so this must run before the
+	// publisher delete: publisher deletion is a multi-step cleanup.
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM workspaces WHERE publisher_id=$1`,
 		publisherID); err != nil {

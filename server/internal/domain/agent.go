@@ -63,8 +63,21 @@ type AgentVersion struct {
 	StatusMessage      string          `json:"status_message,omitempty"`
 	StatusChangedAt    time.Time       `json:"status_changed_at"`
 	PublishedAt        *time.Time      `json:"published_at,omitempty"`
-	CreatedAt          time.Time       `json:"created_at"`
-	UpdatedAt          time.Time       `json:"updated_at"`
+	// Change-approval workflow fields. See domain.MCPServerVersion for
+	// the equivalent commentary; both version tables share the same
+	// review schema.
+	ReviewState      ReviewState    `json:"review_state,omitempty"`
+	Revision         int            `json:"revision,omitempty"`
+	SubmittedAt      *time.Time     `json:"submitted_at,omitempty"`
+	SubmittedBy      string         `json:"submitted_by,omitempty"`
+	SubmittedByEmail string         `json:"submitted_by_email,omitempty"`
+	ReviewedAt       *time.Time     `json:"reviewed_at,omitempty"`
+	ReviewedBy       string         `json:"reviewed_by,omitempty"`
+	ReviewedByEmail  string         `json:"reviewed_by_email,omitempty"`
+	ReviewDecision   ReviewDecision `json:"review_decision,omitempty"`
+	RejectionReason  string         `json:"rejection_reason,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // IsPublished reports whether this version has been published.

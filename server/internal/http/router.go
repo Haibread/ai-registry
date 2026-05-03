@@ -70,6 +70,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB, deps.Metrics)
 	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
 	wsH := handlers.NewWorkspaceHandlers(deps.DB, deps.DB)
+	revH := handlers.NewReviewHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger)
@@ -91,6 +92,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	}
 	requireMCPServerNS := auth.RequireWorkspaceWrite(mcpServerNSLookup)
 	requireAgentNS := auth.RequireWorkspaceWrite(agentNSLookup)
+	requireReviewer := auth.RequireReviewer(deps.AuthConf.ReviewerGroup)
 
 	r := chi.NewRouter()
 
@@ -152,6 +154,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	publicRL := middleware.RateLimit(publicRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
 
+		// Review queue (reviewer-gated, lists pending versions and
+		// pending deletions across all workspaces).
+		r.With(requireReviewer).Get("/review-queue", revH.ListReviewQueue)
+
 		// Publishers
 		r.Route("/publishers", func(r chi.Router) {
 			r.With(publicRL).Get("/", pubH.ListPublishers)
@@ -160,7 +166,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(auth.RequireAdmin).Patch("/{slug}", pubH.PatchPublisher)
 			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
 
-			// Workspaces under a publisher (ADR 0001).
+			// Workspaces under a publisher.
 			r.Route("/{publisher_slug}/workspaces", func(r chi.Router) {
 				r.With(publicRL).Get("/", wsH.ListWorkspaces)
 				r.With(auth.RequireAdmin).Post("/", wsH.CreateWorkspace)
@@ -198,7 +204,16 @@ func buildMux(deps RouterDeps) *chi.Mux {
 					r.With(requireMCPServerNS).Post("/", mcpH.CreateVersion)
 					r.With(publicRL).Get("/{version}", mcpH.GetVersion)
 					r.With(requireMCPServerNS).Post("/{version}/publish", mcpH.PublishVersion)
+					// Change-approval workflow.
+					r.With(requireMCPServerNS).Post("/{version}/submit", revH.SubmitMCPVersion)
+					r.With(requireMCPServerNS).Post("/{version}/withdraw", revH.WithdrawMCPVersion)
+					r.With(requireReviewer).Post("/{version}/approve", revH.ApproveMCPVersion)
+					r.With(requireReviewer).Post("/{version}/reject", revH.RejectMCPVersion)
 				})
+				// Pending-deletion review flow.
+				r.With(requireMCPServerNS).Post("/deletion-request", revH.RequestMCPDeletion)
+				r.With(requireReviewer).Post("/deletion-request/approve", revH.ApproveMCPDeletion)
+				r.With(requireReviewer).Post("/deletion-request/reject", revH.RejectMCPDeletion)
 			})
 		})
 
@@ -223,7 +238,16 @@ func buildMux(deps RouterDeps) *chi.Mux {
 					r.With(publicRL).Get("/{version}", agentH.GetVersion)
 					r.With(requireAgentNS).Post("/{version}/publish", agentH.PublishVersion)
 					r.With(requireAgentNS).Patch("/{version}/status", agentH.PatchVersionStatus)
+					// Change-approval workflow.
+					r.With(requireAgentNS).Post("/{version}/submit", revH.SubmitAgentVersion)
+					r.With(requireAgentNS).Post("/{version}/withdraw", revH.WithdrawAgentVersion)
+					r.With(requireReviewer).Post("/{version}/approve", revH.ApproveAgentVersion)
+					r.With(requireReviewer).Post("/{version}/reject", revH.RejectAgentVersion)
 				})
+				// Pending-deletion review flow.
+				r.With(requireAgentNS).Post("/deletion-request", revH.RequestAgentDeletion)
+				r.With(requireReviewer).Post("/deletion-request/approve", revH.ApproveAgentDeletion)
+				r.With(requireReviewer).Post("/deletion-request/reject", revH.RejectAgentDeletion)
 			})
 		})
 
