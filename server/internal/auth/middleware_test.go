@@ -159,3 +159,86 @@ func TestRequireWorkspaceWrite_LookupErrorIs500(t *testing.T) {
 		t.Error("handler should not have been called")
 	}
 }
+
+// ── RequireReviewer (ADR 0003) ──────────────────────────────────────────
+
+func runRequireReviewer(t *testing.T, claims *auth.KeycloakClaims, configuredGroup string) (status int, called bool) {
+	t.Helper()
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	if claims != nil {
+		req = req.WithContext(auth.ContextWithClaims(req.Context(), claims))
+	}
+	rec := httptest.NewRecorder()
+	auth.RequireReviewer(configuredGroup)(next).ServeHTTP(rec, req)
+	return rec.Code, called
+}
+
+func TestRequireReviewer_NoTokenIs401(t *testing.T) {
+	status, called := runRequireReviewer(t, nil, "registry-reviewers")
+	if status != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", status)
+	}
+	if called {
+		t.Error("handler should not be called")
+	}
+}
+
+func TestRequireReviewer_AdminAlwaysPasses(t *testing.T) {
+	claims := &auth.KeycloakClaims{
+		RealmAccess: auth.RealmAccess{Roles: []string{"admin"}},
+	}
+	// Empty configured group: admin still passes.
+	status, called := runRequireReviewer(t, claims, "")
+	if status != http.StatusOK {
+		t.Errorf("status = %d, want 200", status)
+	}
+	if !called {
+		t.Error("handler should be called")
+	}
+}
+
+func TestRequireReviewer_GroupMatchPasses(t *testing.T) {
+	claims := &auth.KeycloakClaims{
+		Groups: []string{"registry-reviewers"},
+	}
+	status, called := runRequireReviewer(t, claims, "registry-reviewers")
+	if status != http.StatusOK {
+		t.Errorf("status = %d, want 200", status)
+	}
+	if !called {
+		t.Error("handler should be called")
+	}
+}
+
+func TestRequireReviewer_GroupMismatchIs403(t *testing.T) {
+	claims := &auth.KeycloakClaims{
+		Groups: []string{"some-other-group"},
+	}
+	status, called := runRequireReviewer(t, claims, "registry-reviewers")
+	if status != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", status)
+	}
+	if called {
+		t.Error("handler should not be called")
+	}
+}
+
+func TestRequireReviewer_EmptyConfiguredGroupRejectsNonAdmin(t *testing.T) {
+	// When operators leave AUTH_REVIEWER_GROUP empty, the workflow
+	// closes — only admins can approve / reject. Group matching is
+	// disabled regardless of what the JWT carries.
+	claims := &auth.KeycloakClaims{
+		Groups: []string{""}, // pathological but worth defending against
+	}
+	status, called := runRequireReviewer(t, claims, "")
+	if status != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", status)
+	}
+	if called {
+		t.Error("handler should not be called")
+	}
+}
