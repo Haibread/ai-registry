@@ -19,8 +19,11 @@ type Workspace struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description,omitempty"`
 	Contact     string    `json:"contact,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	// GroupName is the Keycloak group whose members can write to this
+	// workspace's resources (ADR 0002). NULL/empty means admin-only.
+	GroupName string    `json:"group_name,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ListWorkspacesParams controls pagination for ListWorkspaces. PublisherID
@@ -45,6 +48,9 @@ type UpdateWorkspaceParams struct {
 	Name        string
 	Description string
 	Contact     string
+	// GroupName binds the workspace to a Keycloak group (ADR 0002).
+	// Empty string clears the binding (workspace becomes admin-only).
+	GroupName string
 }
 
 // ListWorkspaces returns a page of workspaces under one publisher, ordered
@@ -74,6 +80,7 @@ func (db *DB) ListWorkspaces(ctx context.Context, p ListWorkspacesParams) ([]Wor
 	rows, err := db.Pool.Query(ctx, fmt.Sprintf(`
 		SELECT id, publisher_id, slug, name,
 		       coalesce(description, ''), coalesce(contact, ''),
+		       coalesce(group_name, ''),
 		       created_at, updated_at
 		FROM workspaces
 		%s
@@ -89,7 +96,7 @@ func (db *DB) ListWorkspaces(ctx context.Context, p ListWorkspacesParams) ([]Wor
 	for rows.Next() {
 		var w Workspace
 		if err := rows.Scan(&w.ID, &w.PublisherID, &w.Slug, &w.Name,
-			&w.Description, &w.Contact, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			&w.Description, &w.Contact, &w.GroupName, &w.CreatedAt, &w.UpdatedAt); err != nil {
 			recordErr(span, err)
 			return nil, fmt.Errorf("scanning workspace: %w", err)
 		}
@@ -111,11 +118,12 @@ func (db *DB) GetWorkspace(ctx context.Context, publisherID, slug string) (*Work
 	err := db.Pool.QueryRow(ctx, `
 		SELECT id, publisher_id, slug, name,
 		       coalesce(description, ''), coalesce(contact, ''),
+		       coalesce(group_name, ''),
 		       created_at, updated_at
 		FROM workspaces WHERE publisher_id = $1 AND slug = $2`,
 		publisherID, slug).
 		Scan(&w.ID, &w.PublisherID, &w.Slug, &w.Name,
-			&w.Description, &w.Contact, &w.CreatedAt, &w.UpdatedAt)
+			&w.Description, &w.Contact, &w.GroupName, &w.CreatedAt, &w.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
@@ -136,10 +144,11 @@ func (db *DB) GetWorkspaceByID(ctx context.Context, id string) (*Workspace, erro
 	err := db.Pool.QueryRow(ctx, `
 		SELECT id, publisher_id, slug, name,
 		       coalesce(description, ''), coalesce(contact, ''),
+		       coalesce(group_name, ''),
 		       created_at, updated_at
 		FROM workspaces WHERE id = $1`, id).
 		Scan(&w.ID, &w.PublisherID, &w.Slug, &w.Name,
-			&w.Description, &w.Contact, &w.CreatedAt, &w.UpdatedAt)
+			&w.Description, &w.Contact, &w.GroupName, &w.CreatedAt, &w.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
@@ -161,13 +170,14 @@ func (db *DB) ResolveWorkspace(ctx context.Context, publisherSlug, workspaceSlug
 	err := db.Pool.QueryRow(ctx, `
 		SELECT w.id, w.publisher_id, w.slug, w.name,
 		       coalesce(w.description, ''), coalesce(w.contact, ''),
+		       coalesce(w.group_name, ''),
 		       w.created_at, w.updated_at
 		FROM workspaces w
 		JOIN publishers p ON p.id = w.publisher_id
 		WHERE p.slug = $1 AND w.slug = $2`,
 		publisherSlug, workspaceSlug).
 		Scan(&w.ID, &w.PublisherID, &w.Slug, &w.Name,
-			&w.Description, &w.Contact, &w.CreatedAt, &w.UpdatedAt)
+			&w.Description, &w.Contact, &w.GroupName, &w.CreatedAt, &w.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
@@ -229,17 +239,25 @@ func (db *DB) UpdateWorkspace(ctx context.Context, workspaceID string, p UpdateW
 	ctx, span := startSpan(ctx, "UpdateWorkspace")
 	defer span.End()
 
+	// group_name is stored as NULL when empty so the partial index stays
+	// useful and the column matches the "admin-only" semantics.
+	var groupName any
+	if p.GroupName != "" {
+		groupName = p.GroupName
+	}
+
 	var w Workspace
 	err := db.Pool.QueryRow(ctx, `
 		UPDATE workspaces
-		SET name=$1, description=$2, contact=$3, updated_at=now()
-		WHERE id=$4
+		SET name=$1, description=$2, contact=$3, group_name=$4, updated_at=now()
+		WHERE id=$5
 		RETURNING id, publisher_id, slug, name,
 		          coalesce(description, ''), coalesce(contact, ''),
+		          coalesce(group_name, ''),
 		          created_at, updated_at`,
-		p.Name, p.Description, p.Contact, workspaceID,
+		p.Name, p.Description, p.Contact, groupName, workspaceID,
 	).Scan(&w.ID, &w.PublisherID, &w.Slug, &w.Name,
-		&w.Description, &w.Contact, &w.CreatedAt, &w.UpdatedAt)
+		&w.Description, &w.Contact, &w.GroupName, &w.CreatedAt, &w.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound

@@ -174,6 +174,7 @@ func (h *WorkspaceHandlers) PatchWorkspace(w http.ResponseWriter, r *http.Reques
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
 		Contact     *string `json:"contact"`
+		GroupName   *string `json:"group_name"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -183,6 +184,7 @@ func (h *WorkspaceHandlers) PatchWorkspace(w http.ResponseWriter, r *http.Reques
 		Name:        ws.Name,
 		Description: ws.Description,
 		Contact:     ws.Contact,
+		GroupName:   ws.GroupName,
 	}
 	if body.Name != nil {
 		p.Name = *body.Name
@@ -192,6 +194,9 @@ func (h *WorkspaceHandlers) PatchWorkspace(w http.ResponseWriter, r *http.Reques
 	}
 	if body.Contact != nil {
 		p.Contact = *body.Contact
+	}
+	if body.GroupName != nil {
+		p.GroupName = *body.GroupName
 	}
 	if p.Name == "" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",

@@ -235,6 +235,69 @@ func TestWorkspaceHandler_Patch(t *testing.T) {
 	}
 }
 
+func TestWorkspaceHandler_PatchSetsAndClearsGroupName(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "acme", "Acme")
+	r := newWorkspaceRouter()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/publishers/acme/workspaces",
+		bytes.NewBufferString(`{"slug":"team","name":"Team"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d", rec.Code)
+	}
+
+	// Set group_name.
+	req = httptest.NewRequest(http.MethodPatch,
+		"/api/v1/publishers/acme/workspaces/team",
+		bytes.NewBufferString(`{"group_name":"claude-team"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch with group: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		GroupName string `json:"group_name"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.GroupName != "claude-team" {
+		t.Errorf("group_name = %q, want claude-team", got.GroupName)
+	}
+
+	// Clear group_name (empty string → admin-only again).
+	req = httptest.NewRequest(http.MethodPatch,
+		"/api/v1/publishers/acme/workspaces/team",
+		bytes.NewBufferString(`{"group_name":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch clear: %d", rec.Code)
+	}
+
+	// GET confirms cleared. Decode into a fresh struct: the response omits
+	// the field when empty (omitempty) so re-decoding into `got` would
+	// preserve the previous "claude-team" value.
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/acme/workspaces/team", nil)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	var fresh struct {
+		GroupName string `json:"group_name"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&fresh); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if fresh.GroupName != "" {
+		t.Errorf("group_name after clear = %q, want empty", fresh.GroupName)
+	}
+}
+
 func TestWorkspaceHandler_DeleteEmpty(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "acme", "Acme")

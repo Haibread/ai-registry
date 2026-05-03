@@ -347,6 +347,12 @@ paths:
                   type: string
                 contact:
                   type: string
+                group_name:
+                  type: string
+                  description: |
+                    Bind the workspace to a Keycloak group (ADR 0002).
+                    Empty string clears the binding, returning the
+                    workspace to admin-only.
       responses:
         "200":
           description: Updated workspace
@@ -1962,6 +1968,14 @@ components:
           type: string
         contact:
           type: string
+        group_name:
+          type: string
+          description: |
+            Keycloak group whose members can write to this workspace's
+            resources (ADR 0002). Empty / absent means the workspace is
+            admin-only. Bare group name; the Keycloak group-membership
+            mapper must emit the `groups` JWT claim with full path
+            disabled.
         created_at:
           type: string
           format: date-time
