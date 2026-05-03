@@ -153,6 +153,67 @@ func TestAgentCardHandler_PerAgentCard_Found(t *testing.T) {
 	}
 }
 
+// Forensic leakage check: when an agent has a newer pending_review (or
+// rejected) version, the per-agent card endpoint must keep emitting the
+// latest *published* version's data. The card consumer caches what we
+// publish, so silently advertising an unapproved version would be a
+// real correctness bug. Pinned at the HTTP layer so a future change to
+// the card builder can't quietly re-introduce the leak.
+func TestAgentCardHandler_PerAgentCard_HidesPendingVersion(t *testing.T) {
+	resetTables(t)
+	pubID := seedPublisher(t, "card-leak-ns", "card-leak-ns")
+
+	ag, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
+		PublisherID: pubID, Slug: "leak-ag", Name: "leak-ag",
+	})
+	if err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+	if err := testDB.SetAgentVisibility(context.Background(), ag.ID, "public"); err != nil {
+		t.Fatalf("SetAgentVisibility: %v", err)
+	}
+	// 1.0.0 → published.
+	if _, err := testDB.CreateAgentVersion(context.Background(), store.CreateAgentVersionParams{
+		AgentID: ag.ID, Version: "1.0.0", EndpointURL: "https://example.com/v1", Skills: validSkills,
+	}); err != nil {
+		t.Fatalf("CreateAgentVersion 1.0.0: %v", err)
+	}
+	if err := testDB.PublishAgentVersion(context.Background(), ag.ID, "1.0.0"); err != nil {
+		t.Fatalf("PublishAgentVersion: %v", err)
+	}
+	// 1.1.0 → pending_review (newer than published, but unapproved).
+	if _, err := testDB.CreateAgentVersion(context.Background(), store.CreateAgentVersionParams{
+		AgentID: ag.ID, Version: "1.1.0", EndpointURL: "https://example.com/v2", Skills: validSkills,
+	}); err != nil {
+		t.Fatalf("CreateAgentVersion 1.1.0: %v", err)
+	}
+	if err := testDB.SubmitAgentVersion(context.Background(), ag.ID, "1.1.0", store.Actor{Subject: "a", Email: "a@x"}); err != nil {
+		t.Fatalf("SubmitAgentVersion: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/agents/card-leak-ns/leak-ag/.well-known/agent-card.json", nil)
+	rec := httptest.NewRecorder()
+	newAgentCardRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var card struct {
+		Version string `json:"version"`
+		URL     string `json:"url"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&card); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if card.Version != "1.0.0" {
+		t.Errorf("card version = %q, want 1.0.0 (pending 1.1.0 must not leak)", card.Version)
+	}
+	if card.URL != "https://example.com/v1" {
+		t.Errorf("card url = %q, want the published v1 endpoint (pending 1.1.0 must not leak)", card.URL)
+	}
+}
+
 func TestAgentCardHandler_PerAgentCard_NotFound(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "card-nf-ns", "card-nf-ns")
