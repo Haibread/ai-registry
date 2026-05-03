@@ -119,7 +119,7 @@ func TestMCPServerVersionLifecycle(t *testing.T) {
 	}
 
 	// Fetch and verify published.
-	got, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "1.0.0")
+	got, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "1.0.0", false)
 	if err != nil {
 		t.Fatalf("GetMCPServerVersion: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestListMCPServerVersions(t *testing.T) {
 		}
 	}
 
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestListMCPServerVersions(t *testing.T) {
 	}
 
 	// Empty result for unknown server.
-	empty, err := sharedDB.ListMCPServerVersions(ctx, "nonexistent-id")
+	empty, err := sharedDB.ListMCPServerVersions(ctx, "nonexistent-id", false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions(nonexistent): %v", err)
 	}
@@ -432,7 +432,7 @@ func TestGetMCPServerVersion_NotFound(t *testing.T) {
 		PublisherID: pubID, Slug: "getver-srv", Name: "GetVer Server",
 	})
 
-	_, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "9.9.9")
+	_, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "9.9.9", false)
 	if err != store.ErrNotFound {
 		t.Errorf("expected ErrNotFound for missing version, got %v", err)
 	}
@@ -925,14 +925,14 @@ func TestMCPServerVersion_ToolsRoundTrip(t *testing.T) {
 	assertTwoTools("CreateMCPServerVersion return", ver.Tools)
 
 	// 2. GetMCPServerVersion.
-	got, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "1.0.0")
+	got, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "1.0.0", false)
 	if err != nil {
 		t.Fatalf("GetMCPServerVersion: %v", err)
 	}
 	assertTwoTools("GetMCPServerVersion", got.Tools)
 
 	// 3. ListMCPServerVersions.
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions: %v", err)
 	}
@@ -1018,7 +1018,7 @@ func TestMCPServerVersion_ToolsDefaultEmptyArray(t *testing.T) {
 		t.Errorf("expected empty tools array, got %v", arr)
 	}
 
-	got, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "0.1.0")
+	got, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "0.1.0", false)
 	if err != nil {
 		t.Fatalf("GetMCPServerVersion: %v", err)
 	}

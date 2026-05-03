@@ -422,7 +422,7 @@ agents:
 	}
 
 	// Verify both versions were created.
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions() error = %v", err)
 	}
@@ -482,7 +482,7 @@ agents: []
 	if err != nil {
 		t.Fatalf("GetMCPServer() error = %v", err)
 	}
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions() error = %v", err)
 	}
@@ -691,7 +691,7 @@ agents:
 	}
 
 	// Verify capabilities persisted on the version.
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions() error = %v", err)
 	}
@@ -891,7 +891,7 @@ agents: []
 	if srv.Status != "deprecated" {
 		t.Errorf("server status = %q, want deprecated", srv.Status)
 	}
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions() error = %v", err)
 	}

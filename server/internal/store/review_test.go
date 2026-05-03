@@ -624,6 +624,103 @@ func TestApproveMCPDeletion_HidesFromPublicReads(t *testing.T) {
 	}
 }
 
+// TestVersionPublicReadFilter_HidesPendingAndRejected is the version-
+// level counterpart to TestApproveMCPDeletion_HidesFromPublicReads.
+// Confirms that ListMCPServerVersions / GetMCPServerVersion (and the
+// agent equivalents) hide unpublished content from anonymous callers
+// when publicOnly=true is passed — closing the workflow leak that
+// would otherwise expose pending and rejected drafts.
+func TestVersionPublicReadFilter_HidesPendingAndRejected(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "acme", "Acme")
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "weather", Name: "Weather",
+	})
+	if err != nil {
+		t.Fatalf("create server: %v", err)
+	}
+
+	// Three versions: one published, one pending_review, one rejected.
+	mkVer := func(ver string) {
+		t.Helper()
+		if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+			ServerID:        srv.ID,
+			Version:         ver,
+			Runtime:         domain.RuntimeStdio,
+			Packages:        validPackages,
+			ProtocolVersion: "2024-11-05",
+		}); err != nil {
+			t.Fatalf("create v%s: %v", ver, err)
+		}
+	}
+	mkVer("1.0.0")
+	mkVer("1.1.0")
+	mkVer("1.2.0")
+
+	// 1.0.0 → published.
+	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.0.0", actor()); err != nil {
+		t.Fatalf("submit 1.0.0: %v", err)
+	}
+	if err := sharedDB.ApproveMCPVersion(ctx, srv.ID, "1.0.0", 1, reviewer()); err != nil {
+		t.Fatalf("approve 1.0.0: %v", err)
+	}
+	// 1.1.0 → pending_review.
+	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.1.0", actor()); err != nil {
+		t.Fatalf("submit 1.1.0: %v", err)
+	}
+	// 1.2.0 → rejected. Need to withdraw 1.1.0 first since the partial
+	// unique index forbids two pendings at once.
+	if err := sharedDB.WithdrawMCPVersion(ctx, srv.ID, "1.1.0", actor()); err != nil {
+		t.Fatalf("withdraw 1.1.0: %v", err)
+	}
+	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.2.0", actor()); err != nil {
+		t.Fatalf("submit 1.2.0: %v", err)
+	}
+	if err := sharedDB.RejectMCPVersion(ctx, srv.ID, "1.2.0", 1, "no", reviewer()); err != nil {
+		t.Fatalf("reject 1.2.0: %v", err)
+	}
+	// Restore 1.1.0 to pending_review for the leak test.
+	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.1.0", actor()); err != nil {
+		t.Fatalf("re-submit 1.1.0: %v", err)
+	}
+
+	// publicOnly=true → only 1.0.0 (published) appears.
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, true)
+	if err != nil {
+		t.Fatalf("list publicOnly: %v", err)
+	}
+	if len(versions) != 1 || versions[0].Version != "1.0.0" {
+		got := []string{}
+		for _, v := range versions {
+			got = append(got, v.Version)
+		}
+		t.Errorf("publicOnly list = %v, want [1.0.0]", got)
+	}
+
+	// publicOnly=true on a single Get for the pending row → ErrNotFound.
+	if _, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "1.1.0", true); err != store.ErrNotFound {
+		t.Errorf("public Get pending: err = %v, want ErrNotFound", err)
+	}
+	// Same for rejected.
+	if _, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "1.2.0", true); err != store.ErrNotFound {
+		t.Errorf("public Get rejected: err = %v, want ErrNotFound", err)
+	}
+	// Published row still readable publicly.
+	if _, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "1.0.0", true); err != nil {
+		t.Errorf("public Get published: err = %v, want nil", err)
+	}
+
+	// publicOnly=false → all three rows.
+	versions, err = sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(versions) != 3 {
+		t.Errorf("admin list len = %d, want 3", len(versions))
+	}
+}
+
 func TestApproveAgentDeletion_SoftDeletes(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
