@@ -251,6 +251,116 @@ func (db *DB) UpdateWorkspace(ctx context.Context, workspaceID string, p UpdateW
 	return &w, nil
 }
 
+// BackfillResult summarises a BackfillWorkspaces run.
+type BackfillResult struct {
+	WorkspacesCreated int
+	ServersBackfilled int
+	AgentsBackfilled  int
+}
+
+// BackfillWorkspaces is the Go-side step of the workspace migration (ADR
+// 0001 step 2 of the schema rollout). It is **idempotent** and safe to run
+// on every server boot:
+//
+//  1. For each publisher without a `default` workspace, create one.
+//  2. For each mcp_servers row with NULL workspace_id, point it at the
+//     `default` workspace of its publisher.
+//  3. Same for agents.
+//
+// The finalising migration (a future step) will flip workspace_id to NOT
+// NULL and drop publisher_id from resources; until then this backfill
+// keeps the new column populated for newly-created code paths.
+func (db *DB) BackfillWorkspaces(ctx context.Context) (BackfillResult, error) {
+	ctx, span := startSpan(ctx, "BackfillWorkspaces")
+	defer span.End()
+
+	var res BackfillResult
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return res, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Step 1: ensure every publisher has a `default` workspace.
+	rows, err := tx.Query(ctx, `
+		SELECT p.id
+		FROM publishers p
+		WHERE NOT EXISTS (
+			SELECT 1 FROM workspaces w
+			WHERE w.publisher_id = p.id AND w.slug = 'default'
+		)`)
+	if err != nil {
+		recordErr(span, err)
+		return res, fmt.Errorf("finding publishers without default workspace: %w", err)
+	}
+	var pubIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			recordErr(span, err)
+			return res, fmt.Errorf("scanning publisher id: %w", err)
+		}
+		pubIDs = append(pubIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return res, err
+	}
+
+	now := time.Now().UTC()
+	for _, pubID := range pubIDs {
+		wsID := NewULID()
+		_, err := tx.Exec(ctx, `
+			INSERT INTO workspaces
+				(id, publisher_id, slug, name, description, contact, created_at, updated_at)
+			VALUES ($1, $2, 'default', 'Default workspace', '', '', $3, $3)`,
+			wsID, pubID, now)
+		if err != nil {
+			recordErr(span, err)
+			return res, fmt.Errorf("creating default workspace for publisher %s: %w", pubID, err)
+		}
+		res.WorkspacesCreated++
+	}
+
+	// Step 2: backfill mcp_servers.workspace_id where NULL.
+	tag, err := tx.Exec(ctx, `
+		UPDATE mcp_servers s
+		   SET workspace_id = w.id
+		  FROM workspaces w
+		 WHERE s.workspace_id IS NULL
+		   AND w.publisher_id = s.publisher_id
+		   AND w.slug = 'default'`)
+	if err != nil {
+		recordErr(span, err)
+		return res, fmt.Errorf("backfilling mcp_servers.workspace_id: %w", err)
+	}
+	res.ServersBackfilled = int(tag.RowsAffected())
+
+	// Step 3: backfill agents.workspace_id where NULL.
+	tag, err = tx.Exec(ctx, `
+		UPDATE agents a
+		   SET workspace_id = w.id
+		  FROM workspaces w
+		 WHERE a.workspace_id IS NULL
+		   AND w.publisher_id = a.publisher_id
+		   AND w.slug = 'default'`)
+	if err != nil {
+		recordErr(span, err)
+		return res, fmt.Errorf("backfilling agents.workspace_id: %w", err)
+	}
+	res.AgentsBackfilled = int(tag.RowsAffected())
+
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return res, fmt.Errorf("commit tx: %w", err)
+	}
+	return res, nil
+}
+
 // DeleteWorkspace hard-deletes a workspace. Returns ErrConflict if any MCP
 // server or agent still references the workspace (regardless of status —
 // even tombstoned rows hold the FK).
