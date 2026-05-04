@@ -54,3 +54,12 @@ auth:
   # Playwright's storageState() captures localStorage). Never use "local" in
   # production.
   auth_storage: "session"
+  # JWT claim path for the user's group memberships, used by
+  # RequireWorkspaceWrite to gate workspace authorship. Defaults to "groups";
+  # set to e.g. "realm_access.groups" if your IdP nests group memberships
+  # under a different key. See ADR 0002.
+  groups_claim: "groups"
+  # Reviewer group whose members can approve/reject pending changes in the
+  # change-approval workflow (ADR 0003). Must match a value emitted in the
+  # JWT claim configured above.
+  reviewer_group: "registry-reviewers"
