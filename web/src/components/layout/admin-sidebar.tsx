@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, Server, Bot, Key, Flag, Activity } from 'lucide-react'
+import { LayoutDashboard, Users, Server, Bot, Key, Flag, Activity, ClipboardCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck },
   { to: '/admin/publishers', label: 'Publishers', icon: Users },
   { to: '/admin/mcp', label: 'MCP Servers', icon: Server },
   { to: '/admin/agents', label: 'Agents', icon: Bot },

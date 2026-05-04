@@ -239,7 +239,7 @@ func (h *MCPHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	versions, err := h.db.ListMCPServerVersions(r.Context(), srv.ID)
+	versions, err := h.db.ListMCPServerVersions(r.Context(), srv.ID, publicOnly)
 	if err != nil {
 		internalError(w, r, err)
 		return
@@ -266,7 +266,7 @@ func (h *MCPHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	v, err := h.db.GetMCPServerVersion(r.Context(), srv.ID, ver)
+	v, err := h.db.GetMCPServerVersion(r.Context(), srv.ID, ver, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusNotFound, "not-found",
 			fmt.Sprintf("version '%s' does not exist for %s/%s", ver, ns, slug), r.URL.Path)

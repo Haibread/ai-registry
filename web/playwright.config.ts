@@ -115,5 +115,42 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /activity\.spec\.ts/,
     },
+    // Workspaces API surface. No UI yet — the spec drives the live
+    // stack via the admin API and asserts publisher → workspace →
+    // resource → group binding end-to-end.
+    {
+      name: "workspaces",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /workspaces\.spec\.ts/,
+    },
+    // Change-approval workflow: submit / approve / reject / withdraw,
+    // discriminated 409 responses, request + approve deletion. Same
+    // pattern as workspaces — no UI, just the live API surface.
+    {
+      name: "change-approval",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /change-approval\.spec\.ts/,
+    },
+    // Review-queue / version-section / request-deletion UI flows.
+    // Drives the actual browser DOM (the change-approval project goes
+    // through the API directly), so this catches handler/UI contract
+    // drift that mocked unit tests miss.
+    {
+      name: "review-ui",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /review-ui\.spec\.ts/,
+    },
   ],
 })

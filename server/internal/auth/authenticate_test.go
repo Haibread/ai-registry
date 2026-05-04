@@ -107,7 +107,7 @@ func signJWTWithAudience(t *testing.T, priv *rsa.PrivateKey, kid, issuer, audien
 func buildValidator(t *testing.T, jwksURL, issuer string) *auth.Validator {
 	t.Helper()
 	cache := auth.NewJWKSCache(jwksURL, time.Minute)
-	return auth.NewValidator(cache, issuer, "")
+	return auth.NewValidator(cache, issuer, "", "")
 }
 
 // buildValidatorWithAudience is like buildValidator but also enforces a
@@ -115,7 +115,7 @@ func buildValidator(t *testing.T, jwksURL, issuer string) *auth.Validator {
 func buildValidatorWithAudience(t *testing.T, jwksURL, issuer, audience string) *auth.Validator {
 	t.Helper()
 	cache := auth.NewJWKSCache(jwksURL, time.Minute)
-	return auth.NewValidator(cache, issuer, audience)
+	return auth.NewValidator(cache, issuer, audience, "")
 }
 
 // ---------------------------------------------------------------------------
@@ -596,4 +596,99 @@ func TestJWKSEndpoint_ReturnsExpectedURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+
+// signJWTWithGroups returns a token whose payload carries group memberships
+// under a configurable claim name. Used to test the validator's
+// configurable groupsClaim path.
+func signJWTWithGroups(t *testing.T, priv *rsa.PrivateKey, kid, issuer, groupsClaim string, groups []string) string {
+	t.Helper()
+	claims := jwt.MapClaims{
+		"iss": issuer,
+		"sub": "user-123",
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"realm_access": map[string]interface{}{
+			"roles": []string{"viewer"},
+		},
+		groupsClaim: groups,
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tok.Header["kid"] = kid
+	signed, err := tok.SignedString(priv)
+	if err != nil {
+		t.Fatalf("signing JWT: %v", err)
+	}
+	return signed
+}
+
+func TestAuthenticate_ConfigurableGroupsClaim(t *testing.T) {
+	priv := generateTestKey(t)
+	const kid = "k1"
+	const issuer = "http://keycloak/realms/test"
+	jwksSrv := newFakeJWKSServer(t, priv, kid)
+	defer jwksSrv.Close()
+
+	// Default groups claim ("groups"): typed parse populates Groups.
+	t.Run("default claim name", func(t *testing.T) {
+		v := auth.NewValidator(auth.NewJWKSCache(jwksSrv.URL, time.Minute), issuer, "", "")
+		tok := signJWTWithGroups(t, priv, kid, issuer, "groups", []string{"a", "b"})
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		var capCtx context.Context
+		v.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capCtx = r.Context()
+		})).ServeHTTP(httptest.NewRecorder(), req)
+		claims, _ := auth.ClaimsFromContext(capCtx)
+		if claims == nil {
+			t.Fatal("no claims")
+		}
+		if !claims.HasGroup("a") || !claims.HasGroup("b") {
+			t.Errorf("expected groups [a,b], got %v", claims.Groups)
+		}
+	})
+
+	// Non-default claim name: typed parse leaves Groups empty, the
+	// post-parse extractor fills it from the configured key.
+	t.Run("custom claim name", func(t *testing.T) {
+		v := auth.NewValidator(auth.NewJWKSCache(jwksSrv.URL, time.Minute), issuer, "", "realm_groups")
+		tok := signJWTWithGroups(t, priv, kid, issuer, "realm_groups", []string{"x", "y"})
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		var capCtx context.Context
+		v.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capCtx = r.Context()
+		})).ServeHTTP(httptest.NewRecorder(), req)
+		claims, _ := auth.ClaimsFromContext(capCtx)
+		if claims == nil {
+			t.Fatal("no claims")
+		}
+		if !claims.HasGroup("x") || !claims.HasGroup("y") {
+			t.Errorf("expected groups [x,y] from realm_groups, got %v", claims.Groups)
+		}
+		if claims.HasGroup("ignored") {
+			t.Error("unexpected group present")
+		}
+	})
+
+	// JWT carries groups under the default key but the validator is
+	// configured for a different one → no groups extracted.
+	t.Run("custom configured but token uses default key", func(t *testing.T) {
+		v := auth.NewValidator(auth.NewJWKSCache(jwksSrv.URL, time.Minute), issuer, "", "realm_groups")
+		tok := signJWTWithGroups(t, priv, kid, issuer, "groups", []string{"x"})
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		var capCtx context.Context
+		v.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capCtx = r.Context()
+		})).ServeHTTP(httptest.NewRecorder(), req)
+		claims, _ := auth.ClaimsFromContext(capCtx)
+		if claims == nil {
+			t.Fatal("no claims")
+		}
+		if len(claims.Groups) != 0 {
+			t.Errorf("expected empty groups, got %v", claims.Groups)
+		}
+	})
 }

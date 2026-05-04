@@ -41,6 +41,7 @@ type LatestMCPVersion struct {
 type ListMCPServersParams struct {
 	PublicOnly     bool       // when true, only visibility='public' rows are returned
 	Namespace      string     // filter by publisher slug (optional)
+	WorkspaceID    string     // filter by workspace ULID (optional). Applied independently of Namespace.
 	Status         string     // filter by status: "draft" | "published" | "deprecated" | "" (all)
 	Visibility     string     // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string     // full-text search term (optional)
@@ -111,6 +112,12 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
+		argN++
+		countArgN++
+	}
+	if p.WorkspaceID != "" {
+		filterWhere += fmt.Sprintf(" AND s.workspace_id = $%d", argN)
+		filterArgs = append(filterArgs, p.WorkspaceID)
 		argN++
 		countArgN++
 	}
@@ -499,6 +506,10 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 // CreateMCPServerParams holds the fields needed to insert a new MCP server.
 type CreateMCPServerParams struct {
 	PublisherID string
+	// WorkspaceID is optional: empty falls back to the publisher's
+	// `default` workspace (created lazily via ensureDefaultWorkspaceID).
+	// New hierarchical handlers pass this explicitly from the URL.
+	WorkspaceID string
 	Slug        string
 	Name        string
 	Description string
@@ -513,15 +524,25 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 	ctx, span := startSpan(ctx, "CreateMCPServer")
 	defer span.End()
 
+	wsID := p.WorkspaceID
+	if wsID == "" {
+		var err error
+		wsID, err = db.ensureDefaultWorkspaceID(ctx, p.PublisherID)
+		if err != nil {
+			recordErr(span, err)
+			return nil, err
+		}
+	}
+
 	id := NewULID()
 	now := time.Now().UTC()
 
 	_, err := db.Pool.Exec(ctx, `
 		INSERT INTO mcp_servers
-		    (id, publisher_id, slug, name, description, homepage_url, repo_url, license,
+		    (id, publisher_id, workspace_id, slug, name, description, homepage_url, repo_url, license,
 		     visibility, status, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'private','draft',$9,$9)`,
-		id, p.PublisherID, p.Slug, p.Name,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'private','draft',$10,$10)`,
+		id, p.PublisherID, wsID, p.Slug, p.Name,
 		p.Description, p.HomepageURL, p.RepoURL, p.License, now,
 	)
 	if err != nil {
@@ -550,17 +571,27 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 	}, nil
 }
 
-// ListMCPServerVersions returns all versions for a given server ID, ordered by created_at.
-func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]domain.MCPServerVersion, error) {
+// ListMCPServerVersions returns versions for a given server ID, ordered
+// by created_at DESC. When publicOnly is true the result excludes
+// content that has not yet reached `published` (drafts, pending_review,
+// rejected) so the workflow does not leak to anonymous callers.
+func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string, publicOnly bool) ([]domain.MCPServerVersion, error) {
 	ctx, span := startSpan(ctx, "ListMCPServerVersions")
 	defer span.End()
 
+	where := "WHERE server_id = $1"
+	if publicOnly {
+		where += " AND published_at IS NOT NULL"
+	}
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM mcp_server_versions
-		WHERE server_id = $1
+		`+where+`
 		ORDER BY created_at DESC`, serverID)
 	if err != nil {
 		recordErr(span, err)
@@ -584,17 +615,28 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string) ([]dom
 	return result, nil
 }
 
-// GetMCPServerVersion retrieves a specific version by server ID and semver string.
-func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string) (*domain.MCPServerVersion, error) {
+// GetMCPServerVersion retrieves a specific version by server ID and
+// semver string. When publicOnly is true the lookup pretends a non-
+// published row (draft / pending_review / rejected) does not exist —
+// the caller gets ErrNotFound, mirroring the pattern used by
+// GetMCPServer's publicOnly flag.
+func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string, publicOnly bool) (*domain.MCPServerVersion, error) {
 	ctx, span := startSpan(ctx, "GetMCPServerVersion")
 	defer span.End()
 
+	where := "WHERE server_id = $1 AND version = $2"
+	if publicOnly {
+		where += " AND published_at IS NOT NULL"
+	}
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM mcp_server_versions
-		WHERE server_id = $1 AND version = $2`, serverID, version)
+		`+where, serverID, version)
 
 	v, err := scanVersion(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -616,7 +658,10 @@ func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, server_id, version, runtime, packages, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at
+		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -802,6 +847,9 @@ func scanVersion(s interface {
 		&v.ProtocolVersion, &v.Checksum, &v.Signature,
 		&v.Status, &v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
 		&v.StatusMessage, &v.StatusChangedAt,
+		&v.ReviewState, &v.Revision, &v.SubmittedAt, &v.SubmittedBy, &v.SubmittedByEmail,
+		&v.ReviewedAt, &v.ReviewedBy, &v.ReviewedByEmail,
+		&v.ReviewDecision, &v.RejectionReason,
 	)
 	return v, err
 }
@@ -860,7 +908,10 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 		WHERE server_id=$3 AND published_at IS NOT NULL
 		RETURNING id, server_id, version, runtime, packages, capabilities, tools,
 		          protocol_version, coalesce(checksum,''), coalesce(signature,''),
-		          status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at`,
+		          status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
+		          review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		          reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		          coalesce(review_decision,''), coalesce(rejection_reason,'')`,
 		status, statusMessage, serverID)
 	if err != nil {
 		recordErr(span, err)

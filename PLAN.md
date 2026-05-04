@@ -529,7 +529,66 @@ Shipped surface:
   one detail page with activity visible.
 - Changelog + git tag + GitHub release published.
 
-### Phase 7 — Later
+### Phase 7 — Access control & change-approval workflow
+
+Three sequenced ADRs design how non-admin users author content and how
+changes are reviewed before going live. Ship in order; each builds on
+the previous.
+
+**Phase 7.1 — Workspaces under publishers**
+([ADR 0001](docs/adr/0001-workspaces-under-publishers.md))
+
+- New `workspaces` entity between publishers and resources.
+- Two-step migration: schema + Go-side backfill creating one `default`
+  workspace per publisher; finalising migration drops `publisher_id`
+  from resources.
+- Hierarchical URLs `/v0/publishers/{p}/workspaces/{w}/servers/{s}`
+  with HTTP 301 redirects from legacy paths.
+- Auth model unchanged in this phase.
+
+**Phase 7.2 — Workspace OIDC group binding**
+([ADR 0002](docs/adr/0002-workspace-group-binding.md))
+
+- `workspaces.group_name` (1:1, nullable; `NULL` = admin-only).
+- `KeycloakClaims.Groups` + `RequireWorkspaceWrite` middleware.
+- Configurable `AUTH_GROUPS_CLAIM` (default `groups`).
+- Manual Keycloak setup; reconciler ("operator") deferred to F4.
+
+**Phase 7.3 — Change-approval workflow**
+([ADR 0003](docs/adr/0003-change-approval-workflow.md))
+
+- New `review_state` column orthogonal to existing `status` /
+  `published_at`.
+- `revision` counter monotonic across the version's lifetime,
+  PR-style continuous editing, discriminated 409 error model.
+- One global reviewer group `registry-reviewers` (configurable).
+- Pending deletion flow on entries.
+
+#### Phase 7 backlog (deferred items from the ADRs)
+
+From [ADR 0002](docs/adr/0002-workspace-group-binding.md):
+
+- **0002-F1.** Per-resource-type group binding via Keycloak client
+  roles.
+- **0002-F2.** List members of a workspace's group via Keycloak Admin
+  API.
+- **0002-F3.** Many-to-many workspace↔group binding.
+- **0002-F4.** Keycloak reconciler ("operator"). Pull-forward
+  triggers: workspace count ≳ 50, or self-service workspace creation.
+- **0002-F5.** SCIM provisioning.
+
+From [ADR 0003](docs/adr/0003-change-approval-workflow.md):
+
+- **0003-F1.** Per-resource-type or per-workspace reviewer groups.
+- **0003-F2.** Forbid self-approval (`submitted_by != reviewed_by`).
+- **0003-F3.** Notifications on submission/approval/rejection/deletion.
+- **0003-F4.** SLA timers on `pending_review`.
+- **0003-F5.** Bulk approval.
+- **0003-F6.** Reviewer comments / discussion thread.
+- **0003-F7.** Diff view in the admin UI between revisions.
+- **0003-F8.** Cleanup of long-abandoned `rejected` versions.
+
+### Phase 8 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
 - Signed publishes (sigstore/cosign).
 - Webhooks on publish events.

@@ -140,6 +140,31 @@ paths:
 
   # ── Publishers ────────────────────────────────────────────────────────────
 
+  # ── Review queue ───────────────────────────────────────────────────────────
+
+  /api/v1/review-queue:
+    get:
+      operationId: listReviewQueue
+      summary: List pending review items across the registry (reviewer)
+      description: >
+        Returns versions in `pending_review` and entries with pending
+        deletions, newest first, paginated. The discriminator `kind`
+        identifies the row type so the client can render the right
+        action affordances. Reviewer or admin gated.
+      tags: [review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated review queue
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReviewQueueList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/v1/publishers:
     get:
       operationId: listPublishers
@@ -255,6 +280,180 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+
+  # ── Workspaces (under a publisher) ─────────────────────────────────────────
+
+  /api/v1/publishers/{publisher_slug}/workspaces:
+    get:
+      operationId: listWorkspaces
+      summary: List workspaces under a publisher
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of workspaces
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createWorkspace
+      summary: Create a workspace under a publisher (admin only)
+      tags: [workspaces]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+      responses:
+        "201":
+          description: Workspace created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}:
+    get:
+      operationId: getWorkspace
+      summary: Get a workspace by (publisher slug, workspace slug)
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+      responses:
+        "200":
+          description: Workspace detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: patchWorkspace
+      summary: Update a workspace's metadata (admin only)
+      tags: [workspaces]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                contact:
+                  type: string
+                group_name:
+                  type: string
+                  description: |
+                    Bind the workspace to a Keycloak group. Empty
+                    string clears the binding, returning the workspace
+                    to admin-only.
+      responses:
+        "200":
+          description: Updated workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteWorkspace
+      summary: Delete a workspace (admin only)
+      description: Hard-deletes the workspace. Returns 409 if any MCP server or agent still references it.
+      tags: [workspaces]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+      responses:
+        "204":
+          description: Workspace deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/servers:
+    get:
+      operationId: listWorkspaceServers
+      summary: List MCP servers under a workspace
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of MCP servers in the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPServerList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/agents:
+    get:
+      operationId: listWorkspaceAgents
+      summary: List agents under a workspace
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/PublisherSlugParam"
+        - $ref: "#/components/parameters/WorkspaceSlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated list of agents in the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ── MCP Servers ───────────────────────────────────────────────────────────
 
@@ -417,8 +616,14 @@ paths:
           $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteMCPServer
-      summary: Soft-delete an MCP server (admin only)
-      description: Sets the server and all its versions to status='deleted'. The entry is no longer returned in public listings.
+      summary: Force-delete an MCP server (admin only — bypasses workflow)
+      description: |
+        Admin-only escape hatch that hard-tombstones the server and all its
+        versions to status='deleted' without going through the
+        change-approval workflow. Workspace group members must use
+        POST /api/v1/mcp/servers/{namespace}/{slug}/deletion-request and
+        wait for a reviewer's approve to delete; this endpoint is the
+        admin force-delete path.
       tags: [mcp]
       security:
         - bearerAuth: []
@@ -624,6 +829,180 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── MCP server change-approval workflow ───────────────────────────────────
+
+  /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/submit:
+    post:
+      operationId: submitMCPVersion
+      summary: Submit an MCP server version for review (workspace group)
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "204": { description: submitted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            review-state-mismatch (already pending, withdrawn, or
+            published) | review-already-pending (another version on
+            this entry is already pending review).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
+  /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/withdraw:
+    post:
+      operationId: withdrawMCPVersion
+      summary: Withdraw a pending MCP server version back to draft
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "204": { description: withdrawn }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: review-state-mismatch (version is not in pending_review)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
+  /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/approve:
+    post:
+      operationId: approveMCPVersion
+      summary: Approve a pending MCP server version (reviewer)
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveRequest" }
+      responses:
+        "204": { description: approved (version is now published) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            review-state-mismatch (no longer pending) |
+            review-revision-mismatch (revision body field stale) |
+            already-published (already approved by another reviewer).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/reject:
+    post:
+      operationId: rejectMCPVersion
+      summary: Reject a pending MCP server version with a reason (reviewer)
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectRequest" }
+      responses:
+        "204": { description: rejected }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: review-state-mismatch | review-revision-mismatch
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/mcp/servers/{namespace}/{slug}/deletion-request:
+    post:
+      operationId: requestMCPDeletion
+      summary: Request deletion of an MCP server (workspace group)
+      description: >
+        Marks the entry as having a pending deletion review. The entry
+        stays visible on public reads until a reviewer approves the
+        deletion (which sets deleted_at).
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "202": { description: deletion request recorded }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: another deletion request is already pending
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
+  /api/v1/mcp/servers/{namespace}/{slug}/deletion-request/approve:
+    post:
+      operationId: approveMCPDeletion
+      summary: Approve a pending MCP server deletion (reviewer)
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204": { description: deleted (soft-delete via deleted_at) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending deletion request to approve
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
+  /api/v1/mcp/servers/{namespace}/{slug}/deletion-request/reject:
+    post:
+      operationId: rejectMCPDeletion
+      summary: Reject a pending MCP server deletion with a reason (reviewer)
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectDeletionRequest" }
+      responses:
+        "204": { description: rejected (request markers cleared) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending deletion request to reject
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish:
     post:
       operationId: publishMCPServerVersion
@@ -802,8 +1181,14 @@ paths:
           $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteAgent
-      summary: Soft-delete an agent (admin only)
-      description: Sets the agent and all its versions to status='deleted'. The entry is no longer returned in public listings.
+      summary: Force-delete an agent (admin only — bypasses workflow)
+      description: |
+        Admin-only escape hatch that hard-tombstones the agent and all its
+        versions to status='deleted' without going through the
+        change-approval workflow. Workspace group members must use
+        POST /api/v1/agents/{namespace}/{slug}/deletion-request and wait
+        for a reviewer's approve to delete; this endpoint is the admin
+        force-delete path.
       tags: [agents]
       security:
         - bearerAuth: []
@@ -1008,6 +1393,170 @@ paths:
                 $ref: "#/components/schemas/AgentVersion"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # ── Agent change-approval workflow ────────────────────────────────────────
+
+  /api/v1/agents/{namespace}/{slug}/versions/{version}/submit:
+    post:
+      operationId: submitAgentVersion
+      summary: Submit an agent version for review (workspace group)
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "204": { description: submitted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: review-state-mismatch | review-already-pending
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
+  /api/v1/agents/{namespace}/{slug}/versions/{version}/withdraw:
+    post:
+      operationId: withdrawAgentVersion
+      summary: Withdraw a pending agent version back to draft
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      responses:
+        "204": { description: withdrawn }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: review-state-mismatch (version is not in pending_review)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
+  /api/v1/agents/{namespace}/{slug}/versions/{version}/approve:
+    post:
+      operationId: approveAgentVersion
+      summary: Approve a pending agent version (reviewer)
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveRequest" }
+      responses:
+        "204": { description: approved }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: review-state-mismatch | review-revision-mismatch | already-published
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/agents/{namespace}/{slug}/versions/{version}/reject:
+    post:
+      operationId: rejectAgentVersion
+      summary: Reject a pending agent version with a reason (reviewer)
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectRequest" }
+      responses:
+        "204": { description: rejected }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: review-state-mismatch | review-revision-mismatch
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/agents/{namespace}/{slug}/deletion-request:
+    post:
+      operationId: requestAgentDeletion
+      summary: Request deletion of an agent (workspace group)
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "202": { description: deletion request recorded }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: another deletion request is already pending
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
+  /api/v1/agents/{namespace}/{slug}/deletion-request/approve:
+    post:
+      operationId: approveAgentDeletion
+      summary: Approve a pending agent deletion (reviewer)
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204": { description: deleted (soft-delete) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending deletion request
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
+  /api/v1/agents/{namespace}/{slug}/deletion-request/reject:
+    post:
+      operationId: rejectAgentDeletion
+      summary: Reject a pending agent deletion with a reason (reviewer)
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectDeletionRequest" }
+      responses:
+        "204": { description: rejected }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending deletion request
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 
   /api/v1/agents/{namespace}/{slug}/versions/{version}/publish:
     post:
@@ -1632,6 +2181,18 @@ components:
       description: ULID of the MCP server
       schema:
         type: string
+    PublisherSlugParam:
+      name: publisher_slug
+      in: path
+      required: true
+      schema:
+        type: string
+    WorkspaceSlugParam:
+      name: workspace_slug
+      in: path
+      required: true
+      schema:
+        type: string
     LimitParam:
       name: limit
       in: query
@@ -1761,6 +2322,158 @@ components:
           type: string
         total_count:
           type: integer
+
+    # ── Workspaces ──────────────────────────────────────────────────────────
+
+    # ── Change-approval workflow ────────────────────────────────────────
+
+    ApproveRequest:
+      type: object
+      required: [revision]
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+          description: |
+            Revision the reviewer last loaded. The server compares this
+            against the current row; mismatch returns 409 with type
+            `https://registry/errors/review-revision-mismatch`.
+
+    RejectRequest:
+      type: object
+      required: [revision, reason]
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          description: Free-text reason persisted on the rejected version row.
+
+    RejectDeletionRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          description: |
+            Free-text reason for rejecting the pending deletion. The
+            entry's `deletion_requested_*` columns are cleared on
+            success; the reason is captured in the audit log.
+
+    ReviewQueueItem:
+      type: object
+      required: [kind, publisher_slug, entry_slug, entry_id, submitted_at]
+      properties:
+        kind:
+          type: string
+          enum: [mcp_version, agent_version, mcp_deletion, agent_deletion]
+        publisher_slug: { type: string }
+        entry_slug: { type: string }
+        entry_id: { type: string, description: ULID of the entry }
+        version:
+          type: string
+          description: |
+            Present on `*_version` items, absent on `*_deletion` items.
+        revision:
+          type: integer
+          description: |
+            Present on `*_version` items only.
+        submitted_at: { type: string, format: date-time }
+        submitted_by:
+          type: string
+          description: JWT subject of the submitter (UUID).
+        submitted_by_email:
+          type: string
+          description: Email captured at submission time.
+
+    ReviewQueueList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ReviewQueueItem" }
+        next_cursor:
+          type: string
+
+    ReviewProblem:
+      description: |
+        RFC 7807 problem detail returned by the change-approval
+        workflow. Inspect `type` to discriminate the case:
+          .../errors/not-found                       (404)
+          .../errors/review-state-mismatch           (409)
+          .../errors/review-revision-mismatch        (409)
+          .../errors/review-already-pending          (409)
+          .../errors/already-published               (409)
+      type: object
+      required: [type, title, status]
+      properties:
+        type:    { type: string, format: uri }
+        title:   { type: string }
+        status:  { type: integer }
+        detail:  { type: string }
+        instance: { type: string }
+
+    Workspace:
+      type: object
+      required: [id, publisher_id, slug, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          description: ULID
+        publisher_id:
+          type: string
+          description: ULID of the parent publisher
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        contact:
+          type: string
+        group_name:
+          type: string
+          description: |
+            Keycloak group whose members can write to this workspace's
+            resources. Empty / absent means the workspace is
+            admin-only. Bare group name; the Keycloak group-membership
+            mapper must emit the `groups` JWT claim with full path
+            disabled.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateWorkspaceRequest:
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z0-9-]+$"
+        name:
+          type: string
+        description:
+          type: string
+        contact:
+          type: string
+
+    WorkspaceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Workspace"
+        next_cursor:
+          type: string
 
     # ── MCP Servers ─────────────────────────────────────────────────────────
 
@@ -1970,6 +2683,41 @@ components:
         published_at:
           type: string
           format: date-time
+        review_state:
+          type: string
+          enum: [none, pending_review, rejected]
+          description: |
+            Change-approval workflow state, orthogonal to `status` and
+            `published_at`. Omitted on rows that have never been part of
+            the workflow (review_state='none' before any submit).
+        revision:
+          type: integer
+          minimum: 1
+          description: |
+            Revision counter the reviewer must echo back when calling
+            approve/reject; bumps on every content edit.
+        submitted_at:
+          type: string
+          format: date-time
+        submitted_by:
+          type: string
+          description: JWT subject (UUID) of the submitter.
+        submitted_by_email:
+          type: string
+          description: Email captured at submission time.
+        reviewed_at:
+          type: string
+          format: date-time
+        reviewed_by:
+          type: string
+        reviewed_by_email:
+          type: string
+        review_decision:
+          type: string
+          enum: [approved, rejected]
+        rejection_reason:
+          type: string
+          description: Free-text reason persisted on the rejected version row.
         created_at:
           type: string
           format: date-time
@@ -2188,6 +2936,31 @@ components:
         published_at:
           type: string
           format: date-time
+        review_state:
+          type: string
+          enum: [none, pending_review, rejected]
+        revision:
+          type: integer
+          minimum: 1
+        submitted_at:
+          type: string
+          format: date-time
+        submitted_by:
+          type: string
+        submitted_by_email:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+        reviewed_by:
+          type: string
+        reviewed_by_email:
+          type: string
+        review_decision:
+          type: string
+          enum: [approved, rejected]
+        rejection_reason:
+          type: string
         created_at:
           type: string
           format: date-time
