@@ -40,6 +40,33 @@ type AuthConfig struct {
 	// Served via GET /config.json so the frontend can bootstrap its OIDC
 	// client at runtime without baking the value into the Docker image.
 	OIDCClientID string
+
+	// OIDCAudience is the expected `aud` value on incoming access tokens.
+	// When non-empty, tokens missing this audience are rejected — required by
+	// the MCP authorization spec (OAuth 2.1 resource indicators / audience
+	// binding) to prevent tokens minted for unrelated clients on the same
+	// realm from being accepted at this resource server.
+	OIDCAudience string
+
+	// GroupsClaim is the JWT payload key the validator reads group
+	// memberships from. Default "groups". Configurable via env+YAML+
+	// default per CLAUDE.md when an external IdP emits this claim
+	// under a different name.
+	GroupsClaim string
+
+	// AuthStorage controls where the browser SPA persists OIDC tokens.
+	// "session" (the default) scopes tokens to the browser tab, limiting
+	// XSS-exfiltration blast radius. "local" is an E2E escape hatch —
+	// Playwright's storageState() captures localStorage across contexts, so
+	// the e2e stack sets AUTH_STORAGE=local. Never use "local" in production.
+	AuthStorage string
+
+	// ReviewerGroup is the Keycloak group that gates the change-approval
+	// workflow. Members of this group can approve / reject version
+	// submissions and pending deletions for any workspace. Default:
+	// "registry-reviewers". Configurable via env + YAML + default per
+	// CLAUDE.md's configuration rule.
+	ReviewerGroup string
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -112,9 +139,13 @@ type fileLogConfig struct {
 }
 
 type fileAuthConfig struct {
-	OIDCIssuer   string `yaml:"oidc_issuer"`
-	OIDCJWKSUrl  string `yaml:"oidc_jwks_url"`
-	OIDCClientID string `yaml:"oidc_client_id"`
+	OIDCIssuer    string `yaml:"oidc_issuer"`
+	OIDCJWKSUrl   string `yaml:"oidc_jwks_url"`
+	OIDCClientID  string `yaml:"oidc_client_id"`
+	OIDCAudience  string `yaml:"oidc_audience"`
+	AuthStorage   string `yaml:"auth_storage"`
+	GroupsClaim   string `yaml:"groups_claim"`
+	ReviewerGroup string `yaml:"reviewer_group"`
 }
 
 type fileConfig struct {
@@ -146,6 +177,10 @@ func defaultFileConfig() fileConfig {
 		},
 		Log: fileLogConfig{
 			Level: "info",
+		},
+		Auth: fileAuthConfig{
+			GroupsClaim:   "groups",
+			ReviewerGroup: "registry-reviewers",
 		},
 	}
 }
@@ -205,9 +240,13 @@ func Load(configFile string) (*Config, error) {
 			Level: envString("LOG_LEVEL", fc.Log.Level),
 		},
 		Auth: AuthConfig{
-			OIDCIssuer:   envString("OIDC_ISSUER", fc.Auth.OIDCIssuer),
-			OIDCJWKSUrl:  envString("OIDC_JWKS_URL", fc.Auth.OIDCJWKSUrl),
-			OIDCClientID: envString("OIDC_CLIENT_ID", fc.Auth.OIDCClientID),
+			OIDCIssuer:    envString("OIDC_ISSUER", fc.Auth.OIDCIssuer),
+			OIDCJWKSUrl:   envString("OIDC_JWKS_URL", fc.Auth.OIDCJWKSUrl),
+			OIDCClientID:  envString("OIDC_CLIENT_ID", fc.Auth.OIDCClientID),
+			OIDCAudience:  envString("OIDC_AUDIENCE", fc.Auth.OIDCAudience),
+			AuthStorage:   envString("AUTH_STORAGE", fc.Auth.AuthStorage),
+			GroupsClaim:   envString("AUTH_GROUPS_CLAIM", fc.Auth.GroupsClaim),
+			ReviewerGroup: envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
 		},
 	}
 

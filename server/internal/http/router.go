@@ -62,18 +62,37 @@ func NewRouterForTest(deps RouterDeps) *chi.Mux {
 func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Auth validator ────────────────────────────────────────────────────────
 	jwksCache := auth.NewJWKSCache(deps.AuthConf.JWKSEndpoint(), 0)
-	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer)
+	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCAudience, deps.AuthConf.GroupsClaim)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)
 	v0H := handlers.NewV0MCPHandlers(deps.DB, deps.DB)
 	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB, deps.Metrics)
 	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
+	wsH := handlers.NewWorkspaceHandlers(deps.DB, deps.DB)
+	revH := handlers.NewReviewHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger)
-	reportH := handlers.NewReportHandlers(deps.DB)
+	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
+
+	// Workspace lookup adapters bind the auth.WorkspaceLookup signature to
+	// concrete URL patterns. RequireWorkspaceWrite uses these to resolve
+	// the workspace's group_name without consuming the request body.
+	mcpServerNSLookup := func(r *http.Request) (string, error) {
+		ns := chi.URLParam(r, "namespace")
+		slug := chi.URLParam(r, "slug")
+		return deps.DB.LookupGroupNameByMCPServerNS(r.Context(), ns, slug)
+	}
+	agentNSLookup := func(r *http.Request) (string, error) {
+		ns := chi.URLParam(r, "namespace")
+		slug := chi.URLParam(r, "slug")
+		return deps.DB.LookupGroupNameByAgentNS(r.Context(), ns, slug)
+	}
+	requireMCPServerNS := auth.RequireWorkspaceWrite(mcpServerNSLookup)
+	requireAgentNS := auth.RequireWorkspaceWrite(agentNSLookup)
+	requireReviewer := auth.RequireReviewer(deps.AuthConf.ReviewerGroup)
 
 	r := chi.NewRouter()
 
@@ -94,7 +113,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r.Get("/openapi.yaml", handlers.OpenAPISpec)
 	r.Get("/docs", handlers.SwaggerUI)
 	// Public runtime config consumed by the browser SPA (OIDC bootstrap).
-	r.Get("/config.json", handlers.ConfigJSON(deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCClientID))
+	r.Get("/config.json", handlers.ConfigJSON(deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCClientID, deps.AuthConf.AuthStorage))
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
 	r.Get("/.well-known/oauth-protected-resource", handlers.OAuthProtectedResource)
@@ -109,14 +128,14 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// Name-based routes (spec-preferred: namespace/slug path)
 		r.Route("/servers/{namespace}/{slug}", func(r chi.Router) {
 			r.Get("/", v0H.GetServerByName)
-			r.With(auth.RequireAdmin).Patch("/status", v0H.PatchServerStatus)
+			r.With(requireMCPServerNS).Patch("/status", v0H.PatchServerStatus)
 			r.Route("/versions", func(r chi.Router) {
 				r.Get("/", v0H.ListServerVersions)
 				r.Route("/{version}", func(r chi.Router) {
 					r.Get("/", v0H.GetServerVersion)
-					r.With(auth.RequireAdmin).Put("/", v0H.UpdateServerVersion)
-					r.With(auth.RequireAdmin).Delete("/", v0H.DeleteServerVersion)
-					r.With(auth.RequireAdmin).Patch("/status", v0H.PatchVersionStatus)
+					r.With(requireMCPServerNS).Put("/", v0H.UpdateServerVersion)
+					r.With(requireMCPServerNS).Delete("/", v0H.DeleteServerVersion)
+					r.With(requireMCPServerNS).Patch("/status", v0H.PatchVersionStatus)
 				})
 			})
 		})
@@ -135,6 +154,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	publicRL := middleware.RateLimit(publicRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
 
+		// Review queue (reviewer-gated, lists pending versions and
+		// pending deletions across all workspaces).
+		r.With(requireReviewer).Get("/review-queue", revH.ListReviewQueue)
+
 		// Publishers
 		r.Route("/publishers", func(r chi.Router) {
 			r.With(publicRL).Get("/", pubH.ListPublishers)
@@ -142,6 +165,18 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
 			r.With(auth.RequireAdmin).Patch("/{slug}", pubH.PatchPublisher)
 			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
+
+			// Workspaces under a publisher.
+			r.Route("/{publisher_slug}/workspaces", func(r chi.Router) {
+				r.With(publicRL).Get("/", wsH.ListWorkspaces)
+				r.With(auth.RequireAdmin).Post("/", wsH.CreateWorkspace)
+				r.With(publicRL).Get("/{workspace_slug}", wsH.GetWorkspace)
+				r.With(auth.RequireAdmin).Patch("/{workspace_slug}", wsH.PatchWorkspace)
+				r.With(auth.RequireAdmin).Delete("/{workspace_slug}", wsH.DeleteWorkspace)
+				// Workspace-scoped resource lists.
+				r.With(publicRL).Get("/{workspace_slug}/servers", wsH.ListWorkspaceServers)
+				r.With(publicRL).Get("/{workspace_slug}/agents", wsH.ListWorkspaceAgents)
+			})
 		})
 
 		// MCP servers
@@ -151,19 +186,39 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", mcpH.GetServer)
-				r.With(auth.RequireAdmin).Patch("/", mcpH.PatchServer)
+				// Edits delegate to RequireWorkspaceWrite so that publisher
+				// group members can author content for their workspace.
+				// Admin override is built in.
+				r.With(requireMCPServerNS).Patch("/", mcpH.PatchServer)
+				// Legacy direct delete is admin-only: it bypasses the
+				// change-approval workflow (deletion-request /
+				// deletion-request/approve). Workspace group members
+				// must use the workflow path; admins keep this as a
+				// force-delete escape hatch.
 				r.With(auth.RequireAdmin).Delete("/", mcpH.DeleteServer)
-				r.With(auth.RequireAdmin).Post("/deprecate", mcpH.DeprecateServer)
+				r.With(requireMCPServerNS).Post("/deprecate", mcpH.DeprecateServer)
+				// Visibility flips are admin-only by policy: they affect
+				// public exposure, not just authoring.
 				r.With(auth.RequireAdmin).Post("/visibility", mcpH.SetVisibility)
 				r.With(publicRL).Post("/view", mcpH.RecordView)
 				r.With(publicRL).Post("/copy", mcpH.RecordCopy)
+				r.With(publicRL).Get("/activity", mcpH.ListMCPServerActivity)
 
 				r.Route("/versions", func(r chi.Router) {
 					r.With(publicRL).Get("/", mcpH.ListVersions)
-					r.With(auth.RequireAdmin).Post("/", mcpH.CreateVersion)
+					r.With(requireMCPServerNS).Post("/", mcpH.CreateVersion)
 					r.With(publicRL).Get("/{version}", mcpH.GetVersion)
-					r.With(auth.RequireAdmin).Post("/{version}/publish", mcpH.PublishVersion)
+					r.With(requireMCPServerNS).Post("/{version}/publish", mcpH.PublishVersion)
+					// Change-approval workflow.
+					r.With(requireMCPServerNS).Post("/{version}/submit", revH.SubmitMCPVersion)
+					r.With(requireMCPServerNS).Post("/{version}/withdraw", revH.WithdrawMCPVersion)
+					r.With(requireReviewer).Post("/{version}/approve", revH.ApproveMCPVersion)
+					r.With(requireReviewer).Post("/{version}/reject", revH.RejectMCPVersion)
 				})
+				// Pending-deletion review flow.
+				r.With(requireMCPServerNS).Post("/deletion-request", revH.RequestMCPDeletion)
+				r.With(requireReviewer).Post("/deletion-request/approve", revH.ApproveMCPDeletion)
+				r.With(requireReviewer).Post("/deletion-request/reject", revH.RejectMCPDeletion)
 			})
 		})
 
@@ -174,20 +229,32 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", agentH.GetAgent)
-				r.With(auth.RequireAdmin).Patch("/", agentH.PatchAgent)
+				r.With(requireAgentNS).Patch("/", agentH.PatchAgent)
+				// Same reasoning as MCP servers: bypass-the-workflow path
+				// stays admin-only.
 				r.With(auth.RequireAdmin).Delete("/", agentH.DeleteAgent)
-				r.With(auth.RequireAdmin).Post("/deprecate", agentH.DeprecateAgent)
+				r.With(requireAgentNS).Post("/deprecate", agentH.DeprecateAgent)
 				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
 				r.With(publicRL).Post("/view", agentH.RecordView)
 				r.With(publicRL).Post("/copy", agentH.RecordCopy)
+				r.With(publicRL).Get("/activity", agentH.ListAgentActivity)
 
 				r.Route("/versions", func(r chi.Router) {
 					r.With(publicRL).Get("/", agentH.ListVersions)
-					r.With(auth.RequireAdmin).Post("/", agentH.CreateVersion)
+					r.With(requireAgentNS).Post("/", agentH.CreateVersion)
 					r.With(publicRL).Get("/{version}", agentH.GetVersion)
-					r.With(auth.RequireAdmin).Post("/{version}/publish", agentH.PublishVersion)
-					r.With(auth.RequireAdmin).Patch("/{version}/status", agentH.PatchVersionStatus)
+					r.With(requireAgentNS).Post("/{version}/publish", agentH.PublishVersion)
+					r.With(requireAgentNS).Patch("/{version}/status", agentH.PatchVersionStatus)
+					// Change-approval workflow.
+					r.With(requireAgentNS).Post("/{version}/submit", revH.SubmitAgentVersion)
+					r.With(requireAgentNS).Post("/{version}/withdraw", revH.WithdrawAgentVersion)
+					r.With(requireReviewer).Post("/{version}/approve", revH.ApproveAgentVersion)
+					r.With(requireReviewer).Post("/{version}/reject", revH.RejectAgentVersion)
 				})
+				// Pending-deletion review flow.
+				r.With(requireAgentNS).Post("/deletion-request", revH.RequestAgentDeletion)
+				r.With(requireReviewer).Post("/deletion-request/approve", revH.ApproveAgentDeletion)
+				r.With(requireReviewer).Post("/deletion-request/reject", revH.RejectAgentDeletion)
 			})
 		})
 

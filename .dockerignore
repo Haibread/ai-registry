@@ -1,0 +1,40 @@
+# Root .dockerignore applies when the build context is the repository root
+# (currently only web/Dockerfile uses the repo-root context — it needs both
+# web/ and server/api/openapi.yaml).
+#
+# The server image sets its own server/.dockerignore because its build
+# context is ./server.
+.git
+.github
+.gitignore
+.dockerignore
+
+# Editor / IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Build artefacts (generated; should never be copied into an image).
+web/dist
+web/node_modules
+web/playwright-report
+web/test-results
+web/coverage
+web/.vite
+web/tsconfig.tsbuildinfo
+web/src/lib/schema.d.ts
+
+# Local env and secrets
+**/.env
+**/.env.*
+deploy/.env
+
+# Go build output
+server/coverage.out
+server/coverage.html
+server/*.test

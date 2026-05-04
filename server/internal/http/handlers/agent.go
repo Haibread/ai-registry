@@ -224,7 +224,7 @@ func (h *AgentHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	versions, err := h.db.ListAgentVersions(r.Context(), agent.ID)
+	versions, err := h.db.ListAgentVersions(r.Context(), agent.ID, publicOnly)
 	if err != nil {
 		internalError(w, r, err)
 		return
@@ -251,7 +251,7 @@ func (h *AgentHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	v, err := h.db.GetAgentVersion(r.Context(), agent.ID, ver)
+	v, err := h.db.GetAgentVersion(r.Context(), agent.ID, ver, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusNotFound, "not-found",
 			fmt.Sprintf("version '%s' does not exist for %s/%s", ver, ns, slug), r.URL.Path)
@@ -568,7 +568,9 @@ func (h *AgentHandlers) PatchVersionStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	v, err := h.db.GetAgentVersion(r.Context(), agent.ID, ver)
+	// Admin-only handler: pass publicOnly=false so the read sees pending /
+	// non-published rows the admin just touched via PatchVersionStatus.
+	v, err := h.db.GetAgentVersion(r.Context(), agent.ID, ver, false)
 	if err != nil {
 		internalError(w, r, err)
 		return

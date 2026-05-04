@@ -26,8 +26,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       : theme
 
   useEffect(() => {
+    // The inline script in index.html already applied the initial class
+    // before first paint (to avoid a white flash). This effect keeps the
+    // class in sync when the user toggles the theme afterwards, and also
+    // updates `color-scheme` so native UI (scrollbars, form controls)
+    // matches.
     const root = document.documentElement
     root.classList.toggle('dark', resolvedTheme === 'dark')
+    root.style.colorScheme = resolvedTheme
   }, [resolvedTheme])
 
   const setTheme = (t: Theme) => {

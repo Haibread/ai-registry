@@ -53,7 +53,27 @@ type MCPVersionSpec struct {
 	Packages        []PackageSpec `yaml:"packages"         json:"packages"`
 	// Capabilities is the free-form MCP capabilities object
 	// (tools / resources / prompts / logging / …). Stored as JSONB.
+	//
+	// NOTE: per the MCP spec, `capabilities.tools` is the capability-
+	// negotiation flag object `{listChanged: bool}` and NOT a list of tools.
+	// The publisher-declared tool list lives in the separate `Tools` field
+	// below.
 	Capabilities map[string]any `yaml:"capabilities" json:"capabilities"`
+	// Tools is the publisher-declared list of tools this server exposes.
+	// Each entry needs a unique, non-empty `name`; `description`,
+	// `input_schema`, and `annotations` are optional. Structural
+	// validation runs in domain.ValidateTools at upsert time.
+	Tools []MCPToolSpec `yaml:"tools" json:"tools"`
+}
+
+// MCPToolSpec describes a single tool declared by an MCP server version.
+// Mirrors domain.MCPTool — kept separate so YAML decoding stays decoupled
+// from the domain package.
+type MCPToolSpec struct {
+	Name        string         `yaml:"name"         json:"name"`
+	Description string         `yaml:"description"  json:"description,omitempty"`
+	InputSchema map[string]any `yaml:"input_schema" json:"input_schema,omitempty"`
+	Annotations map[string]any `yaml:"annotations"  json:"annotations,omitempty"`
 }
 
 // PackageSpec describes a single distribution package of an MCP server.

@@ -155,6 +155,64 @@ test.describe('Public coverage', () => {
     await expect(page.getByText(/Publisher not found/i)).toBeVisible({ timeout: 15_000 })
   })
 
+  // ── v0.3.0 Task 3: Namespace landing pages ─────────────────────────────
+  // The landing pages at /mcp/:namespace and /agents/:namespace are the
+  // first-class anchor for "everything published by {ns}". They must render
+  // the seeded public entries, hide private ones, expose a working link to
+  // the detail page, and distinguish a missing namespace (404) from an
+  // existing namespace with zero entries of the requested kind.
+
+  test('MCP namespace landing shows seeded public server and hides private ones', async ({ page }) => {
+    await page.goto(`/mcp/${PUB_SLUG}`)
+    // Publisher heading drives the header — wait on it so we know both
+    // queries (publisher + list) have resolved before asserting the grid.
+    await expect(page.getByRole('heading', { name: PUB_NAME })).toBeVisible({ timeout: 15_000 })
+
+    // Seeded public MCP appears on the card grid. Private MCP must NOT —
+    // it's under the same namespace but should never leak to a public view.
+    await expect(page.getByText(MCP_NAME)).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('Private MCP')).not.toBeVisible()
+  })
+
+  test('MCP namespace landing links to the server detail page', async ({ page }) => {
+    await page.goto(`/mcp/${PUB_SLUG}`)
+    await expect(page.getByRole('heading', { name: PUB_NAME })).toBeVisible({ timeout: 15_000 })
+
+    // The card's name doubles as the whole-card link (after:absolute inset-0
+    // pseudo-element). Clicking it lands on /mcp/{ns}/{slug} — assert both
+    // the URL and a fragment of the detail page's chrome so a future
+    // regression that leaves the user on the landing page still trips.
+    await page.getByRole('link', { name: MCP_NAME }).click()
+    await expect(page).toHaveURL(new RegExp(`/mcp/${PUB_SLUG}/${MCP_SLUG}$`), { timeout: 10_000 })
+    await expect(page.getByRole('heading', { name: MCP_NAME })).toBeVisible({ timeout: 10_000 })
+  })
+
+  test('agent namespace landing shows the seeded public agent', async ({ page }) => {
+    await page.goto(`/agents/${PUB_SLUG}`)
+    await expect(page.getByRole('heading', { name: PUB_NAME })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(AGENT_NAME)).toBeVisible({ timeout: 10_000 })
+  })
+
+  test('unknown namespace on /mcp/:namespace renders the not-found state', async ({ page }) => {
+    // A slug that's guaranteed not to exist — per-run ID keeps parallel
+    // test runs from colliding with each other's fixtures.
+    await page.goto(`/mcp/does-not-exist-${RUN_ID}`)
+    await expect(page.getByText(/Namespace not found/i)).toBeVisible({ timeout: 15_000 })
+    // The CTA steers users back to the flat list so they don't dead-end.
+    await expect(page.getByRole('link', { name: /browse all mcp servers/i })).toBeVisible()
+  })
+
+  test('server card namespace chip navigates to the namespace landing page', async ({ page }) => {
+    // Drive the navigation from the flat listing so we cover the
+    // card → landing wiring that replaced the old `?namespace=X` filter link.
+    await page.goto('/mcp')
+    const chip = page.getByRole('link', { name: PUB_SLUG, exact: true }).first()
+    await expect(chip).toBeVisible({ timeout: 15_000 })
+    await chip.click()
+    await expect(page).toHaveURL(new RegExp(`/mcp/${PUB_SLUG}$`), { timeout: 10_000 })
+    await expect(page.getByRole('heading', { name: PUB_NAME })).toBeVisible({ timeout: 10_000 })
+  })
+
   // ── W3f: Theme toggle persistence ──────────────────────────────────────
 
   test('theme toggle flips dark class and persists in localStorage', async ({ page }) => {

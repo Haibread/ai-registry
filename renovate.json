@@ -97,9 +97,11 @@
     {
       "description": "OTel packages — keep in sync",
       "matchManagers": ["gomod"],
-      "matchPackagePrefixes": ["go.opentelemetry.io/"],
       "groupName": "OpenTelemetry Go",
-      "groupSlug": "otel-go"
+      "groupSlug": "otel-go",
+      "matchPackageNames": [
+        "go.opentelemetry.io/{/,}**"
+      ]
     },
     {
       "description": "testcontainers updates — manual review",

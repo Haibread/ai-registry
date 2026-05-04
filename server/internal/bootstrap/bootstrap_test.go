@@ -2,6 +2,7 @@ package bootstrap_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,8 +11,14 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/haibread/ai-registry/internal/bootstrap"
+	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/store"
 )
+
+// jsonUnmarshal is a tiny helper to keep the backfill test readable — it
+// lets assertions do `jsonUnmarshal(raw, &out)` without repeating the type
+// assertion at every call site.
+func jsonUnmarshal(raw []byte, v any) error { return json.Unmarshal(raw, v) }
 
 // ── shared DB for integration tests ──────────────────────────────────────────
 
@@ -415,7 +422,7 @@ agents:
 	}
 
 	// Verify both versions were created.
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions() error = %v", err)
 	}
@@ -475,12 +482,131 @@ agents: []
 	if err != nil {
 		t.Fatalf("GetMCPServer() error = %v", err)
 	}
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions() error = %v", err)
 	}
 	if len(versions) != 1 {
 		t.Errorf("version count = %d, want 1 (idempotency check)", len(versions))
+	}
+}
+
+// TestRun_BackfillsToolsOnExistingVersion verifies that re-running bootstrap
+// after the `tools` field was added to the spec backfills the empty array
+// stored on an existing published version. This is the path that unblocks a
+// stack seeded on an older version of the code from showing tool counts
+// without wiping the database.
+func TestRun_BackfillsToolsOnExistingVersion(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	// First run: no tools declared. This simulates a stack seeded before
+	// the `tools` field existed — the row ends up with `tools = '[]'`.
+	specV1 := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+mcp_servers:
+  - publisher: "acme"
+    slug: "srv"
+    name: "Server"
+    description: "desc"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        packages:
+          - registry_type: "npm"
+            identifier: "@acme/srv"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+agents: []
+`)
+	s1, err := bootstrap.LoadSpec(specV1)
+	if err != nil {
+		t.Fatalf("LoadSpec v1 error = %v", err)
+	}
+	if err := bootstrap.Run(ctx, sharedDB, s1, nil); err != nil {
+		t.Fatalf("Run v1 error = %v", err)
+	}
+
+	srv, err := sharedDB.GetMCPServer(ctx, "acme", "srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer error = %v", err)
+	}
+	if got := string(srv.LatestVersion.Tools); got != "" && got != "[]" {
+		t.Fatalf("initial tools = %q, want empty array", got)
+	}
+
+	// Second run: same version, now with a tools array declared. The
+	// backfill path must replace the stored empty array with the new list.
+	specV2 := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+mcp_servers:
+  - publisher: "acme"
+    slug: "srv"
+    name: "Server"
+    description: "desc"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        packages:
+          - registry_type: "npm"
+            identifier: "@acme/srv"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+        tools:
+          - name: "read_file"
+            description: "Read a file"
+          - name: "write_file"
+            description: "Write a file"
+agents: []
+`)
+	s2, err := bootstrap.LoadSpec(specV2)
+	if err != nil {
+		t.Fatalf("LoadSpec v2 error = %v", err)
+	}
+	if err := bootstrap.Run(ctx, sharedDB, s2, nil); err != nil {
+		t.Fatalf("Run v2 error = %v", err)
+	}
+
+	// The stored tools array should now carry both entries.
+	srv2, err := sharedDB.GetMCPServer(ctx, "acme", "srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer after backfill error = %v", err)
+	}
+	var toolsOut []map[string]any
+	if err := jsonUnmarshal(srv2.LatestVersion.Tools, &toolsOut); err != nil {
+		t.Fatalf("unmarshal tools after backfill: %v (raw=%s)", err, string(srv2.LatestVersion.Tools))
+	}
+	if len(toolsOut) != 2 {
+		t.Fatalf("tool count after backfill = %d, want 2 (raw=%s)", len(toolsOut), string(srv2.LatestVersion.Tools))
+	}
+	if toolsOut[0]["name"] != "read_file" || toolsOut[1]["name"] != "write_file" {
+		t.Errorf("unexpected tool names after backfill: %+v", toolsOut)
+	}
+
+	// Third run with the SAME tools should be a no-op: the backfill path
+	// only fires when the stored array is empty, so the existing content
+	// is preserved and no error is returned.
+	if err := bootstrap.Run(ctx, sharedDB, s2, nil); err != nil {
+		t.Fatalf("Run v2 (idempotent) error = %v", err)
+	}
+	srv3, err := sharedDB.GetMCPServer(ctx, "acme", "srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer after idempotent run error = %v", err)
+	}
+	var toolsOut3 []map[string]any
+	if err := jsonUnmarshal(srv3.LatestVersion.Tools, &toolsOut3); err != nil {
+		t.Fatalf("unmarshal tools after idempotent run: %v", err)
+	}
+	if len(toolsOut3) != 2 {
+		t.Errorf("tool count after idempotent run = %d, want 2", len(toolsOut3))
 	}
 }
 
@@ -565,7 +691,7 @@ agents:
 	}
 
 	// Verify capabilities persisted on the version.
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions() error = %v", err)
 	}
@@ -765,11 +891,128 @@ agents: []
 	if srv.Status != "deprecated" {
 		t.Errorf("server status = %q, want deprecated", srv.Status)
 	}
-	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID)
+	versions, err := sharedDB.ListMCPServerVersions(ctx, srv.ID, false)
 	if err != nil {
 		t.Fatalf("ListMCPServerVersions() error = %v", err)
 	}
 	if len(versions) != 1 || versions[0].Status != "deprecated" {
 		t.Errorf("version status = %q, want deprecated", versions[0].Status)
+	}
+}
+
+// TestRun_EmitsAuditEvents verifies that the bootstrap loader writes
+// synthetic audit events that mirror what the real admin handlers would emit.
+// Without these, a fresh stack's /audit page and public activity feeds are
+// empty — which defeats the whole point of seeding demo data.
+//
+// Also asserts idempotency: re-running bootstrap with an already-seeded
+// database must not double-emit any event, because the create paths are
+// gated on whether the row existed before the run.
+func TestRun_EmitsAuditEvents(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	path := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+    verified: true
+
+mcp_servers:
+  - publisher: "acme"
+    slug: "audit-srv"
+    name: "Audit MCP"
+    description: "seeded"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        packages:
+          - registry_type: "npm"
+            identifier: "@acme/audit-srv"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+
+agents:
+  - publisher: "acme"
+    slug: "audit-agent"
+    name: "Audit Agent"
+    description: "seeded"
+    public: true
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        endpoint_url: "https://agents.acme.com/audit"
+        skills:
+          - id: "s1"
+            name: "S1"
+            description: "skill"
+            tags: ["x"]
+        authentication:
+          - scheme: "Bearer"
+`)
+	spec, err := bootstrap.LoadSpec(path)
+	if err != nil {
+		t.Fatalf("LoadSpec() error = %v", err)
+	}
+	if err := bootstrap.Run(ctx, sharedDB, spec, nil); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// Pull everything that landed in the audit log. Order is newest-first.
+	events, err := sharedDB.ListAuditEvents(ctx, store.ListAuditParams{Limit: 100})
+	if err != nil {
+		t.Fatalf("ListAuditEvents() error = %v", err)
+	}
+
+	// Expected event counts per action for a single run of the spec above.
+	want := map[domain.AuditAction]int{
+		domain.ActionPublisherCreated:      1,
+		domain.ActionMCPServerCreated:      1,
+		domain.ActionMCPServerVisibility:   1, // flipped public on create
+		domain.ActionMCPVersionCreated:     1,
+		domain.ActionMCPVersionPublished:   1,
+		domain.ActionAgentCreated:          1,
+		domain.ActionAgentVisibility:       1,
+		domain.ActionAgentVersionCreated:   1,
+		domain.ActionAgentVersionPublished: 1,
+	}
+
+	gotCounts := map[domain.AuditAction]int{}
+	for _, e := range events {
+		gotCounts[e.Action]++
+	}
+	for action, n := range want {
+		if gotCounts[action] != n {
+			t.Errorf("action %q: got %d events, want %d", action, gotCounts[action], n)
+		}
+	}
+
+	// Every bootstrap-synthesized event must carry the synthetic actor so
+	// admins can tell seeded activity from real mutations.
+	for _, e := range events {
+		if e.ActorSubject != "system:bootstrap" {
+			t.Errorf("actor_subject = %q, want system:bootstrap (event %s)", e.ActorSubject, e.Action)
+		}
+		if e.ActorEmail != "bootstrap@ai-registry.local" {
+			t.Errorf("actor_email = %q, want bootstrap@ai-registry.local (event %s)", e.ActorEmail, e.Action)
+		}
+		if src, _ := e.Metadata["source"].(string); src != "bootstrap" {
+			t.Errorf("metadata.source = %v, want bootstrap (event %s)", e.Metadata["source"], e.Action)
+		}
+	}
+
+	// Second run — must NOT re-emit any events; everything already exists.
+	before := len(events)
+	if err := bootstrap.Run(ctx, sharedDB, spec, nil); err != nil {
+		t.Fatalf("idempotent Run() error = %v", err)
+	}
+	after, err := sharedDB.ListAuditEvents(ctx, store.ListAuditParams{Limit: 100})
+	if err != nil {
+		t.Fatalf("ListAuditEvents() after 2nd run error = %v", err)
+	}
+	if len(after) != before {
+		t.Errorf("audit event count = %d after re-run, want %d (idempotency broken)", len(after), before)
 	}
 }

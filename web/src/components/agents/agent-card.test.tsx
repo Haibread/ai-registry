@@ -77,4 +77,15 @@ describe('AgentCard', () => {
     expect(screen.queryByText(/skills?/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/A helpful agent/)).not.toBeInTheDocument()
   })
+
+  it('omits the skills chip when the skills field is entirely absent', () => {
+    // Distinct from the empty-array case above: the card does
+    // `lv?.skills && lv.skills.length > 0`, so both `undefined` and `[]`
+    // hide the chip. Guard the undefined branch explicitly.
+    const agent = makeAgent({
+      latest_version: { version: '0.1.0', endpoint_url: 'https://a.example/a2a' },
+    })
+    renderWithRouter(<AgentCard agent={agent} />)
+    expect(screen.queryByText(/skills?/i)).not.toBeInTheDocument()
+  })
 })

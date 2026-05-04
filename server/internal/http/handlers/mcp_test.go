@@ -477,6 +477,131 @@ func TestMCPHandler_CreateVersion_BadPackages(t *testing.T) {
 	}
 }
 
+// TestMCPHandler_CreateVersion_WithTools verifies that a valid `tools[]`
+// payload is persisted and returned through the create handler. The tool
+// list shows up in the response so the admin UI can confirm the save.
+func TestMCPHandler_CreateVersion_WithTools(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "ns-cvwt", "srv-cvwt")
+
+	body := map[string]any{
+		"version":          "1.0.0",
+		"runtime":          "stdio",
+		"protocol_version": "2025-01-01",
+		"packages":         json.RawMessage(`[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		"tools": json.RawMessage(`[
+			{"name":"read_file","description":"reads"},
+			{"name":"write_file","input_schema":{"type":"object"}}
+		]`),
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvwt/srv-cvwt/versions",
+		bytes.NewBuffer(b))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Tools) != 2 {
+		t.Fatalf("tools len = %d, want 2", len(resp.Tools))
+	}
+	if resp.Tools[0]["name"] != "read_file" || resp.Tools[1]["name"] != "write_file" {
+		t.Errorf("tool names = [%v %v], want [read_file write_file]",
+			resp.Tools[0]["name"], resp.Tools[1]["name"])
+	}
+}
+
+// TestMCPHandler_CreateVersion_InvalidTools rejects a malformed tools
+// payload (missing required `name`) with a 422 validation-error before
+// touching the database.
+func TestMCPHandler_CreateVersion_InvalidTools(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "ns-cvit", "srv-cvit")
+
+	payload := `{
+		"version":"1.0.0",
+		"runtime":"stdio",
+		"protocol_version":"2025-01-01",
+		"packages":[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}],
+		"tools":[{"description":"missing name"}]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvit/srv-cvit/versions",
+		bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestMCPHandler_GetServer_IncludesToolsOnLatestVersion verifies that when a
+// server has a published version with a tools[] array, the detail endpoint
+// surfaces those tools under latest_version.tools. Regression guard for
+// forgetting to wire the field into the serverToResponse projection.
+func TestMCPHandler_GetServer_IncludesToolsOnLatestVersion(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "ns-gsv", "srv-gsv")
+	// Publish a version with tools declared.
+	body := map[string]any{
+		"version":          "1.0.0",
+		"runtime":          "stdio",
+		"protocol_version": "2025-01-01",
+		"packages":         json.RawMessage(`[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		"tools":            json.RawMessage(`[{"name":"a"},{"name":"b"},{"name":"c"}]`),
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-gsv/srv-gsv/versions",
+		bytes.NewBuffer(b))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	// Publish.
+	req = httptest.NewRequest(http.MethodPost,
+		"/api/v1/mcp/servers/ns-gsv/srv-gsv/versions/1.0.0/publish", nil)
+	req = req.WithContext(adminCtx())
+	rec = httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("publish: status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Fetch the server detail.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers/ns-gsv/srv-gsv", nil)
+	req = req.WithContext(adminCtx())
+	rec = httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get: status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		LatestVersion struct {
+			Tools []map[string]any `json:"tools"`
+		} `json:"latest_version"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.LatestVersion.Tools) != 3 {
+		t.Errorf("latest_version.tools len = %d, want 3 (%+v)", len(resp.LatestVersion.Tools), resp.LatestVersion.Tools)
+	}
+}
+
 // ─── PublishVersion ─────────────────────────────────────────────────────────
 
 func TestMCPHandler_PublishVersion_Success(t *testing.T) {

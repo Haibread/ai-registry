@@ -46,7 +46,7 @@ func RateLimit(max int, window time.Duration, metrics *observability.Metrics, tr
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := clientIP(r, rl.trustedProxy)
+			ip := ClientIP(r, rl.trustedProxy)
 			now := time.Now()
 
 			rl.mu.Lock()
@@ -105,10 +105,13 @@ func RateLimit(max int, window time.Duration, metrics *observability.Metrics, tr
 	}
 }
 
-// clientIP returns the client IP. X-Forwarded-For is only trusted when the
+// ClientIP returns the client IP. X-Forwarded-For is only trusted when the
 // direct connection (RemoteAddr) falls within trustedProxy. When trustedProxy
-// is nil, RemoteAddr is always used.
-func clientIP(r *http.Request, trustedProxy *net.IPNet) string {
+// is nil, RemoteAddr is always used — XFF is ignored entirely, so untrusted
+// clients cannot spoof their source IP for logging, rate limiting, or abuse
+// audit trails. Exposed so handlers that log IPs can share the exact same
+// trust policy as the rate limiter.
+func ClientIP(r *http.Request, trustedProxy *net.IPNet) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr

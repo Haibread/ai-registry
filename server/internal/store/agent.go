@@ -36,6 +36,7 @@ type AgentRow struct {
 type ListAgentsParams struct {
 	PublicOnly     bool
 	Namespace      string
+	WorkspaceID    string // filter by workspace ULID (optional). Applied independently of Namespace.
 	Status         string // filter by status: "draft" | "published" | "deprecated" | "" (all non-deleted)
 	Visibility     string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string
@@ -90,6 +91,12 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
+		argN++
+		countArgN++
+	}
+	if p.WorkspaceID != "" {
+		filterWhere += fmt.Sprintf(" AND a.workspace_id = $%d", argN)
+		filterArgs = append(filterArgs, p.WorkspaceID)
 		argN++
 		countArgN++
 	}
@@ -362,6 +369,10 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 // CreateAgentParams holds the fields needed to insert a new agent.
 type CreateAgentParams struct {
 	PublisherID string
+	// WorkspaceID is optional: empty falls back to the publisher's
+	// `default` workspace, created lazily on demand. Hierarchical
+	// handlers pass this explicitly from the URL.
+	WorkspaceID string
 	Slug        string
 	Name        string
 	Description string
@@ -372,13 +383,23 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 	ctx, span := startSpan(ctx, "CreateAgent")
 	defer span.End()
 
+	wsID := p.WorkspaceID
+	if wsID == "" {
+		var err error
+		wsID, err = db.ensureDefaultWorkspaceID(ctx, p.PublisherID)
+		if err != nil {
+			recordErr(span, err)
+			return nil, err
+		}
+	}
+
 	id := NewULID()
 	now := time.Now().UTC()
 
 	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO agents (id, publisher_id, slug, name, description, visibility, status, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,'private','draft',$6,$6)`,
-		id, p.PublisherID, p.Slug, p.Name, p.Description, now,
+		INSERT INTO agents (id, publisher_id, workspace_id, slug, name, description, visibility, status, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,'private','draft',$7,$7)`,
+		id, p.PublisherID, wsID, p.Slug, p.Name, p.Description, now,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -403,18 +424,28 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 	}, nil
 }
 
-// ListAgentVersions returns all versions for a given agent ID.
-func (db *DB) ListAgentVersions(ctx context.Context, agentID string) ([]domain.AgentVersion, error) {
+// ListAgentVersions returns versions for a given agent ID. When
+// publicOnly is true the result excludes content that has not reached
+// `published` (drafts, pending_review, rejected) so the workflow does
+// not leak to anonymous callers.
+func (db *DB) ListAgentVersions(ctx context.Context, agentID string, publicOnly bool) ([]domain.AgentVersion, error) {
 	ctx, span := startSpan(ctx, "ListAgentVersions")
 	defer span.End()
 
+	where := "WHERE agent_id = $1"
+	if publicOnly {
+		where += " AND published_at IS NOT NULL"
+	}
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM agent_versions
-		WHERE agent_id = $1
+		`+where+`
 		ORDER BY created_at DESC`, agentID)
 	if err != nil {
 		recordErr(span, err)
@@ -438,18 +469,27 @@ func (db *DB) ListAgentVersions(ctx context.Context, agentID string) ([]domain.A
 	return result, nil
 }
 
-// GetAgentVersion retrieves a specific version by agent ID and semver string.
-func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string) (*domain.AgentVersion, error) {
+// GetAgentVersion retrieves a specific version by agent ID and semver
+// string. When publicOnly is true a non-published row appears as
+// ErrNotFound to the caller.
+func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string, publicOnly bool) (*domain.AgentVersion, error) {
 	ctx, span := startSpan(ctx, "GetAgentVersion")
 	defer span.End()
 
+	where := "WHERE agent_id = $1 AND version = $2"
+	if publicOnly {
+		where += " AND published_at IS NOT NULL"
+	}
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM agent_versions
-		WHERE agent_id = $1 AND version = $2`, agentID, version)
+		`+where, agentID, version)
 
 	v, err := scanAgentVersion(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -472,7 +512,10 @@ func (db *DB) GetLatestPublishedAgentVersion(ctx context.Context, agentID string
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
 		       coalesce(documentation_url,''), coalesce(icon_url,''),
-		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at
+		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
+		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		       coalesce(review_decision,''), coalesce(rejection_reason,'')
 		FROM agent_versions
 		WHERE agent_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -676,7 +719,10 @@ func (db *DB) SetAllAgentVersionsStatus(ctx context.Context, agentID string, sta
 		          default_input_modes, default_output_modes, provider,
 		          coalesce(documentation_url,''), coalesce(icon_url,''),
 		          protocol_version, status, coalesce(status_message,''), status_changed_at,
-		          published_at, created_at`,
+		          published_at, created_at, updated_at,
+		          review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
+		          reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
+		          coalesce(review_decision,''), coalesce(rejection_reason,'')`,
 		status, statusMessage, agentID)
 	if err != nil {
 		recordErr(span, err)
@@ -829,6 +875,9 @@ func scanAgentVersion(s interface{ Scan(...any) error }) (domain.AgentVersion, e
 		&v.DocumentationURL, &v.IconURL,
 		&v.ProtocolVersion, &v.Status, &v.StatusMessage, &v.StatusChangedAt,
 		&v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
+		&v.ReviewState, &v.Revision, &v.SubmittedAt, &v.SubmittedBy, &v.SubmittedByEmail,
+		&v.ReviewedAt, &v.ReviewedBy, &v.ReviewedByEmail,
+		&v.ReviewDecision, &v.RejectionReason,
 	)
 	return v, err
 }

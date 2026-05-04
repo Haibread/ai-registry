@@ -33,8 +33,9 @@ vi.mock('oidc-client-ts', () => ({
   WebStorageStateStore: vi.fn().mockImplementation(() => ({})),
 }))
 
-import { UserManager } from 'oidc-client-ts'
+import { UserManager, WebStorageStateStore } from 'oidc-client-ts'
 const MockUserManager = vi.mocked(UserManager)
+const MockWebStorageStateStore = vi.mocked(WebStorageStateStore)
 
 function AuthConsumer() {
   const { isLoading, loginError, accessToken, login } = useAuth()
@@ -56,11 +57,14 @@ function renderAuth() {
   )
 }
 
-function mockConfigJson(um: ReturnType<typeof makeUserManager>) {
+function mockConfigJson(
+  um: ReturnType<typeof makeUserManager>,
+  extra: Record<string, unknown> = {},
+) {
   MockUserManager.mockImplementation(() => um as never)
   vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
     new Response(
-      JSON.stringify({ oidc_issuer: 'https://auth.example.com', oidc_client_id: 'spa' }),
+      JSON.stringify({ oidc_issuer: 'https://auth.example.com', oidc_client_id: 'spa', ...extra }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     ),
   )
@@ -70,6 +74,7 @@ beforeEach(() => {
   // Reset the module-level promise cache so each test starts fresh.
   resetManagerForTesting()
   MockUserManager.mockReset()
+  MockWebStorageStateStore.mockClear()
 })
 
 afterEach(() => {
@@ -253,6 +258,63 @@ describe('AuthProvider — event wiring and session lifecycle', () => {
       expect(screen.getByTestId('token').textContent).toBe('persisted-token'),
     )
     expect(screen.getByTestId('loading').textContent).toBe('false')
+  })
+})
+
+describe('AuthProvider — token storage selection', () => {
+  // These tests pin the XSS-hardening contract: by default the SPA persists
+  // OIDC tokens in sessionStorage (scoped to the tab, XSS can still read it
+  // but the blast radius is smaller than a permanent localStorage token).
+  // Only when the server's /config.json explicitly sets auth_storage='local'
+  // — an E2E-only escape hatch — do we fall back to localStorage.
+
+  it('uses sessionStorage when /config.json omits auth_storage (production default)', async () => {
+    const um = makeUserManager()
+    mockConfigJson(um) // no auth_storage field
+
+    renderAuth()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('loading').textContent).toBe('false'),
+    )
+    expect(MockWebStorageStateStore).toHaveBeenCalledOnce()
+    expect(MockWebStorageStateStore.mock.calls[0][0]).toEqual({ store: window.sessionStorage })
+  })
+
+  it('uses sessionStorage when /config.json sets auth_storage="session"', async () => {
+    const um = makeUserManager()
+    mockConfigJson(um, { auth_storage: 'session' })
+
+    renderAuth()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('loading').textContent).toBe('false'),
+    )
+    expect(MockWebStorageStateStore.mock.calls[0][0]).toEqual({ store: window.sessionStorage })
+  })
+
+  it('uses localStorage when /config.json opts in with auth_storage="local" (E2E mode)', async () => {
+    const um = makeUserManager()
+    mockConfigJson(um, { auth_storage: 'local' })
+
+    renderAuth()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('loading').textContent).toBe('false'),
+    )
+    expect(MockWebStorageStateStore.mock.calls[0][0]).toEqual({ store: window.localStorage })
+  })
+
+  it('falls back to sessionStorage for unexpected auth_storage values', async () => {
+    const um = makeUserManager()
+    mockConfigJson(um, { auth_storage: 'garbage' })
+
+    renderAuth()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('loading').textContent).toBe('false'),
+    )
+    expect(MockWebStorageStateStore.mock.calls[0][0]).toEqual({ store: window.sessionStorage })
   })
 })
 

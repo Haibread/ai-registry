@@ -197,7 +197,7 @@ func TestValidateCapabilities(t *testing.T) {
 	}{
 		{name: "empty is ok", input: ""},
 		{name: "empty object", input: `{}`},
-		{name: "with tools", input: `{"tools":[{"name":"myTool"}]}`},
+		{name: "with tools flag", input: `{"tools":{"listChanged":true}}`},
 		{name: "invalid JSON", input: `{bad`, wantErr: true},
 	}
 
@@ -206,6 +206,86 @@ func TestValidateCapabilities(t *testing.T) {
 			err := domain.ValidateCapabilities(json.RawMessage(tt.input))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateCapabilities() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateTools(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		// ── Allowed-empty cases ────────────────────────────────────────────
+		// Unlike ValidateSkills, an empty tools field is legal: the publisher
+		// may simply not declare tools up front. Each of these produces the
+		// same "no tools declared" semantic and must NOT error.
+		{name: "empty string → default to []", input: ``},
+		{name: "literal null", input: `null`},
+		{name: "empty array", input: `[]`},
+
+		// ── Valid-shape cases ──────────────────────────────────────────────
+		{
+			name:  "single tool with name only",
+			input: `[{"name":"read_file"}]`,
+		},
+		{
+			name: "multiple tools with optional fields",
+			input: `[
+				{"name":"read_file","description":"Reads a file"},
+				{"name":"write_file","description":"Writes a file","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}},
+				{"name":"list_dir","annotations":{"destructive":false}}
+			]`,
+		},
+		{
+			name:  "input_schema explicit null is ignored",
+			input: `[{"name":"n","input_schema":null}]`,
+		},
+
+		// ── Shape violations ───────────────────────────────────────────────
+		{
+			name:    "not an array",
+			input:   `{"name":"oops"}`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid JSON",
+			input:   `[{"name":`,
+			wantErr: true,
+		},
+		{
+			name:    "missing name",
+			input:   `[{"description":"no name"}]`,
+			wantErr: true,
+		},
+		{
+			name:    "empty name",
+			input:   `[{"name":""}]`,
+			wantErr: true,
+		},
+		{
+			name:    "duplicate names",
+			input:   `[{"name":"dup"},{"name":"dup"}]`,
+			wantErr: true,
+		},
+		{
+			name:    "input_schema is an array, not an object",
+			input:   `[{"name":"n","input_schema":["type","object"]}]`,
+			wantErr: true,
+		},
+		{
+			name:    "input_schema is a string",
+			input:   `[{"name":"n","input_schema":"not an object"}]`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := domain.ValidateTools(json.RawMessage(tt.input))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateTools(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
 			}
 		})
 	}

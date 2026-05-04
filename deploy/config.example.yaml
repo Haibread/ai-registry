@@ -44,3 +44,13 @@ auth:
   # Override JWKS fetch URL (useful inside Docker where the public URL is
   # unreachable from the server container).
   oidc_jwks_url: ""
+  # Public OAuth 2.0 client ID for the browser SPA (served via /config.json).
+  oidc_client_id: ""
+  # Expected JWT `aud` value (OAuth 2.1 resource indicators / MCP audience
+  # binding). When set, tokens minted for other clients on the same realm
+  # are rejected. Leave empty only in dev.
+  oidc_audience: ""
+  # SPA token storage: "session" (default, XSS-safer) or "local" (E2E only —
+  # Playwright's storageState() captures localStorage). Never use "local" in
+  # production.
+  auth_storage: "session"

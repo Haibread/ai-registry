@@ -75,18 +75,25 @@ describe('AdminSidebar — active route detection', () => {
     expect(linkClass('API Keys')).toContain(ACTIVE_CLASS)
   })
 
+  it('highlights Activity on /admin/audit', () => {
+    renderSidebar('/admin/audit')
+    expect(linkClass('Activity')).toContain(ACTIVE_CLASS)
+  })
+
   it('only highlights one item at a time', () => {
     renderSidebar('/admin/mcp')
     const activeLinks = screen.getAllByRole('link').filter(el => el.className.includes(ACTIVE_CLASS))
     expect(activeLinks).toHaveLength(1)
   })
 
-  it('renders all five nav items', () => {
+  it('renders all nav items', () => {
     renderSidebar('/admin')
     expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /publishers/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /mcp servers/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /agents/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /activity/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /api keys/i })).toBeInTheDocument()
   })
 })

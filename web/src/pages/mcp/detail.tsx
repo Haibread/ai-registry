@@ -16,6 +16,7 @@ import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { Badge, StatusBadge, VisibilityBadge, VerifiedBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
@@ -33,7 +34,8 @@ import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { PublisherSidebar } from '@/components/shared/publisher-sidebar'
 import { StatTile } from '@/components/shared/stat-tile'
 import { SectionHeader } from '@/components/shared/section-header'
-import { ActivityStrip } from '@/components/shared/activity-strip'
+import { EngagementStrip } from '@/components/shared/engagement-strip'
+import { ActivityFeed } from '@/components/shared/activity-feed'
 import { RelatedEntries } from '@/components/shared/related-entries'
 import { VersionHistory } from '@/components/shared/version-history'
 import { StickyDetailHeader } from '@/components/shared/sticky-detail-header'
@@ -119,7 +121,7 @@ export default function MCPDetailPage() {
           segments={[
             { label: 'Home', href: '/' },
             { label: 'MCP Servers', href: '/mcp' },
-            { label: data.namespace, href: `/mcp?namespace=${data.namespace}` },
+            { label: data.namespace, href: `/mcp/${data.namespace}` },
             { label: data.slug },
           ]}
         />
@@ -137,7 +139,7 @@ export default function MCPDetailPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm text-muted-foreground font-mono">
-              <Link to={`/mcp?namespace=${data.namespace}`} className="hover:text-foreground transition-colors">
+              <Link to={`/mcp/${data.namespace}`} className="hover:text-foreground transition-colors">
                 {data.namespace}
               </Link>
               /{data.slug}
@@ -170,6 +172,12 @@ export default function MCPDetailPage() {
 
         {data.description && <p className="text-muted-foreground max-w-prose">{data.description}</p>}
 
+        {/* README — the publisher's narrative description. Rendered near
+            the top of the page (above the tabs) so it's always visible,
+            regardless of which tab the reader has open. Fills the page
+            container width — MarkdownRenderer already sets max-w-none. */}
+        {data.readme && <MarkdownRenderer content={data.readme} />}
+
         <Separator />
 
         {/* Tabbed content */}
@@ -177,6 +185,9 @@ export default function MCPDetailPage() {
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="installation">Installation</TabsTrigger>
+            <TabsTrigger value="tools">
+              Tools{lv?.tools && lv.tools.length > 0 ? ` (${lv.tools.length})` : ''}
+            </TabsTrigger>
             <TabsTrigger value="versions">Versions</TabsTrigger>
             <TabsTrigger value="json">JSON</TabsTrigger>
           </TabsList>
@@ -317,26 +328,27 @@ export default function MCPDetailPage() {
               </div>
             </section>
 
-            {/* ─── Activity ───
+            {/* ─── Engagement ───
                 Low-priority engagement numbers + timestamps rendered as a
                 compact inline strip. No card, no emphasis — these are here
                 for reference, not as the page's headline. */}
-            <ActivityStrip
+            <EngagementStrip
               viewCount={data.view_count ?? 0}
               copyCount={data.copy_count ?? 0}
               createdAt={data.created_at}
               updatedAt={data.updated_at}
             />
 
-            {/* README */}
-            {data.readme && (
-              <>
-                <Separator />
-                <div className="max-w-prose">
-                  <MarkdownRenderer content={data.readme} />
-                </div>
-              </>
-            )}
+            {/* ─── Activity ───
+                Privacy-scrubbed lifecycle feed: creation, publishes,
+                deprecations, visibility changes. Backed by the public
+                per-resource /activity endpoint so it stays in sync with
+                the audit log without exposing actor identity. */}
+            <ActivityFeed
+              resourceType="mcp"
+              namespace={ns}
+              slug={slug}
+            />
           </TabsContent>
 
           {/* ── Installation Tab ── */}
@@ -393,6 +405,60 @@ export default function MCPDetailPage() {
                 icon={<Package className="h-8 w-8 text-muted-foreground" />}
                 title="No packages available"
                 description="This server has no published packages yet."
+              />
+            )}
+          </TabsContent>
+
+          {/* ── Tools Tab ──
+              Renders the first-class `tools[]` array from the latest version.
+              This is NOT the `capabilities.tools` flag (which is the MCP spec's
+              capability-negotiation object `{listChanged:bool}`). The array is
+              publisher-declared via the admin API; the MCP spec's `tools/list`
+              method would return these at runtime for clients that don't have
+              access to the registry metadata. */}
+          <TabsContent value="tools" className="mt-6 space-y-4">
+            {lv?.tools && lv.tools.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {lv.tools.map((tool) => (
+                  <Card key={tool.name} className="bg-muted/30">
+                    <CardHeader className="pb-2 pt-4 px-4">
+                      <CardTitle className="text-sm flex items-center gap-2 font-mono">
+                        <Cpu className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        {tool.name}
+                      </CardTitle>
+                      {tool.description && (
+                        <CardDescription className="text-xs">{tool.description}</CardDescription>
+                      )}
+                    </CardHeader>
+                    {(tool.input_schema || tool.annotations) && (
+                      <CardContent className="pb-3 px-4 space-y-2">
+                        {tool.annotations && Object.keys(tool.annotations).length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(tool.annotations).map(([k, v]) =>
+                              typeof v === 'boolean' && v ? (
+                                <Badge key={k} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  {k}
+                                </Badge>
+                              ) : null,
+                            )}
+                          </div>
+                        )}
+                        {tool.input_schema && (
+                          <RawJsonViewer
+                            data={tool.input_schema}
+                            title="Input schema"
+                          />
+                        )}
+                      </CardContent>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={<Cpu className="h-8 w-8 text-muted-foreground" />}
+                title="No tools declared"
+                description="This server has not declared any tools. MCP clients can still query the server's runtime tools/list method if the server advertises the tools capability."
               />
             )}
           </TabsContent>

@@ -7,8 +7,10 @@ import GettingStartedPage from '@/pages/getting-started'
 import ChangelogPage from '@/pages/changelog'
 import PublisherDetailPage from '@/pages/publishers/detail'
 import MCPListPage from '@/pages/mcp/list'
+import MCPNamespacePage from '@/pages/mcp/namespace'
 import MCPDetailPage from '@/pages/mcp/detail'
 import AgentListPage from '@/pages/agents/list'
+import AgentNamespacePage from '@/pages/agents/namespace'
 import AgentDetailPage from '@/pages/agents/detail'
 import { AuthCallback } from '@/auth/AuthCallback'
 import NotFoundPage from '@/pages/not-found'
@@ -29,6 +31,8 @@ const AdminPublisherDetail = lazy(() => import('@/pages/admin/publishers/detail'
 const AdminPublisherNew = lazy(() => import('@/pages/admin/publishers/new'))
 const AdminApiKeys = lazy(() => import('@/pages/admin/api-keys'))
 const AdminReports = lazy(() => import('@/pages/admin/reports'))
+const AdminAudit = lazy(() => import('@/pages/admin/audit'))
+const AdminReviewQueue = lazy(() => import('@/pages/admin/review'))
 
 // Minimal fallback shown while an admin chunk is loading. Intentionally tiny —
 // the admin surface is gated behind auth and the chunks are small, so a full
@@ -50,8 +54,10 @@ export function AppRoutes() {
       <Route path="/changelog" element={<ChangelogPage />} />
       <Route path="/publishers/:slug" element={<PublisherDetailPage />} />
       <Route path="/mcp" element={<MCPListPage />} />
+      <Route path="/mcp/:namespace" element={<MCPNamespacePage />} />
       <Route path="/mcp/:ns/:slug" element={<MCPDetailPage />} />
       <Route path="/agents" element={<AgentListPage />} />
+      <Route path="/agents/:namespace" element={<AgentNamespacePage />} />
       <Route path="/agents/:ns/:slug" element={<AgentDetailPage />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
@@ -76,6 +82,8 @@ export function AppRoutes() {
         <Route path="publishers/:slug" element={<AdminPublisherDetail />} />
         <Route path="api-keys" element={<AdminApiKeys />} />
         <Route path="reports" element={<AdminReports />} />
+        <Route path="review" element={<AdminReviewQueue />} />
+        <Route path="audit" element={<AdminAudit />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

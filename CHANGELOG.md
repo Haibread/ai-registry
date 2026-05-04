@@ -2,6 +2,265 @@
 
 All notable changes to this project are documented here.
 
+## v0.3.2
+
+Helm-chart-only patch release. Four fixes that unblock a fresh
+`cnpg.enabled=true` install; no server/web/API changes.
+
+### 🐘 CNPG superuser secret is auto-created again
+
+The Cluster resource set `spec.superuserSecret.name`, which CNPG
+interprets as "the user is providing this secret" and suppresses
+auto-generation. A fresh install therefore left the backend pod stuck
+in `CreateContainerConfigError` with `secret
+"<cluster>-superuser" not found`.
+
+- `superuserSecret` removed from `templates/cnpg-cluster.yaml`. CNPG
+  now auto-generates `<clusterName>-superuser` as intended.
+- Unused `cnpg.superuserSecretName` value and helper branch deleted;
+  the helper always returns `<clusterName>-superuser`.
+
+### 🎯 DATABASE_URL targets the actual database
+
+CNPG's auto-generated superuser `uri` hardcodes `dbname=*` (wildcard),
+so even once the secret existed the server crashed on start with
+`database "*" does not exist`.
+
+- Backend deployment now builds `DATABASE_URL` from the superuser
+  secret's `username` + `password`, the CNPG `-rw` service, and
+  `cnpg.initdb.database`. The `uri` key is no longer consumed.
+- Scheme is `postgres://` — `golang-migrate` registers its driver
+  under `postgres` and fails on `postgresql://` with
+  `unknown driver postgresql`.
+
+### 🚪 Ingress disabled by default
+
+`ingress.enabled` now defaults to `false`, matching the existing
+`httpRoute.enabled=false` and `cnpg.enabled=false` defaults.
+Operators opt in to the networking path they actually use instead of
+discovering a stray Ingress resource on first install.
+
+## v0.3.1
+
+Security bugfix release. Four high-severity findings from an internal
+security review are fixed; no feature changes. All API shapes stable.
+
+### 🔐 JWT audience binding (H1)
+
+The JWT validator now enforces the `aud` claim when `OIDC_AUDIENCE` is
+set. Previously the server accepted any token minted by the configured
+issuer, even one intended for a different client on the same realm —
+a straight violation of the MCP authorization spec (OAuth 2.1
+resource indicators).
+
+- `auth.Validator` takes an `audience` string; when non-empty it is
+  passed to `jwt.WithAudience` during parse.
+- `OIDC_AUDIENCE` wired through env (`OIDC_AUDIENCE`), YAML
+  (`auth.oidc_audience`), and defaults — per the CLAUDE.md config
+  rule. Example + `.env.example` updated.
+- Keycloak dev realm (`deploy/keycloak-realm-dev.json`) now emits
+  tokens with `aud=ai-registry-server` via an inline
+  `oidc-audience-mapper` on both `ai-registry-web` and
+  `ai-registry-cli` clients.
+- Docker Compose (`dev`, prod, CI) and Helm default
+  `OIDC_AUDIENCE=ai-registry-server`.
+- Tests: reject tokens missing `aud`, reject tokens with wrong `aud`,
+  accept tokens with matching `aud`, and the audience check is
+  skipped when `OIDC_AUDIENCE` is empty (dev-only escape hatch).
+
+### 🔒 SPA token storage defaults to sessionStorage (H2)
+
+Access and refresh tokens were previously held in `localStorage`,
+meaning any XSS on the admin UI could exfiltrate them and reuse them
+across tabs indefinitely. The SPA now defaults to `sessionStorage`
+(scoped to a single tab, cleared on close), and `localStorage` is an
+opt-in chosen by the server.
+
+- `GET /config.json` returns a new `auth_storage` field
+  (`"session"` | `"local"`, default `"session"`). The server rejects
+  any other value and falls back to `"session"`.
+- `oidc-client-ts` `UserManager` is constructed with a
+  `WebStorageStateStore` backed by the chosen store.
+- The Playwright-friendly `"local"` mode is still available for E2E
+  because `storageState()` only captures `localStorage`. CI compose
+  sets `AUTH_STORAGE=local`; no production deployment should.
+- `AUTH_STORAGE` wired through env + YAML + default per CLAUDE.md.
+- Tests: defaults to sessionStorage, honours `auth_storage=local`
+  when served, coerces unknown values back to `"session"`.
+
+### 🛰 Trusted-proxy gate on reporter IPs (H3)
+
+`POST /reports` (user bug/abuse reports) was honouring
+`X-Forwarded-For` from every client, letting anyone forge the
+`reporter_ip` column. The endpoint now goes through the existing
+`middleware.ClientIP` helper, which only accepts XFF / X-Real-IP
+from peers inside `TRUSTED_PROXY_CIDR`.
+
+- `middleware.ClientIP` was exported so handlers share the same
+  trust policy as the rate-limit middleware.
+- `ReportHandlers` takes a `*net.IPNet` at construction; `nil`
+  disables proxy trust entirely (safe default).
+- The ad-hoc `reporterIP` helper was deleted.
+- Tests: XFF ignored when no trusted proxy configured; XFF honoured
+  only when the remote peer is inside the configured CIDR.
+
+### 🌐 CORS never allows credentials (H4)
+
+Our API is bearer-only — no cookies — so echoing
+`Access-Control-Allow-Credentials: true` was a latent footgun in
+case a future change ever added cookie auth. The middleware now
+guarantees the header is never set, and wildcard origins emit a
+literal `*` instead of reflecting the request `Origin`.
+
+- `slices.Contains(allowedOrigins, "*")` → `Allow-Origin: *`, no
+  `Vary`.
+- Non-wildcard match → `Allow-Origin: <origin>` + `Vary: Origin`.
+- No code path sets `Allow-Credentials`, and a regression test pins
+  the invariant.
+
+### 🧪 Verification
+
+- Unit tests: 9 Go packages green (`go test -count=1 ./...`), 539/540
+  Vitest (`web` unit + component), `tsc --noEmit` clean, ESLint 0
+  warnings.
+- End-to-end against a fresh Keycloak re-import: admin token →
+  `GET /api/v1/stats` 200; non-admin token → 403; anonymous → 401;
+  issued access tokens carry `aud=ai-registry-server` and
+  `realm_access.roles`.
+
+## v0.3.0
+
+Browse-polish release. Three of the four v0.3.0 tasks from `PLAN.md`
+land here (Task 2's card redesign was delivered ahead of schedule in
+v0.2.x and only needed an icon-tile polish this cycle) plus the
+bootstrap + audit-log work needed to make the new activity feed
+interesting on a fresh stack. Zero breaking changes.
+
+### ✨ MCP tools become a first-class field (Task 1)
+
+MCP clients negotiate `capabilities.tools` as a boolean feature flag
+(`{listChanged: bool}`), NOT a tool list — the actual list is only
+returned at runtime via `tools/list`. The registry was previously
+reading the capabilities flag as if it were a list, which silently
+under-counted servers that advertised tools. v0.3.0 introduces a typed
+`tools[]` field on `mcp_server_versions` so the registry can display
+tool counts and metadata offline, and ends the semantic collision
+with the spec's capabilities flag.
+
+- Migration `000007_mcp_tools` adds `tools JSONB NOT NULL DEFAULT '[]'`
+  to `mcp_server_versions`. Additive — no backfill needed.
+- `domain.MCPTool` struct + `domain.ValidateTools` (non-empty name,
+  unique within array, optional `description` / `input_schema` /
+  `annotations`). Empty array is valid.
+- Store, handler, and OpenAPI all carry the new field end-to-end.
+  `POST /api/v1/mcp/servers/{ns}/{slug}/versions` accepts `tools` and
+  validates via `ValidateTools`. The `/v0/` spec-shaped endpoints are
+  unchanged.
+- Bootstrap: `MCPVersionSpec.Tools` YAML field, with realistic tools
+  populated for 7 versions across 6 servers (filesystem, computer-use,
+  github, web-search, postgres, kubernetes) so local dev has data.
+- New **Tools tab** on the MCP server detail page: one card per tool
+  (name + description + annotation badges + collapsible `input_schema`
+  viewer), with an empty state referencing the spec's runtime
+  `tools/list` path. Tab label shows count (`Tools (3)`) when
+  populated.
+- MCP card chip rewired to `lv.tools.length`, hides when absent or
+  empty. Regression test: `capabilities.tools: {listChanged: true}`
+  alone does NOT render the chip.
+- Admin new-server form: JSON textarea for declaring tools when
+  creating the first version. Client + server both re-validate.
+
+### 🗂 Namespace landing pages (Task 3)
+
+Every publisher now has a scoped landing page for each catalogue half:
+`/mcp/{namespace}` and `/agents/{namespace}`. Until now the only way
+to see "everything by this publisher" was the flat list filtered via a
+query string — now it's a first-class route that can be linked to,
+bookmarked, and crawled.
+
+- New pages fetch the publisher header (`GET /api/v1/publishers/{slug}`)
+  and the filtered list (`GET /api/v1/mcp/servers?namespace=X` /
+  `GET /api/v1/agents?namespace=X`) in parallel; three distinct states
+  (loading skeleton, 404 when the publisher doesn't exist, empty-state
+  when the publisher exists with zero entries of that kind).
+- Namespace chip on every card, detail-page breadcrumbs, and the
+  publisher-row link now point at the path-param URLs instead of
+  `?namespace=X` query strings. Filter behaviour on the flat lists is
+  preserved — existing e2e pagination tests pass unchanged.
+- 10 new Vitest cases covering render / loading / empty / 404 /
+  links-out across both namespace pages. Playwright `coverage-public`
+  gains 5 new smoke tests: seeded entries appear, private-MCP is
+  hidden, detail-page link works, unknown-namespace 404 renders, chip
+  navigation from the flat list lands on the new route.
+
+### 📜 Per-entry activity feed + admin audit page (Task 4)
+
+Every MCP server and agent detail page now shows a privacy-scrubbed
+lifecycle log: creations, publishes, visibility changes,
+deprecations. The new admin `/audit` page is the full-fidelity view
+with actor-identity columns and filters, so operators can drill from
+the global log into a single entry's history and back. Both surfaces
+share one backing endpoint per resource kind.
+
+- **Public endpoints** `GET /api/v1/mcp/servers/{ns}/{slug}/activity`
+  and the agents equivalent. Project from `audit_log` filtered by
+  `(resource_type, resource_id)`, apply a privacy scrub (drop
+  `actor_subject` / `actor_email`; metadata key allowlist: `from`,
+  `to`, `visibility`, `reason`, `version`, `field`), and drop draft
+  `*version.created` events so the public feed only shows
+  lifecycle-relevant actions. Cursor pagination on
+  `(created_at, id) DESC`. Rate-limited through the same per-IP bucket
+  as the other public reads.
+- **Admin `/audit` page**: filterable full-fidelity view of the audit
+  log with actor identity (subject + email + role) and per-row
+  drill-down links to the affected resource. Filter by resource type
+  to narrow the feed; cursor paginates the same way.
+- **Bootstrap** now emits synthetic audit events
+  (`actor_subject = system:bootstrap`,
+  `actor_email = bootstrap@ai-registry.local`,
+  `metadata.source = "bootstrap"`) for publisher / server / version /
+  agent / agent-version first-time inserts so a freshly-brought-up
+  stack has realistic activity to render. Re-running the bootstrap is
+  idempotent — it does not double-emit.
+- **Layout**: the publisher README now renders at full container width
+  directly under the short description (above the tabs) on MCP + agent
+  detail pages, so the narrative content is always visible regardless
+  of which tab the reader has open. Old `ActivityStrip` component
+  renamed to `EngagementStrip` to free the "Activity" name for the
+  lifecycle feed.
+- **Tests**: new Playwright `activity` project exercises admin +
+  public surfaces end-to-end, including a wire-level assertion that
+  the public endpoint never leaks `actor_subject` / `actor_email` /
+  `client_ip` / `user_agent` / `internal_note`. Vitest gains the
+  `ActivityFeed` component suite (loading / empty / populated /
+  load-more / privacy scrub / per-resource endpoint selection) and the
+  `admin/audit` page suite. Bootstrap test covers audit emission shape
+  + idempotency.
+
+### 💅 UX polish
+
+- **Card icon tile** — a small rounded identity anchor (`Boxes` for
+  MCP servers, `Bot` for agents) renders before the name on both
+  catalogue cards. Long names truncate with ellipsis instead of
+  pushing the right-side badge cluster off-card. The rest of each
+  card — version/status cluster, runtime/ecosystem chips, tools row,
+  description, transport block, footer — is byte-for-byte unchanged.
+- **Pointer cursors** on the Button, Tabs, and Select primitives so
+  every interactive surface in the UI gets the hand cursor on hover.
+  Previously only a handful of ad-hoc components set it.
+
+### ⚠️ Upgrade notes
+
+No breaking API changes. The `tools` field is additive. Namespace
+URLs become first-class — existing bookmarks pointing at
+`?namespace=X` query strings continue to work on the flat list pages.
+The `audit_log` table is unchanged; bootstrap's synthetic events
+reuse the existing shape with a sentinel `source = "bootstrap"`
+metadata marker so they can be filtered out by operators who don't
+want them in analytics.
+
+**Full changelog:** `v0.2.2...v0.3.0`
+
 ## v0.2.2
 
 Coverage-depth release. Zero user-visible feature changes — this patch

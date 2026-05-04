@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +15,11 @@ import (
 )
 
 func newReportsRouter() *chi.Mux {
-	h := handlers.NewReportHandlers(testDB)
+	return newReportsRouterWithProxy(nil)
+}
+
+func newReportsRouterWithProxy(trustedProxy *net.IPNet) *chi.Mux {
+	h := handlers.NewReportHandlers(testDB, trustedProxy)
 	r := chi.NewRouter()
 	r.Post("/api/v1/reports", h.CreateReport)
 	r.Get("/api/v1/reports", h.ListReports)
@@ -133,6 +138,93 @@ func TestReportHandler_List_IncludesReporterIP(t *testing.T) {
 	}
 	if _, ok := body.Items[0]["reporter_ip"]; !ok {
 		t.Error("list response for admins should include reporter_ip")
+	}
+}
+
+// TestReportHandler_Create_XFFIgnoredWithoutTrustedProxy pins H3: when the
+// server is deployed directly internet-facing (no trusted proxy configured),
+// an X-Forwarded-For header from an untrusted client must NOT be used as the
+// reporter IP. Otherwise anyone could poison reporter_ip audit data by
+// forging the header.
+func TestReportHandler_Create_XFFIgnoredWithoutTrustedProxy(t *testing.T) {
+	resetTables(t)
+
+	buf, _ := json.Marshal(map[string]any{
+		"resource_type": "mcp_server",
+		"resource_id":   "01HSRV",
+		"issue_type":    "broken",
+		"description":   "attempting to spoof reporter_ip via XFF",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/reports", bytes.NewReader(buf))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "10.0.0.1, 192.168.0.1")
+	req.RemoteAddr = "203.0.113.5:4444"
+	rec := httptest.NewRecorder()
+	newReportsRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201. body=%s", rec.Code, rec.Body.String())
+	}
+
+	// List as admin and confirm the reporter_ip was NOT taken from the
+	// attacker-supplied XFF header.
+	list := httptest.NewRecorder()
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/reports?status=pending", nil)
+	newReportsRouter().ServeHTTP(list, listReq)
+	var body struct {
+		Items []map[string]any `json:"items"`
+	}
+	_ = json.NewDecoder(list.Body).Decode(&body)
+	if len(body.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(body.Items))
+	}
+	got, _ := body.Items[0]["reporter_ip"].(string)
+	if got == "10.0.0.1" {
+		t.Errorf("reporter_ip = %q — XFF must be ignored when no trusted proxy is configured", got)
+	}
+	if got != "203.0.113.5" {
+		t.Errorf("reporter_ip = %q, want RemoteAddr host %q", got, "203.0.113.5")
+	}
+}
+
+func TestReportHandler_Create_XFFTrustedFromProxy(t *testing.T) {
+	resetTables(t)
+
+	// Accept XFF from connections inside 127.0.0.0/8 (the proxy).
+	_, proxyCIDR, err := net.ParseCIDR("127.0.0.0/8")
+	if err != nil {
+		t.Fatalf("parse cidr: %v", err)
+	}
+	router := newReportsRouterWithProxy(proxyCIDR)
+
+	buf, _ := json.Marshal(map[string]any{
+		"resource_type": "agent",
+		"resource_id":   "01HAG",
+		"issue_type":    "spam",
+		"description":   "report posted through the reverse proxy",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/reports", bytes.NewReader(buf))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "198.51.100.42, 127.0.0.1")
+	req.RemoteAddr = "127.0.0.1:4444"
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d. body=%s", rec.Code, rec.Body.String())
+	}
+
+	list := httptest.NewRecorder()
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/reports?status=pending", nil)
+	router.ServeHTTP(list, listReq)
+	var body struct {
+		Items []map[string]any `json:"items"`
+	}
+	_ = json.NewDecoder(list.Body).Decode(&body)
+	if len(body.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(body.Items))
+	}
+	got, _ := body.Items[0]["reporter_ip"].(string)
+	if got != "198.51.100.42" {
+		t.Errorf("reporter_ip = %q, want leftmost XFF entry %q when request came from a trusted proxy", got, "198.51.100.42")
 	}
 }
 

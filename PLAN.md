@@ -357,7 +357,238 @@ fixing a bug surfaced by the new tests.
 - `/v0/` and A2A conformance suites are in CI and gating.
 - `openapi.yaml` ↔ router contract test is in CI and gating.
 
-### Phase 7 — Later
+### v0.3.0 — Browse polish (next minor)
+
+v0.2.x was a coverage sprint. v0.3.0 is the first release that actually
+changes what users see — four additive UX wins on the public browse
+experience, zero breaking changes, zero new non-negotiables.
+
+Features accepted into scope (refused / deferred items tracked in
+`docs/future-multi-environment.md` and in session notes):
+
+- Per-entry activity feed on detail pages
+- Namespace landing pages (`/mcp/{namespace}` and `/agents/{namespace}`)
+- Card redesign (aligned tag row, status pill, inline metadata strip)
+- Tool/skill count on list cards
+
+Out of scope for v0.3.0 — each has its own reason and stays parked until
+we decide otherwise:
+
+- **Runtime usage / call-count metrics** — belongs on the API gateway
+  once we have one. Do not fake it with copy_count.
+- **Computed "registry score"** — the composite-score design wasn't
+  landed. Do not ship a half-baked number.
+- **Multi-environment entries** — design note in
+  `docs/future-multi-environment.md`; do not implement until we
+  revisit deliberately.
+- **Access requests / grants / policies / publisher approval queue** —
+  out of charter; we're a catalog, not an enterprise control plane.
+
+Ordering is deliberate: low-risk UX wins first so we can ship each one
+independently and gather feedback before committing to the activity-feed
+work. Each item below is a self-contained task; the user validates each
+before the next one starts.
+
+**Task 1 — Real MCP tools field end-to-end** ✅ **SHIPPED**
+
+Originally scoped as a lightweight chip reading `capabilities.tools[]` from
+the free-form capabilities JSONB. During implementation we discovered the
+MCP spec uses `capabilities.tools` as a capability-negotiation flag
+(`{listChanged: bool}`), NOT a tool list — the actual list is only returned
+at runtime via `tools/list`. Option C ("real typed `tools[]` field stored
+in DB") was chosen so the registry can display tool counts and metadata
+offline, and to end the semantic collision with the spec's capabilities
+flag.
+
+Shipped surface:
+- [x] Migration `000007_mcp_tools` adds `tools JSONB NOT NULL DEFAULT '[]'`
+      to `mcp_server_versions`. Additive, no backfill needed.
+- [x] `domain.MCPTool` struct + `domain.ValidateTools` (non-empty name,
+      unique within array, optional `description` / `input_schema` /
+      `annotations`). Allows empty array so servers that simply don't
+      declare tools are valid.
+- [x] Store layer: `LatestMCPVersion.Tools` raw field, lateral sub-select
+      adds `v.tools` to all three server read paths, `CreateMCPServerVersion`
+      accepts `Tools` and defaults to `[]` when omitted. Integration-test
+      coverage via `TestMCPServerVersion_ToolsRoundTrip` (6 read paths) and
+      `TestMCPServerVersion_ToolsDefaultEmptyArray`.
+- [x] Handler: `POST /api/v1/mcp/servers/{ns}/{slug}/versions` accepts
+      `tools`, validates via `ValidateTools`, persists; `serverToResponse`
+      projects `tools` onto `latest_version` defaulting to `[]`. New tests:
+      `TestMCPHandler_CreateVersion_WithTools`,
+      `TestMCPHandler_CreateVersion_InvalidTools`,
+      `TestMCPHandler_GetServer_IncludesToolsOnLatestVersion`.
+- [x] OpenAPI: new `MCPTool` schema component; `tools` field added to
+      `MCPServerLatestVersion`, `MCPServerVersion`, and
+      `CreateMCPServerVersionRequest`. Capabilities description rewritten
+      to call out the distinction explicitly. v0 spec endpoints
+      unchanged — they stay strictly MCP-spec shaped.
+- [x] Bootstrap: `MCPVersionSpec.Tools` YAML field + validation at load
+      time. Sample YAML populated with realistic tools for 7 versions
+      across 6 servers (filesystem, computer-use, github, web-search,
+      postgres, kubernetes) so local dev has data to render.
+- [x] Agent card chip unchanged (already uses typed `skills.length`).
+      MCP card chip rewired: `toolCount = lv?.tools?.length ?? 0`, chip
+      hides when absent or empty. Regression test confirms
+      `capabilities.tools: {listChanged: true}` alone does NOT render the
+      chip (new test: "ignores capabilities.tools").
+- [x] MCP server detail page: new Tools tab between Installation and
+      Versions. Renders one card per tool (name + description +
+      annotation badges + collapsible input_schema viewer), with an
+      empty state referencing the spec's runtime `tools/list` path.
+      Tab label shows count (`Tools (3)`) when populated.
+- [x] Admin new-server form: JSON textarea for declaring tools when
+      creating the first version. Client-side parse + array check
+      returns inline errors before the POST; backend re-validates via
+      `ValidateTools`.
+- [x] Utility cleanup: `countMcpTools` helper and its test block removed
+      from `web/src/lib/utils.ts` / `utils.test.ts` — the typed field
+      replaces the shape-guessing heuristic entirely.
+
+**Task 2 — Card redesign**
+- [ ] Refactor `server-card.tsx` and `agent-card.tsx` to the aligned
+      layout: icon + title + publisher row, description, tag row
+      (status pill + transport/visibility + category tags), inline
+      metadata strip at the bottom (tool/skill count + version +
+      freshness).
+- [ ] Status pill uses colour from the lifecycle state (`draft`,
+      `published`, `deprecated`); reuse `badge-variants.ts` rather
+      than adding a new primitive.
+- [ ] Card is fully keyboard-focusable and the whole card is the link
+      target (today some children compete for click). Verify with an
+      a11y smoke test: `getByRole('link', { name: /.../ })` reaches
+      the detail page.
+- [ ] Update existing card tests; add a snapshot-free DOM test for the
+      new metadata strip so it's enforced structurally, not visually.
+- [ ] No API change. Pure CSS/Tailwind + component surgery.
+
+**Task 3 — Namespace landing pages**
+- [ ] New web route `/mcp/:namespace` and `/agents/:namespace`. URLs
+      already match the slug pattern we publish today.
+- [ ] New page components that call `GET /api/v1/mcp/servers?namespace=X`
+      (and the agents equivalent) — the server-side filter already
+      exists, no new endpoint needed.
+- [ ] Page header shows the publisher behind the namespace via
+      `GET /api/v1/publishers/{slug}` (call in parallel with the list
+      fetch; render skeleton until both resolve).
+- [ ] Empty-state copy when the namespace has zero entries of the
+      requested kind (vs. the namespace not existing — those are
+      different, render a 404 for the latter).
+- [ ] Breadcrumbs: `Home › MCP Servers › {namespace}` so users can
+      escape back to the flat list.
+- [ ] Link to the namespace page from every card's publisher row and
+      from the detail-page publisher row.
+- [ ] Vitest coverage for the new page (render, loading, empty, 404,
+      links out).
+- [ ] Playwright smoke: land on `/mcp/{seeded-ns}`, assert the seeded
+      entries appear, assert a link to a detail page works.
+
+**Task 4 — Per-entry activity feed (biggest, ships last)**
+- [ ] New public endpoint
+      `GET /v0/mcp/servers/{ns}/{slug}/activity` (and the agents
+      equivalent) that projects from `audit_log` filtered by
+      `resource_type` + `resource_id`, returning a trimmed public
+      view: `{id, action, created_at, actor_display_name}`. Must NOT
+      expose `actor_email` or `actor_subject`; show a coarse
+      "Publisher" / "Admin" label instead, derived from metadata.
+- [ ] Rate-limit the new endpoint on the same per-IP bucket as other
+      public reads.
+- [ ] OpenAPI entry for both endpoints. Router contract test catches
+      drift (already in place from v0.2.2).
+- [ ] Handler tests: empty, populated, cursor pagination, unknown
+      resource returns 404, privacy-scrub assertion (actor_email /
+      actor_subject MUST NOT appear in the response body).
+- [ ] Web: new "Activity" section on MCP + agent detail pages,
+      rendered under the existing tabs (not inside them — it's
+      cross-version). Paginated, loads 10 entries at a time with a
+      "Show more" button. Reuses the existing date/time formatting
+      from the version history component.
+- [ ] Make the same feed filterable on the existing admin `/audit`
+      page so the admin view can drill from the global log into a
+      single entry's history (and vice versa).
+- [ ] Vitest coverage for the new section (loading, empty, populated,
+      load-more, privacy scrub — "actor_email" substring MUST NOT
+      appear in the DOM).
+
+**Cross-cutting chores**
+- [ ] `CHANGELOG.md` entry with one section per task.
+- [ ] Include the already-shipped pointer-cursor fix
+      (`button-variants.ts`, `tabs.tsx`, `select.tsx`) under a "UX
+      polish" sub-section of the changelog. It was an out-of-band
+      patch but users will notice it on this release.
+- [ ] OpenAPI + TS types regenerated.
+- [ ] Coverage floors stay green.
+
+**Definition of done for v0.3.0**
+- All four task groups land behind per-task validation gates.
+- No admin page drops below the 80 % floor set in v0.2.2.
+- Go coverage floor stays ≥ 70 % after the new handler lands.
+- `openapi.yaml` is in sync with the new activity endpoints, verified
+  by the existing contract test.
+- Playwright smoke exercises at least one namespace landing page and
+  one detail page with activity visible.
+- Changelog + git tag + GitHub release published.
+
+### Phase 7 — Access control & change-approval workflow
+
+Three sequenced ADRs design how non-admin users author content and how
+changes are reviewed before going live. Ship in order; each builds on
+the previous.
+
+**Phase 7.1 — Workspaces under publishers**
+([ADR 0001](docs/adr/0001-workspaces-under-publishers.md))
+
+- New `workspaces` entity between publishers and resources.
+- Two-step migration: schema + Go-side backfill creating one `default`
+  workspace per publisher; finalising migration drops `publisher_id`
+  from resources.
+- Hierarchical URLs `/v0/publishers/{p}/workspaces/{w}/servers/{s}`
+  with HTTP 301 redirects from legacy paths.
+- Auth model unchanged in this phase.
+
+**Phase 7.2 — Workspace OIDC group binding**
+([ADR 0002](docs/adr/0002-workspace-group-binding.md))
+
+- `workspaces.group_name` (1:1, nullable; `NULL` = admin-only).
+- `KeycloakClaims.Groups` + `RequireWorkspaceWrite` middleware.
+- Configurable `AUTH_GROUPS_CLAIM` (default `groups`).
+- Manual Keycloak setup; reconciler ("operator") deferred to F4.
+
+**Phase 7.3 — Change-approval workflow**
+([ADR 0003](docs/adr/0003-change-approval-workflow.md))
+
+- New `review_state` column orthogonal to existing `status` /
+  `published_at`.
+- `revision` counter monotonic across the version's lifetime,
+  PR-style continuous editing, discriminated 409 error model.
+- One global reviewer group `registry-reviewers` (configurable).
+- Pending deletion flow on entries.
+
+#### Phase 7 backlog (deferred items from the ADRs)
+
+From [ADR 0002](docs/adr/0002-workspace-group-binding.md):
+
+- **0002-F1.** Per-resource-type group binding via Keycloak client
+  roles.
+- **0002-F2.** List members of a workspace's group via Keycloak Admin
+  API.
+- **0002-F3.** Many-to-many workspace↔group binding.
+- **0002-F4.** Keycloak reconciler ("operator"). Pull-forward
+  triggers: workspace count ≳ 50, or self-service workspace creation.
+- **0002-F5.** SCIM provisioning.
+
+From [ADR 0003](docs/adr/0003-change-approval-workflow.md):
+
+- **0003-F1.** Per-resource-type or per-workspace reviewer groups.
+- **0003-F2.** Forbid self-approval (`submitted_by != reviewed_by`).
+- **0003-F3.** Notifications on submission/approval/rejection/deletion.
+- **0003-F4.** SLA timers on `pending_review`.
+- **0003-F5.** Bulk approval.
+- **0003-F6.** Reviewer comments / discussion thread.
+- **0003-F7.** Diff view in the admin UI between revisions.
+- **0003-F8.** Cleanup of long-abandoned `rejected` versions.
+
+### Phase 8 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
 - Signed publishes (sigstore/cosign).
 - Webhooks on publish events.

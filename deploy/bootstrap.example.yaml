@@ -78,6 +78,36 @@ mcp_servers:
             subscribe: true
             listChanged: true
           logging: {}
+        tools:
+          - name: "read_file"
+            description: "Read the contents of a file by absolute path."
+            input_schema:
+              type: "object"
+              properties:
+                path:
+                  type: "string"
+                  description: "Absolute path to the file"
+              required: ["path"]
+          - name: "write_file"
+            description: "Write text to a file, creating it if necessary."
+            input_schema:
+              type: "object"
+              properties:
+                path:
+                  type: "string"
+                content:
+                  type: "string"
+              required: ["path", "content"]
+            annotations:
+              destructive: true
+          - name: "list_directory"
+            description: "List the entries of a directory."
+            input_schema:
+              type: "object"
+              properties:
+                path:
+                  type: "string"
+              required: ["path"]
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-filesystem"
@@ -96,6 +126,21 @@ mcp_servers:
           prompts:
             listChanged: true
           logging: {}
+        tools:
+          - name: "read_file"
+            description: "Read the contents of a file by absolute path."
+          - name: "write_file"
+            description: "Write text to a file, creating it if necessary."
+            annotations:
+              destructive: true
+          - name: "delete_file"
+            description: "Delete a file. Rejected for paths outside the workspace."
+            annotations:
+              destructive: true
+          - name: "list_directory"
+            description: "List the entries of a directory."
+          - name: "watch_path"
+            description: "Subscribe to changes under a given path."
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-filesystem"
@@ -137,6 +182,27 @@ mcp_servers:
             listChanged: true
           resources:
             subscribe: true
+        tools:
+          - name: "screenshot"
+            description: "Capture the current desktop as a PNG image."
+          - name: "mouse_click"
+            description: "Left-click at a screen coordinate."
+            input_schema:
+              type: "object"
+              properties:
+                x:
+                  type: "integer"
+                y:
+                  type: "integer"
+              required: ["x", "y"]
+            annotations:
+              destructive: true
+          - name: "type_text"
+            description: "Type a string as if from the keyboard."
+            annotations:
+              destructive: true
+          - name: "key"
+            description: "Press a named key (e.g. enter, tab, escape)."
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-computer-use"
@@ -231,6 +297,23 @@ mcp_servers:
           resources:
             listChanged: true
           prompts: {}
+        tools:
+          - name: "list_issues"
+            description: "List issues in a repository."
+          - name: "get_issue"
+            description: "Fetch a single issue with its comments."
+          - name: "create_pr"
+            description: "Open a new pull request."
+            annotations:
+              destructive: true
+          - name: "review_pr"
+            description: "Post inline review comments on a PR."
+          - name: "merge_pr"
+            description: "Merge a pull request (respects branch protections)."
+            annotations:
+              destructive: true
+          - name: "search_code"
+            description: "Search code across a repository using GitHub code search."
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-github"
@@ -271,6 +354,20 @@ mcp_servers:
           tools:
             listChanged: true
           logging: {}
+        tools:
+          - name: "search"
+            description: "Search the web and stream results as they come in."
+            input_schema:
+              type: "object"
+              properties:
+                query:
+                  type: "string"
+                limit:
+                  type: "integer"
+                  default: 10
+              required: ["query"]
+          - name: "fetch_url"
+            description: "Fetch a URL and return its extracted text content."
         packages:
           - registry_type: "npm"
             identifier: "@openai/mcp-web-search"
@@ -376,6 +473,19 @@ mcp_servers:
         capabilities:
           tools:
             listChanged: true
+        tools:
+          - name: "query"
+            description: "Run a SQL SELECT and return rows."
+            input_schema:
+              type: "object"
+              properties:
+                sql:
+                  type: "string"
+              required: ["sql"]
+          - name: "describe_table"
+            description: "List columns, types, and indexes for a table."
+          - name: "explain"
+            description: "Return a query plan for a given SQL statement."
         packages:
           - registry_type: "pypi"
             identifier: "mcp-postgres"
@@ -439,6 +549,21 @@ mcp_servers:
             subscribe: true
             listChanged: true
           logging: {}
+        tools:
+          - name: "get_pods"
+            description: "List pods in a namespace."
+          - name: "logs"
+            description: "Tail the logs of a pod/container."
+          - name: "apply"
+            description: "Apply a YAML manifest to the cluster."
+            annotations:
+              destructive: true
+          - name: "delete"
+            description: "Delete a resource by namespace, kind, and name."
+            annotations:
+              destructive: true
+          - name: "describe"
+            description: "Human-readable description of a resource."
         packages:
           - registry_type: "oci"
             identifier: "ghcr.io/community/mcp-kubernetes"

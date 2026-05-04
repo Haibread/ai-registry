@@ -81,7 +81,8 @@ type MCPServerVersion struct {
 	Version         string          `json:"version"` // semver
 	Runtime         Runtime         `json:"runtime"`
 	Packages        json.RawMessage `json:"packages,omitempty"`     // MCP packages array
-	Capabilities    json.RawMessage `json:"capabilities,omitempty"` // MCP capabilities object
+	Capabilities    json.RawMessage `json:"capabilities,omitempty"` // MCP capabilities object (capability-negotiation flags)
+	Tools           json.RawMessage `json:"tools,omitempty"`        // []MCPTool — publisher-declared tool list
 	ProtocolVersion string          `json:"protocol_version"`
 	Checksum        string          `json:"checksum,omitempty"`
 	Signature       string          `json:"signature,omitempty"`
@@ -89,8 +90,22 @@ type MCPServerVersion struct {
 	StatusMessage   string          `json:"status_message,omitempty"`
 	StatusChangedAt time.Time       `json:"status_changed_at"`
 	PublishedAt     *time.Time      `json:"published_at,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
+	// Change-approval workflow state. Surfaced on authenticated reads
+	// so reviewers can read the revision they need to send back in the
+	// approve body. Empty / zero on rows that have never been part of
+	// the workflow.
+	ReviewState      ReviewState    `json:"review_state,omitempty"`
+	Revision         int            `json:"revision,omitempty"`
+	SubmittedAt      *time.Time     `json:"submitted_at,omitempty"`
+	SubmittedBy      string         `json:"submitted_by,omitempty"`
+	SubmittedByEmail string         `json:"submitted_by_email,omitempty"`
+	ReviewedAt       *time.Time     `json:"reviewed_at,omitempty"`
+	ReviewedBy       string         `json:"reviewed_by,omitempty"`
+	ReviewedByEmail  string         `json:"reviewed_by_email,omitempty"`
+	ReviewDecision   ReviewDecision `json:"review_decision,omitempty"`
+	RejectionReason  string         `json:"rejection_reason,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // IsPublished reports whether the version has been published (immutable after this).
@@ -195,6 +210,54 @@ func ValidateCapabilities(raw json.RawMessage) error {
 	var v any
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return fmt.Errorf("capabilities must be valid JSON: %w", err)
+	}
+	return nil
+}
+
+// MCPTool mirrors the MCP spec Tool object shape, restricted to the fields
+// a publisher can sensibly declare at registration time.
+//
+// NOTE: the MCP spec's runtime `tools/list` response returns tools with this
+// same shape. The registry stores a publisher-declared copy so the UI can
+// show a tool count and descriptions without needing a live MCP connection.
+type MCPTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"` // JSON Schema object
+	Annotations json.RawMessage `json:"annotations,omitempty"`  // MCP spec tool annotations
+}
+
+// ValidateTools checks that the tools JSONB is a valid array and that each
+// entry satisfies the structural requirements (non-empty unique name,
+// input_schema is a JSON object if present).
+//
+// Unlike ValidateSkills, an empty array is allowed: a server legitimately
+// may not have declared its tools yet, or may expose them only at runtime.
+func ValidateTools(raw json.RawMessage) error {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil // default to []
+	}
+	var tools []MCPTool
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return fmt.Errorf("tools must be a JSON array: %w", err)
+	}
+	seen := make(map[string]struct{}, len(tools))
+	for i, t := range tools {
+		if t.Name == "" {
+			return fmt.Errorf("tools[%d].name is required", i)
+		}
+		if _, dup := seen[t.Name]; dup {
+			return fmt.Errorf("tools[%d].name %q is duplicated within the array", i, t.Name)
+		}
+		seen[t.Name] = struct{}{}
+		if len(t.InputSchema) > 0 && string(t.InputSchema) != "null" {
+			// JSON Schema is always an object at the top level — reject
+			// arrays, strings, numbers, etc. to catch obvious mistakes early.
+			var probe map[string]any
+			if err := json.Unmarshal(t.InputSchema, &probe); err != nil {
+				return fmt.Errorf("tools[%d].input_schema must be a JSON object: %w", i, err)
+			}
+		}
 	}
 	return nil
 }
