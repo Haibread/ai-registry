@@ -150,21 +150,34 @@ A sample admin user is provisioned by the dev realm. See `deploy/keycloak-realm-
 
 ### Seeding from a YAML bootstrap file
 
-Point the server at a bootstrap file and it will upsert publishers, MCP servers, and agents on every boot:
+Point the server at a bootstrap file and it will upsert publishers, workspaces, MCP servers, and agents on every boot:
 
 ```yaml
 # deploy/bootstrap.example.yaml
 publishers:
-  - namespace: acme
-    display_name: Acme Corp
+  - slug: acme
+    name: Acme Corp
+    verified: true
+
+# Optional — workspaces group MCPs and agents under a publisher and bind
+# each set to a Keycloak group whose members can author content. Entries
+# without a `workspace` field land in the publisher's lazy-created
+# `default` workspace.
+workspaces:
+  - publisher: acme
+    slug: core
+    name: Core
+    group_name: acme-core      # empty / omitted = admin-only writes
+
 mcp_servers:
-  - namespace: acme
+  - publisher: acme
+    workspace: core            # optional; defaults to `default`
     slug: files
     name: Files Server
     # …
 ```
 
-Bootstrap is idempotent. Existing versions are skipped — except for a narrow, documented exception that backfills the `tools[]` array when it has just been declared in the YAML.
+The full reference lives in [`deploy/bootstrap.example.yaml`](deploy/bootstrap.example.yaml). Bootstrap is idempotent — existing rows are skipped on re-runs, with two narrow documented exceptions: it backfills `tools[]` when it has just been declared in the YAML, and `group_name` is only applied on first workspace creation so re-runs never silently overwrite operator-tweaked bindings.
 
 ---
 
@@ -243,8 +256,8 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full set of non-negotiables.
 The phased roadmap lives in [`PLAN.md`](./PLAN.md). High-level status:
 
 - **v0.1.x** — Foundation: Postgres schema, chi router, OIDC, MCP + agent CRUD, public browse UI, admin UI, bootstrap seeding. ✅
-- **v0.2.x** — Observability + coverage depth. OTel traces/metrics/logs wired everywhere; contract tests for every CLAUDE.md non-negotiable; `/v0/` wire-format conformance; A2A schema conformance. ✅ (current release: **v0.2.2**)
-- **v0.3.x** — Browse polish. Real MCP `tools[]` field end-to-end, card redesign, namespace landing pages, per-entry activity feed. 🚧 (Task 1 shipped)
+- **v0.2.x** — Observability + coverage depth. OTel traces/metrics/logs wired everywhere; contract tests for every CLAUDE.md non-negotiable; `/v0/` wire-format conformance; A2A schema conformance. ✅
+- **v0.3.x** — Browse polish (real MCP `tools[]` field end-to-end, card redesign, namespace landing pages, per-entry activity feed) and access control: workspaces under publishers, Keycloak group bindings, change-approval workflow with revision-tracked PR-style edits. ✅
 - **v0.4.x and beyond** — Skills/prompts registry, federation, API-key auth (M2M), webhooks.
 
 ---

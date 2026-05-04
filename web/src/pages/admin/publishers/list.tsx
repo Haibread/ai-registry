@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Plus, CheckCircle2, Circle, Building2 } from 'lucide-react'
+import { Plus, CheckCircle2, Circle, Building2, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthClient } from '@/lib/api-client'
@@ -21,7 +21,7 @@ export default function AdminPublisherList() {
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Publishers</h1>
           <p className="text-muted-foreground mt-1">
@@ -50,9 +50,9 @@ export default function AdminPublisherList() {
             <TableRow>
               <TableHead>Slug</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Contact</TableHead>
+              <TableHead className="hidden md:table-cell">Contact</TableHead>
               <TableHead>Verified</TableHead>
-              <TableHead>Created</TableHead>
+              <TableHead className="hidden lg:table-cell">Created</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -61,7 +61,7 @@ export default function AdminPublisherList() {
               <TableRow key={p.id}>
                 <TableCell className="font-mono text-sm">{p.slug}</TableCell>
                 <TableCell className="font-medium">{p.name}</TableCell>
-                <TableCell className="text-muted-foreground">{p.contact ?? '—'}</TableCell>
+                <TableCell className="text-muted-foreground hidden md:table-cell">{p.contact ?? '—'}</TableCell>
                 <TableCell>
                   {p.verified ? (
                     <CheckCircle2 className="h-4 w-4 text-green-600" aria-label="Verified" />
@@ -69,10 +69,13 @@ export default function AdminPublisherList() {
                     <Circle className="h-4 w-4 text-muted-foreground" aria-label="Unverified" />
                   )}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{formatDate(p.created_at)}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to={`/admin/publishers/${p.slug}`}>Manage</Link>
+                <TableCell className="text-muted-foreground hidden lg:table-cell">{formatDate(p.created_at)}</TableCell>
+                <TableCell className="text-right">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/admin/publishers/${p.slug}`}>
+                      Manage
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
                   </Button>
                 </TableCell>
               </TableRow>

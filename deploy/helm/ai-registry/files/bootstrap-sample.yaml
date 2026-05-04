@@ -19,6 +19,14 @@
 #   • tags       — free-form labels surfaced in listing filters
 #   • readme     — long-form markdown rendered on the detail page
 #   • capabilities (MCP versions) — free-form MCP capabilities JSON
+#
+# Workspaces (optional): each publisher can declare nested workspaces that
+# group MCP servers / agents and bind each set to a Keycloak group whose
+# members can author content. MCP servers / agents may reference a
+# workspace via the `workspace` field; entries without one land in the
+# publisher's auto-created `default` workspace. To see them in the admin
+# UI go to Publishers → click a publisher → Workspaces section, then
+# click the chevron on a row to expand and see the entries scoped to it.
 # ============================================================================
 
 publishers:
@@ -34,10 +42,43 @@ publishers:
     name: "Community"
     verified: false
 
+# ── Workspaces ────────────────────────────────────────────────────────────────
+# Two demo workspaces under each verified publisher, plus a community one
+# without a Keycloak group binding (admin-only writes).
+workspaces:
+  - publisher: "anthropic"
+    slug: "core"
+    name: "Core"
+    description: "Officially supported MCP servers and agents."
+    contact: "core-team@anthropic.example"
+    group_name: "anthropic-core"
+
+  - publisher: "anthropic"
+    slug: "experimental"
+    name: "Experimental"
+    description: "Drafts and previews; may break between versions."
+    contact: "labs@anthropic.example"
+    group_name: "anthropic-labs"
+
+  - publisher: "openai"
+    slug: "platform"
+    name: "Platform"
+    description: "Production-grade tools maintained by the platform team."
+    contact: "platform@openai.example"
+    group_name: "openai-platform"
+
+  - publisher: "community"
+    slug: "data"
+    name: "Data tools"
+    description: "Database, query, and analytics-flavoured community work."
+    # No group_name → admin-only writes. A reviewer (admin) is the only
+    # one who can author MCPs/agents under this workspace.
+
 # ── MCP Servers ───────────────────────────────────────────────────────────────
 mcp_servers:
   # anthropic/filesystem — npm, stdio, two versions (v1 published, v2 draft)
   - publisher: "anthropic"
+    workspace: "core"
     slug: "filesystem"
     name: "Filesystem MCP Server"
     description: "Gives Claude read/write access to the local file system."
@@ -150,6 +191,7 @@ mcp_servers:
 
   # anthropic/computer-use — npm, SSE transport
   - publisher: "anthropic"
+    workspace: "experimental"
     slug: "computer-use"
     name: "Computer Use MCP Server"
     description: "Streams real-time desktop screenshots and control events over Server-Sent Events."
@@ -247,6 +289,7 @@ mcp_servers:
 
   # anthropic/github — npm, stdio, two published versions
   - publisher: "anthropic"
+    workspace: "core"
     slug: "github"
     name: "GitHub MCP Server"
     description: "Interact with GitHub repositories, issues, and pull requests."
@@ -323,6 +366,7 @@ mcp_servers:
 
   # openai/web-search — npm, streamable-http
   - publisher: "openai"
+    workspace: "platform"
     slug: "web-search"
     name: "Web Search MCP Server"
     description: "Provides real-time web search capabilities via a streaming HTTP transport."
@@ -378,6 +422,7 @@ mcp_servers:
 
   # openai/image-gen — OCI container + HTTP transport
   - publisher: "openai"
+    workspace: "platform"
     slug: "image-gen"
     name: "Image Generation MCP Server"
     description: "Generate images from text prompts via a containerised HTTP endpoint."
@@ -449,6 +494,7 @@ mcp_servers:
 
   # community/postgres — pypi, stdio
   - publisher: "community"
+    workspace: "data"
     slug: "postgres"
     name: "PostgreSQL MCP Server"
     description: "Community-maintained server for querying and managing PostgreSQL databases."
@@ -495,6 +541,7 @@ mcp_servers:
 
   # community/sqlite — pypi, stdio
   - publisher: "community"
+    workspace: "data"
     slug: "sqlite"
     name: "SQLite MCP Server"
     description: "Read and write SQLite databases using natural language."
@@ -668,6 +715,7 @@ mcp_servers:
 agents:
   # anthropic/code-review — published, public
   - publisher: "anthropic"
+    workspace: "core"
     slug: "code-review"
     name: "Code Review Agent"
     description: "Automatically reviews pull requests and suggests improvements."
@@ -711,6 +759,7 @@ agents:
 
   # anthropic/browser-agent — published, public, text + image I/O
   - publisher: "anthropic"
+    workspace: "experimental"
     slug: "browser-agent"
     name: "Browser Automation Agent"
     description: "Controls a real browser to fill forms, click buttons, and extract information from any website."
@@ -760,6 +809,7 @@ agents:
 
   # openai/data-analyst — published, public
   - publisher: "openai"
+    workspace: "platform"
     slug: "data-analyst"
     name: "Data Analyst Agent"
     description: "Analyses structured datasets and produces charts and summaries."

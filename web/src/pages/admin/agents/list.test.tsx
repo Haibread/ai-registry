@@ -97,7 +97,10 @@ describe('AdminAgentList', () => {
     expect(await screen.findByText('Code Reviewer')).toBeInTheDocument()
     expect(screen.getByText('Bug Hunter')).toBeInTheDocument()
     expect(screen.queryByText('Ghost Agent')).not.toBeInTheDocument()
-    expect(screen.getByText('acme/reviewer')).toBeInTheDocument()
+    // Namespace/slug renders twice: a hidden-on-small dedicated cell and
+    // an inline-on-small line under the agent name. Both end up in the
+    // DOM because JSDOM doesn't honor responsive display classes.
+    expect(screen.getAllByText('acme/reviewer').length).toBeGreaterThan(0)
   })
 
   it('shows the bulk action bar when a row is selected', async () => {

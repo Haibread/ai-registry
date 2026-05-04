@@ -529,13 +529,14 @@ Shipped surface:
   one detail page with activity visible.
 - Changelog + git tag + GitHub release published.
 
-### Phase 7 — Access control & change-approval workflow
+### Phase 7 — Access control & change-approval workflow ✅
 
-Three sequenced ADRs design how non-admin users author content and how
-changes are reviewed before going live. Ship in order; each builds on
-the previous.
+Three sequenced ADRs designed how non-admin users author content and
+how changes are reviewed before going live. All three sub-phases
+shipped (PRs #28 → #32) plus an admin UI polish sweep (PR #37) that
+made the new surfaces usable end-to-end.
 
-**Phase 7.1 — Workspaces under publishers**
+**Phase 7.1 — Workspaces under publishers ✅**
 ([ADR 0001](docs/adr/0001-workspaces-under-publishers.md))
 
 - New `workspaces` entity between publishers and resources.
@@ -544,9 +545,11 @@ the previous.
   from resources.
 - Hierarchical URLs `/v0/publishers/{p}/workspaces/{w}/servers/{s}`
   with HTTP 301 redirects from legacy paths.
-- Auth model unchanged in this phase.
+- Bootstrap loader gained a `workspaces:` top-level list and a
+  per-entry `workspace:` ref so seed data demonstrates the feature.
+- Auth model unchanged in this phase (delivered in 7.2).
 
-**Phase 7.2 — Workspace OIDC group binding**
+**Phase 7.2 — Workspace OIDC group binding ✅**
 ([ADR 0002](docs/adr/0002-workspace-group-binding.md))
 
 - `workspaces.group_name` (1:1, nullable; `NULL` = admin-only).
@@ -554,15 +557,22 @@ the previous.
 - Configurable `AUTH_GROUPS_CLAIM` (default `groups`).
 - Manual Keycloak setup; reconciler ("operator") deferred to F4.
 
-**Phase 7.3 — Change-approval workflow**
+**Phase 7.3 — Change-approval workflow ✅**
 ([ADR 0003](docs/adr/0003-change-approval-workflow.md))
 
 - New `review_state` column orthogonal to existing `status` /
   `published_at`.
 - `revision` counter monotonic across the version's lifetime,
-  PR-style continuous editing, discriminated 409 error model.
-- One global reviewer group `registry-reviewers` (configurable).
+  PR-style continuous editing, discriminated 409 error model
+  (`review-state-mismatch`, `review-revision-mismatch`,
+  `review-already-pending`, `already-published`).
+- One global reviewer group `registry-reviewers` (configurable via
+  `AUTH_REVIEWER_GROUP`).
 - Pending deletion flow on entries.
+- Admin UI: `/admin/review` queue page, per-version history table
+  with submit / withdraw / resubmit, request-deletion button on
+  entries, live-pinging review queue badge on the sidebar, toasts
+  on every mutation, modal Edit dialog for workspace settings.
 
 #### Phase 7 backlog (deferred items from the ADRs)
 

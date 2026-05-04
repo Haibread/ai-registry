@@ -34,6 +34,22 @@ server:
   # at runtime without baking this value into the Docker image.
   # Example: ai-registry-web
   oidcClientId: ""
+  # JWT claim path for the user's group memberships, used by
+  # RequireWorkspaceWrite to gate workspace authorship. Empty = server
+  # default ("groups"). Set this to the path your IdP emits (e.g.
+  # "realm_access.groups" for Keycloak realm-mapper deployments).
+  authGroupsClaim: ""
+  # Reviewer group whose members can approve / reject pending changes
+  # in the change-approval workflow. Empty = server default
+  # ("registry-reviewers"). Must match a group emitted in the JWT
+  # claim configured above.
+  authReviewerGroup: ""
+  # SPA token storage strategy advertised via /config.json:
+  # "session" (default) keeps tokens in sessionStorage (per-tab,
+  # cleared on close); "local" stores them in localStorage (survives
+  # tabs and reloads). Only switch to "local" if you accept the wider
+  # XSS exposure window — typically only for E2E test harnesses.
+  authStorage: ""
 
   # ── Database ─────────────────────────────────────────────────────────────
   # DATABASE_URL — provide exactly one of the following (highest wins):

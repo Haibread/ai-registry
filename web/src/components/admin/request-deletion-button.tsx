@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthClient } from '@/lib/api-client'
@@ -25,6 +26,7 @@ export function RequestDeletionButton({
   entityName,
 }: RequestDeletionButtonProps) {
   const api = useAuthClient()
+  const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
@@ -50,7 +52,11 @@ export function RequestDeletionButton({
         throw new Error(e?.detail || 'Could not submit deletion request.')
       }
     },
-    onSuccess: () => setSuccess(true),
+    onSuccess: () => {
+      setSuccess(true)
+      toast.success(`Deletion request submitted for ${entityName}`)
+      queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
+    },
     onError: (err: Error) => setError(err.message),
   })
 

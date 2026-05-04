@@ -123,7 +123,10 @@ jobs:
           retention-days: 7
 
       # Dump all container logs on failure to speed up debugging.
+      # Must include both compose files — docker-compose.ci.yml sets
+      # `name: ai-registry-ci`, so omitting it points compose at a different
+      # project and silently emits zero output.
       - name: Dump docker logs
         if: failure()
         working-directory: deploy
-        run: docker compose -f docker-compose.yml logs --no-color
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color --timestamps --tail=500
