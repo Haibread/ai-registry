@@ -33,7 +33,7 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 ### Two UIs, one API
 
 - **Public UI** — read-only. Browse, search, detail pages, JSON inspect, copy endpoints. No auth required.
-- **Admin UI** (`/admin`) — full CRUD, guarded by OIDC login. Publishers, MCP servers + versions, agents + versions, audit log, reports triage, feature-flag management.
+- **Admin UI** (`/admin`) — full CRUD, guarded by OIDC login. Publishers, workspaces (with Keycloak group bindings), MCP servers + versions, agents + versions, audit log, reports triage, feature-flag management, and a review queue for the change-approval workflow.
 - **Both UIs consume the same versioned HTTP API.** Zero client-only features.
 
 ### AuthN/AuthZ
@@ -41,6 +41,8 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 - OAuth 2.1 / OIDC with PKCE (public client via [`oidc-client-ts`](https://github.com/authts/oidc-client-ts) — no client secret, no NextAuth/Auth.js).
 - Keycloak in local dev via docker-compose with a pre-seeded realm.
 - `realm_access.roles[]` contains `"admin"` → unlocks the admin scope. Write endpoints 403 without it, independent of the UI. Middleware-enforced, never UI-enforced.
+- **Workspace authorship via Keycloak groups** — each workspace can bind to a group; members can author MCPs and agents under that workspace without admin role (see [ADR 0001](docs/adr/0001-workspaces-under-publishers.md) / [0002](docs/adr/0002-workspace-group-binding.md)). The JWT claim path is configurable via `AUTH_GROUPS_CLAIM` (default `groups`).
+- **Change-approval workflow** — workspace authors submit version edits or deletion requests that a reviewer group approves before they go live. The reviewer group is configurable via `AUTH_REVIEWER_GROUP` (default `registry-reviewers`). Discriminated 409 errors prevent stale-edit clobbering. See [ADR 0003](docs/adr/0003-change-approval-workflow.md).
 - MCP-authorization-spec compatible (resource indicators, protected resource metadata).
 
 ### Observability
@@ -60,7 +62,7 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 
 **Infra** — docker-compose (dev / ci / prod) · Helm chart with optional CNPG-managed PostgreSQL cluster, HTTPRoute, and Ingress · Keycloak for local OIDC · OTel Collector
 
-**API spec** — Hand-written OpenAPI 3.1 at `server/api/openapi.yaml` (**59 operations**), embedded into the binary and served live at `/openapi.yaml`. Server types and the TypeScript client are generated from the spec. A bijection test ensures the router and spec never drift.
+**API spec** — Hand-written OpenAPI 3.1 at `server/api/openapi.yaml` (**81 operations**), embedded into the binary and served live at `/openapi.yaml`. Server types and the TypeScript client are generated from the spec. A bijection test ensures the router and spec never drift.
 
 ---
 
@@ -195,14 +197,16 @@ See `deploy/config.example.yaml` and `deploy/.env.example` for the full list. Se
 
 ## API surface
 
-59 operations across these tags:
+81 operations across these tags:
 
 | Tag          | Purpose                                                        |
 | ---          | ---                                                            |
 | `system`     | `/healthz`, `/readyz`, OpenAPI spec, global `.well-known/*`    |
 | `publishers` | Namespace/publisher CRUD                                       |
-| `mcp`        | MCP server + version CRUD, search, detail, view/copy, reports  |
-| `agents`     | Agent + version CRUD, per-agent A2A card                       |
+| `workspaces` | Workspaces under publishers; group binding; per-workspace listings |
+| `mcp`        | MCP server + version CRUD, search, detail, view/copy, reports, change-approval (submit / withdraw / approve / reject / deletion-request) |
+| `agents`     | Agent + version CRUD, per-agent A2A card, change-approval (same shape as MCP) |
+| `review`     | Reviewer-only `GET /review-queue` listing pending versions and deletions |
 | `audit`      | Admin-only audit log                                           |
 | `v0`         | Strict MCP-registry-spec-compatible read layer                 |
 
@@ -219,9 +223,9 @@ The CI pipeline enforces a set of contracts that mechanically prevent drift betw
 - **A2A Agent Card JSON Schema** — `server/api/a2a-agent-card.schema.json` pins the a2a-project/a2a June 2025 shape; every emission is validated against it.
 - **Admin-guard router contract** — every write endpoint requires `registry:admin`, independent of the UI.
 - **OTel span emission contract** — every handler produces a span; drift fails CI.
-- **Migration forward-apply + idempotency** — all 7 migrations apply cleanly on a fresh Postgres via testcontainers.
+- **Migration forward-apply + idempotency** — all 10 forward migrations apply cleanly on a fresh Postgres via testcontainers.
 - **Public rate-limit wiring** — unauthenticated read endpoints are rate-limited by middleware, not handler code.
-- **Web test suite** — 500+ Vitest + React Testing Library tests; Playwright e2e on admin flows.
+- **Web test suite** — 580+ Vitest + React Testing Library tests; Playwright e2e on admin flows including the change-approval workflow.
 
 Run the suites locally:
 

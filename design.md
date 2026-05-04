@@ -27,10 +27,12 @@ observability strategy, data and API design, and UI/UX specification.
              │                   │                  │
              ▼                   ▼                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Next.js App                              │
-│  /app/(public)/*          /app/admin/*                         │
-│  — SSR + RSC              — Auth.js (OIDC session)             │
-│  — Generated TS client    — Same TS client (bearer token)      │
+│            Static SPA (Vite + React Router v7)                  │
+│  / · /mcp · /agents · /publishers           Public routes       │
+│  /admin/*                                   Auth-guarded        │
+│  — TanStack Query v5 against /api/v1/                           │
+│  — oidc-client-ts (PKCE, no client secret) for /admin           │
+│  — Served as static files by nginx; no server-side rendering    │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ HTTP / JSON
                                ▼
@@ -38,35 +40,41 @@ observability strategy, data and API design, and UI/UX specification.
 │                        Go Backend (chi)                         │
 │                                                                 │
 │  Middleware chain:                                              │
-│  OTel trace → request-id → CORS → rate-limit → auth guard      │
+│  OTel trace → request-id → CORS → rate-limit → auth guard       │
+│  → workspace-write / reviewer guards (per route)                │
 │                                                                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐   │
 │  │  /api/v1/    │  │  /v0/ (MCP)  │  │  /.well-known/     │   │
-│  │  mcp/*       │  │  servers     │  │  oauth-protected-  │   │
-│  │  agents/*    │  │  publish     │  │  resource          │   │
-│  │  publishers/ │  └──────────────┘  │  agent-card.json   │   │
-│  │  users/      │                    └────────────────────┘   │
-│  │  api-keys/   │                                              │
+│  │  publishers/ │  │  servers     │  │  oauth-protected-  │   │
+│  │  ↳ workspaces│  │  publish     │  │  resource          │   │
+│  │  mcp/*       │  └──────────────┘  │  agent-card.json   │   │
+│  │  agents/*    │                    └────────────────────┘   │
+│  │  review-     │                                              │
+│  │   queue      │                                              │
+│  │  audit       │                                              │
 │  └──────────────┘                                              │
 │                                                                 │
 │  Internal packages:                                             │
-│  domain │ store │ auth │ mcp │ agents │ observability           │
+│  domain │ store │ auth │ mcp │ agents │ bootstrap │ observ.    │
 └──────────────────────┬──────────────────────────────────────────┘
                        │
           ┌────────────┴────────────┐
           ▼                         ▼
-┌──────────────────┐      ┌──────────────────────┐
-│   PostgreSQL     │      │   Keycloak (IdP)      │
-│                  │      │                      │
-│  publishers      │      │  OIDC / OAuth 2.1    │
-│  users           │      │  JWKS endpoint       │
-│  mcp_servers     │      │  registry:admin role │
-│  mcp_versions    │      └──────────────────────┘
-│  agents          │
-│  agent_versions  │      ┌──────────────────────┐
-│  api_keys        │      │   OTel Collector      │
-│  audit_log       │      │                      │
-└──────────────────┘      │  OTLP gRPC :4317     │
+┌──────────────────────┐  ┌──────────────────────┐
+│     PostgreSQL       │  │   Keycloak (IdP)     │
+│                      │  │                      │
+│  publishers          │  │  OIDC / OAuth 2.1    │
+│  workspaces          │  │  JWKS endpoint       │
+│  mcp_servers         │  │  realm role: admin   │
+│  mcp_server_versions │  │  groups: workspace   │
+│  agents              │  │    bindings + the    │
+│  agent_versions      │  │    reviewer group    │
+│  audit_log           │  └──────────────────────┘
+│  reports             │
+│                      │  ┌──────────────────────┐
+└──────────────────────┘  │   OTel Collector     │
+                          │                      │
+                          │  OTLP gRPC :4317     │
                           │  → Jaeger (traces)   │
                           │  → Prometheus (metr) │
                           │  → Loki (logs)       │
@@ -77,7 +85,7 @@ observability strategy, data and API design, and UI/UX specification.
 
 **Public read (MCP server list)**
 ```
-Browser → Next.js RSC → GET /api/v1/mcp/servers
+Browser → SPA (TanStack Query) → GET /api/v1/mcp/servers
   → OTel middleware (start span)
   → rate-limit check
   → handler: store.ListMCPServers(visibility=public)
@@ -86,18 +94,34 @@ Browser → Next.js RSC → GET /api/v1/mcp/servers
   → OTel middleware (end span, record latency metric)
 ```
 
-**Admin write (publish new version)**
+**Workspace write (workspace member submits a version for review)**
 ```
-Admin UI → Auth.js session (access token) → POST /api/v1/mcp/servers/{ns}/{slug}/versions
+Admin SPA (oidc-client-ts session) → POST .../versions/{v}/submit
   → OTel middleware (start span)
-  → auth middleware: validate JWT → check registry:admin scope
-    OR API-key middleware: hash lookup in api_keys table
-  → admin guard (403 if not admin)
-  → handler: validate payload → store.CreateMCPVersion()
-    → Postgres INSERT (child span)
+  → auth middleware: validate JWT (issuer, signature, audience)
+  → RequireWorkspaceWrite middleware:
+       • read groups from JWT claim configured by AUTH_GROUPS_CLAIM
+       • lookup the workspace's group_name via the entity's
+         (publisher_slug, server_slug) → workspace_id chain
+       • allow if claims contain group_name OR realm role "admin"
+  → handler: domain.TransitionToPendingReview(version, reason="submit")
+    → Postgres UPDATE on review_state, increment revision (child span)
   → audit log write (child span)
-  → 201 Created
-  → OTel middleware (end span, increment publish counter)
+  → 204 No Content
+  → OTel middleware (end span, increment submit counter)
+```
+
+**Reviewer approval**
+```
+Admin SPA → POST /api/v1/review-queue / .../{kind}/{ns}/{slug}/versions/{v}/approve
+  → auth middleware: validate JWT
+  → RequireReviewer middleware: claim must include AUTH_REVIEWER_GROUP
+    OR realm role "admin"
+  → revision-mismatch check (discriminated 409 if stale)
+  → handler: PublishMCPServerVersion(...) — publishes the version,
+    flips review_state to none, stamps reviewed_by/at/decision
+  → audit log write
+  → 204 No Content
 ```
 
 **A2A Agent Card**
@@ -115,7 +139,7 @@ MCP client / browser → GET /agents/{ns}/{slug}/.well-known/agent-card.json
 postgres:5432
 keycloak:8080
 server:8081         ← go run / air hot-reload
-web:3000            ← next dev
+web:3000            ← vite dev (HMR, proxies /api/* to server:8081)
 otel-collector:4317
 jaeger:16686
 ```
@@ -123,8 +147,9 @@ jaeger:16686
 **Production (docker-compose prod profile)**
 ```
 postgres (managed or container with volume)
-server (multi-stage Docker image, alpine)
-web (Next.js standalone output)
+server (multi-stage Docker image, distroless)
+web (vite build output served by nginx; nginx proxies /api/* /v0/*
+     /config.json to the server upstream)
 reverse proxy (Caddy or nginx) → TLS termination
 otel-collector → external Prometheus / Grafana / Tempo
 ```
@@ -222,14 +247,20 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production
 ### 3.1 Entity-Relationship Diagram
 
 ```
-publishers ──< mcp_servers ──< mcp_server_versions
-           │
-           └──< agents ──< agent_versions
+publishers ──< workspaces ──< mcp_servers ──< mcp_server_versions
+                          │
+                          └─< agents       ──< agent_versions
 
-users (from OIDC — cached/synced)
-api_keys ──> publishers  (scoped per publisher)
-audit_log (polymorphic: resource_type + resource_id)
+audit_log (polymorphic: resource_type + resource_id, includes synthetic
+           bootstrap-loader events)
+reports (polymorphic: target_type + target_id; admin triages)
 ```
+
+Each workspace belongs to exactly one publisher. Every MCP server / agent
+belongs to exactly one workspace; bare publisher → entry FKs no longer
+exist (migration `000008` introduced workspaces; `000010` finalised the
+pivot). A publisher gets a lazily-created `default` workspace on the
+first MCP/agent create when no `workspace:` is specified.
 
 ### 3.2 Key Table Schemas
 
@@ -243,9 +274,21 @@ verified    BOOLEAN NOT NULL DEFAULT false,
 created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 
--- mcp_servers
+-- workspaces (introduced in migration 000008; group_name added by 000009)
 id           TEXT PRIMARY KEY,         -- ULID
 publisher_id TEXT NOT NULL REFERENCES publishers(id),
+slug         TEXT NOT NULL,
+name         TEXT NOT NULL,
+description  TEXT,
+contact      TEXT,
+group_name   TEXT,                     -- Keycloak group; NULL = admin-only
+created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+UNIQUE (publisher_id, slug)
+
+-- mcp_servers
+id           TEXT PRIMARY KEY,         -- ULID
+workspace_id TEXT NOT NULL REFERENCES workspaces(id),
 slug         TEXT NOT NULL,
 name         TEXT NOT NULL,
 description  TEXT,
@@ -256,54 +299,75 @@ visibility   TEXT NOT NULL DEFAULT 'private',  -- private | public
 status       TEXT NOT NULL DEFAULT 'draft',    -- draft | published | deprecated
 created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-UNIQUE (publisher_id, slug)
+UNIQUE (workspace_id, slug)
+-- Slug uniqueness is workspace-scoped, not publisher-scoped, so two
+-- workspaces under the same publisher can each own a `files` server.
 
 -- mcp_server_versions
-id               TEXT PRIMARY KEY,     -- ULID
-server_id        TEXT NOT NULL REFERENCES mcp_servers(id),
-version          TEXT NOT NULL,        -- semver
-runtime          TEXT NOT NULL,        -- stdio | http | sse | streamable_http
-install          JSONB NOT NULL,
-capabilities     JSONB NOT NULL,
-protocol_version TEXT NOT NULL,
-checksum         TEXT,
-signature        TEXT,
-published_at     TIMESTAMPTZ,          -- NULL until published
-released_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+id                  TEXT PRIMARY KEY,  -- ULID
+server_id           TEXT NOT NULL REFERENCES mcp_servers(id),
+version             TEXT NOT NULL,     -- semver
+runtime             TEXT NOT NULL,     -- stdio | http | sse | streamable_http
+install             JSONB NOT NULL,
+capabilities        JSONB NOT NULL,
+tools               JSONB NOT NULL DEFAULT '[]',
+protocol_version    TEXT NOT NULL,
+published_at        TIMESTAMPTZ,       -- NULL until published
+
+-- Change-approval (migration 000010) — orthogonal to status/published_at
+review_state        TEXT NOT NULL DEFAULT 'none',
+                                       -- none | pending_review | rejected
+revision            INTEGER NOT NULL DEFAULT 0,
+                                       -- monotonic; bumped on every edit/transition
+submitted_by        TEXT,              -- OIDC sub of the submitter
+submitted_by_email  TEXT,
+submitted_at        TIMESTAMPTZ,
+reviewed_by         TEXT,
+reviewed_by_email   TEXT,
+reviewed_at         TIMESTAMPTZ,
+review_decision     TEXT,              -- approved | rejected | NULL
+rejection_reason    TEXT,
+
+released_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
 UNIQUE (server_id, version)
 
 -- agents / agent_versions: symmetric to mcp_servers / mcp_server_versions
-
--- api_keys
-id           TEXT PRIMARY KEY,
-publisher_id TEXT NOT NULL REFERENCES publishers(id),
-key_hash     TEXT NOT NULL UNIQUE,     -- bcrypt hash
-prefix       TEXT NOT NULL,            -- first 8 chars for display (apikey_XXXXXXXX...)
-description  TEXT,
-last_used_at TIMESTAMPTZ,
-expires_at   TIMESTAMPTZ,
-created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+-- including the same change-approval column set on agent_versions.
 
 -- audit_log
 id            BIGSERIAL PRIMARY KEY,
-actor_subject TEXT NOT NULL,           -- OIDC sub or "apikey:<id>"
-action        TEXT NOT NULL,           -- e.g. mcp_server.publish
+actor_subject TEXT NOT NULL,           -- OIDC sub or "system:bootstrap"
+actor_email   TEXT,
+action        TEXT NOT NULL,           -- e.g. mcp_server.publish, workspace.created
 resource_type TEXT NOT NULL,
 resource_id   TEXT NOT NULL,
-payload       JSONB,
+resource_ns   TEXT,                    -- publisher slug for scoped resources
+resource_slug TEXT,
+metadata      JSONB,
 created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 ```
 
-Indexes: `(publisher_id, slug)`, `(server_id, version)`, `status`, `visibility`,
-full-text index on `name || ' ' || description` via `tsvector`.
+Indexes: `(workspace_id, slug)` on entry tables, `(publisher_id, slug)` on
+workspaces, `(server_id, version)` on versions, `status`, `visibility`,
+`review_state` (partial index `WHERE review_state = 'pending_review'`)
+to make the review queue scan cheap. Full-text index on
+`name || ' ' || description` via `tsvector`.
 
 ### 3.3 Version Lifecycle State Machine
+
+Two orthogonal axes: the publish-status axis (`status` / `published_at`)
+and the review-state axis (`review_state`, introduced by migration
+`000010`). The publish axis still drives what's visible to public
+readers; the review axis decides who is allowed to make the next
+publish-axis transition.
+
+**Publish axis** (unchanged from v0.2):
 
 ```
          ┌─────────┐
          │  draft  │  ← created by POST /versions
          └────┬────┘
-              │ :publish
+              │ :publish (admin or reviewer-approved)
               ▼
        ┌────────────┐
        │ published  │  ← immutable; metadata edits forbidden
@@ -315,8 +379,48 @@ full-text index on `name || ' ' || description` via `tsvector`.
       └────────────┘
 ```
 
-State transitions are admin-only. Published versions are immutable: no `PATCH`
-on a `mcp_server_versions` row after `published_at` is set.
+Published versions are immutable: no `PATCH` on a `mcp_server_versions`
+row after `published_at` is set.
+
+**Review axis** (change-approval workflow, ADR 0003):
+
+```
+                    edit / create
+                          │
+                          ▼
+                     ┌─────────┐
+              ┌──────│  none   │──────┐
+              │      └────┬────┘      │
+              │           │ :submit   │
+       :reject│           │           │ :approve
+              │           ▼           │  (reviewer)
+              │     ┌──────────────┐  │
+              │     │pending_review│  │
+              │     └──────┬───────┘  │
+              │            │ :withdraw│
+              │            │ (author) │
+              ▼            │          ▼
+        ┌──────────┐       │     publish-axis
+        │ rejected │ ──────┘     transition runs
+        └────┬─────┘   :resubmit (publish handler)
+             │
+             │  edit (revision++)
+             ▼
+        ┌──────────┐
+        │   none   │  ← rejected versions are still drafts; another submit
+        └──────────┘    moves them back to pending_review.
+```
+
+Workspace group members can drive `none → pending_review` and
+`pending_review → none` (withdraw). Only the reviewer group can drive
+`pending_review → none` via approve (which also runs the publish-axis
+transition) or `pending_review → rejected`. Every transition increments
+the row's `revision` counter, so concurrent edits surface a discriminated
+409 (`review-revision-mismatch`) instead of clobbering each other.
+
+Entries themselves can also have a pending-deletion review attached;
+this is implemented as a row in the same review queue scoped to the
+entry rather than a single version.
 
 ### 3.4 Pagination & Filtering
 
@@ -349,13 +453,23 @@ Response:
 | Type slug | Status | Meaning |
 |-----------|--------|---------|
 | `not-found` | 404 | Entity does not exist or is not visible |
-| `forbidden` | 403 | Authenticated but lacks `registry:admin` scope |
+| `forbidden` | 403 | Authenticated but lacks `registry:admin`, the workspace's group, or the reviewer group (depending on the route) |
 | `unauthorized` | 401 | Missing or invalid bearer token |
 | `validation-error` | 422 | Request body failed schema validation; `errors[]` extension field |
 | `conflict` | 409 | Duplicate slug or version |
 | `immutable` | 409 | Attempt to mutate a published (immutable) version |
+| `review-state-mismatch` | 409 | Transition not allowed from the current `review_state` (e.g. approve called on a `none` row) |
+| `review-revision-mismatch` | 409 | Caller's `revision` doesn't match the row — the version was edited under them; refresh and retry |
+| `review-already-pending` | 409 | Another version on the same entry is already pending review (one-at-a-time invariant) |
+| `already-published` | 409 | Approve called on an already-published version |
 | `rate-limited` | 429 | Too many requests; `Retry-After` header set |
 | `internal` | 500 | Unexpected server error |
+
+The `review-*` and `already-published` types are **discriminated** — the
+admin UI maps each `type` to a friendly inline message ("the version
+was edited since this page loaded — refresh"; "another version on this
+entry is already pending review"; etc.). Don't fold them into a generic
+`conflict`.
 
 ---
 
@@ -363,7 +477,7 @@ Response:
 
 ### 4.1 Design System
 
-**Framework**: Next.js 15 App Router + shadcn/ui + Tailwind CSS v4.
+**Framework**: Vite + React 19 + React Router v7 + shadcn/ui + Tailwind CSS v4. The whole application ships as a static SPA; nginx serves the bundle and proxies API paths to the Go backend.
 
 #### Color Palette
 
@@ -463,37 +577,69 @@ system handles the swap automatically.
 
 ### 4.3 Admin UI Layout
 
-Guarded by Auth.js: unauthenticated requests redirect to the IdP login page.
+Guarded by `<RequireAuth>` wrapping every `/admin/*` route. Authentication
+runs entirely client-side via `oidc-client-ts` (PKCE public client; no
+Next.js, no Auth.js, no client secret). Unauthenticated visits trigger a
+redirect to the IdP authorize endpoint and a callback flow handled by
+`/auth/callback`.
 
 ```
 ┌──────────┬──────────────────────────────────────────┐
-│ SIDEBAR  │  TOPBAR (breadcrumb + user menu)          │
-│ 240px    │──────────────────────────────────────────│
+│ SIDEBAR  │  TOPBAR (breadcrumb + theme + user menu)  │
+│ md+ only │──────────────────────────────────────────│
 │          │                                           │
-│ Overview │  PAGE CONTENT                             │
-│          │                                           │
+│ Dashboard│  PAGE CONTENT                             │
+│ Review   │                                           │
+│   queue  │  ⓘ                                        │
+│ Publishers│                                          │
 │ MCP      │                                           │
 │  Servers │                                           │
-│  Publish │                                           │
-│          │                                           │
 │ Agents   │                                           │
-│          │                                           │
-│ Publishers│                                          │
+│ Reports  │                                           │
+│ Activity │                                           │
 │ API Keys │                                           │
-│ Users    │                                           │
-│ Audit Log│                                           │
 │          │                                           │
-│ [Avatar] │                                           │
-│ Sign out │                                           │
 └──────────┴──────────────────────────────────────────┘
 ```
 
-**Sidebar** (`w-60`, `bg-slate-900 text-slate-100`):
-- Logo + "Admin" badge at top.
-- Nav groups with icons (lucide-react): each group collapsible.
-- Active item: `bg-indigo-600 text-white rounded-md`.
-- Bottom: avatar, name, email, sign-out.
-- Mobile: hidden by default, slide-in drawer triggered by hamburger.
+**Sidebar** (`w-56`, `border-r bg-muted/30`, `hidden md:block`):
+- Each nav item: icon (lucide-react) + label, active style via `cn()`.
+- The Review queue item carries a live count badge fed by a TanStack
+  Query hook against `/api/v1/review-queue?limit=99` with a 30-second
+  refetch interval (reads "99+" past 99). The cache is invalidated on
+  every change-approval mutation toast so the count stays current.
+- Mobile (`<md`): the static sidebar is hidden. A hamburger button in
+  the header opens a fixed-position drawer that reuses the same
+  `AdminSidebar` component with `mobile={true}`. The drawer dismisses
+  on Escape, on backdrop click, on a nav-link tap, and on
+  `location.pathname` change. Body scroll is locked while open.
+
+**Workspaces section** (publisher detail page):
+- Renders below the publisher Edit / Delete actions, before the MCP
+  servers and agents tables.
+- Table columns: chevron toggle · slug · name · group · updated · row
+  actions (Edit, Delete workspace).
+- Each row is expandable: clicking the chevron mounts an inline
+  `WorkspaceResources` panel that fetches the workspace's MCP servers
+  and agents in parallel via the per-workspace list endpoints. Each
+  result row in that panel has a Manage shortcut to the entry admin
+  page.
+- "New workspace" creates a row in-place; the row's "Edit" action
+  opens a centered modal dialog (`role="dialog"`, `aria-modal`,
+  Escape closes, body scroll locked, backdrop dismiss) so the form
+  doesn't push the table down.
+
+**Review queue page** (`/admin/review`):
+- Reviewer-only (gated by `RequireReviewer`; non-reviewers see a 403
+  page).
+- One list of pending items, each rendered as either a "version
+  pending review" card (entry slug, version, revision, submitter
+  email + timestamp) or a "deletion request" card.
+- Actions: Approve · Reject (which opens an inline reason form;
+  reason is required and stored on the version's
+  `rejection_reason`).
+- Per-version cards on entry detail pages mirror the same data with
+  Submit / Withdraw / Resubmit buttons gated by `review_state`.
 
 **Data tables** (shadcn/ui `<DataTable>` with TanStack Table):
 - Column sorting, row selection checkboxes for bulk actions.
@@ -501,17 +647,27 @@ Guarded by Auth.js: unauthenticated requests redirect to the IdP login page.
 - Status and visibility shown as colored badges.
 - Search/filter bar above the table.
 
-**Forms** (shadcn/ui `<Form>` + react-hook-form + zod):
-- Side-by-side layout on desktop (label left, input right in 2-col grid).
-- Inline validation errors below each field.
-- "Save draft" (secondary) + "Publish" (primary) button pair on version forms.
-- Destructive actions (Delete, Deprecate) require a confirmation dialog with
-  typed name confirmation for irreversible operations.
+**Forms**: native HTML forms + shadcn/ui `<Input>` / `<Label>` / `<Button>`.
+No react-hook-form / zod dependency in the admin tree — forms are simple
+enough that `FormData` parsing inside the submit handler suffices.
+- Inline validation errors below each form, scoped to the action that
+  produced them (`createError` / `editError` / `deleteError` rather
+  than a single section banner). Every error region carries
+  `role="alert"` so screen readers announce it.
+- "Save changes" (primary, right) + "Cancel" (outline, left) on edit
+  forms; reordering matches dialog conventions.
+- Destructive actions use a `window.confirm` gate. The DeleteButton
+  itself is rendered with quiet styling (outline + destructive text +
+  faded border, fills red on hover) so it doesn't drown out the
+  row's primary actions; the `confirm` dialog is the real safety
+  net.
 
-**Toast notifications** (shadcn/ui `<Sonner>`):
-- Success: emerald border, "Published successfully."
-- Error: red border, error message from `problem+json` detail field.
-- Position: bottom-right.
+**Toast notifications** (`sonner`, mounted at the app root):
+- Triggered on every change-approval mutation (submit, withdraw,
+  approve, reject, request deletion) and on workspace CRUD.
+- Position: top-right; rich colors; close button.
+- The cache for the sidebar's review-queue badge is invalidated
+  alongside change-approval toasts so the count stays in sync.
 
 ---
 
@@ -519,16 +675,18 @@ Guarded by Auth.js: unauthenticated requests redirect to the IdP login page.
 
 | Component | Location | Notes |
 |-----------|----------|-------|
-| `RegistryCard` | `components/registry/card.tsx` | Used in all listing grids |
-| `StatusBadge` | `components/ui/status-badge.tsx` | draft/published/deprecated |
-| `VisibilityBadge` | `components/ui/visibility-badge.tsx` | private/public |
-| `RuntimeBadge` | `components/ui/runtime-badge.tsx` | stdio/http/sse/streamable_http |
-| `DataTable` | `components/data-table/` | Generic, typed with TanStack |
-| `CommandPalette` | `components/command-palette.tsx` | `⌘K` global search |
-| `InstallSnippet` | `components/registry/install-snippet.tsx` | Code block + copy |
-| `AgentCardViewer` | `components/agents/card-viewer.tsx` | Renders A2A card fields |
-| `ConfirmDialog` | `components/ui/confirm-dialog.tsx` | Typed-name confirmation |
-| `AdminSidebar` | `components/admin/sidebar.tsx` | Collapsible nav groups |
+| `MCPCard` / `AgentCard` | `components/{mcp,agents}/*.tsx` | Used in all listing grids |
+| `StatusBadge` / `VisibilityBadge` | `components/ui/badge.tsx` | draft/published/deprecated · private/public |
+| `FilterBar` | `components/ui/filter-bar.tsx` | Search + namespace + status + visibility filters; debounced URL writes |
+| `Table` (shadcn) | `components/ui/table.tsx` | Wraps responsive horizontal scroll; columns hide via Tailwind breakpoints |
+| `InstallCommand` / `ConfigGenerator` | `components/{ui,mcp}/*.tsx` | Code blocks + copy |
+| `AdminSidebar` | `components/layout/admin-sidebar.tsx` | Includes the live review-queue badge hook |
+| `WorkspacesSection` | `pages/admin/publishers/workspaces-section.tsx` | Expandable rows + modal Edit dialog |
+| `VersionsSection` | `components/admin/versions-section.tsx` | Per-version submit / withdraw / resubmit |
+| `RequestDeletionButton` | `components/admin/request-deletion-button.tsx` | Submits a deletion review |
+| `DeleteButton` | `components/admin/delete-button.tsx` | Quiet outline + window.confirm gate |
+| `LifecycleStepper` | `components/admin/lifecycle-stepper.tsx` | Visual indicator of publish-axis state |
+| `ReviewQueue` | `pages/admin/review/index.tsx` | Reviewer-only Approve / Reject UI |
 
 ---
 
