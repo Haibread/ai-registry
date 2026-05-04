@@ -12,10 +12,15 @@ export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   // Auto-close the mobile drawer on route changes — otherwise tapping a
-  // nav link leaves the drawer hovering over the new page.
-  useEffect(() => {
+  // nav link leaves the drawer hovering over the new page. Render-time
+  // reset (rather than useEffect) so the drawer never paints stale-open
+  // on the new route. See React docs: "Adjusting some state when a prop
+  // changes" — https://react.dev/learn/you-might-not-need-an-effect.
+  const [prevPath, setPrevPath] = useState(location.pathname)
+  if (location.pathname !== prevPath) {
+    setPrevPath(location.pathname)
     setMobileOpen(false)
-  }, [location.pathname])
+  }
 
   // Lock the body scroll while the drawer is open so backdrop swipes don't
   // bleed through to the underlying page on iOS. Esc-key dismisses the

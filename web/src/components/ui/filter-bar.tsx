@@ -74,13 +74,18 @@ export function FilterBar({
     () => searchParams.get('namespace') ?? initialNamespace
   )
 
-  // Keep local text state in sync when the URL changes externally (browser
-  // back/forward).
-  useEffect(() => {
+  // Resync local text state when the URL changes externally (browser
+  // back/forward). Done with the render-time reset pattern rather than
+  // useEffect — see https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  // React batches the setStates with the current render, so the inputs
+  // never paint a stale value.
+  const [prevSearch, setPrevSearch] = useState(search)
+  if (search !== prevSearch) {
+    setPrevSearch(search)
     const p = new URLSearchParams(search)
     setQ(p.get('q') ?? '')
     setNamespace(p.get('namespace') ?? '')
-  }, [search])
+  }
 
   // Debounce timer ref — shared across q and namespace.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
