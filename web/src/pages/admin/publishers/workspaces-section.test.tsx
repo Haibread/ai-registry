@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 vi.mock('@/auth/AuthContext', () => ({
@@ -25,7 +26,9 @@ function renderSection(slug = 'acme') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <WorkspacesSection publisherSlug={slug} />
+      <MemoryRouter>
+        <WorkspacesSection publisherSlug={slug} />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -159,6 +162,98 @@ describe('WorkspacesSection', () => {
       await screen.findByText(/workspace still has mcp servers or agents/i),
     ).toBeInTheDocument()
     confirmSpy.mockRestore()
+  })
+
+  describe('row expansion', () => {
+    it('hides the inline contents until the chevron toggle is clicked', async () => {
+      // Tailor the GET mock to differentiate the workspaces-list call from
+      // the expansion calls so the test asserts on URLs explicitly.
+      mockGET.mockImplementation((url: string) => {
+        if (url === '/api/v1/publishers/{publisher_slug}/workspaces') {
+          return Promise.resolve({ data: { items: [sampleWorkspace] } })
+        }
+        if (url.endsWith('/servers')) {
+          return Promise.resolve({
+            data: { items: [{ id: 's1', name: 'My MCP', slug: 'my-mcp', namespace: 'acme', status: 'published', updated_at: '2026-04-12' }] },
+          })
+        }
+        if (url.endsWith('/agents')) {
+          return Promise.resolve({ data: { items: [] } })
+        }
+        return Promise.resolve({ data: { items: [] } })
+      })
+
+      renderSection()
+      // Wait for the workspace row.
+      await screen.findByText('claude-team')
+
+      // Initially collapsed: the MCP entry must not be in the DOM.
+      expect(screen.queryByText('My MCP')).toBeNull()
+
+      const toggle = screen.getByRole('button', { name: /expand workspace contents/i })
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(toggle)
+
+      // After clicking, the GET for /servers and /agents fire and the
+      // panel renders.
+      expect(await screen.findByText('My MCP')).toBeInTheDocument()
+      expect(screen.getByText(/no agents in this workspace/i)).toBeInTheDocument()
+
+      // aria-expanded flips and the toggle label updates so screen-reader
+      // users can collapse it again.
+      const collapseToggle = screen.getByRole('button', { name: /collapse workspace contents/i })
+      expect(collapseToggle).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    it('renders Manage links pointing to the entity admin page', async () => {
+      mockGET.mockImplementation((url: string) => {
+        if (url === '/api/v1/publishers/{publisher_slug}/workspaces') {
+          return Promise.resolve({ data: { items: [sampleWorkspace] } })
+        }
+        if (url.endsWith('/servers')) {
+          return Promise.resolve({
+            data: { items: [{ id: 's1', name: 'My MCP', slug: 'my-mcp', namespace: 'acme', status: 'draft', updated_at: '2026-04-12' }] },
+          })
+        }
+        if (url.endsWith('/agents')) {
+          return Promise.resolve({
+            data: { items: [{ id: 'a1', name: 'My Agent', slug: 'my-agent', namespace: 'acme', status: 'published', updated_at: '2026-04-12' }] },
+          })
+        }
+        return Promise.resolve({ data: { items: [] } })
+      })
+
+      renderSection()
+      fireEvent.click(await screen.findByRole('button', { name: /expand workspace contents/i }))
+
+      const allManage = await screen.findAllByRole('link', { name: /manage/i })
+      // The MCP list renders first, so the first Manage points at the
+      // server admin page and the second at the agent admin page.
+      expect(allManage[0]).toHaveAttribute('href', '/admin/mcp/acme/my-mcp')
+      expect(allManage[1]).toHaveAttribute('href', '/admin/agents/acme/my-agent')
+    })
+
+    it('surfaces a load error if either resource list fails', async () => {
+      mockGET.mockImplementation((url: string) => {
+        if (url === '/api/v1/publishers/{publisher_slug}/workspaces') {
+          return Promise.resolve({ data: { items: [sampleWorkspace] } })
+        }
+        if (url.endsWith('/servers')) {
+          return Promise.reject(new Error('boom'))
+        }
+        if (url.endsWith('/agents')) {
+          return Promise.resolve({ data: { items: [] } })
+        }
+        return Promise.resolve({ data: { items: [] } })
+      })
+
+      renderSection()
+      fireEvent.click(await screen.findByRole('button', { name: /expand workspace contents/i }))
+
+      expect(
+        await screen.findByText(/failed to load workspace contents/i),
+      ).toBeInTheDocument()
+    })
   })
 
   it('surfaces a friendly error when create returns conflict on duplicate slug', async () => {

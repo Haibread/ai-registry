@@ -8,16 +8,35 @@
  *  - exact=false (all others): highlights when pathname.startsWith(href)
  */
 
-import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AdminSidebar } from './admin-sidebar'
 
+vi.mock('@/auth/AuthContext', () => ({
+  useAuth: () => ({ accessToken: 'test-token' }),
+}))
+
+const mockGET = vi.fn()
+vi.mock('@/lib/api-client', () => ({
+  useAuthClient: () => ({ GET: mockGET }),
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  // Default: empty queue → no badge.
+  mockGET.mockResolvedValue({ data: { items: [] } })
+})
+
 function renderSidebar(pathname: string) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <MemoryRouter initialEntries={[pathname]}>
-      <AdminSidebar pathname={pathname} />
-    </MemoryRouter>
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[pathname]}>
+        <AdminSidebar pathname={pathname} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
@@ -95,5 +114,40 @@ describe('AdminSidebar — active route detection', () => {
     expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /activity/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /api keys/i })).toBeInTheDocument()
+  })
+})
+
+describe('AdminSidebar — review queue badge', () => {
+  it('renders no badge when the queue is empty', async () => {
+    mockGET.mockResolvedValue({ data: { items: [] } })
+    renderSidebar('/admin')
+    // Wait for the query to settle so the `null` return is stable.
+    await waitFor(() => expect(mockGET).toHaveBeenCalled())
+    expect(screen.queryByLabelText(/pending review/i)).not.toBeInTheDocument()
+  })
+
+  it('renders a count badge when the queue has items', async () => {
+    mockGET.mockResolvedValue({
+      data: { items: Array.from({ length: 3 }, () => ({})) },
+    })
+    renderSidebar('/admin')
+    expect(await screen.findByLabelText(/3 items pending review/i)).toBeInTheDocument()
+  })
+
+  it('clamps overflow at 99+ when next_cursor is set', async () => {
+    mockGET.mockResolvedValue({
+      data: {
+        items: Array.from({ length: 99 }, () => ({})),
+        next_cursor: 'more',
+      },
+    })
+    renderSidebar('/admin')
+    expect(await screen.findByText('99+')).toBeInTheDocument()
+  })
+
+  it('uses singular "item" copy for exactly 1 pending', async () => {
+    mockGET.mockResolvedValue({ data: { items: [{}] } })
+    renderSidebar('/admin')
+    expect(await screen.findByLabelText(/^1 item pending review$/i)).toBeInTheDocument()
   })
 })

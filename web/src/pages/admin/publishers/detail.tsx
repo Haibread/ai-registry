@@ -55,10 +55,14 @@ export default function AdminPublisherDetail() {
 
   const editMutation = useMutation({
     mutationFn: async (body: { name: string; contact: string }) => {
-      await api.PATCH('/api/v1/publishers/{slug}', {
+      const { error } = await api.PATCH('/api/v1/publishers/{slug}', {
         params: { path: { slug: slug! } },
         body,
       })
+      if (error) {
+        const e = error as { detail?: string; title?: string }
+        throw new Error(e?.detail ?? e?.title ?? 'Update failed.')
+      }
     },
     onSuccess: () => { invalidate(); setEditOpen(false) },
   })
@@ -154,7 +158,9 @@ export default function AdminPublisherDetail() {
             </div>
           </div>
           {editMutation.isError && (
-            <p className="text-sm text-destructive">Update failed. Please try again.</p>
+            <p role="alert" className="text-sm text-destructive">
+              {editMutation.error.message || 'Update failed. Please try again.'}
+            </p>
           )}
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={editMutation.isPending}>
@@ -181,7 +187,7 @@ export default function AdminPublisherDetail() {
           />
         </div>
         {deleteMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             Delete failed — publisher may still have active entries.
           </p>
         )}

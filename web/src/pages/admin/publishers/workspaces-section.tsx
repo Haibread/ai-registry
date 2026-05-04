@@ -1,11 +1,15 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Briefcase, Plus, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { Briefcase, Plus, X, ChevronRight, ChevronDown, Server, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableSkeleton } from '@/components/ui/table-skeleton'
+import { StatusBadge } from '@/components/ui/badge'
 import { DeleteButton } from '@/components/admin/delete-button'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
@@ -13,6 +17,8 @@ import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type Workspace = components['schemas']['Workspace']
+type MCPServer = components['schemas']['MCPServer']
+type Agent = components['schemas']['Agent']
 
 interface WorkspacesSectionProps {
   publisherSlug: string
@@ -32,7 +38,22 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editingSlug, setEditingSlug] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [expandedSlugs, setExpandedSlugs] = useState<Set<string>>(new Set())
+  // Errors are tracked per source so they render next to the action that
+  // produced them (inline form errors) rather than as a single global
+  // banner at the top of the section.
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const toggleExpanded = (workspaceSlug: string) => {
+    setExpandedSlugs((prev) => {
+      const next = new Set(prev)
+      if (next.has(workspaceSlug)) next.delete(workspaceSlug)
+      else next.add(workspaceSlug)
+      return next
+    })
+  }
 
   const queryKey = ['admin-publisher-workspaces', publisherSlug]
 
@@ -55,18 +76,20 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
 
   const createMutation = useMutation({
     mutationFn: async (body: { slug: string; name: string; description?: string }) => {
-      setActionError(null)
+      setCreateError(null)
       const { error } = await api.POST('/api/v1/publishers/{publisher_slug}/workspaces', {
         params: { path: { publisher_slug: publisherSlug } },
         body,
       })
       if (error) throw new Error(friendlyError(error, 'Create failed.'))
+      return body
     },
-    onSuccess: () => {
+    onSuccess: (body) => {
+      toast.success(`Workspace ${body.slug} created`)
       setCreateOpen(false)
       invalidate()
     },
-    onError: (err: Error) => setActionError(err.message),
+    onError: (err: Error) => setCreateError(err.message),
   })
 
   const patchMutation = useMutation({
@@ -77,7 +100,7 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
       workspaceSlug: string
       body: { name?: string; description?: string; contact?: string; group_name?: string }
     }) => {
-      setActionError(null)
+      setEditError(null)
       const { error } = await api.PATCH(
         '/api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}',
         {
@@ -86,17 +109,23 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
         },
       )
       if (error) throw new Error(friendlyError(error, 'Update failed.'))
+      return { workspaceSlug, body }
     },
-    onSuccess: () => {
+    onSuccess: ({ workspaceSlug, body }) => {
+      // Highlight the most useful change: setting / clearing the group binding.
+      let msg = `Workspace ${workspaceSlug} updated`
+      if (body.group_name === '') msg = `Workspace ${workspaceSlug} group binding cleared`
+      else if (body.group_name) msg = `Workspace ${workspaceSlug} bound to ${body.group_name}`
+      toast.success(msg)
       setEditingSlug(null)
       invalidate()
     },
-    onError: (err: Error) => setActionError(err.message),
+    onError: (err: Error) => setEditError(err.message),
   })
 
   const deleteMutation = useMutation({
     mutationFn: async (workspaceSlug: string) => {
-      setActionError(null)
+      setDeleteError(null)
       const { error } = await api.DELETE(
         '/api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}',
         {
@@ -111,9 +140,13 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
           : e?.detail || 'Delete failed.'
         throw new Error(msg)
       }
+      return workspaceSlug
     },
-    onSuccess: invalidate,
-    onError: (err: Error) => setActionError(err.message),
+    onSuccess: (workspaceSlug) => {
+      toast.success(`Workspace ${workspaceSlug} deleted`)
+      invalidate()
+    },
+    onError: (err: Error) => setDeleteError(err.message),
   })
 
   return (
@@ -124,7 +157,7 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
           Workspaces
           <span className="text-sm font-normal text-muted-foreground">({items.length})</span>
         </h2>
-        <Button size="sm" onClick={() => { setCreateOpen((v) => !v); setActionError(null) }}>
+        <Button size="sm" onClick={() => { setCreateOpen((v) => !v); setCreateError(null) }}>
           {createOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
           <span className="ml-1.5">{createOpen ? 'Cancel' : 'New workspace'}</span>
         </Button>
@@ -134,9 +167,12 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
         each set to a Keycloak group whose members can author content.
       </p>
 
-      {actionError && (
+      {/* Delete errors don't have a form anchor — keep them as a section
+          banner so the user notices the failure even if they've moved on
+          to a different row. */}
+      {deleteError && (
         <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {actionError}
+          {deleteError}
         </div>
       )}
 
@@ -168,7 +204,14 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
             <Label htmlFor="ws-desc">Description</Label>
             <Input id="ws-desc" name="description" placeholder="Stuff the Claude team owns" />
           </div>
-          <div className="flex gap-2">
+          {/* Inline error sits next to the submit button so the user sees
+              it without losing the form state in the viewport. */}
+          {createError && (
+            <p role="alert" className="text-sm text-destructive">
+              {createError}
+            </p>
+          )}
+          <div className="flex gap-2 flex-wrap">
             <Button type="submit" size="sm" disabled={createMutation.isPending}>
               {createMutation.isPending ? 'Creating…' : 'Create workspace'}
             </Button>
@@ -180,7 +223,7 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
       )}
 
       {isPending ? (
-        <p className="text-sm text-muted-foreground py-4">Loading workspaces…</p>
+        <TableSkeleton rows={3} cols={5} />
       ) : isError ? (
         <p className="text-sm text-destructive py-4">Failed to load workspaces.</p>
       ) : items.length === 0 ? (
@@ -191,54 +234,81 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8" />
               <TableHead>Slug</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Group</TableHead>
-              <TableHead>Updated</TableHead>
+              <TableHead className="hidden md:table-cell">Updated</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map((ws) => {
               const isEditing = editingSlug === ws.slug
+              const isExpanded = expandedSlugs.has(ws.slug)
               return (
-                <TableRow key={ws.id}>
-                  <TableCell className="font-mono text-sm">{ws.slug}</TableCell>
-                  <TableCell className="font-medium">{ws.name}</TableCell>
-                  <TableCell>
-                    {ws.group_name ? (
-                      <Badge variant="secondary" className="font-mono text-xs">
-                        {ws.group_name}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">admin-only</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(ws.updated_at)}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex gap-1">
+                <Fragment key={ws.id}>
+                  <TableRow>
+                    <TableCell className="pr-0">
                       <Button
                         variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setEditingSlug(isEditing ? null : ws.slug)
-                          setActionError(null)
-                        }}
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label={isExpanded ? 'Collapse workspace contents' : 'Expand workspace contents'}
+                        aria-expanded={isExpanded}
+                        onClick={() => toggleExpanded(ws.slug)}
                       >
-                        {isEditing ? 'Cancel' : 'Edit'}
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
                       </Button>
-                      <DeleteButton
-                        label="Delete workspace"
-                        onDelete={() => deleteMutation.mutate(ws.slug)}
-                        entityName={ws.name}
-                        isPending={
-                          deleteMutation.isPending &&
-                          deleteMutation.variables === ws.slug
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">{ws.slug}</TableCell>
+                    <TableCell className="font-medium">{ws.name}</TableCell>
+                    <TableCell>
+                      {ws.group_name ? (
+                        <Badge variant="secondary" className="font-mono text-xs">
+                          {ws.group_name}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">admin-only</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground hidden md:table-cell">{formatDate(ws.updated_at)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="inline-flex gap-1 flex-wrap justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingSlug(isEditing ? null : ws.slug)
+                            setEditError(null)
+                          }}
+                        >
+                          {isEditing ? 'Cancel' : 'Edit'}
+                        </Button>
+                        <DeleteButton
+                          label="Delete workspace"
+                          onDelete={() => deleteMutation.mutate(ws.slug)}
+                          entityName={ws.name}
+                          isPending={
+                            deleteMutation.isPending &&
+                            deleteMutation.variables === ws.slug
+                          }
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {isExpanded && (
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableCell colSpan={6} className="p-0">
+                        <WorkspaceResources publisherSlug={publisherSlug} workspaceSlug={ws.slug} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
               )
             })}
           </TableBody>
@@ -252,8 +322,12 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
           onSubmit={(body) =>
             patchMutation.mutate({ workspaceSlug: editingSlug, body })
           }
-          onCancel={() => setEditingSlug(null)}
+          onCancel={() => {
+            setEditingSlug(null)
+            setEditError(null)
+          }}
           isPending={patchMutation.isPending}
+          error={editError}
         />
       )}
     </div>
@@ -265,11 +339,13 @@ function EditWorkspaceForm({
   onSubmit,
   onCancel,
   isPending,
+  error,
 }: {
   workspace: Workspace
   onSubmit: (body: { name: string; description?: string; contact?: string; group_name: string }) => void
   onCancel: () => void
   isPending: boolean
+  error: string | null
 }) {
   return (
     <form
@@ -316,7 +392,12 @@ function EditWorkspaceForm({
         The Keycloak group whose members can author this workspace's content. Empty
         clears the binding so only admins can write.
       </p>
-      <div className="flex gap-2">
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2 flex-wrap">
         <Button type="submit" size="sm" disabled={isPending}>
           {isPending ? 'Saving…' : 'Save changes'}
         </Button>
@@ -325,5 +406,154 @@ function EditWorkspaceForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+// Inline expansion that lists the MCP servers and agents scoped to a single
+// workspace. Two parallel queries; both are gated on the row being expanded
+// (the parent only mounts this component for expanded rows).
+function WorkspaceResources({
+  publisherSlug,
+  workspaceSlug,
+}: {
+  publisherSlug: string
+  workspaceSlug: string
+}) {
+  const { accessToken } = useAuth()
+  const api = useAuthClient()
+
+  const mcp = useQuery({
+    queryKey: ['admin-workspace-mcp', publisherSlug, workspaceSlug],
+    queryFn: async () => {
+      const r = await api.GET(
+        '/api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/servers',
+        {
+          params: {
+            path: { publisher_slug: publisherSlug, workspace_slug: workspaceSlug },
+            query: { limit: 50 },
+          },
+        },
+      )
+      return (r.data?.items ?? []) as MCPServer[]
+    },
+    enabled: !!accessToken,
+  })
+
+  const agents = useQuery({
+    queryKey: ['admin-workspace-agents', publisherSlug, workspaceSlug],
+    queryFn: async () => {
+      const r = await api.GET(
+        '/api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/agents',
+        {
+          params: {
+            path: { publisher_slug: publisherSlug, workspace_slug: workspaceSlug },
+            query: { limit: 50 },
+          },
+        },
+      )
+      return (r.data?.items ?? []) as Agent[]
+    },
+    enabled: !!accessToken,
+  })
+
+  const isPending = mcp.isPending || agents.isPending
+  const isError = mcp.isError || agents.isError
+  const mcpItems = mcp.data ?? []
+  const agentItems = agents.data ?? []
+
+  return (
+    <div className="px-4 py-4 space-y-4">
+      {isPending ? (
+        <p className="text-sm text-muted-foreground">Loading workspace contents…</p>
+      ) : isError ? (
+        <p className="text-sm text-destructive">Failed to load workspace contents.</p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          <ResourceList
+            icon={<Server className="h-3.5 w-3.5" aria-hidden="true" />}
+            title="MCP servers"
+            count={mcpItems.length}
+            emptyCopy="No MCP servers in this workspace."
+            items={mcpItems.map((s) => ({
+              key: s.id,
+              name: s.name,
+              slug: s.slug,
+              status: s.status,
+              updatedAt: s.updated_at,
+              href: `/admin/mcp/${s.namespace}/${s.slug}`,
+            }))}
+          />
+          <ResourceList
+            icon={<Bot className="h-3.5 w-3.5" aria-hidden="true" />}
+            title="Agents"
+            count={agentItems.length}
+            emptyCopy="No agents in this workspace."
+            items={agentItems.map((a) => ({
+              key: a.id,
+              name: a.name,
+              slug: a.slug,
+              status: a.status,
+              updatedAt: a.updated_at,
+              href: `/admin/agents/${a.namespace}/${a.slug}`,
+            }))}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+type ResourceStatus = 'draft' | 'published' | 'deprecated'
+
+interface ResourceItem {
+  key: string
+  name: string
+  slug: string
+  status: ResourceStatus
+  updatedAt: string
+  href: string
+}
+
+function ResourceList({
+  icon,
+  title,
+  count,
+  emptyCopy,
+  items,
+}: {
+  icon: React.ReactNode
+  title: string
+  count: number
+  emptyCopy: string
+  items: ResourceItem[]
+}) {
+  return (
+    <div className="rounded-md border bg-background">
+      <div className="flex items-center gap-2 border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {icon}
+        {title}
+        <span className="font-normal normal-case">({count})</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="px-3 py-3 text-sm text-muted-foreground">{emptyCopy}</p>
+      ) : (
+        <ul className="divide-y">
+          {items.map((it) => (
+            <li key={it.key} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+              <div className="min-w-0">
+                <div className="font-medium truncate">{it.name}</div>
+                <div className="font-mono text-xs text-muted-foreground truncate">{it.slug}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <StatusBadge status={it.status} />
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to={it.href}>Manage</Link>
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

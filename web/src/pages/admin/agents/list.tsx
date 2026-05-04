@@ -103,7 +103,7 @@ export default function AdminAgentList() {
 
   return (
     <div className="space-y-4 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Agents</h1>
           <p className="text-muted-foreground mt-1">
@@ -152,10 +152,10 @@ export default function AdminAgentList() {
                   />
                 </TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Namespace / Slug</TableHead>
+                <TableHead className="hidden sm:table-cell">Namespace / Slug</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Visibility</TableHead>
-                <TableHead>Updated</TableHead>
+                <TableHead className="hidden md:table-cell">Visibility</TableHead>
+                <TableHead className="hidden lg:table-cell">Updated</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -170,17 +170,22 @@ export default function AdminAgentList() {
                       onChange={() => selection.toggle(a.id)}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{a.name}</TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground">
+                  <TableCell className="font-medium">
+                    {a.name}
+                    <div className="font-mono text-xs text-muted-foreground sm:hidden">
+                      {a.namespace}/{a.slug}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-mono text-sm text-muted-foreground hidden sm:table-cell">
                     {a.namespace}/{a.slug}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={a.status} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <VisibilityBadge visibility={a.visibility} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(a.updated_at)}</TableCell>
+                  <TableCell className="text-muted-foreground hidden lg:table-cell">{formatDate(a.updated_at)}</TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm" asChild>
                       <Link to={`/admin/agents/${a.namespace}/${a.slug}`}>Manage</Link>

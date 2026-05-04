@@ -96,7 +96,7 @@ export default function AdminMCPList() {
 
   return (
     <div className="space-y-4 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">MCP Servers</h1>
           <p className="text-muted-foreground mt-1">
@@ -145,10 +145,10 @@ export default function AdminMCPList() {
                   />
                 </TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Namespace / Slug</TableHead>
+                <TableHead className="hidden sm:table-cell">Namespace / Slug</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Visibility</TableHead>
-                <TableHead>Updated</TableHead>
+                <TableHead className="hidden md:table-cell">Visibility</TableHead>
+                <TableHead className="hidden lg:table-cell">Updated</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -163,17 +163,24 @@ export default function AdminMCPList() {
                       onChange={() => selection.toggle(s.id)}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{s.name}</TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground">
+                  <TableCell className="font-medium">
+                    {s.name}
+                    {/* Show the namespace/slug inline on narrow screens
+                        where its dedicated column is hidden. */}
+                    <div className="font-mono text-xs text-muted-foreground sm:hidden">
+                      {s.namespace}/{s.slug}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-mono text-sm text-muted-foreground hidden sm:table-cell">
                     {s.namespace}/{s.slug}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={s.status} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <VisibilityBadge visibility={s.visibility} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(s.updated_at)}</TableCell>
+                  <TableCell className="text-muted-foreground hidden lg:table-cell">{formatDate(s.updated_at)}</TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm" asChild>
                       <Link to={`/admin/mcp/${s.namespace}/${s.slug}`}>Manage</Link>
