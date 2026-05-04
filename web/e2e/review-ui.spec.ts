@@ -149,8 +149,10 @@ test.describe('Admin review UI', () => {
     await page.getByLabel(/keycloak group/i).fill('e2e-team-grp')
     await page.getByRole('button', { name: /save changes/i }).click()
 
-    // Row re-renders with the new badge.
-    await expect(page.getByText('e2e-team-grp')).toBeVisible({ timeout: 10_000 })
+    // Row re-renders with the new badge. Scope to the row because the
+    // success toast also contains the group name and would collide with
+    // a page-wide getByText match.
+    await expect(defaultRow.getByText('e2e-team-grp')).toBeVisible({ timeout: 10_000 })
 
     // Clear it back to admin-only via another edit.
     await defaultRow.getByRole('button', { name: /^edit$/i }).click()

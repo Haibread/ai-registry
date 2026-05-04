@@ -87,7 +87,10 @@ describe('AdminMCPList', () => {
     renderPage()
     expect(await screen.findByText('Filesystem Server')).toBeInTheDocument()
     expect(screen.getByText('Memory Server')).toBeInTheDocument()
-    expect(screen.getByText('acme/fs')).toBeInTheDocument()
+    // The namespace/slug renders both as a hidden-on-small dedicated cell
+    // and inline under the name on small screens, so it appears twice in
+    // the DOM (one of the two is hidden via Tailwind's responsive classes).
+    expect(screen.getAllByText('acme/fs').length).toBeGreaterThan(0)
   })
 
   it('shows the bulk action bar when a row is selected', async () => {

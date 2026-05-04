@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { GitPullRequestArrow, CheckCircle2, AlertCircle, Send, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
 import { formatDate } from '@/lib/utils'
@@ -101,8 +103,13 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
               { params: { path: { namespace, slug, version } } },
             )
       if (result.error) throw new Error(friendlyProblem(result.error, 'Submit failed.'))
+      return version
     },
-    onSuccess: invalidate,
+    onSuccess: (version) => {
+      toast.success(`v${version} sent for review`)
+      invalidate()
+      queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
+    },
     onError: (err: Error) => setActionError(err.message),
   })
 
@@ -120,8 +127,13 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
               { params: { path: { namespace, slug, version } } },
             )
       if (result.error) throw new Error(friendlyProblem(result.error, 'Withdraw failed.'))
+      return version
     },
-    onSuccess: invalidate,
+    onSuccess: (version) => {
+      toast.success(`v${version} withdrawn`)
+      invalidate()
+      queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
+    },
     onError: (err: Error) => setActionError(err.message),
   })
 
@@ -150,7 +162,7 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
       )}
 
       {isPending ? (
-        <p className="text-sm text-muted-foreground py-4">Loading versions…</p>
+        <TableSkeleton rows={3} cols={5} />
       ) : isError ? (
         <p className="text-sm text-destructive py-4">Failed to load versions.</p>
       ) : items.length === 0 ? (

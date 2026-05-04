@@ -29,6 +29,11 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // react-hooks v7 added React Compiler-derived rules. `set-state-in-effect`
+      // flags two pre-existing call sites (activity-feed, filter-bar) that use
+      // the classic synced-state pattern. Downgrade to warn so a dep bump
+      // doesn't bundle component refactors; address those separately.
+      'react-hooks/set-state-in-effect': 'warn',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

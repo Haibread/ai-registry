@@ -57,6 +57,15 @@ services:
       # Enforce OAuth 2.1 audience binding (MCP auth spec). Matches the
       # ai-registry-server-audience client scope defined in the realm import.
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ai-registry-server}
+      # Workspace + change-approval auth knobs. Defaults match the
+      # server's built-in fallbacks, so the keys only need to be set
+      # in .env when overriding for a custom IdP setup.
+      AUTH_GROUPS_CLAIM: ${AUTH_GROUPS_CLAIM:-groups}
+      AUTH_REVIEWER_GROUP: ${AUTH_REVIEWER_GROUP:-registry-reviewers}
+      # AUTH_STORAGE=local is required by the Playwright E2E harness
+      # (storageState() persists localStorage but not session). Production
+      # must keep "session"; the .env in this directory flips it for dev.
+      AUTH_STORAGE: ${AUTH_STORAGE:-session}
       DATABASE_URL: ${DATABASE_URL:-postgres://registry:registry@postgres:5432/registry?sslmode=disable}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       # Public-facing base URL. The A2A global agent card handler returns
