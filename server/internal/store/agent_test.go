@@ -125,7 +125,7 @@ func TestAgentVersionLifecycle(t *testing.T) {
 	}
 
 	// Fetch and verify published.
-	got, err := sharedDB.GetAgentVersion(ctx, agent.ID, "1.0.0")
+	got, err := sharedDB.GetAgentVersion(ctx, agent.ID, "1.0.0", false)
 	if err != nil {
 		t.Fatalf("GetAgentVersion: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestListAgentVersions(t *testing.T) {
 		})
 	}
 
-	versions, err := sharedDB.ListAgentVersions(ctx, agent.ID)
+	versions, err := sharedDB.ListAgentVersions(ctx, agent.ID, false)
 	if err != nil {
 		t.Fatalf("ListAgentVersions: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestGetAgentVersion_NotFound(t *testing.T) {
 		PublisherID: pubID, Slug: "getaver-agent", Name: "GetAgentVer Agent",
 	})
 
-	_, err := sharedDB.GetAgentVersion(ctx, agent.ID, "9.9.9")
+	_, err := sharedDB.GetAgentVersion(ctx, agent.ID, "9.9.9", false)
 	if err != store.ErrNotFound {
 		t.Errorf("expected ErrNotFound for missing version, got %v", err)
 	}
