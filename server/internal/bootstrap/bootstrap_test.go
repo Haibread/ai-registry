@@ -1036,6 +1036,35 @@ agents:
 
 // ── Workspaces ────────────────────────────────────────────────────────────────
 
+// TestLoadSpec_ValidationError_EmptySlugDoesNotPoisonLookups ensures that
+// when a publisher row has an empty slug, the empty-key entry doesn't
+// silently make a downstream workspace's `publisher: ""` reference look
+// resolvable. We expect both errors to surface so the operator sees the
+// real cause (publisher row malformed) and not just the symptom.
+func TestLoadSpec_ValidationError_EmptySlugDoesNotPoisonLookups(t *testing.T) {
+	path := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: ""
+    name: "Headless"
+
+workspaces:
+  - publisher: "ghost"
+    slug: "core"
+    name: "Core"
+`)
+	_, err := bootstrap.LoadSpec(path)
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "publishers[0]: slug is required") {
+		t.Errorf("error %q does not mention the malformed publisher row", msg)
+	}
+	if !strings.Contains(msg, `publisher "ghost" not found`) {
+		t.Errorf("error %q does not mention the missing-publisher reference", msg)
+	}
+}
+
 // TestLoadSpec_ValidationError_UnknownWorkspaceRef ensures an MCP server
 // that references a workspace not declared in the workspaces[] list fails
 // validation up front rather than blowing up halfway through Run.

@@ -757,6 +757,11 @@ func deriveRuntime(packages []PackageSpec) domain.Runtime {
 func validateSpec(s *Spec) error {
 	var errs []string
 
+	// Lookup tables intentionally skip rows that already failed their
+	// own field-level checks — keeping `""` keys in either map would let
+	// downstream "not found" assertions pass against rubble and emit
+	// confusing follow-up errors instead of the real "slug is required"
+	// for the offending row.
 	pubSlugs := make(map[string]bool, len(s.Publishers))
 	for i, p := range s.Publishers {
 		if p.Slug == "" {
@@ -765,7 +770,9 @@ func validateSpec(s *Spec) error {
 		if p.Name == "" {
 			errs = append(errs, fmt.Sprintf("publishers[%d]: name is required", i))
 		}
-		pubSlugs[p.Slug] = true
+		if p.Slug != "" {
+			pubSlugs[p.Slug] = true
+		}
 	}
 
 	// (publisher_slug, workspace_slug) pairs that the spec declares —
@@ -784,7 +791,9 @@ func validateSpec(s *Spec) error {
 		if w.Name == "" {
 			errs = append(errs, prefix+": name is required")
 		}
-		wsKeys[wsKey{publisher: w.Publisher, slug: w.Slug}] = true
+		if w.Publisher != "" && w.Slug != "" {
+			wsKeys[wsKey{publisher: w.Publisher, slug: w.Slug}] = true
+		}
 	}
 
 	for i, srv := range s.MCPServers {
