@@ -2,6 +2,91 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+Phase 7 access-control + change-approval bundle plus an admin UI polish
+sweep. The server-side work landed across PRs #28–#32 and is reflected
+here for the first time; the UI polish landed in PR #37.
+
+### 🏢 Workspaces under publishers
+
+A new `workspaces` entity groups MCP servers and agents under each
+publisher and binds each set to a Keycloak group whose members can
+author content (no group → admin-only). See [ADR 0001](docs/adr/0001-workspaces-under-publishers.md)
+for the design and [ADR 0002](docs/adr/0002-workspace-group-binding.md)
+for the auth model.
+
+- New `workspaces` table; two-step migration creates one `default`
+  workspace per existing publisher and pivots resources onto it before
+  the finalising migration drops the legacy `publisher_id` FK on MCP
+  servers / agents. Forward-only — down migrations are dev-only.
+- Hierarchical API:
+  `GET /api/v1/publishers/{p}/workspaces`,
+  `POST /api/v1/publishers/{p}/workspaces`,
+  `GET/PATCH/DELETE /api/v1/publishers/{p}/workspaces/{w}`,
+  `GET .../workspaces/{w}/servers`, `.../agents`.
+- `RequireWorkspaceWrite` middleware: write endpoints require the
+  caller's JWT `groups` claim to include the workspace's `group_name`
+  (or the `admin` realm role). Configurable claim path
+  (`AUTH_GROUPS_CLAIM`, default `groups`).
+- Admin UI: workspace section on the publisher detail page, with
+  expandable rows showing the MCPs and agents scoped to each
+  workspace, plus a modal Edit dialog for renaming or rebinding.
+- Bootstrap: optional top-level `workspaces:` list and per-entry
+  `workspace:` reference field. Validation rejects unknown
+  publisher / workspace refs up front. `group_name` is applied on
+  first creation only so re-runs don't silently overwrite operator
+  edits. Example YAML now seeds four demo workspaces and pins ten
+  entries to them so the UI demo is populated out of the box.
+
+### ✅ Change-approval workflow
+
+A draft → pending review → published lifecycle that lets non-admin
+group members propose changes that a global reviewer group approves
+before they go live. See [ADR 0003](docs/adr/0003-change-approval-workflow.md).
+
+- New `review_state` column on MCP / agent versions, orthogonal to
+  `status` / `published_at`. States: `none`, `pending_review`,
+  `rejected`. A monotonic `revision` counter tracks edits across the
+  version's lifetime so concurrent edits surface a discriminated 409
+  (`review-revision-mismatch`) instead of clobbering each other.
+- New endpoints (per resource kind):
+  `POST .../versions/{v}/submit`, `.../withdraw`, `.../approve`,
+  `.../reject`, plus `POST .../deletion-request` for proposing an
+  entry deletion. The reviewer-only `GET /api/v1/review-queue`
+  surfaces every pending item across the registry.
+- Reviewer authorisation via `RequireReviewer` middleware;
+  configurable via `AUTH_REVIEWER_GROUP` (default `registry-reviewers`).
+- RFC 7807 error model uses discriminated `type` URIs:
+  `review-state-mismatch`, `review-revision-mismatch`,
+  `review-already-pending`, `already-published`. The admin UI maps
+  each to a friendly error message inline.
+- Admin UI: `/admin/review` queue page with approve / reject (with
+  required reason) actions, a per-version history table on the entry
+  detail pages with submit / withdraw / resubmit controls, a
+  `RequestDeletionButton` on every entry, and a live-pinging count
+  badge on the sidebar.
+
+### 🎨 Admin UI polish
+
+A coordinated polish pass over the admin section (PR #37) once the
+new workflow surfaces had landed:
+
+- Mobile hamburger drawer; the desktop sidebar is `hidden md:block`,
+  the drawer reuses `AdminSidebar` and auto-closes on navigation.
+- Loading skeletons on the queue, workspaces, and versions sections;
+  toasts (sonner) on every workflow mutation; inline form-level
+  error placement next to submit buttons.
+- Workspace edit form lives in a modal dialog (Esc to close, body
+  scroll lock, `aria-modal`) instead of pushing the table down.
+- Table-row primary actions (Edit, Manage) promoted from `ghost` to
+  `outline` with leading icons; `DeleteButton` quieted to outline
+  with destructive text so the visual hierarchy across the row stops
+  collapsing into "two labels and one filled red button".
+- List tables hide low-priority columns on small viewports and
+  surface the slug inline under the name where the dedicated column
+  is hidden; page headers wrap.
+
 ## v0.3.2
 
 Helm-chart-only patch release. Four fixes that unblock a fresh
