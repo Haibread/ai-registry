@@ -10,8 +10,7 @@
  * timeline, so controlling when more data is fetched keeps the page cheap.
  */
 
-import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import {
   Sparkles,
   Upload,
@@ -117,25 +116,32 @@ export function ActivityFeed({
   pageSize = 10,
 }: ActivityFeedProps) {
   const api = getPublicClient()
-  const [cursor, setCursor] = useState<string | undefined>(undefined)
-  const [accumulated, setAccumulated] = useState<PublicActivityEvent[]>([])
-  // Track whether the user has clicked Load-more so we can scope the loading
-  // indicator to the button rather than redrawing the whole section.
-  const [appending, setAppending] = useState(false)
-
   const enabled = !!namespace && !!slug
 
-  const { data, isLoading } = useQuery<PublicActivityEventList | null>({
-    queryKey: ['activity', resourceType, namespace, slug, cursor ?? null, pageSize],
-    queryFn: async () => {
-      if (!enabled) return null
+  // useInfiniteQuery owns the cursor → page-list state machine, so we no
+  // longer need a manual cursor + accumulator + setState-in-effect.
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    isFetchingNextPage,
+    hasNextPage,
+  } = useInfiniteQuery<PublicActivityEventList | null>({
+    queryKey: ['activity', resourceType, namespace, slug, pageSize],
+    enabled,
+    initialPageParam: undefined as string | undefined,
+    // The API returns next_cursor: '' (not null) when there's no next page,
+    // so use `||` rather than `??` — useInfiniteQuery treats any non-undefined
+    // return value as "has another page".
+    getNextPageParam: (lastPage) => lastPage?.next_cursor || undefined,
+    queryFn: async ({ pageParam }) => {
       if (resourceType === 'mcp') {
         const r = await api.GET(
           '/api/v1/mcp/servers/{namespace}/{slug}/activity',
           {
             params: {
               path: { namespace: namespace!, slug: slug! },
-              query: { limit: pageSize, cursor },
+              query: { limit: pageSize, cursor: pageParam as string | undefined },
             },
           },
         )
@@ -144,31 +150,16 @@ export function ActivityFeed({
       const r = await api.GET('/api/v1/agents/{namespace}/{slug}/activity', {
         params: {
           path: { namespace: namespace!, slug: slug! },
-          query: { limit: pageSize, cursor },
+          query: { limit: pageSize, cursor: pageParam as string | undefined },
         },
       })
       return r.data ?? null
     },
-    enabled,
   })
 
-  // Merge newly-fetched pages onto the accumulator. `cursor` is part of the
-  // query key, so `data` is always page-specific. When `cursor` is undefined
-  // (first page) we replace; otherwise we append. useEffect is used — not a
-  // render-time setState — to keep this a pure React pattern.
-  useEffect(() => {
-    if (!data) return
-    const newItems = data.items ?? []
-    if (cursor === undefined) {
-      setAccumulated(newItems)
-    } else {
-      setAccumulated((prev) => [...prev, ...newItems])
-      setAppending(false)
-    }
-  }, [data, cursor])
-
-  const items = accumulated
-  const canLoadMore = !!data?.next_cursor
+  const items: PublicActivityEvent[] =
+    data?.pages.flatMap((p) => p?.items ?? []) ?? []
+  const canLoadMore = !!hasNextPage
 
   if (isLoading && items.length === 0) {
     return (
@@ -274,13 +265,10 @@ export function ActivityFeed({
             type="button"
             variant="outline"
             size="sm"
-            disabled={appending}
-            onClick={() => {
-              setAppending(true)
-              setCursor(data!.next_cursor)
-            }}
+            disabled={isFetchingNextPage}
+            onClick={() => fetchNextPage()}
           >
-            {appending ? 'Loading…' : 'Load more'}
+            {isFetchingNextPage ? 'Loading…' : 'Load more'}
           </Button>
         </div>
       )}
