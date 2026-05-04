@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Briefcase, Plus, X, ChevronRight, ChevronDown, Server, Bot } from 'lucide-react'
+import { Briefcase, Plus, X, ChevronRight, ChevronDown, Server, Bot, Pencil, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -279,13 +279,14 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
                     <TableCell className="text-right">
                       <div className="inline-flex gap-1 flex-wrap justify-end">
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           onClick={() => {
                             setEditingSlug(ws.slug)
                             setEditError(null)
                           }}
                         >
+                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                           Edit
                         </Button>
                         <DeleteButton
@@ -594,8 +595,11 @@ function ResourceList({
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <StatusBadge status={it.status} />
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to={it.href}>Manage</Link>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={it.href}>
+                    Manage
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Link>
                 </Button>
               </div>
             </li>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Circle, Server, Bot } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, Server, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
@@ -232,9 +232,12 @@ export default function AdminPublisherDetail() {
                   <TableCell className="font-mono text-sm text-muted-foreground">{s.slug}</TableCell>
                   <TableCell><StatusBadge status={s.status} /></TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(s.updated_at)}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link to={`/admin/mcp/${s.namespace}/${s.slug}`}>Manage</Link>
+                  <TableCell className="text-right">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to={`/admin/mcp/${s.namespace}/${s.slug}`}>
+                        Manage
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -279,9 +282,12 @@ export default function AdminPublisherDetail() {
                   <TableCell className="font-mono text-sm text-muted-foreground">{a.slug}</TableCell>
                   <TableCell><StatusBadge status={a.status} /></TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(a.updated_at)}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link to={`/admin/agents/${a.namespace}/${a.slug}`}>Manage</Link>
+                  <TableCell className="text-right">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to={`/admin/agents/${a.namespace}/${a.slug}`}>
+                        Manage
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
                     </Button>
                   </TableCell>
                 </TableRow>

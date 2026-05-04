@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Plus, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -181,9 +181,12 @@ export default function AdminMCPList() {
                     <VisibilityBadge visibility={s.visibility} />
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden lg:table-cell">{formatDate(s.updated_at)}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link to={`/admin/mcp/${s.namespace}/${s.slug}`}>Manage</Link>
+                  <TableCell className="text-right">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to={`/admin/mcp/${s.namespace}/${s.slug}`}>
+                        Manage
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
                     </Button>
                   </TableCell>
                 </TableRow>

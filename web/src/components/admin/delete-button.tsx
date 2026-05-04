@@ -1,3 +1,4 @@
+import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface DeleteButtonProps {
@@ -11,6 +12,10 @@ interface DeleteButtonProps {
   label?: string
 }
 
+// Quiet "destructive outline" styling: red text + red border at low opacity,
+// filled red on hover. This keeps Delete readable as destructive without
+// drowning out the row's primary actions (Edit / Manage). The window.confirm
+// gate is the actual safety net, so the button doesn't need to scream.
 export function DeleteButton({
   onDelete,
   entityName,
@@ -27,11 +32,13 @@ export function DeleteButton({
   return (
     <Button
       type="button"
-      variant="destructive"
+      variant="outline"
       size="sm"
       disabled={isPending}
       onClick={handleClick}
+      className="border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
     >
+      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
       {label}
     </Button>
   )

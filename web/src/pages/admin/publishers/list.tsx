@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Plus, CheckCircle2, Circle, Building2 } from 'lucide-react'
+import { Plus, CheckCircle2, Circle, Building2, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthClient } from '@/lib/api-client'
@@ -70,9 +70,12 @@ export default function AdminPublisherList() {
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground hidden lg:table-cell">{formatDate(p.created_at)}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to={`/admin/publishers/${p.slug}`}>Manage</Link>
+                <TableCell className="text-right">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/admin/publishers/${p.slug}`}>
+                      Manage
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
                   </Button>
                 </TableCell>
               </TableRow>
