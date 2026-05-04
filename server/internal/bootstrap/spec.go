@@ -6,6 +6,7 @@ package bootstrap
 // Spec is the top-level structure of a bootstrap file.
 type Spec struct {
 	Publishers []PublisherSpec  `yaml:"publishers" json:"publishers"`
+	Workspaces []WorkspaceSpec  `yaml:"workspaces" json:"workspaces"`
 	MCPServers []MCPServerSpec  `yaml:"mcp_servers" json:"mcp_servers"`
 	Agents     []AgentSpec      `yaml:"agents"      json:"agents"`
 }
@@ -17,10 +18,31 @@ type PublisherSpec struct {
 	Verified bool   `yaml:"verified" json:"verified"`
 }
 
+// WorkspaceSpec describes a workspace under a publisher. Workspaces group
+// MCP servers and agents and bind each set to a Keycloak group whose
+// members can author content. When `group_name` is empty the workspace
+// is admin-only.
+type WorkspaceSpec struct {
+	// Publisher is the slug of the publisher that owns this workspace.
+	Publisher   string `yaml:"publisher"   json:"publisher"`
+	Slug        string `yaml:"slug"        json:"slug"`
+	Name        string `yaml:"name"        json:"name"`
+	Description string `yaml:"description" json:"description"`
+	Contact     string `yaml:"contact"     json:"contact"`
+	// GroupName binds the workspace to a Keycloak group. Empty string
+	// (or omitted) leaves the workspace admin-only.
+	GroupName string `yaml:"group_name" json:"group_name"`
+}
+
 // MCPServerSpec describes an MCP server and all its versions.
 type MCPServerSpec struct {
 	// Publisher is the slug of the publisher that owns this server.
 	Publisher   string `yaml:"publisher"      json:"publisher"`
+	// Workspace is the slug of the workspace under the publisher this
+	// server belongs to. Optional — when omitted, the server lands in
+	// the publisher's auto-created `default` workspace (the same lazy
+	// fallback the API uses for non-bootstrap creates).
+	Workspace   string `yaml:"workspace"      json:"workspace"`
 	Slug        string `yaml:"slug"           json:"slug"`
 	Name        string `yaml:"name"           json:"name"`
 	Description string `yaml:"description"    json:"description"`
@@ -96,6 +118,10 @@ type TransportSpec struct {
 type AgentSpec struct {
 	// Publisher is the slug of the publisher that owns this agent.
 	Publisher   string `yaml:"publisher"   json:"publisher"`
+	// Workspace is the slug of the workspace under the publisher this
+	// agent belongs to. Optional — when omitted, the agent lands in the
+	// publisher's auto-created `default` workspace.
+	Workspace   string `yaml:"workspace"   json:"workspace"`
 	Slug        string `yaml:"slug"        json:"slug"`
 	Name        string `yaml:"name"        json:"name"`
 	Description string `yaml:"description" json:"description"`

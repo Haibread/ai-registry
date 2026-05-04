@@ -29,6 +29,21 @@ data:
   {{- end }}
   # Public client ID served via GET /config.json to bootstrap the browser SPA.
   OIDC_CLIENT_ID: {{ .Values.server.oidcClientId | quote }}
+  {{- /*
+    AUTH_* keys are optional — the server has built-in defaults
+    ("groups", "registry-reviewers", "session"). Only emit when the
+    operator has set them so an unset value leaves the default in
+    place rather than overriding it with an empty string.
+  */}}
+  {{- if .Values.server.authGroupsClaim }}
+  AUTH_GROUPS_CLAIM: {{ .Values.server.authGroupsClaim | quote }}
+  {{- end }}
+  {{- if .Values.server.authReviewerGroup }}
+  AUTH_REVIEWER_GROUP: {{ .Values.server.authReviewerGroup | quote }}
+  {{- end }}
+  {{- if .Values.server.authStorage }}
+  AUTH_STORAGE: {{ .Values.server.authStorage | quote }}
+  {{- end }}
 
   # ── Database ──────────────────────────────────────────────────────────────
   {{- /* Plain-text DATABASE_URL as a last resort (overridden by secret if set) */}}

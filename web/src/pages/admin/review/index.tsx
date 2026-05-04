@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   ClipboardCheck,
   CheckCircle2,
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
 import { formatDate } from '@/lib/utils'
@@ -162,9 +164,17 @@ export default function AdminReviewQueue() {
         const e = error as { type?: string; detail?: string }
         throw new Error(friendlyProblem(e.type, e.detail))
       }
+      return it
     },
-    onSuccess: () => {
+    onSuccess: (it: Item) => {
+      const isVer = isVersion(it.kind as Kind)
+      toast.success(
+        isVer
+          ? `Approved ${it.publisher_slug}/${it.entry_slug} v${it.version}`
+          : `Confirmed deletion of ${it.publisher_slug}/${it.entry_slug}`,
+      )
       queryClient.invalidateQueries({ queryKey: ['admin-review-queue'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
     },
     onError: (err: Error) => setActionError(err.message),
   })
@@ -177,19 +187,27 @@ export default function AdminReviewQueue() {
         const e = error as { type?: string; detail?: string }
         throw new Error(friendlyProblem(e.type, e.detail))
       }
+      return item
     },
-    onSuccess: () => {
+    onSuccess: (item: Item) => {
+      const isVer = isVersion(item.kind as Kind)
+      toast.success(
+        isVer
+          ? `Rejected ${item.publisher_slug}/${item.entry_slug} v${item.version}`
+          : `Cancelled deletion of ${item.publisher_slug}/${item.entry_slug}`,
+      )
       setRejectingKey(null)
       setRejectReason('')
       queryClient.invalidateQueries({ queryKey: ['admin-review-queue'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
     },
     onError: (err: Error) => setActionError(err.message),
   })
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <ClipboardCheck className="h-6 w-6 text-muted-foreground" />
+      <div className="flex items-center gap-3 flex-wrap">
+        <ClipboardCheck className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
         <h1 className="text-2xl font-bold">Review queue</h1>
         <Button
           variant="outline"
@@ -214,7 +232,22 @@ export default function AdminReviewQueue() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading queue…</p>
+        <ul className="divide-y rounded-md border" aria-busy="true" aria-label="Loading queue">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <li key={i} className="p-4 space-y-2">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-5 w-28 rounded" />
+                <Skeleton className="h-4 w-40 rounded" />
+                <Skeleton className="h-5 w-14 rounded ml-auto" />
+              </div>
+              <Skeleton className="h-3 w-56 rounded" />
+              <div className="flex gap-2 pt-1">
+                <Skeleton className="h-8 w-24 rounded" />
+                <Skeleton className="h-8 w-24 rounded" />
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : isError ? (
         <p className="text-sm text-destructive">Failed to load review queue.</p>
       ) : items.length === 0 ? (
