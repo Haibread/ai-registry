@@ -83,13 +83,40 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		logger.Info("bootstrap: publisher ready", slog.String("slug", p.Slug))
 	}
 
+	// ── Workspaces ────────────────────────────────────────────────────────────
+	// Build a (publisher_slug, workspace_slug) → workspace_id map so the
+	// MCP/Agent loops below can resolve their `workspace` field. Workspaces
+	// MUST be processed before MCPs/agents — the auto-created `default`
+	// workspace is a fallback, not a substitute for explicit ones.
+	wsIDs := make(map[wsKey]string, len(spec.Workspaces))
+	for _, w := range spec.Workspaces {
+		pubID, ok := pubIDs[w.Publisher]
+		if !ok {
+			return fmt.Errorf("bootstrap: workspace %q references unknown publisher %q", w.Slug, w.Publisher)
+		}
+		id, err := upsertWorkspace(ctx, db, pubID, w, logger)
+		if err != nil {
+			return fmt.Errorf("bootstrap: workspace %s/%s: %w", w.Publisher, w.Slug, err)
+		}
+		wsIDs[wsKey{publisher: w.Publisher, slug: w.Slug}] = id
+	}
+
 	// ── MCP servers ───────────────────────────────────────────────────────────
 	for _, s := range spec.MCPServers {
 		pubID, ok := pubIDs[s.Publisher]
 		if !ok {
 			return fmt.Errorf("bootstrap: mcp_server %q references unknown publisher %q", s.Slug, s.Publisher)
 		}
-		if err := upsertMCPServer(ctx, db, pubID, s.Publisher, s, logger); err != nil {
+		var wsID string
+		if s.Workspace != "" {
+			id, ok := wsIDs[wsKey{publisher: s.Publisher, slug: s.Workspace}]
+			if !ok {
+				return fmt.Errorf("bootstrap: mcp_server %q references unknown workspace %s/%s",
+					s.Slug, s.Publisher, s.Workspace)
+			}
+			wsID = id
+		}
+		if err := upsertMCPServer(ctx, db, pubID, s.Publisher, wsID, s, logger); err != nil {
 			return fmt.Errorf("bootstrap: mcp_server %q: %w", s.Slug, err)
 		}
 	}
@@ -100,17 +127,34 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		if !ok {
 			return fmt.Errorf("bootstrap: agent %q references unknown publisher %q", a.Slug, a.Publisher)
 		}
-		if err := upsertAgent(ctx, db, pubID, a.Publisher, a, logger); err != nil {
+		var wsID string
+		if a.Workspace != "" {
+			id, ok := wsIDs[wsKey{publisher: a.Publisher, slug: a.Workspace}]
+			if !ok {
+				return fmt.Errorf("bootstrap: agent %q references unknown workspace %s/%s",
+					a.Slug, a.Publisher, a.Workspace)
+			}
+			wsID = id
+		}
+		if err := upsertAgent(ctx, db, pubID, a.Publisher, wsID, a, logger); err != nil {
 			return fmt.Errorf("bootstrap: agent %q: %w", a.Slug, err)
 		}
 	}
 
 	logger.Info("bootstrap: complete",
 		slog.Int("publishers", len(spec.Publishers)),
+		slog.Int("workspaces", len(spec.Workspaces)),
 		slog.Int("mcp_servers", len(spec.MCPServers)),
 		slog.Int("agents", len(spec.Agents)),
 	)
 	return nil
+}
+
+// wsKey is the composite key for the publisher-scoped workspace map. A
+// workspace slug is unique only within its publisher, so we key on both.
+type wsKey struct {
+	publisher string
+	slug      string
 }
 
 // ── audit (bootstrap-synthesized) ─────────────────────────────────────────────
@@ -169,9 +213,70 @@ func upsertPublisher(ctx context.Context, db *store.DB, p PublisherSpec) (string
 	return realID, created, nil
 }
 
+// ── Workspaces ────────────────────────────────────────────────────────────────
+
+// upsertWorkspace creates the workspace if it doesn't already exist, applies
+// its group_name binding (when present), and returns the workspace's ULID
+// regardless of whether the row was newly created or already on disk.
+func upsertWorkspace(ctx context.Context, db *store.DB, publisherID string, w WorkspaceSpec, logger *slog.Logger) (string, error) {
+	// CreateWorkspace returns ErrConflict on duplicate (publisher, slug),
+	// so try-then-fallback to GetWorkspace mirrors how the publisher loop
+	// stays idempotent.
+	ws, err := db.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: publisherID,
+		Slug:        w.Slug,
+		Name:        w.Name,
+		Description: w.Description,
+		Contact:     w.Contact,
+	})
+	if err == nil {
+		logBootstrapAudit(ctx, db, domain.AuditEvent{
+			Action:       domain.ActionWorkspaceCreated,
+			ResourceType: "workspace",
+			ResourceID:   ws.ID,
+			ResourceNS:   "", // workspace audit rows don't carry a namespace
+			ResourceSlug: w.Slug,
+			Metadata: map[string]any{
+				"publisher": w.Publisher,
+				"name":      w.Name,
+			},
+		})
+		// Apply group_name on first creation so the workspace lands
+		// usable for group members straight away.
+		if w.GroupName != "" {
+			if _, err := db.UpdateWorkspace(ctx, ws.ID, store.UpdateWorkspaceParams{
+				Name:        w.Name,
+				Description: w.Description,
+				Contact:     w.Contact,
+				GroupName:   w.GroupName,
+			}); err != nil {
+				return "", fmt.Errorf("setting workspace group binding: %w", err)
+			}
+		}
+		logger.Info("bootstrap: created workspace",
+			slog.String("publisher", w.Publisher),
+			slog.String("slug", w.Slug),
+			slog.String("group", w.GroupName),
+		)
+		return ws.ID, nil
+	}
+
+	// Existing workspace — fetch its ID and leave the row alone (we don't
+	// want bootstrap to silently rewrite operator-tweaked group bindings).
+	existing, getErr := db.GetWorkspace(ctx, publisherID, w.Slug)
+	if getErr != nil {
+		return "", fmt.Errorf("fetching existing workspace: %w (create returned %v)", getErr, err)
+	}
+	logger.Info("bootstrap: workspace already exists, skipping",
+		slog.String("publisher", w.Publisher),
+		slog.String("slug", w.Slug),
+	)
+	return existing.ID, nil
+}
+
 // ── MCP servers ───────────────────────────────────────────────────────────────
 
-func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSlug string, s MCPServerSpec, logger *slog.Logger) error {
+func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSlug, workspaceID string, s MCPServerSpec, logger *slog.Logger) error {
 	// Check if the server already exists.
 	var serverID string
 	created := false
@@ -184,6 +289,7 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSl
 		// Row not found — create it.
 		srv, createErr := db.CreateMCPServer(ctx, store.CreateMCPServerParams{
 			PublisherID: publisherID,
+			WorkspaceID: workspaceID, // empty → store falls back to publisher default
 			Slug:        s.Slug,
 			Name:        s.Name,
 			Description: s.Description,
@@ -419,7 +525,7 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 
 // ── agents ────────────────────────────────────────────────────────────────────
 
-func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug string, a AgentSpec, logger *slog.Logger) error {
+func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug, workspaceID string, a AgentSpec, logger *slog.Logger) error {
 	var agentID string
 	created := false
 	err := db.Pool.QueryRow(ctx,
@@ -431,6 +537,7 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug s
 		// Row not found — create it.
 		ag, createErr := db.CreateAgent(ctx, store.CreateAgentParams{
 			PublisherID: publisherID,
+			WorkspaceID: workspaceID, // empty → store falls back to publisher default
 			Slug:        a.Slug,
 			Name:        a.Name,
 			Description: a.Description,
@@ -658,6 +765,25 @@ func validateSpec(s *Spec) error {
 		pubSlugs[p.Slug] = true
 	}
 
+	// (publisher_slug, workspace_slug) pairs that the spec declares —
+	// used to validate that MCP/Agent workspace references resolve.
+	wsKeys := make(map[wsKey]bool, len(s.Workspaces))
+	for i, w := range s.Workspaces {
+		prefix := fmt.Sprintf("workspaces[%d](%s/%s)", i, w.Publisher, w.Slug)
+		if w.Publisher == "" {
+			errs = append(errs, prefix+": publisher is required")
+		} else if !pubSlugs[w.Publisher] {
+			errs = append(errs, prefix+fmt.Sprintf(": publisher %q not found in publishers list", w.Publisher))
+		}
+		if w.Slug == "" {
+			errs = append(errs, prefix+": slug is required")
+		}
+		if w.Name == "" {
+			errs = append(errs, prefix+": name is required")
+		}
+		wsKeys[wsKey{publisher: w.Publisher, slug: w.Slug}] = true
+	}
+
 	for i, srv := range s.MCPServers {
 		prefix := fmt.Sprintf("mcp_servers[%d](%s)", i, srv.Slug)
 		if srv.Publisher == "" {
@@ -670,6 +796,13 @@ func validateSpec(s *Spec) error {
 		}
 		if srv.Name == "" {
 			errs = append(errs, prefix+": name is required")
+		}
+		// Optional workspace reference — must resolve to a declared
+		// workspace under the same publisher when present.
+		if srv.Workspace != "" {
+			if !wsKeys[wsKey{publisher: srv.Publisher, slug: srv.Workspace}] {
+				errs = append(errs, prefix+fmt.Sprintf(": workspace %q not found under publisher %q", srv.Workspace, srv.Publisher))
+			}
 		}
 		for j, v := range srv.Versions {
 			if v.Version == "" {
@@ -693,6 +826,11 @@ func validateSpec(s *Spec) error {
 		}
 		if ag.Name == "" {
 			errs = append(errs, prefix+": name is required")
+		}
+		if ag.Workspace != "" {
+			if !wsKeys[wsKey{publisher: ag.Publisher, slug: ag.Workspace}] {
+				errs = append(errs, prefix+fmt.Sprintf(": workspace %q not found under publisher %q", ag.Workspace, ag.Publisher))
+			}
 		}
 		for j, v := range ag.Versions {
 			if v.Version == "" {
