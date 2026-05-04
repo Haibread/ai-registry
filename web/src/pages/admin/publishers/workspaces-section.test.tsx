@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -127,6 +127,27 @@ describe('WorkspacesSection', () => {
         },
       )
     })
+  })
+
+  it('opens the edit form inside a modal dialog rather than inline', async () => {
+    renderSection()
+    const editButtons = await screen.findAllByRole('button', { name: /^edit$/i })
+    fireEvent.click(editButtons[0])
+
+    // The form is wrapped in a role="dialog" with aria-modal so screen
+    // readers treat it as a modal and the testing-library role queries
+    // can locate the surrounding container, not just the form fields.
+    const dialog = await screen.findByRole('dialog', { name: /edit workspace/i })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+
+    // The dialog has a Close (X) button in its header in addition to
+    // the form's Cancel button. Clicking Close dismisses the dialog
+    // without firing a PATCH.
+    fireEvent.click(within(dialog).getByRole('button', { name: /^close$/i }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /edit workspace/i })).toBeNull()
+    })
+    expect(mockPATCH).not.toHaveBeenCalled()
   })
 
   it('clearing the group_name in edit submits an empty string (admin-only)', async () => {

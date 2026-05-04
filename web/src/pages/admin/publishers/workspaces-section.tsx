@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -244,7 +244,6 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
           </TableHeader>
           <TableBody>
             {items.map((ws) => {
-              const isEditing = editingSlug === ws.slug
               const isExpanded = expandedSlugs.has(ws.slug)
               return (
                 <Fragment key={ws.id}>
@@ -283,11 +282,11 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setEditingSlug(isEditing ? null : ws.slug)
+                            setEditingSlug(ws.slug)
                             setEditError(null)
                           }}
                         >
-                          {isEditing ? 'Cancel' : 'Edit'}
+                          Edit
                         </Button>
                         <DeleteButton
                           label="Delete workspace"
@@ -315,14 +314,16 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
         </Table>
       )}
 
-      {/* Edit form: rendered below the table, scoped to the editing row. */}
+      {/* Edit dialog: a modal overlay so the form sits in front of the
+          table instead of pushing it down. Submitting closes the dialog
+          via patchMutation.onSuccess, which clears editingSlug. */}
       {editingSlug && (
-        <EditWorkspaceForm
+        <EditWorkspaceDialog
           workspace={items.find((w) => w.slug === editingSlug)!}
           onSubmit={(body) =>
             patchMutation.mutate({ workspaceSlug: editingSlug, body })
           }
-          onCancel={() => {
+          onClose={() => {
             setEditingSlug(null)
             setEditError(null)
           }}
@@ -334,78 +335,125 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
   )
 }
 
-function EditWorkspaceForm({
+// Modal edit dialog for a single workspace. Mirrors the admin-layout
+// mobile drawer pattern: a fixed-position overlay with a backdrop button
+// (closes on click) and an inner role="dialog" panel. Body scroll is
+// locked while it's open. Escape key closes too.
+function EditWorkspaceDialog({
   workspace,
   onSubmit,
-  onCancel,
+  onClose,
   isPending,
   error,
 }: {
   workspace: Workspace
   onSubmit: (body: { name: string; description?: string; contact?: string; group_name: string }) => void
-  onCancel: () => void
+  onClose: () => void
   isPending: boolean
   error: string | null
 }) {
+  // Esc-to-close + body-scroll lock for the lifetime of the dialog.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [onClose])
+
   return (
-    <form
-      className="space-y-4 border rounded-lg p-4 max-w-xl"
-      onSubmit={(e) => {
-        e.preventDefault()
-        const fd = new FormData(e.currentTarget)
-        onSubmit({
-          name: (fd.get('name') as string).trim(),
-          description: ((fd.get('description') as string) || '').trim() || undefined,
-          contact: ((fd.get('contact') as string) || '').trim() || undefined,
-          // Empty string clears the binding back to admin-only on the server.
-          group_name: (fd.get('group_name') as string).trim(),
-        })
-      }}
-    >
-      <h3 className="text-sm font-semibold">
-        Edit workspace <span className="font-mono">{workspace.slug}</span>
-      </h3>
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-1">
-          <Label htmlFor="edit-name">Name <span className="text-destructive">*</span></Label>
-          <Input id="edit-name" name="name" required defaultValue={workspace.name} />
+    <>
+      {/* Backdrop — clicking it closes the dialog. Implemented as a
+          button so it's keyboard-discoverable (focus-visible ring). */}
+      <button
+        type="button"
+        aria-label="Close edit workspace dialog"
+        className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-workspace-title"
+        className="fixed left-1/2 top-1/2 z-50 w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background shadow-lg max-h-[calc(100vh-2rem)] overflow-y-auto"
+      >
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h3 id="edit-workspace-title" className="text-sm font-semibold">
+            Edit workspace <span className="font-mono">{workspace.slug}</span>
+          </h3>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="edit-group">Keycloak group</Label>
-          <Input
-            id="edit-group"
-            name="group_name"
-            defaultValue={workspace.group_name ?? ''}
-            placeholder="claude-team (leave empty for admin-only)"
-          />
-        </div>
+        <form
+          className="space-y-4 p-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const fd = new FormData(e.currentTarget)
+            onSubmit({
+              name: (fd.get('name') as string).trim(),
+              description: ((fd.get('description') as string) || '').trim() || undefined,
+              contact: ((fd.get('contact') as string) || '').trim() || undefined,
+              // Empty string clears the binding back to admin-only on the server.
+              group_name: (fd.get('group_name') as string).trim(),
+            })
+          }}
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="edit-name">Name <span className="text-destructive">*</span></Label>
+              <Input id="edit-name" name="name" required defaultValue={workspace.name} autoFocus />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-group">Keycloak group</Label>
+              <Input
+                id="edit-group"
+                name="group_name"
+                defaultValue={workspace.group_name ?? ''}
+                placeholder="claude-team (leave empty for admin-only)"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-desc">Description</Label>
+            <Input id="edit-desc" name="description" defaultValue={workspace.description ?? ''} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-contact">Contact</Label>
+            <Input id="edit-contact" name="contact" defaultValue={workspace.contact ?? ''} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The Keycloak group whose members can author this workspace's content. Empty
+            clears the binding so only admins can write.
+          </p>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <div className="flex gap-2 flex-wrap justify-end pt-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={isPending}>
+              {isPending ? 'Saving…' : 'Save changes'}
+            </Button>
+          </div>
+        </form>
       </div>
-      <div className="space-y-1">
-        <Label htmlFor="edit-desc">Description</Label>
-        <Input id="edit-desc" name="description" defaultValue={workspace.description ?? ''} />
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor="edit-contact">Contact</Label>
-        <Input id="edit-contact" name="contact" defaultValue={workspace.contact ?? ''} />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        The Keycloak group whose members can author this workspace's content. Empty
-        clears the binding so only admins can write.
-      </p>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <div className="flex gap-2 flex-wrap">
-        <Button type="submit" size="sm" disabled={isPending}>
-          {isPending ? 'Saving…' : 'Save changes'}
-        </Button>
-        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
-    </form>
+    </>
   )
 }
 
