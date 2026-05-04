@@ -58,6 +58,14 @@ services:
       # the realm must carry aud=ai-registry-server; the realm's
       # ai-registry-server-audience client scope adds this automatically.
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ai-registry-server}
+      # Workspace + change-approval auth knobs (see ADRs 0002 / 0003).
+      # Defaults match the server's built-in fallbacks; override in .env
+      # when binding to a non-default IdP claim or reviewer group.
+      AUTH_GROUPS_CLAIM: ${AUTH_GROUPS_CLAIM:-groups}
+      AUTH_REVIEWER_GROUP: ${AUTH_REVIEWER_GROUP:-registry-reviewers}
+      # SPA token storage: "session" (default, per-tab) or "local"
+      # (survives tab close, wider XSS exposure).
+      AUTH_STORAGE: ${AUTH_STORAGE:-session}
       DATABASE_URL: ${DATABASE_URL:-postgres://registry:registry@postgres:5432/registry?sslmode=disable}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       # Public-facing base URL of the stack. Required — the A2A global agent

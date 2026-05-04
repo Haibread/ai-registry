@@ -113,5 +113,16 @@ describe('AdminLayout', () => {
 
       expect(screen.queryByRole('dialog', { name: /admin navigation/i })).toBeNull()
     })
+
+    it('closes the drawer on Escape key', () => {
+      renderLayout()
+      fireEvent.click(screen.getByRole('button', { name: /open navigation menu/i }))
+      expect(screen.getByRole('dialog', { name: /admin navigation/i })).toBeInTheDocument()
+
+      // Keydown on window — the drawer's effect attaches the listener at
+      // window level so it catches Esc regardless of focused element.
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(screen.queryByRole('dialog', { name: /admin navigation/i })).toBeNull()
+    })
   })
 })

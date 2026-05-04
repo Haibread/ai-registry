@@ -371,10 +371,14 @@ function EditWorkspaceDialog({
     <>
       {/* Backdrop — clicking it closes the dialog. Implemented as a
           button so it's keyboard-discoverable (focus-visible ring). */}
+      {/* Backdrop sits at z-40 so the dialog panel (z-50) is always
+          above it — matches the admin layout's mobile drawer pattern.
+          DOM order alone happened to work, but a z-index split is the
+          robust answer when these two ever get reordered. */}
       <button
         type="button"
         aria-label="Close edit workspace dialog"
-        className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"
         onClick={onClose}
       />
       <div

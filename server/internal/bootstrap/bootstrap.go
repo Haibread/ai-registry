@@ -230,15 +230,18 @@ func upsertWorkspace(ctx context.Context, db *store.DB, publisherID string, w Wo
 		Contact:     w.Contact,
 	})
 	if err == nil {
+		// Match the real handler at handlers/workspace.go:151 — the
+		// /audit page expects ResourceNS=publisher_slug for workspace
+		// rows so it can render "publisher / workspace" consistently
+		// across operator-created and bootstrap-seeded events.
 		logBootstrapAudit(ctx, db, domain.AuditEvent{
 			Action:       domain.ActionWorkspaceCreated,
 			ResourceType: "workspace",
 			ResourceID:   ws.ID,
-			ResourceNS:   "", // workspace audit rows don't carry a namespace
+			ResourceNS:   w.Publisher,
 			ResourceSlug: w.Slug,
 			Metadata: map[string]any{
-				"publisher": w.Publisher,
-				"name":      w.Name,
+				"name": w.Name,
 			},
 		})
 		// Apply group_name on first creation so the workspace lands

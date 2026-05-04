@@ -72,11 +72,15 @@ before they go live. See [ADR 0003](docs/adr/0003-change-approval-workflow.md).
 A coordinated polish pass over the admin section (PR #37) once the
 new workflow surfaces had landed:
 
-- Mobile hamburger drawer; the desktop sidebar is `hidden md:block`,
-  the drawer reuses `AdminSidebar` and auto-closes on navigation.
+- Mobile hamburger drawer (Esc-key dismiss, body scroll lock,
+  auto-close on navigation); the desktop sidebar is `hidden md:block`
+  and the drawer reuses `AdminSidebar`.
 - Loading skeletons on the queue, workspaces, and versions sections;
-  toasts (sonner) on every workflow mutation; inline form-level
-  error placement next to submit buttons.
+  toasts (sonner) on every change-approval mutation (submit, withdraw,
+  approve, reject, request deletion) and on workspace CRUD; inline
+  form-level error placement next to submit buttons. The review-queue
+  badge cache is invalidated alongside change-approval toasts so the
+  sidebar count stays in sync.
 - Workspace edit form lives in a modal dialog (Esc to close, body
   scroll lock, `aria-modal`) instead of pushing the table down.
 - Table-row primary actions (Edit, Manage) promoted from `ghost` to

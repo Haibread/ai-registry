@@ -18,12 +18,20 @@ export default function AdminLayout() {
   }, [location.pathname])
 
   // Lock the body scroll while the drawer is open so backdrop swipes don't
-  // bleed through to the underlying page on iOS.
+  // bleed through to the underlying page on iOS. Esc-key dismisses the
+  // drawer for keyboard-only users — without this listener the only way
+  // out is the backdrop click or the hamburger toggle, which a desktop
+  // user reaching for keys won't find.
   useEffect(() => {
     if (!mobileOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
+      window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
   }, [mobileOpen])
@@ -37,6 +45,7 @@ export default function AdminLayout() {
           className="md:hidden -ml-2"
           aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
           aria-expanded={mobileOpen}
+          aria-controls="admin-mobile-nav"
           onClick={() => setMobileOpen((v) => !v)}
         >
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -71,6 +80,7 @@ export default function AdminLayout() {
             onClick={() => setMobileOpen(false)}
           />
           <div
+            id="admin-mobile-nav"
             role="dialog"
             aria-modal="true"
             aria-label="Admin navigation"
