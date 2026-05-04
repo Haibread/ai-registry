@@ -1,7 +1,7 @@
 services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: registry
@@ -9,8 +9,13 @@ services:
       POSTGRES_DB: registry
     ports:
       - "5432:5432"
+    # In 18+ the official image stores data in a major-version-specific
+    # subdirectory under /var/lib/postgresql, so the volume must mount the
+    # parent. Mounting /var/lib/postgresql/data directly causes the
+    # "unused mount/volume" startup error documented in
+    # https://github.com/docker-library/postgres/pull/1259.
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U registry -d registry"]
       interval: 5s
