@@ -541,6 +541,11 @@ func (h *MCPHandlers) DeleteServer(w http.ResponseWriter, r *http.Request) {
 		Action: domain.ActionMCPServerDeleted, ResourceType: "mcp_server",
 		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
 	})
+	// Mirror the +1 in CreateServer so the registry.mcp.servers.total
+	// UpDownCounter tracks the live count rather than monotonically inflating.
+	if h.metrics != nil {
+		h.metrics.MCPServersTotal.Add(r.Context(), -1)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -40,7 +40,20 @@ func (db *DB) LogAuditEvent(ctx context.Context, e domain.AuditEvent) {
 	var metaJSON []byte
 	if e.Metadata != nil {
 		b, err := json.Marshal(e.Metadata)
-		if err == nil {
+		if err != nil {
+			// We continue rather than dropping the whole audit event — partial
+			// audit (without metadata) is more useful than no record at all
+			// for forensics. But the silent zero-value behaviour the audit
+			// flagged was wrong: an unmarshallable metadata map (e.g.
+			// containing an unsupported type added by a future change) used
+			// to vanish without trace. Log it loud so the regression is
+			// visible in production logs.
+			slog.WarnContext(ctx, "audit metadata failed to marshal; dropping metadata only",
+				"action", e.Action,
+				"resource_id", e.ResourceID,
+				"error", err,
+			)
+		} else {
 			metaJSON = b
 		}
 	}
