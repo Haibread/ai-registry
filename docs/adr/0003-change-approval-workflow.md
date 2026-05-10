@@ -1,6 +1,6 @@
 # ADR 0003 — Change-approval workflow
 
-- **Status:** Proposed
+- **Status:** Accepted (shipped via PRs #29 → #32)
 - **Date:** 2026-05-02
 - **Deciders:** @Haibread
 - **Builds on:** [ADR 0001 — Workspaces under publishers](0001-workspaces-under-publishers.md), [ADR 0002 — Workspace OIDC group binding](0002-workspace-group-binding.md)

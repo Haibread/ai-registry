@@ -33,32 +33,17 @@
       "groupSlug": "docker-compose-images"
     },
     {
-      "description": "Keep next and eslint-config-next in sync (versions must always match)",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["next", "eslint-config-next"],
-      "groupName": "Next.js",
-      "groupSlug": "nextjs"
-    },
-    {
       "description": "Group Tailwind CSS ecosystem — major requires manual CSS config migration",
       "matchManagers": ["npm"],
-      "matchPackageNames": ["tailwindcss", "tailwind-merge", "autoprefixer", "tailwindcss-animate"],
+      "matchPackageNames": ["tailwindcss", "tailwind-merge"],
       "groupName": "Tailwind CSS",
       "groupSlug": "tailwind"
     },
     {
-      "description": "next-auth v5 beta — follow beta channel, do not downgrade to v4 stable",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["next-auth"],
-      "versioning": "npm",
-      "ignoreUnstable": false,
-      "allowedVersions": ">=5.0.0-beta.0"
-    },
-    {
-      "description": "Keep @types/node pinned to the same major as the Node.js runtime (22)",
+      "description": "Keep @types/node pinned to the same major as the Node.js runtime (24)",
       "matchManagers": ["npm"],
       "matchPackageNames": ["@types/node"],
-      "allowedVersions": "^22.0.0"
+      "allowedVersions": "^24.0.0"
     },
     {
       "description": "openapi-typescript peer-dep declares typescript ^5.x — group with typescript so they upgrade together and the .npmrc note stays accurate",

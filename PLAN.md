@@ -223,8 +223,11 @@ Query** — a plain SPA served as static files from nginx.
 #### What stays the same
 - All UI components (Radix UI, shadcn/ui, Tailwind CSS, Lucide)
 - `openapi-fetch` / `openapi-typescript` generated client
-- `next-themes` (framework-agnostic)
 - All page structure and visual design
+
+(`next-themes` was originally listed here but was dropped along with
+the rest of the Next.js stack — theme switching now lives in a local
+`ThemeProvider` (`web/src/components/providers.tsx`).)
 
 #### What changes
 
