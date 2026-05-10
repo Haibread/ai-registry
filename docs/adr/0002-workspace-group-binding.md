@@ -1,6 +1,6 @@
 # ADR 0002 — Workspace OIDC group binding
 
-- **Status:** Proposed
+- **Status:** Accepted (shipped via PR #29)
 - **Date:** 2026-05-02
 - **Deciders:** @Haibread
 - **Builds on:** [ADR 0001 — Workspaces under publishers](0001-workspaces-under-publishers.md)
