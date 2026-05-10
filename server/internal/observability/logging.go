@@ -7,6 +7,17 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// WrapWithTrace returns a slog.Handler that wraps inner and stamps
+// trace_id / span_id attributes onto every record whose context carries a
+// recording OTel span. Records emitted with no active span are passed
+// through unchanged — no zero-valued trace_id/span_id pollution.
+//
+// Exported so tests can compose a buffer-backed JSON handler under the same
+// trace-correlation behaviour that NewLogger applies to stdout.
+func WrapWithTrace(inner slog.Handler) slog.Handler {
+	return &traceHandler{inner: inner}
+}
+
 // traceHandler wraps a slog.Handler and adds trace_id / span_id attributes
 // from the active OTel span in the context, enabling log-trace correlation.
 type traceHandler struct {
