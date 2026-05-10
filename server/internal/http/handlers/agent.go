@@ -515,6 +515,11 @@ func (h *AgentHandlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 		Action: domain.ActionAgentDeleted, ResourceType: "agent",
 		ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
 	})
+	// Mirror the +1 in CreateAgent so the registry.agents.total
+	// UpDownCounter tracks the live count rather than monotonically inflating.
+	if h.metrics != nil {
+		h.metrics.AgentsTotal.Add(r.Context(), -1)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
