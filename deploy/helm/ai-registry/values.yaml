@@ -378,7 +378,10 @@ cnpg:
   enabled: false
   instances: 1
   storageSize: 5Gi
-  postgresVersion: "16"
+  # Major version of the CNPG postgres image. Bumped to "18" to match the
+  # docker-compose stack (postgres:18-alpine, see PR #41); CNPG publishes
+  # ghcr.io/cloudnative-pg/postgresql:18 images.
+  postgresVersion: "18"
 
   # Database and owner created by the initdb bootstrap.
   initdb:

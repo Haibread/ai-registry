@@ -100,7 +100,7 @@ Common root causes:
 kubectl get svc,ep -l cnpg.io/cluster
 
 # Try the DSN from inside a temporary pod
-kubectl run pg-probe --rm -it --image=postgres:16-alpine -- \
+kubectl run pg-probe --rm -it --image=postgres:18-alpine -- \
   psql "$DATABASE_URL" -c 'select 1'
 ```
 
@@ -129,7 +129,7 @@ See §6 for backup / restore.
 ```sh
 kubectl logs deploy/<release>-server | grep -iE 'migration|sql'
 # Check which version the DB is at:
-kubectl run pg-probe --rm -it --image=postgres:16-alpine -- \
+kubectl run pg-probe --rm -it --image=postgres:18-alpine -- \
   psql "$DATABASE_URL" -c 'select version, dirty from schema_migrations'
 ```
 

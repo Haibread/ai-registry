@@ -41,9 +41,20 @@ func run() error {
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	configFile := fs.String("config", "", "path to YAML config file (overrides CONFIG_FILE env var)")
 	bootstrapFile := fs.String("bootstrap-file", "", "path to YAML/JSON bootstrap file; loads initial data then starts the server (overrides config layer's BOOTSTRAP_FILE / bootstrap_file)")
-	// Parse only known flags; ignore unrecognised ones so that test harnesses
-	// can inject extra arguments without breaking the server.
-	_ = fs.Parse(os.Args[1:])
+	// Parse only known flags; tolerate unrecognised ones so that test
+	// harnesses (e.g. `go test`) can inject extra arguments without
+	// breaking the server. ContinueOnError already writes the error to
+	// stderr; we additionally surface it via a structured warning so log
+	// aggregators that don't capture raw stderr still see it. flag.ErrHelp
+	// is the user-requested-help case — exit cleanly without an error log.
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		slog.Warn("server: ignoring flag parse error and continuing with defaults",
+			slog.String("error", err.Error()),
+		)
+	}
 
 	// ── Config ───────────────────────────────────────────────────────────────
 	cfg, err := config.Load(*configFile)
