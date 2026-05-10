@@ -505,11 +505,18 @@ system handles the swap automatically.
 
 | Role | Font | Weight | Size |
 |------|------|--------|------|
-| Display heading | Geist (next/font) | 700 | `text-3xl` – `text-5xl` |
-| Section heading | Geist | 600 | `text-xl` – `text-2xl` |
-| Body | Geist | 400 | `text-sm` – `text-base` |
-| Label / caption | Geist | 500 | `text-xs` – `text-sm` |
-| Code / version | Geist Mono | 400 | `text-xs` – `text-sm` |
+| Display heading | Tailwind `font-sans` (system stack) | 700 | `text-3xl` – `text-5xl` |
+| Section heading | `font-sans` | 600 | `text-xl` – `text-2xl` |
+| Body | `font-sans` | 400 | `text-sm` – `text-base` |
+| Label / caption | `font-sans` | 500 | `text-xs` – `text-sm` |
+| Code / version | `font-mono` (system monospace stack) | 400 | `text-xs` – `text-sm` |
+
+The web app does not bundle a webfont — Tailwind's default system stacks
+(`font-sans` → `ui-sans-serif, system-ui, …`; `font-mono` →
+`ui-monospace, SFMono-Regular, …`) keep first-paint fast and the bundle
+small. The original Next.js scaffold used `Geist` via `next/font`; that
+loader was dropped along with the rest of the Next.js stack in Phase 6
+(see [ADR 0004](docs/adr/0004-vite-spa-migration.md)).
 
 #### Spacing & Radius
 
@@ -592,12 +599,13 @@ redirect to the IdP authorize endpoint and a callback flow handled by
 │ Review   │                                           │
 │   queue  │  ⓘ                                        │
 │ Publishers│                                          │
+│ Workspaces│ (Phase 7 — nested under each publisher) │
 │ MCP      │                                           │
 │  Servers │                                           │
 │ Agents   │                                           │
 │ Reports  │                                           │
-│ Activity │                                           │
-│ API Keys │                                           │
+│ Audit    │                                           │
+│ API Keys │ (placeholder — see PLAN.md v0.4.x)        │
 │          │                                           │
 └──────────┴──────────────────────────────────────────┘
 ```
