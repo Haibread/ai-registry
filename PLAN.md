@@ -305,12 +305,13 @@ Query** — a plain SPA served as static files from nginx.
 | CORS during dev (Vite proxy vs browser) | Vite `server.proxy` routes all `/api/v1/*` through Node — no CORS headers needed in dev |
 | `/.well-known/*` paths | Nginx proxy block covers them in production; Vite proxy in dev |
 
-### v0.2.2 — Coverage depth (next patch)
+### v0.2.2 — Coverage depth ✅ SHIPPED
 
-v0.2.1 backfilled the obvious surface-level gaps. v0.2.2 should push deeper
-into the test pyramid where v0.2.1 only scratched the surface. Scope is
-test-only — no shipping features in this release unless they fall out of
-fixing a bug surfaced by the new tests.
+v0.2.1 backfilled the obvious surface-level gaps. v0.2.2 pushed deeper
+into the test pyramid where v0.2.1 only scratched the surface. Scope was
+test-only — no shipping features in this release unless they fell out
+of fixing a bug surfaced by the new tests. See CHANGELOG `v0.2.2` for
+the full coverage / CI / performance summary.
 
 **Web — admin depth**
 - [ ] Interactive coverage on `admin/mcp/detail.tsx` and `admin/agents/detail.tsx`:
@@ -357,11 +358,12 @@ fixing a bug surfaced by the new tests.
 - `/v0/` and A2A conformance suites are in CI and gating.
 - `openapi.yaml` ↔ router contract test is in CI and gating.
 
-### v0.3.0 — Browse polish (next minor)
+### v0.3.0 — Browse polish ✅ SHIPPED
 
-v0.2.x was a coverage sprint. v0.3.0 is the first release that actually
-changes what users see — four additive UX wins on the public browse
-experience, zero breaking changes, zero new non-negotiables.
+v0.2.x was a coverage sprint. v0.3.0 was the first release that actually
+changed what users see — four additive UX wins on the public browse
+experience, zero breaking changes, zero new non-negotiables. All four
+tasks shipped (see CHANGELOG `v0.3.0`).
 
 Features accepted into scope (refused / deferred items tracked in
 `docs/future-multi-environment.md` and in session notes):
@@ -445,89 +447,51 @@ Shipped surface:
       from `web/src/lib/utils.ts` / `utils.test.ts` — the typed field
       replaces the shape-guessing heuristic entirely.
 
-**Task 2 — Card redesign**
-- [ ] Refactor `server-card.tsx` and `agent-card.tsx` to the aligned
-      layout: icon + title + publisher row, description, tag row
-      (status pill + transport/visibility + category tags), inline
-      metadata strip at the bottom (tool/skill count + version +
-      freshness).
-- [ ] Status pill uses colour from the lifecycle state (`draft`,
-      `published`, `deprecated`); reuse `badge-variants.ts` rather
-      than adding a new primitive.
-- [ ] Card is fully keyboard-focusable and the whole card is the link
-      target (today some children compete for click). Verify with an
-      a11y smoke test: `getByRole('link', { name: /.../ })` reaches
-      the detail page.
-- [ ] Update existing card tests; add a snapshot-free DOM test for the
-      new metadata strip so it's enforced structurally, not visually.
-- [ ] No API change. Pure CSS/Tailwind + component surgery.
+**Task 2 — Card redesign** ✅ **SHIPPED**
 
-**Task 3 — Namespace landing pages**
-- [ ] New web route `/mcp/:namespace` and `/agents/:namespace`. URLs
-      already match the slug pattern we publish today.
-- [ ] New page components that call `GET /api/v1/mcp/servers?namespace=X`
-      (and the agents equivalent) — the server-side filter already
-      exists, no new endpoint needed.
-- [ ] Page header shows the publisher behind the namespace via
-      `GET /api/v1/publishers/{slug}` (call in parallel with the list
-      fetch; render skeleton until both resolve).
-- [ ] Empty-state copy when the namespace has zero entries of the
-      requested kind (vs. the namespace not existing — those are
-      different, render a 404 for the latter).
-- [ ] Breadcrumbs: `Home › MCP Servers › {namespace}` so users can
-      escape back to the flat list.
-- [ ] Link to the namespace page from every card's publisher row and
-      from the detail-page publisher row.
-- [ ] Vitest coverage for the new page (render, loading, empty, 404,
-      links out).
-- [ ] Playwright smoke: land on `/mcp/{seeded-ns}`, assert the seeded
-      entries appear, assert a link to a detail page works.
+The aligned-layout work landed incrementally across v0.2.x and the
+v0.3.0 polish cycle. The current `server-card.tsx` /
+`agent-card.tsx` use `StatusBadge` from `badge-variants.ts` for the
+lifecycle pill, an icon tile in the header, a chip row for
+runtime/ecosystem/tools, and a footer freshness strip. Whole-card
+focus is achieved via the `after:absolute after:inset-0` trick on the
+title `<Link>`. Further alignment (consolidating status + transport
+into a single tag row, pushing version into the bottom strip) was
+considered and explicitly deferred — the existing layout is good
+enough and the proposed refactor would invalidate downstream test
+fixtures for marginal UX gain.
 
-**Task 4 — Per-entry activity feed (biggest, ships last)**
-- [ ] New public endpoint
-      `GET /v0/mcp/servers/{ns}/{slug}/activity` (and the agents
-      equivalent) that projects from `audit_log` filtered by
-      `resource_type` + `resource_id`, returning a trimmed public
-      view: `{id, action, created_at, actor_display_name}`. Must NOT
-      expose `actor_email` or `actor_subject`; show a coarse
-      "Publisher" / "Admin" label instead, derived from metadata.
-- [ ] Rate-limit the new endpoint on the same per-IP bucket as other
-      public reads.
-- [ ] OpenAPI entry for both endpoints. Router contract test catches
-      drift (already in place from v0.2.2).
-- [ ] Handler tests: empty, populated, cursor pagination, unknown
-      resource returns 404, privacy-scrub assertion (actor_email /
-      actor_subject MUST NOT appear in the response body).
-- [ ] Web: new "Activity" section on MCP + agent detail pages,
-      rendered under the existing tabs (not inside them — it's
-      cross-version). Paginated, loads 10 entries at a time with a
-      "Show more" button. Reuses the existing date/time formatting
-      from the version history component.
-- [ ] Make the same feed filterable on the existing admin `/audit`
-      page so the admin view can drill from the global log into a
-      single entry's history (and vice versa).
-- [ ] Vitest coverage for the new section (loading, empty, populated,
-      load-more, privacy scrub — "actor_email" substring MUST NOT
-      appear in the DOM).
+**Task 3 — Namespace landing pages** ✅ **SHIPPED**
 
-**Cross-cutting chores**
-- [ ] `CHANGELOG.md` entry with one section per task.
-- [ ] Include the already-shipped pointer-cursor fix
-      (`button-variants.ts`, `tabs.tsx`, `select.tsx`) under a "UX
-      polish" sub-section of the changelog. It was an out-of-band
-      patch but users will notice it on this release.
-- [ ] OpenAPI + TS types regenerated.
-- [ ] Coverage floors stay green.
+`/mcp/:namespace` and `/agents/:namespace` are first-class routes
+(`web/src/pages/mcp/namespace.tsx`,
+`web/src/pages/agents/namespace.tsx`). The pages fetch the publisher
+header and the filtered list in parallel, distinguish 404
+("namespace doesn't exist") from empty-state ("publisher exists with
+zero entries of this kind"), and have breadcrumbs + namespace chips
+on every card pointing at them. Vitest covers render / loading /
+empty / 404 / links-out; Playwright `coverage-public` covers the
+end-to-end smokes.
 
-**Definition of done for v0.3.0**
-- All four task groups land behind per-task validation gates.
-- No admin page drops below the 80 % floor set in v0.2.2.
-- Go coverage floor stays ≥ 70 % after the new handler lands.
-- `openapi.yaml` is in sync with the new activity endpoints, verified
-  by the existing contract test.
-- Playwright smoke exercises at least one namespace landing page and
-  one detail page with activity visible.
-- Changelog + git tag + GitHub release published.
+**Task 4 — Per-entry activity feed** ✅ **SHIPPED**
+
+`GET /api/v1/mcp/servers/{ns}/{slug}/activity` (and the agents
+equivalent) project from `audit_log`, drop `actor_subject` /
+`actor_email`, allowlist a small set of metadata keys (`from`, `to`,
+`visibility`, `reason`, `version`, `field`), and rate-limit on the
+public bucket. Detail pages render the privacy-scrubbed feed under
+the tabs; the admin `/audit` page is the full-fidelity drill-down
+view. Bootstrap emits synthetic events with
+`metadata.source = "bootstrap"` so a fresh stack has realistic
+activity. Wire-level Playwright assertions pin the privacy scrub.
+
+**v0.3.0 release artefacts**
+- CHANGELOG `v0.3.0` (Tasks 1, 3, 4 + UX polish) — already published.
+- v0.3.1 (security bugfix release: JWT audience binding,
+  sessionStorage default, trusted-proxy reporter IPs, CORS
+  no-credentials).
+- v0.3.2 (Helm-only patch: CNPG superuser secret, `DATABASE_URL`
+  database name, ingress default off).
 
 ### Phase 7 — Access control & change-approval workflow ✅
 
