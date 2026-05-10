@@ -337,6 +337,157 @@ auth:
 	}
 }
 
+// ── PUBLIC_BASE_URL & BOOTSTRAP_FILE — env+YAML+default rule ─────────────────
+//
+// CLAUDE.md requires every config knob to be reachable via env var, YAML key,
+// AND a default. Both PUBLIC_BASE_URL and BOOTSTRAP_FILE used to bypass the
+// config layer (read directly via os.Getenv from handlers and main); these
+// tests pin the three-place rule for both.
+
+func TestLoad_PublicBaseURL_DefaultEmpty(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	t.Setenv("PUBLIC_BASE_URL", "")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Default is empty so misconfigured deployments fail loudly in the
+	// well-known handlers rather than advertising a fake localhost URL.
+	if cfg.HTTP.PublicBaseURL != "" {
+		t.Errorf("PublicBaseURL default = %q, want empty", cfg.HTTP.PublicBaseURL)
+	}
+}
+
+func TestLoad_PublicBaseURL_FromEnv(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	t.Setenv("PUBLIC_BASE_URL", "https://registry.example.com")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HTTP.PublicBaseURL != "https://registry.example.com" {
+		t.Errorf("PublicBaseURL = %q, want https://registry.example.com", cfg.HTTP.PublicBaseURL)
+	}
+}
+
+func TestLoad_PublicBaseURL_FromYAML(t *testing.T) {
+	path := writeConfigFile(t, `
+database:
+  url: "postgres://p:p@localhost/db"
+auth:
+  oidc_issuer: "https://auth.example.com/realm"
+http:
+  public_base_url: "https://from-file.example.com"
+`)
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("PUBLIC_BASE_URL", "")
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HTTP.PublicBaseURL != "https://from-file.example.com" {
+		t.Errorf("PublicBaseURL = %q, want https://from-file.example.com", cfg.HTTP.PublicBaseURL)
+	}
+}
+
+func TestLoad_PublicBaseURL_EnvWinsOverYAML(t *testing.T) {
+	path := writeConfigFile(t, `
+database:
+  url: "postgres://p:p@localhost/db"
+auth:
+  oidc_issuer: "https://auth.example.com/realm"
+http:
+  public_base_url: "https://from-file.example.com"
+`)
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("PUBLIC_BASE_URL", "https://from-env.example.com")
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HTTP.PublicBaseURL != "https://from-env.example.com" {
+		t.Errorf("PublicBaseURL = %q, want env value to win over YAML", cfg.HTTP.PublicBaseURL)
+	}
+}
+
+func TestLoad_BootstrapFile_DefaultEmpty(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	t.Setenv("BOOTSTRAP_FILE", "")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.BootstrapFile != "" {
+		t.Errorf("BootstrapFile default = %q, want empty", cfg.BootstrapFile)
+	}
+}
+
+func TestLoad_BootstrapFile_FromEnv(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	t.Setenv("BOOTSTRAP_FILE", "/etc/ai-registry/bootstrap.yaml")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.BootstrapFile != "/etc/ai-registry/bootstrap.yaml" {
+		t.Errorf("BootstrapFile = %q, want /etc/ai-registry/bootstrap.yaml", cfg.BootstrapFile)
+	}
+}
+
+func TestLoad_BootstrapFile_FromYAML(t *testing.T) {
+	path := writeConfigFile(t, `
+database:
+  url: "postgres://p:p@localhost/db"
+auth:
+  oidc_issuer: "https://auth.example.com/realm"
+bootstrap_file: "/srv/data/bootstrap.yaml"
+`)
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("BOOTSTRAP_FILE", "")
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.BootstrapFile != "/srv/data/bootstrap.yaml" {
+		t.Errorf("BootstrapFile = %q, want /srv/data/bootstrap.yaml", cfg.BootstrapFile)
+	}
+}
+
+func TestLoad_BootstrapFile_EnvWinsOverYAML(t *testing.T) {
+	path := writeConfigFile(t, `
+database:
+  url: "postgres://p:p@localhost/db"
+auth:
+  oidc_issuer: "https://auth.example.com/realm"
+bootstrap_file: "/from/file.yaml"
+`)
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("BOOTSTRAP_FILE", "/from/env.yaml")
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.BootstrapFile != "/from/env.yaml" {
+		t.Errorf("BootstrapFile = %q, want env value to win over YAML", cfg.BootstrapFile)
+	}
+}
+
 func TestLoad_ExplicitPathWinsOverCONFIGFILE(t *testing.T) {
 	pathA := writeConfigFile(t, `
 database:

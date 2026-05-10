@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 
 	"github.com/go-chi/chi/v5"
 
@@ -16,13 +15,16 @@ import (
 
 // AgentCardHandlers serves A2A Agent Card endpoints.
 type AgentCardHandlers struct {
-	db     *store.DB
-	logger *slog.Logger
+	db            *store.DB
+	logger        *slog.Logger
+	publicBaseURL string
 }
 
-// NewAgentCardHandlers creates AgentCardHandlers.
-func NewAgentCardHandlers(db *store.DB, logger *slog.Logger) *AgentCardHandlers {
-	return &AgentCardHandlers{db: db, logger: logger}
+// NewAgentCardHandlers creates AgentCardHandlers. publicBaseURL comes from
+// the config layer (env + YAML + default per CLAUDE.md); empty triggers a
+// 500 in GlobalAgentCard rather than silently advertising localhost.
+func NewAgentCardHandlers(db *store.DB, logger *slog.Logger, publicBaseURL string) *AgentCardHandlers {
+	return &AgentCardHandlers{db: db, logger: logger, publicBaseURL: publicBaseURL}
 }
 
 // PerAgentCard serves GET /agents/{namespace}/{slug}/.well-known/agent-card.json
@@ -65,18 +67,18 @@ func (h *AgentCardHandlers) PerAgentCard(w http.ResponseWriter, r *http.Request)
 // GlobalAgentCard serves GET /.well-known/agent-card.json for the registry itself.
 // Makes the registry a first-class A2A citizen.
 //
-// PUBLIC_BASE_URL must be set in production. If it is unset, this handler
-// returns HTTP 500 so misconfigured deployments fail loudly rather than
-// silently advertising a localhost URL to external consumers.
+// PublicBaseURL (config layer: env + YAML + default) must be set in production.
+// If it is empty, this handler returns HTTP 500 so misconfigured deployments
+// fail loudly rather than silently advertising a localhost URL to external
+// consumers.
 func (h *AgentCardHandlers) GlobalAgentCard(w http.ResponseWriter, r *http.Request) {
-	baseURL := os.Getenv("PUBLIC_BASE_URL")
-	if baseURL == "" {
+	if h.publicBaseURL == "" {
 		h.logger.ErrorContext(r.Context(),
 			"PUBLIC_BASE_URL is not set; cannot generate a valid global agent card",
 		)
 		problem.Write(w, http.StatusInternalServerError, "misconfiguration",
-			"PUBLIC_BASE_URL environment variable is not set", r.URL.Path)
+			"PUBLIC_BASE_URL is not set", r.URL.Path)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, agents.RegistryCard(baseURL))
+	writeJSON(w, r, http.StatusOK, agents.RegistryCard(h.publicBaseURL))
 }

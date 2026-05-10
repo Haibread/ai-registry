@@ -22,6 +22,14 @@ type Config struct {
 	OTel     OTelConfig
 	Log      LogConfig
 	Auth     AuthConfig
+
+	// BootstrapFile is the optional path to a YAML/JSON file containing
+	// initial registry data (publishers, workspaces, MCP servers, agents)
+	// that the server upserts on startup before accepting traffic. Empty
+	// disables bootstrap loading. Settable via env (BOOTSTRAP_FILE), YAML
+	// (top-level `bootstrap_file`), or the `--bootstrap-file` CLI flag —
+	// the flag wins over both. See `deploy/bootstrap.example.yaml`.
+	BootstrapFile string
 }
 
 // AuthConfig holds OIDC/Keycloak settings.
@@ -86,6 +94,14 @@ type HTTPConfig struct {
 	// Bumped from the original 100 because the e2e suite + browser-based
 	// SPAs can comfortably exceed the lower bound under normal use.
 	PublicRateLimitRPM int
+	// PublicBaseURL is the externally reachable URL of this deployment.
+	// Surfaced in the A2A global agent card (`/.well-known/agent-card.json`)
+	// and the OAuth protected-resource metadata document
+	// (`/.well-known/oauth-protected-resource`). Must be the address clients
+	// use, not an internal docker hostname. Handlers return 500 when this
+	// is empty rather than silently advertising localhost to external
+	// consumers.
+	PublicBaseURL string
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -120,6 +136,7 @@ type fileHTTPConfig struct {
 	CORSOrigins        []string `yaml:"cors_origins"`
 	TrustedProxyCIDR   string   `yaml:"trusted_proxy_cidr"`
 	PublicRateLimitRPM int      `yaml:"public_rate_limit_rpm"`
+	PublicBaseURL      string   `yaml:"public_base_url"`
 }
 
 type fileDatabaseConfig struct {
@@ -149,11 +166,12 @@ type fileAuthConfig struct {
 }
 
 type fileConfig struct {
-	HTTP     fileHTTPConfig     `yaml:"http"`
-	Database fileDatabaseConfig `yaml:"database"`
-	OTel     fileOTelConfig     `yaml:"otel"`
-	Log      fileLogConfig      `yaml:"log"`
-	Auth     fileAuthConfig     `yaml:"auth"`
+	HTTP          fileHTTPConfig     `yaml:"http"`
+	Database      fileDatabaseConfig `yaml:"database"`
+	OTel          fileOTelConfig     `yaml:"otel"`
+	Log           fileLogConfig      `yaml:"log"`
+	Auth          fileAuthConfig     `yaml:"auth"`
+	BootstrapFile string             `yaml:"bootstrap_file"`
 }
 
 // defaultFileConfig returns a fileConfig pre-populated with the same defaults
@@ -225,6 +243,7 @@ func Load(configFile string) (*Config, error) {
 			CORSOrigins:        envStringSlice("CORS_ALLOWED_ORIGINS", fc.HTTP.CORSOrigins),
 			TrustedProxyCIDR:   envString("TRUSTED_PROXY_CIDR", fc.HTTP.TrustedProxyCIDR),
 			PublicRateLimitRPM: envInt("PUBLIC_RATE_LIMIT_RPM", fc.HTTP.PublicRateLimitRPM),
+			PublicBaseURL:      envString("PUBLIC_BASE_URL", fc.HTTP.PublicBaseURL),
 		},
 		Database: DatabaseConfig{
 			URL:      envString("DATABASE_URL", fc.Database.URL),
@@ -248,6 +267,7 @@ func Load(configFile string) (*Config, error) {
 			GroupsClaim:   envString("AUTH_GROUPS_CLAIM", fc.Auth.GroupsClaim),
 			ReviewerGroup: envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
 		},
+		BootstrapFile: envString("BOOTSTRAP_FILE", fc.BootstrapFile),
 	}
 
 	if err := cfg.validate(); err != nil {
