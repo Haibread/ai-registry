@@ -21,6 +21,14 @@ http:
   #  - "https://registry.example.com"
   # CIDR of the trusted reverse proxy (empty = no proxy).
   trusted_proxy_cidr: ""
+  # Per-IP request budget for unauthenticated reads on /api/v1, in
+  # requests per minute.
+  public_rate_limit_rpm: 1000
+  # Externally reachable URL of this deployment. Surfaced in
+  # /.well-known/oauth-protected-resource and the global A2A agent card.
+  # Empty triggers HTTP 500 in those handlers rather than advertising
+  # localhost to external consumers. Example: "https://registry.example.com".
+  public_base_url: ""
 
 database:
   # [REQUIRED] PostgreSQL DSN.
@@ -37,6 +45,12 @@ otel:
 log:
   # debug | info | warn | error
   level: "info"
+
+# Optional bootstrap data file. Path to a YAML/JSON document of publishers,
+# workspaces, MCP servers and agents that the server upserts on startup
+# before accepting traffic. The `--bootstrap-file` CLI flag overrides
+# this YAML key and the BOOTSTRAP_FILE env var.
+bootstrap_file: ""
 
 auth:
   # [REQUIRED] OIDC issuer URL (must match `iss` claim in JWTs).

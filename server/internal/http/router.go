@@ -33,6 +33,11 @@ type RouterDeps struct {
 	// PublicRateLimitRPM is the per-IP request budget for unauthenticated
 	// reads on /api/v1, in requests per minute. Zero falls back to 1000.
 	PublicRateLimitRPM int
+	// PublicBaseURL is the externally reachable URL of this deployment.
+	// Threaded into the well-known endpoints (oauth-protected-resource,
+	// global agent-card). Empty triggers HTTP 500 in those handlers rather
+	// than silently advertising localhost.
+	PublicBaseURL string
 }
 
 // NewRouter builds and returns the fully wrapped HTTP handler: the chi router
@@ -73,7 +78,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	revH := handlers.NewReviewHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
-	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger)
+	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger, deps.PublicBaseURL)
 	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
 
@@ -116,7 +121,8 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r.Get("/config.json", handlers.ConfigJSON(deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCClientID, deps.AuthConf.AuthStorage))
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
-	r.Get("/.well-known/oauth-protected-resource", handlers.OAuthProtectedResource)
+	r.Get("/.well-known/oauth-protected-resource",
+		handlers.OAuthProtectedResource(deps.PublicBaseURL, deps.AuthConf.OIDCIssuer, deps.Logger))
 	// Global registry agent card (makes the registry a first-class A2A citizen)
 	r.Get("/.well-known/agent-card.json", cardH.GlobalAgentCard)
 

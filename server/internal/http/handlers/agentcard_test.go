@@ -19,8 +19,12 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
-func newAgentCardRouter() *chi.Mux {
-	h := handlers.NewAgentCardHandlers(testDB, slog.Default())
+// newAgentCardRouter builds a router with a configurable publicBaseURL so
+// individual tests can pin a deterministic value or pass "" to exercise the
+// fail-loud branch. Replaces the older PUBLIC_BASE_URL env-var injection now
+// that the handler reads from the config layer.
+func newAgentCardRouter(publicBaseURL string) *chi.Mux {
+	h := handlers.NewAgentCardHandlers(testDB, slog.Default(), publicBaseURL)
 	r := chi.NewRouter()
 	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", h.PerAgentCard)
 	r.Get("/.well-known/agent-card.json", h.GlobalAgentCard)
@@ -122,7 +126,7 @@ func TestAgentCardHandler_PerAgentCard_Found(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/agents/card-ns/card-ag/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
-	newAgentCardRouter().ServeHTTP(rec, req)
+	newAgentCardRouter("https://registry.example.test").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
@@ -194,7 +198,7 @@ func TestAgentCardHandler_PerAgentCard_HidesPendingVersion(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/agents/card-leak-ns/leak-ag/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
-	newAgentCardRouter().ServeHTTP(rec, req)
+	newAgentCardRouter("https://registry.example.test").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
@@ -221,7 +225,7 @@ func TestAgentCardHandler_PerAgentCard_NotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/agents/card-nf-ns/nonexistent/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
-	newAgentCardRouter().ServeHTTP(rec, req)
+	newAgentCardRouter("https://registry.example.test").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
@@ -236,7 +240,7 @@ func TestAgentCardHandler_PerAgentCard_PrivateAgent(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/agents/card-priv-ns/priv-ag/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
-	newAgentCardRouter().ServeHTTP(rec, req)
+	newAgentCardRouter("https://registry.example.test").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
@@ -251,7 +255,7 @@ func TestAgentCardHandler_PerAgentCard_NoPublishedVersion(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/agents/card-nover-ns/nover-ag/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
-	newAgentCardRouter().ServeHTTP(rec, req)
+	newAgentCardRouter("https://registry.example.test").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
@@ -270,7 +274,7 @@ func TestAgentCardHandler_PerAgentCard_A2AConformance(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/agents/conf-ns/conf-ag/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
-	newAgentCardRouter().ServeHTTP(rec, req)
+	newAgentCardRouter("https://registry.example.test").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
@@ -288,11 +292,10 @@ func TestAgentCardHandler_PerAgentCard_A2AConformance(t *testing.T) {
 // clients that crawl the registry via A2A.
 func TestAgentCardHandler_GlobalAgentCard_A2AConformance(t *testing.T) {
 	resetTables(t)
-	t.Setenv("PUBLIC_BASE_URL", "https://registry.example.test")
 
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
-	newAgentCardRouter().ServeHTTP(rec, req)
+	newAgentCardRouter("https://registry.example.test").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
@@ -324,13 +327,13 @@ func TestAgentCardHandler_GlobalAgentCard_A2AConformance(t *testing.T) {
 // an external A2A crawler tries to dial it.
 func TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500(t *testing.T) {
 	resetTables(t)
-	// t.Setenv with empty string explicitly unsets for the duration of the
-	// test, regardless of what the ambient environment looks like.
-	t.Setenv("PUBLIC_BASE_URL", "")
+	// Empty publicBaseURL is the misconfiguration the handler must surface
+	// — replaced PUBLIC_BASE_URL env injection with direct constructor input
+	// now that the value is sourced from the config layer.
 
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
-	newAgentCardRouter().ServeHTTP(rec, req)
+	newAgentCardRouter("").ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500; body: %s", rec.Code, rec.Body.String())
@@ -370,9 +373,7 @@ func TestRegistryCard_A2AConformance(t *testing.T) {
 	// just re-invokes the handler and asserts the same thing from a different
 	// entry point. Keeping it separate makes the failure message narrower
 	// when only the shape is wrong (no DB, no routing).
-	t.Setenv("PUBLIC_BASE_URL", "https://registry.example.test")
-
-	h := handlers.NewAgentCardHandlers(testDB, slog.Default())
+	h := handlers.NewAgentCardHandlers(testDB, slog.Default(), "https://registry.example.test")
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/agent-card.json", nil)
 	rec := httptest.NewRecorder()
 	h.GlobalAgentCard(rec, req)
