@@ -280,19 +280,25 @@ func upsertWorkspace(ctx context.Context, db *store.DB, publisherID string, w Wo
 // ── MCP servers ───────────────────────────────────────────────────────────────
 
 func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSlug, workspaceID string, s MCPServerSpec, logger *slog.Logger) error {
+	if workspaceID == "" {
+		var wsErr error
+		workspaceID, wsErr = db.EnsureDefaultWorkspaceID(ctx, publisherID)
+		if wsErr != nil {
+			return fmt.Errorf("ensuring default workspace: %w", wsErr)
+		}
+	}
 	// Check if the server already exists.
 	var serverID string
 	created := false
 	err := db.Pool.QueryRow(ctx,
-		`SELECT id FROM mcp_servers WHERE publisher_id = $1 AND slug = $2`,
-		publisherID, s.Slug,
+		`SELECT id FROM mcp_servers WHERE workspace_id = $1 AND slug = $2`,
+		workspaceID, s.Slug,
 	).Scan(&serverID)
 
 	if err != nil {
 		// Row not found — create it.
 		srv, createErr := db.CreateMCPServer(ctx, store.CreateMCPServerParams{
-			PublisherID: publisherID,
-			WorkspaceID: workspaceID, // empty → store falls back to publisher default
+			WorkspaceID: workspaceID,
 			Slug:        s.Slug,
 			Name:        s.Name,
 			Description: s.Description,
@@ -529,18 +535,24 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 // ── agents ────────────────────────────────────────────────────────────────────
 
 func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug, workspaceID string, a AgentSpec, logger *slog.Logger) error {
+	if workspaceID == "" {
+		var wsErr error
+		workspaceID, wsErr = db.EnsureDefaultWorkspaceID(ctx, publisherID)
+		if wsErr != nil {
+			return fmt.Errorf("ensuring default workspace: %w", wsErr)
+		}
+	}
 	var agentID string
 	created := false
 	err := db.Pool.QueryRow(ctx,
-		`SELECT id FROM agents WHERE publisher_id = $1 AND slug = $2`,
-		publisherID, a.Slug,
+		`SELECT id FROM agents WHERE workspace_id = $1 AND slug = $2`,
+		workspaceID, a.Slug,
 	).Scan(&agentID)
 
 	if err != nil {
 		// Row not found — create it.
 		ag, createErr := db.CreateAgent(ctx, store.CreateAgentParams{
-			PublisherID: publisherID,
-			WorkspaceID: workspaceID, // empty → store falls back to publisher default
+			WorkspaceID: workspaceID,
 			Slug:        a.Slug,
 			Name:        a.Name,
 			Description: a.Description,

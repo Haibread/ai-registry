@@ -72,14 +72,14 @@ func TestStatsHandler_CountsMatchInserts(t *testing.T) {
 	// Insert 2 MCP servers and 1 agent.
 	for _, slug := range []string{"srv-1", "srv-2"} {
 		_, err := testDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-			PublisherID: pubID, Slug: slug, Name: slug,
+			WorkspaceID: defaultWS(t, pubID), Slug: slug, Name: slug,
 		})
 		if err != nil {
 			t.Fatalf("CreateMCPServer(%q): %v", slug, err)
 		}
 	}
 	_, err := testDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pubID, Slug: "ag-1", Name: "Ag 1",
+		WorkspaceID: defaultWS(t, pubID), Slug: "ag-1", Name: "Ag 1",
 	})
 	if err != nil {
 		t.Fatalf("CreateAgent: %v", err)
@@ -107,7 +107,7 @@ func TestStatsHandler_IncludesPrivateAndDraftEntries(t *testing.T) {
 
 	// Server is private+draft by default after creation.
 	if _, err := testDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID, Slug: "hidden", Name: "Hidden",
+		WorkspaceID: defaultWS(t, pubID), Slug: "hidden", Name: "Hidden",
 	}); err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
 	}

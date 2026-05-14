@@ -25,9 +25,11 @@ for the design and [ADR 0002](docs/adr/0002-workspace-group-binding.md)
 for the auth model.
 
 - New `workspaces` table; two-step migration creates one `default`
-  workspace per existing publisher and pivots resources onto it before
-  the finalising migration drops the legacy `publisher_id` FK on MCP
-  servers / agents. Forward-only — down migrations are dev-only.
+  workspace per existing publisher and pivots resources onto it. The
+  follow-up finalising migration (`000011`, shipped 2026-05-14 — see
+  the "Workspaces finalise" entry below) drops the legacy `publisher_id`
+  FK on MCP servers / agents. Forward-only — down migrations are
+  dev-only.
 - Hierarchical API:
   `GET /api/v1/publishers/{p}/workspaces`,
   `POST /api/v1/publishers/{p}/workspaces`,
@@ -167,6 +169,41 @@ in the OpenAPI spec — needs per-endpoint risk analysis first),
 rate-limiter time-based janitor (bigger change), per-handler
 internal child spans, eager markdown chunk on detail pages
 (`React.lazy` deferral).
+
+### 🏗️ Workspaces finalise (ADR 0001 Step 3, PR #62)
+
+The finalising migration designed alongside the original workspaces
+rollout but parked at the time. After this PR, MCP servers and agents
+no longer carry `publisher_id`; the owning publisher is reached via
+`workspaces.publisher_id` through a single JOIN. See ADR 0001's
+"Status note (2026-05-14)" for the post-shipping context.
+
+- New migration `000011_workspaces_finalise.{up,down}.sql`. The up
+  migration is gated by a `DO $$ … RAISE EXCEPTION` block: if any row
+  still has `NULL workspace_id`, it aborts with a friendly
+  *workspace backfill not complete* error so operators know to redeploy
+  the prior image once and let the boot-time backfill run before
+  retrying.
+- Slug uniqueness is now **per-workspace**: `UNIQUE(workspace_id,
+  slug)`. Two workspaces under one publisher may each expose a
+  resource with the same slug.
+- Every store query that previously read `s.publisher_id` /
+  `a.publisher_id` is rewritten to JOIN through workspaces;
+  `mcp_servers.publisher_id` and `agents.publisher_id` are dropped.
+- `CreateMCPServerParams.PublisherID` and
+  `CreateAgentParams.PublisherID` are removed. Handlers now resolve
+  the workspace via the newly-exported
+  `DB.EnsureDefaultWorkspaceID(publisherID)` before calling create.
+- The boot-time `BackfillWorkspaces` helper and its `cmd/server/main.go`
+  caller are removed — after the NOT NULL constraint lands the
+  function is a no-op by construction, and its UPDATE queries
+  referenced the dropped column.
+- Wire-level `publisher_id` fields on MCP server / agent API
+  responses remain populated (derived through the JOIN); the OpenAPI
+  spec is unchanged.
+- CI gains a `grep` guard that fails the build if a future change
+  reintroduces `s.publisher_id` / `a.publisher_id` / INSERTs of
+  `publisher_id` into the resource tables.
 
 ## v0.3.2
 

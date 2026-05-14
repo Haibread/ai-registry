@@ -258,9 +258,10 @@ reports (polymorphic: target_type + target_id; admin triages)
 
 Each workspace belongs to exactly one publisher. Every MCP server / agent
 belongs to exactly one workspace; bare publisher → entry FKs no longer
-exist (migration `000008` introduced workspaces; `000010` finalised the
-pivot). A publisher gets a lazily-created `default` workspace on the
-first MCP/agent create when no `workspace:` is specified.
+exist (migration `000008` introduced workspaces; `000011` finalised the
+pivot — drops `publisher_id` from resources and swaps the unique key to
+`(workspace_id, slug)`). A publisher gets a lazily-created `default`
+workspace on the first MCP/agent create when no `workspace:` is specified.
 
 ### 3.2 Key Table Schemas
 

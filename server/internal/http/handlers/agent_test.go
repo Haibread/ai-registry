@@ -51,7 +51,7 @@ func seedAgent(t *testing.T, ns, slug string) {
 	t.Helper()
 	pubID := seedPublisher(t, ns, ns)
 	_, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
-		PublisherID: pubID,
+		WorkspaceID: defaultWS(t, pubID),
 		Slug:        slug,
 		Name:        slug,
 	})
@@ -701,7 +701,7 @@ func TestAgentHandler_ListAgents_TotalCount(t *testing.T) {
 	pubID := seedPublisher(t, "atc-pub", "ATC Pub")
 	for i := range 3 {
 		_, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
-			PublisherID: pubID,
+			WorkspaceID: defaultWS(t, pubID),
 			Slug:        fmt.Sprintf("atc-ag-%d", i),
 			Name:        fmt.Sprintf("ATC Agent %d", i),
 		})

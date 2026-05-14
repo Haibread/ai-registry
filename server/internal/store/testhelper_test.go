@@ -72,3 +72,15 @@ func insertPublisher(t *testing.T, slug, name string) string {
 	}
 	return id
 }
+
+// defaultWS returns the ULID of the publisher's default workspace, creating
+// it lazily on first call. Used to populate CreateMCPServerParams /
+// CreateAgentParams in tests after the publisher_id columns went away.
+func defaultWS(t *testing.T, publisherID string) string {
+	t.Helper()
+	wsID, err := sharedDB.EnsureDefaultWorkspaceID(context.Background(), publisherID)
+	if err != nil {
+		t.Fatalf("EnsureDefaultWorkspaceID(%q): %v", publisherID, err)
+	}
+	return wsID
+}

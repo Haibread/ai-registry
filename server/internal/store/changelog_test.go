@@ -29,7 +29,7 @@ func TestChangelog_IncludesPublishedPublicVersions(t *testing.T) {
 
 	// MCP server with a published version
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID, Slug: "pubd-srv", Name: "Public Server",
+		WorkspaceID: defaultWS(t, pubID), Slug: "pubd-srv", Name: "Public Server",
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
@@ -50,7 +50,7 @@ func TestChangelog_IncludesPublishedPublicVersions(t *testing.T) {
 
 	// Private MCP server with a published version — should be excluded
 	priv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID, Slug: "priv-srv", Name: "Private Server",
+		WorkspaceID: defaultWS(t, pubID), Slug: "priv-srv", Name: "Private Server",
 	})
 	pv, _ := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: priv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
@@ -88,7 +88,7 @@ func TestChangelog_ExcludesUnpublishedVersions(t *testing.T) {
 
 	pubID := insertPublisher(t, "cl-ns2", "CL2")
 	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID, Slug: "draft-srv", Name: "Draft Server",
+		WorkspaceID: defaultWS(t, pubID), Slug: "draft-srv", Name: "Draft Server",
 	})
 	_ = sharedDB.SetMCPServerVisibility(ctx, srv.ID, domain.VisibilityPublic)
 	// Create draft version — never published

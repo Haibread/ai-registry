@@ -233,12 +233,12 @@ func TestDeleteWorkspace_ConflictWhenNonEmpty(t *testing.T) {
 		t.Fatalf("create workspace: %v", err)
 	}
 
-	// Insert an mcp_server pointing at the workspace via the new column.
+	// Insert an mcp_server pointing at the workspace.
 	srvID := store.NewULID()
 	_, err = sharedDB.Pool.Exec(ctx, `
-		INSERT INTO mcp_servers (id, publisher_id, workspace_id, slug, name)
-		VALUES ($1, $2, $3, 'weather', 'Weather')`,
-		srvID, pubID, w.ID)
+		INSERT INTO mcp_servers (id, workspace_id, slug, name)
+		VALUES ($1, $2, 'weather', 'Weather')`,
+		srvID, w.ID)
 	if err != nil {
 		t.Fatalf("inserting mcp server: %v", err)
 	}
@@ -248,134 +248,13 @@ func TestDeleteWorkspace_ConflictWhenNonEmpty(t *testing.T) {
 	}
 }
 
-func TestBackfillWorkspaces_CreatesDefaultsAndPopulatesFKs(t *testing.T) {
-	resetDB(t)
-	ctx := context.Background()
-	pubA := insertPublisher(t, "acme", "Acme")
-	pubB := insertPublisher(t, "globex", "Globex")
-
-	// Pre-insert resources keyed only on publisher_id (workspace_id NULL).
-	srvA := store.NewULID()
-	if _, err := sharedDB.Pool.Exec(ctx, `
-		INSERT INTO mcp_servers (id, publisher_id, slug, name)
-		VALUES ($1, $2, 'weather', 'Weather')`, srvA, pubA); err != nil {
-		t.Fatalf("seed mcp_servers: %v", err)
-	}
-	agA := store.NewULID()
-	if _, err := sharedDB.Pool.Exec(ctx, `
-		INSERT INTO agents (id, publisher_id, slug, name)
-		VALUES ($1, $2, 'planner', 'Planner')`, agA, pubA); err != nil {
-		t.Fatalf("seed agents: %v", err)
-	}
-
-	res, err := sharedDB.BackfillWorkspaces(ctx)
-	if err != nil {
-		t.Fatalf("BackfillWorkspaces() error = %v", err)
-	}
-	if res.WorkspacesCreated != 2 {
-		t.Errorf("workspaces created = %d, want 2 (one per publisher)", res.WorkspacesCreated)
-	}
-	if res.ServersBackfilled != 1 {
-		t.Errorf("servers backfilled = %d, want 1", res.ServersBackfilled)
-	}
-	if res.AgentsBackfilled != 1 {
-		t.Errorf("agents backfilled = %d, want 1", res.AgentsBackfilled)
-	}
-
-	// Default workspace exists under each publisher.
-	for _, pubID := range []string{pubA, pubB} {
-		w, err := sharedDB.GetWorkspace(ctx, pubID, "default")
-		if err != nil {
-			t.Errorf("default workspace missing under %s: %v", pubID, err)
-			continue
-		}
-		if w.Slug != "default" || w.Name != "Default workspace" {
-			t.Errorf("unexpected default workspace shape: %+v", w)
-		}
-	}
-
-	// Resource workspace_id is now non-NULL and points at the default workspace.
-	var wsForServer string
-	if err := sharedDB.Pool.QueryRow(ctx,
-		`SELECT workspace_id FROM mcp_servers WHERE id = $1`, srvA).Scan(&wsForServer); err != nil {
-		t.Fatalf("read mcp server workspace: %v", err)
-	}
-	defaultWS, _ := sharedDB.GetWorkspace(ctx, pubA, "default")
-	if wsForServer != defaultWS.ID {
-		t.Errorf("server workspace_id = %s, want %s (default for acme)", wsForServer, defaultWS.ID)
-	}
-	var wsForAgent string
-	if err := sharedDB.Pool.QueryRow(ctx,
-		`SELECT workspace_id FROM agents WHERE id = $1`, agA).Scan(&wsForAgent); err != nil {
-		t.Fatalf("read agent workspace: %v", err)
-	}
-	if wsForAgent != defaultWS.ID {
-		t.Errorf("agent workspace_id = %s, want %s", wsForAgent, defaultWS.ID)
-	}
-}
-
-func TestBackfillWorkspaces_Idempotent(t *testing.T) {
-	resetDB(t)
-	ctx := context.Background()
-	insertPublisher(t, "acme", "Acme")
-
-	if _, err := sharedDB.BackfillWorkspaces(ctx); err != nil {
-		t.Fatalf("first run: %v", err)
-	}
-
-	res, err := sharedDB.BackfillWorkspaces(ctx)
-	if err != nil {
-		t.Fatalf("second run: %v", err)
-	}
-	if res.WorkspacesCreated != 0 {
-		t.Errorf("second run created %d workspaces, want 0", res.WorkspacesCreated)
-	}
-	if res.ServersBackfilled != 0 {
-		t.Errorf("second run backfilled %d servers, want 0", res.ServersBackfilled)
-	}
-	if res.AgentsBackfilled != 0 {
-		t.Errorf("second run backfilled %d agents, want 0", res.AgentsBackfilled)
-	}
-}
-
-func TestBackfillWorkspaces_PreservesExistingDefault(t *testing.T) {
-	resetDB(t)
-	ctx := context.Background()
-	pubID := insertPublisher(t, "acme", "Acme")
-
-	// Pre-create a default workspace; backfill must reuse it, not duplicate.
-	existing, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
-		PublisherID: pubID, Slug: "default", Name: "Pre-existing default",
-	})
-	if err != nil {
-		t.Fatalf("create default: %v", err)
-	}
-
-	res, err := sharedDB.BackfillWorkspaces(ctx)
-	if err != nil {
-		t.Fatalf("backfill: %v", err)
-	}
-	if res.WorkspacesCreated != 0 {
-		t.Errorf("expected 0 workspaces created, got %d", res.WorkspacesCreated)
-	}
-
-	// The pre-existing workspace must still be there with its custom name.
-	w, err := sharedDB.GetWorkspace(ctx, pubID, "default")
-	if err != nil {
-		t.Fatalf("get default: %v", err)
-	}
-	if w.ID != existing.ID || w.Name != "Pre-existing default" {
-		t.Errorf("default workspace replaced: %+v", w)
-	}
-}
-
 func TestCreateMCPServer_PopulatesWorkspaceID(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	pubID := insertPublisher(t, "acme", "Acme")
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID,
+		WorkspaceID: defaultWS(t, pubID),
 		Slug:        "weather",
 		Name:        "Weather",
 	})
@@ -412,7 +291,6 @@ func TestCreateMCPServer_RespectsExplicitWorkspaceID(t *testing.T) {
 	}
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID,
 		WorkspaceID: customWS.ID,
 		Slug:        "weather",
 		Name:        "Weather",
@@ -441,7 +319,7 @@ func TestCreateAgent_PopulatesWorkspaceID(t *testing.T) {
 	pubID := insertPublisher(t, "acme", "Acme")
 
 	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pubID,
+		WorkspaceID: defaultWS(t, pubID),
 		Slug:        "planner",
 		Name:        "Planner",
 	})
@@ -483,7 +361,7 @@ func TestLookupGroupNameByMCPServerNS(t *testing.T) {
 
 	// MCP server in the bound workspace.
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID, WorkspaceID: bound.ID, Slug: "weather", Name: "Weather",
+		WorkspaceID: bound.ID, Slug: "weather", Name: "Weather",
 	}); err != nil {
 		t.Fatalf("create server: %v", err)
 	}
@@ -498,7 +376,7 @@ func TestLookupGroupNameByMCPServerNS(t *testing.T) {
 
 	// Server in a workspace with NULL group_name → "".
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID, Slug: "barometer", Name: "Barometer",
+		WorkspaceID: defaultWS(t, pubID), Slug: "barometer", Name: "Barometer",
 	}); err != nil {
 		t.Fatalf("create default-ws server: %v", err)
 	}
@@ -536,7 +414,7 @@ func TestLookupGroupNameByAgentNS(t *testing.T) {
 		t.Fatalf("set group: %v", err)
 	}
 	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pubID, WorkspaceID: w.ID, Slug: "planner", Name: "Planner",
+		WorkspaceID: w.ID, Slug: "planner", Name: "Planner",
 	}); err != nil {
 		t.Fatalf("create agent: %v", err)
 	}

@@ -125,22 +125,6 @@ func run() error {
 	}
 	logger.Info("migrations complete")
 
-	// ── Workspace backfill (idempotent) ──────────────────────────────────────
-	// Ensures every publisher has a `default` workspace and that every
-	// resource row has a non-NULL workspace_id. Safe to re-run on every boot;
-	// on a steady-state DB this is a no-op (zero rows updated).
-	wbf, err := db.BackfillWorkspaces(ctx)
-	if err != nil {
-		return fmt.Errorf("workspace backfill: %w", err)
-	}
-	if wbf.WorkspacesCreated > 0 || wbf.ServersBackfilled > 0 || wbf.AgentsBackfilled > 0 {
-		logger.Info("workspace backfill complete",
-			slog.Int("workspaces_created", wbf.WorkspacesCreated),
-			slog.Int("servers_backfilled", wbf.ServersBackfilled),
-			slog.Int("agents_backfilled", wbf.AgentsBackfilled),
-		)
-	}
-
 	// ── Bootstrap (optional) ─────────────────────────────────────────────────
 	if bootstrapPath != "" {
 		logger.Info("loading bootstrap file", slog.String("path", bootstrapPath))

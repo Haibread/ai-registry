@@ -297,7 +297,7 @@ func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 
 	// Create an MCP server + version, then soft-delete the server.
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pub.ID,
+		WorkspaceID: defaultWS(t, pub.ID),
 		Slug:        "tombstone-srv",
 		Name:        "Tombstone Server",
 	})
@@ -319,7 +319,7 @@ func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 
 	// Create an agent + version, then soft-delete the agent.
 	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pub.ID,
+		WorkspaceID: defaultWS(t, pub.ID),
 		Slug:        "tombstone-agent",
 		Name:        "Tombstone Agent",
 	})
@@ -350,6 +350,64 @@ func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 	}
 }
 
+// TestDeletePublisher_SweepsAcrossMultipleWorkspaces verifies that the
+// publisher-delete tombstone sweep (rewritten in the workspaces
+// finalisation refactor to use `workspace_id IN (SELECT id FROM workspaces
+// WHERE publisher_id=$1)`) reaches resources in every workspace owned by
+// the publisher — not just the default workspace.
+func TestDeletePublisher_SweepsAcrossMultipleWorkspaces(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pub, err := sharedDB.CreatePublisher(ctx, store.CreatePublisherParams{
+		Slug: "multi-ws-pub", Name: "Multi WS Publisher",
+	})
+	if err != nil {
+		t.Fatalf("CreatePublisher: %v", err)
+	}
+
+	wsAlpha, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pub.ID, Slug: "alpha", Name: "Alpha",
+	})
+	if err != nil {
+		t.Fatalf("create alpha workspace: %v", err)
+	}
+	wsBeta, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pub.ID, Slug: "beta", Name: "Beta",
+	})
+	if err != nil {
+		t.Fatalf("create beta workspace: %v", err)
+	}
+
+	// One server in each workspace, both tombstoned.
+	srvA, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		WorkspaceID: wsAlpha.ID, Slug: "weather", Name: "Weather Alpha",
+	})
+	if err != nil {
+		t.Fatalf("create alpha server: %v", err)
+	}
+	srvB, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		WorkspaceID: wsBeta.ID, Slug: "weather", Name: "Weather Beta",
+	})
+	if err != nil {
+		t.Fatalf("create beta server: %v", err)
+	}
+	if err := sharedDB.DeleteMCPServer(ctx, srvA.ID); err != nil {
+		t.Fatalf("soft-delete alpha server: %v", err)
+	}
+	if err := sharedDB.DeleteMCPServer(ctx, srvB.ID); err != nil {
+		t.Fatalf("soft-delete beta server: %v", err)
+	}
+
+	// DeletePublisher must sweep tombstoned children across BOTH workspaces.
+	if err := sharedDB.DeletePublisher(ctx, pub.ID); err != nil {
+		t.Fatalf("DeletePublisher across multiple workspaces: %v", err)
+	}
+	if _, err := sharedDB.GetPublisher(ctx, "multi-ws-pub"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected publisher gone, got %v", err)
+	}
+}
+
 func TestDeletePublisher_ConflictWithActiveEntries(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
@@ -362,7 +420,7 @@ func TestDeletePublisher_ConflictWithActiveEntries(t *testing.T) {
 	}
 	// Add an active MCP server.
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pub.ID,
+		WorkspaceID: defaultWS(t, pub.ID),
 		Slug:        "active-srv",
 		Name:        "Active Server",
 	}); err != nil {

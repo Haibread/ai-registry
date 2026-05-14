@@ -509,9 +509,11 @@ made the new surfaces usable end-to-end.
 ([ADR 0001](docs/adr/0001-workspaces-under-publishers.md))
 
 - New `workspaces` entity between publishers and resources.
-- Two-step migration: schema + Go-side backfill creating one `default`
-  workspace per publisher; finalising migration drops `publisher_id`
-  from resources.
+- Three-step migration: schema (`000008`) + Go-side backfill creating
+  one `default` workspace per publisher; finalising migration
+  (`000011`, PR #62, 2026-05-14) drops `publisher_id` from resources
+  and swaps the slug unique key to `(workspace_id, slug)`. Slug
+  uniqueness is now per-workspace.
 - Hierarchical URLs `/v0/publishers/{p}/workspaces/{w}/servers/{s}`
   with HTTP 301 redirects from legacy paths.
 - Bootstrap loader gained a `workspaces:` top-level list and a

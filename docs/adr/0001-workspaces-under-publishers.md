@@ -1,6 +1,6 @@
 # ADR 0001 — Workspaces under publishers
 
-- **Status:** Accepted (shipped via PR #28; finalising migration via PR #29)
+- **Status:** Accepted (shipped via PR #28; finalising migration via PR #62)
 - **Date:** 2026-05-02
 - **Deciders:** @Haibread
 - **Supersedes:** —
@@ -100,22 +100,27 @@ Step 2 — backfill (Go-side one-shot, invoked on server boot via
 5. Verify: `SELECT count(*) FROM mcp_servers WHERE workspace_id IS
    NULL` returns 0. Same for `agents`.
 
-Step 3 — finalising migration **(deferred — not yet shipped)**:
+Step 3 — finalising migration `000011_workspaces_finalise.{up,down}.sql`
+**(shipped 2026-05-14)**:
 
-6. `ALTER TABLE … ALTER COLUMN workspace_id SET NOT NULL`.
+6. `ALTER TABLE … ALTER COLUMN workspace_id SET NOT NULL`, gated on a
+   `DO $$ … RAISE EXCEPTION` check so operators get a friendly error
+   if the backfill hasn't completed against the target DB.
 7. Drop `publisher_id` columns and the old `UNIQUE(publisher_id, slug)`
-   constraints. Add `UNIQUE(workspace_id, slug)`.
-8. Recreate indexes that referenced `publisher_id` against
-   `workspace_id`.
+   constraints. Add `UNIQUE(workspace_id, slug)` — slug uniqueness is
+   now per-workspace, so two workspaces under one publisher may each
+   expose a server with the same slug.
+8. Drop `idx_*_publisher` (the `idx_*_workspace` indexes from 000008
+   cover the new key).
 
-> **Status note (2026-05-10).** Step 3 was scoped at design time but
-> never landed; production schema currently keeps both `publisher_id`
-> and `workspace_id` columns coexisting on `mcp_servers` / `agents`,
-> with the Go boot-time backfill ensuring `workspace_id` is non-NULL.
-> Code paths still read `publisher_id` directly. Finalising is parked
-> on the backlog — it's a one-way change that needs a quiet release
-> window to apply safely. Ship the down migration alongside per
-> CLAUDE.md (down migrations are for local dev only).
+> **Status note (2026-05-14).** Step 3 shipped. `mcp_servers` and
+> `agents` no longer carry `publisher_id`; the owning publisher is
+> reached via `workspaces.publisher_id` (a single JOIN). The boot-time
+> `BackfillWorkspaces` helper was removed in the same change — after
+> the NOT NULL constraint lands it has nothing to do, and its UPDATE
+> queries referenced the dropped column. Wire-level `publisher_id`
+> fields on MCP server / agent API responses are still populated; they
+> are derived through the join, so the OpenAPI schema is unchanged.
 
 ### Slug uniqueness
 

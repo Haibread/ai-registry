@@ -50,7 +50,7 @@ func seedMCPServer(t *testing.T, ns, slug string) {
 	t.Helper()
 	pubID := seedPublisher(t, ns, ns)
 	_, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
-		PublisherID: pubID,
+		WorkspaceID: defaultWS(t, pubID),
 		Slug:        slug,
 		Name:        slug,
 	})
@@ -818,7 +818,7 @@ func TestMCPHandler_ListServers_TotalCount(t *testing.T) {
 	pubID := seedPublisher(t, "tc-pub", "TC Pub")
 	for i := range 3 {
 		_, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
-			PublisherID: pubID,
+			WorkspaceID: defaultWS(t, pubID),
 			Slug:        fmt.Sprintf("tc-srv-%d", i),
 			Name:        fmt.Sprintf("TC Server %d", i),
 		})

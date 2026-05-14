@@ -71,7 +71,7 @@ func seedDraftMCPServerVersion(t *testing.T, ns, slug, ver string) {
 	t.Helper()
 	pubID := seedPublisher(t, ns, ns)
 	srv, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
-		PublisherID: pubID, Slug: slug, Name: slug,
+		WorkspaceID: defaultWS(t, pubID), Slug: slug, Name: slug,
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
@@ -92,7 +92,7 @@ func seedDraftAgentForHandler(t *testing.T, ns, slug, ver string) {
 	t.Helper()
 	pubID := seedPublisher(t, ns, ns)
 	ag, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
-		PublisherID: pubID, Slug: slug, Name: slug,
+		WorkspaceID: defaultWS(t, pubID), Slug: slug, Name: slug,
 	})
 	if err != nil {
 		t.Fatalf("CreateAgent: %v", err)

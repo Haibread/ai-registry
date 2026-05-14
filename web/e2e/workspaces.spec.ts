@@ -139,6 +139,22 @@ test.describe('Workspaces API', () => {
     expect(slugs).toContain(MCP_SLUG)
   })
 
+  test('MCP server detail derives namespace via the post-000011 JOIN', async ({ page }) => {
+    // The wire shape exposes `namespace` (the publisher slug), not the
+    // internal publisher_id FK — serverToResponse() in handlers/mcp.go
+    // never returned publisher_id, so there's nothing to assert on that
+    // field. What we CAN lock against future regressions: the namespace
+    // value is derived through the same JOIN that replaced the direct
+    // `s.publisher_id` read after migration 000011 dropped the column.
+    // If a future change breaks the workspaces → publishers JOIN, this
+    // GET would either 500 or return an empty namespace.
+    const srvResp = await apiGet(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}`)
+    expect(srvResp.status()).toBe(200)
+    const srv = await srvResp.json()
+    expect(srv.namespace, 'namespace derived via workspaces JOIN').toBe(PUBLISHER_SLUG)
+    expect(srv.slug).toBe(MCP_SLUG)
+  })
+
   test('workspace-scoped server list isolates by workspace', async ({ page }) => {
     // Create a second workspace and confirm the existing server is NOT in it.
     const create = await apiPost(

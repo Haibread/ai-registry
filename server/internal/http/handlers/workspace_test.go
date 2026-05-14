@@ -331,7 +331,7 @@ func TestWorkspaceHandler_DeleteEmpty(t *testing.T) {
 
 func TestWorkspaceHandler_ListWorkspaceServers(t *testing.T) {
 	resetTables(t)
-	pubID := seedPublisher(t, "acme", "Acme")
+	seedPublisher(t, "acme", "Acme")
 	r := newWorkspaceRouter()
 
 	// Create two workspaces under acme via the handler.
@@ -353,7 +353,6 @@ func TestWorkspaceHandler_ListWorkspaceServers(t *testing.T) {
 	// Two servers in team-a, one in team-b.
 	for _, wsID := range []string{wsA.ID, wsA.ID, wsB.ID} {
 		_, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
-			PublisherID: pubID,
 			WorkspaceID: wsID,
 			Slug:        store.NewULID(), // unique
 			Name:        "n",
@@ -419,7 +418,7 @@ func TestWorkspaceHandler_ListWorkspaceServers(t *testing.T) {
 
 func TestWorkspaceHandler_ListWorkspaceAgents(t *testing.T) {
 	resetTables(t)
-	pubID := seedPublisher(t, "acme", "Acme")
+	seedPublisher(t, "acme", "Acme")
 	r := newWorkspaceRouter()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/publishers/acme/workspaces",
@@ -434,7 +433,7 @@ func TestWorkspaceHandler_ListWorkspaceAgents(t *testing.T) {
 
 	// One agent in team.
 	if _, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
-		PublisherID: pubID, WorkspaceID: ws.ID, Slug: "planner", Name: "Planner",
+		WorkspaceID: ws.ID, Slug: "planner", Name: "Planner",
 	}); err != nil {
 		t.Fatalf("create agent: %v", err)
 	}
@@ -467,7 +466,7 @@ func TestWorkspaceHandler_ListWorkspaceAgents(t *testing.T) {
 
 func TestWorkspaceHandler_DeleteConflictWhenNonEmpty(t *testing.T) {
 	resetTables(t)
-	pubID := seedPublisher(t, "acme", "Acme")
+	seedPublisher(t, "acme", "Acme")
 	r := newWorkspaceRouter()
 
 	// Create a workspace via the handler.
@@ -489,9 +488,9 @@ func TestWorkspaceHandler_DeleteConflictWhenNonEmpty(t *testing.T) {
 	// Insert an mcp_server pointing at the workspace.
 	srvID := store.NewULID()
 	_, err := testDB.Pool.Exec(context.Background(), `
-		INSERT INTO mcp_servers (id, publisher_id, workspace_id, slug, name)
-		VALUES ($1, $2, $3, 'weather', 'Weather')`,
-		srvID, pubID, ws.ID)
+		INSERT INTO mcp_servers (id, workspace_id, slug, name)
+		VALUES ($1, $2, 'weather', 'Weather')`,
+		srvID, ws.ID)
 	if err != nil {
 		t.Fatalf("insert server: %v", err)
 	}

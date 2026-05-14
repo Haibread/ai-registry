@@ -71,9 +71,15 @@ func (db *DB) GetPublicStats(ctx context.Context) (*PublicStats, error) {
 
 	row := db.Pool.QueryRow(ctx, `
 		WITH active_publishers AS (
-			SELECT publisher_id FROM mcp_servers WHERE status='published' AND visibility='public'
+			SELECT w.publisher_id
+			FROM mcp_servers s
+			JOIN workspaces w ON w.id = s.workspace_id
+			WHERE s.status='published' AND s.visibility='public'
 			UNION
-			SELECT publisher_id FROM agents WHERE status='published' AND visibility='public'
+			SELECT w.publisher_id
+			FROM agents a
+			JOIN workspaces w ON w.id = a.workspace_id
+			WHERE a.status='published' AND a.visibility='public'
 		)
 		SELECT
 			(SELECT COUNT(*) FROM mcp_servers WHERE status='published' AND visibility='public')::int,
