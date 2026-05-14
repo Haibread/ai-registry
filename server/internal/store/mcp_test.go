@@ -68,6 +68,48 @@ func TestCreateMCPServer_ConflictOnDuplicateSlug(t *testing.T) {
 	}
 }
 
+// TestCreateMCPServer_SlugUniquenessIsPerWorkspace verifies that after the
+// 000011 migration, the unique key is (workspace_id, slug) — so two
+// workspaces under a single publisher may each expose a server with the
+// same slug, but a duplicate within one workspace is still rejected.
+func TestCreateMCPServer_SlugUniquenessIsPerWorkspace(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "acme-multi", "Acme Multi")
+
+	wsA, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pubID, Slug: "team-a", Name: "Team A",
+	})
+	if err != nil {
+		t.Fatalf("create team-a workspace: %v", err)
+	}
+	wsB, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pubID, Slug: "team-b", Name: "Team B",
+	})
+	if err != nil {
+		t.Fatalf("create team-b workspace: %v", err)
+	}
+
+	// `weather` in team-a — should succeed.
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		WorkspaceID: wsA.ID, Slug: "weather", Name: "Weather A",
+	}); err != nil {
+		t.Fatalf("create weather in team-a: %v", err)
+	}
+	// Same slug `weather` in team-b — must ALSO succeed (per-workspace key).
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		WorkspaceID: wsB.ID, Slug: "weather", Name: "Weather B",
+	}); err != nil {
+		t.Errorf("create weather in team-b should succeed (per-workspace slug), got %v", err)
+	}
+	// Second `weather` in team-a — must conflict.
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		WorkspaceID: wsA.ID, Slug: "weather", Name: "Weather A dup",
+	}); err != store.ErrConflict {
+		t.Errorf("duplicate weather in team-a: expected ErrConflict, got %v", err)
+	}
+}
+
 func TestGetMCPServer_NotFoundWhenPrivateAndPublicOnly(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

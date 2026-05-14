@@ -60,6 +60,31 @@ jobs:
         working-directory: server
         run: go vet ./...
 
+      # Guard against accidentally reintroducing `publisher_id` reads on the
+      # mcp_servers / agents tables after ADR 0001 Step 3 dropped the column.
+      # We grep for the exact patterns that would fail at runtime — the
+      # `s.publisher_id` / `a.publisher_id` aliases and any INSERT/SELECT that
+      # names the column on those two tables. Refs to `workspaces.publisher_id`
+      # (which still exists) and to the wire-level `PublisherID` struct field
+      # (which is now derived via JOIN) are intentionally not caught.
+      - name: No stray publisher_id reads on resource tables
+        working-directory: server
+        run: |
+          set -e
+          patterns='\bs\.publisher_id\b|\ba\.publisher_id\b|mcp_servers\.publisher_id|agents\.publisher_id|INSERT INTO mcp_servers[^)]*publisher_id|INSERT INTO agents[^)]*publisher_id'
+          stray=$(grep -rnE "$patterns" --include='*.go' --include='*.sql' \
+            internal/ migrations/ 2>/dev/null \
+            | grep -v '_test\.go' \
+            | grep -v 'migrations/000001_init.up.sql' \
+            | grep -v 'migrations/000008_workspaces.up.sql' \
+            | grep -v 'migrations/000011_workspaces_finalise' \
+            || true)
+          if [ -n "$stray" ]; then
+            echo "Unexpected publisher_id references on resource tables:"
+            echo "$stray"
+            exit 1
+          fi
+
       - name: go build
         working-directory: server
         run: go build ./...
