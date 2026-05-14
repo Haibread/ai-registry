@@ -289,8 +289,8 @@ func (db *DB) LookupGroupNameByMCPServerNS(ctx context.Context, namespace, slug 
 	err := db.Pool.QueryRow(ctx, `
 		SELECT coalesce(w.group_name, '')
 		FROM mcp_servers s
-		JOIN publishers p  ON p.id = s.publisher_id
 		JOIN workspaces w  ON w.id = s.workspace_id
+		JOIN publishers p  ON p.id = w.publisher_id
 		WHERE p.slug = $1 AND s.slug = $2`,
 		namespace, slug).Scan(&groupName)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -314,8 +314,8 @@ func (db *DB) LookupGroupNameByAgentNS(ctx context.Context, namespace, slug stri
 	err := db.Pool.QueryRow(ctx, `
 		SELECT coalesce(w.group_name, '')
 		FROM agents a
-		JOIN publishers p  ON p.id = a.publisher_id
 		JOIN workspaces w  ON w.id = a.workspace_id
+		JOIN publishers p  ON p.id = w.publisher_id
 		WHERE p.slug = $1 AND a.slug = $2`,
 		namespace, slug).Scan(&groupName)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -352,13 +352,12 @@ func (db *DB) LookupGroupNameByMCPServerID(ctx context.Context, serverID string)
 	return groupName, nil
 }
 
-// ensureDefaultWorkspaceID returns the ULID of the publisher's `default`
-// workspace, creating it lazily if it does not yet exist. This mirrors
-// the BackfillWorkspaces logic for a single publisher and is the path
-// CreateMCPServer / CreateAgent take when no explicit workspace is
-// supplied. The exec runs inside the caller's pgx connection so it can
-// be wrapped in a transaction if the caller has one.
-func (db *DB) ensureDefaultWorkspaceID(ctx context.Context, publisherID string) (string, error) {
+// EnsureDefaultWorkspaceID returns the ULID of the publisher's `default`
+// workspace, creating it lazily if it does not yet exist. Handlers call
+// this before CreateMCPServer / CreateAgent when the request only carries
+// a publisher namespace (legacy flat /{namespace}/{slug} routes); the new
+// hierarchical routes pass workspace_id directly and skip this helper.
+func (db *DB) EnsureDefaultWorkspaceID(ctx context.Context, publisherID string) (string, error) {
 	var id string
 	err := db.Pool.QueryRow(ctx,
 		`SELECT id FROM workspaces WHERE publisher_id = $1 AND slug = 'default'`,
@@ -391,123 +390,10 @@ func (db *DB) ensureDefaultWorkspaceID(ctx context.Context, publisherID string) 
 	return id, nil
 }
 
-// BackfillResult summarises a BackfillWorkspaces run.
-type BackfillResult struct {
-	WorkspacesCreated int
-	ServersBackfilled int
-	AgentsBackfilled  int
-}
-
-// BackfillWorkspaces is the Go-side step of the workspace migration (ADR
-// 0001 step 2 of the schema rollout). It is **idempotent** and safe to run
-// on every server boot:
-//
-//  1. For each publisher without a `default` workspace, create one.
-//  2. For each mcp_servers row with NULL workspace_id, point it at the
-//     `default` workspace of its publisher.
-//  3. Same for agents.
-//
-// The finalising migration (a future step) will flip workspace_id to NOT
-// NULL and drop publisher_id from resources; until then this backfill
-// keeps the new column populated for newly-created code paths.
-func (db *DB) BackfillWorkspaces(ctx context.Context) (BackfillResult, error) {
-	ctx, span := startSpan(ctx, "BackfillWorkspaces")
-	defer span.End()
-
-	var res BackfillResult
-
-	tx, err := db.Pool.Begin(ctx)
-	if err != nil {
-		recordErr(span, err)
-		return res, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	// Step 1: ensure every publisher has a `default` workspace.
-	rows, err := tx.Query(ctx, `
-		SELECT p.id
-		FROM publishers p
-		WHERE NOT EXISTS (
-			SELECT 1 FROM workspaces w
-			WHERE w.publisher_id = p.id AND w.slug = 'default'
-		)`)
-	if err != nil {
-		recordErr(span, err)
-		return res, fmt.Errorf("finding publishers without default workspace: %w", err)
-	}
-	var pubIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			recordErr(span, err)
-			return res, fmt.Errorf("scanning publisher id: %w", err)
-		}
-		pubIDs = append(pubIDs, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		recordErr(span, err)
-		return res, err
-	}
-
-	now := time.Now().UTC()
-	for _, pubID := range pubIDs {
-		wsID := NewULID()
-		_, err := tx.Exec(ctx, `
-			INSERT INTO workspaces
-				(id, publisher_id, slug, name, description, contact, created_at, updated_at)
-			VALUES ($1, $2, 'default', 'Default workspace', '', '', $3, $3)`,
-			wsID, pubID, now)
-		if err != nil {
-			recordErr(span, err)
-			return res, fmt.Errorf("creating default workspace for publisher %s: %w", pubID, err)
-		}
-		res.WorkspacesCreated++
-	}
-
-	// Step 2: backfill mcp_servers.workspace_id where NULL.
-	tag, err := tx.Exec(ctx, `
-		UPDATE mcp_servers s
-		   SET workspace_id = w.id
-		  FROM workspaces w
-		 WHERE s.workspace_id IS NULL
-		   AND w.publisher_id = s.publisher_id
-		   AND w.slug = 'default'`)
-	if err != nil {
-		recordErr(span, err)
-		return res, fmt.Errorf("backfilling mcp_servers.workspace_id: %w", err)
-	}
-	res.ServersBackfilled = int(tag.RowsAffected())
-
-	// Step 3: backfill agents.workspace_id where NULL.
-	tag, err = tx.Exec(ctx, `
-		UPDATE agents a
-		   SET workspace_id = w.id
-		  FROM workspaces w
-		 WHERE a.workspace_id IS NULL
-		   AND w.publisher_id = a.publisher_id
-		   AND w.slug = 'default'`)
-	if err != nil {
-		recordErr(span, err)
-		return res, fmt.Errorf("backfilling agents.workspace_id: %w", err)
-	}
-	res.AgentsBackfilled = int(tag.RowsAffected())
-
-	if err := tx.Commit(ctx); err != nil {
-		recordErr(span, err)
-		return res, fmt.Errorf("commit tx: %w", err)
-	}
-	return res, nil
-}
-
 // DeleteWorkspace hard-deletes a workspace. Returns ErrConflict if any
 // MCP server or agent still references the workspace (regardless of
 // status — even tombstoned rows hold the FK). Workspace deletion
-// requires the workspace to be empty. During the transitional period
-// before the finalising migration, a resource may have NULL
-// workspace_id (legacy publisher-keyed rows that haven't been
-// backfilled); those do not count against this check.
+// requires the workspace to be empty.
 func (db *DB) DeleteWorkspace(ctx context.Context, workspaceID string) error {
 	ctx, span := startSpan(ctx, "DeleteWorkspace")
 	defer span.End()

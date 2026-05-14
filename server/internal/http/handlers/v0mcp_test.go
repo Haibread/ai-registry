@@ -41,7 +41,7 @@ func seedPublicMCPWithVersion(t *testing.T, ns, slug, ver string) string {
 	pubID := seedPublisher(t, ns, ns)
 
 	srv, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
-		PublisherID: pubID,
+		WorkspaceID: defaultWS(t, pubID),
 		Slug:        slug,
 		Name:        slug,
 		Description: "a test server",
@@ -81,7 +81,7 @@ func TestV0MCPHandler_ListServers_OnlyPublic(t *testing.T) {
 	// Private server — separate publisher
 	pubID2 := seedPublisher(t, "v0-priv-ns", "v0-priv-ns")
 	_, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
-		PublisherID: pubID2,
+		WorkspaceID: defaultWS(t, pubID2),
 		Slug:        "private-srv",
 		Name:        "private-srv",
 	})
@@ -213,7 +213,7 @@ func TestV0MCPHandler_GetServer_PrivateReturns404(t *testing.T) {
 	// Create a private server (default)
 	pubID := seedPublisher(t, "v0-priv-get-ns", "v0-priv-get-ns")
 	srv, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
-		PublisherID: pubID,
+		WorkspaceID: defaultWS(t, pubID),
 		Slug:        "priv-srv",
 		Name:        "priv-srv",
 	})

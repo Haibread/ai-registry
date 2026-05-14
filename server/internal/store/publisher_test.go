@@ -297,7 +297,7 @@ func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 
 	// Create an MCP server + version, then soft-delete the server.
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pub.ID,
+		WorkspaceID: defaultWS(t, pub.ID),
 		Slug:        "tombstone-srv",
 		Name:        "Tombstone Server",
 	})
@@ -319,7 +319,7 @@ func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 
 	// Create an agent + version, then soft-delete the agent.
 	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pub.ID,
+		WorkspaceID: defaultWS(t, pub.ID),
 		Slug:        "tombstone-agent",
 		Name:        "Tombstone Agent",
 	})
@@ -362,7 +362,7 @@ func TestDeletePublisher_ConflictWithActiveEntries(t *testing.T) {
 	}
 	// Add an active MCP server.
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pub.ID,
+		WorkspaceID: defaultWS(t, pub.ID),
 		Slug:        "active-srv",
 		Name:        "Active Server",
 	}); err != nil {

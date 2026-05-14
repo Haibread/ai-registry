@@ -191,8 +191,14 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wsID, err := h.db.EnsureDefaultWorkspaceID(r.Context(), publisherID)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
 	srv, err := h.db.CreateMCPServer(r.Context(), store.CreateMCPServerParams{
-		PublisherID: publisherID,
+		WorkspaceID: wsID,
 		Slug:        body.Slug,
 		Name:        body.Name,
 		Description: body.Description,

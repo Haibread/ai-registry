@@ -195,13 +195,14 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 
 	args = append(args, p.Limit)
 	q := fmt.Sprintf(`
-		SELECT a.id, pub.slug AS namespace, a.publisher_id, a.slug, a.name,
+		SELECT a.id, pub.slug AS namespace, w.publisher_id, a.slug, a.name,
 		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
-		JOIN publishers pub ON pub.id = a.publisher_id
+		JOIN workspaces w ON w.id = a.workspace_id
+		JOIN publishers pub ON pub.id = w.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
 		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
@@ -272,7 +273,8 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		countQ = fmt.Sprintf(`
 			SELECT COUNT(*)
 			FROM agents a
-			JOIN publishers pub ON pub.id = a.publisher_id
+			JOIN workspaces w ON w.id = a.workspace_id
+			JOIN publishers pub ON pub.id = w.publisher_id
 			LEFT JOIN LATERAL (
 			    SELECT av.published_at
 			    FROM agent_versions av
@@ -285,7 +287,8 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		countQ = fmt.Sprintf(`
 			SELECT COUNT(*)
 			FROM agents a
-			JOIN publishers pub ON pub.id = a.publisher_id
+			JOIN workspaces w ON w.id = a.workspace_id
+			JOIN publishers pub ON pub.id = w.publisher_id
 			%s`, filterWhere)
 	}
 
@@ -304,13 +307,14 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 	defer span.End()
 
 	q := `
-		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
+		SELECT a.id, pub.slug, w.publisher_id, a.slug, a.name,
 		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
-		JOIN publishers pub ON pub.id = a.publisher_id
+		JOIN workspaces w ON w.id = a.workspace_id
+		JOIN publishers pub ON pub.id = w.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
 		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
@@ -367,11 +371,9 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 }
 
 // CreateAgentParams holds the fields needed to insert a new agent.
+// WorkspaceID is required. Handlers that only have a publisher in hand must
+// resolve it via DB.EnsureDefaultWorkspaceID before calling.
 type CreateAgentParams struct {
-	PublisherID string
-	// WorkspaceID is optional: empty falls back to the publisher's
-	// `default` workspace, created lazily on demand. Hierarchical
-	// handlers pass this explicitly from the URL.
 	WorkspaceID string
 	Slug        string
 	Name        string
@@ -383,23 +385,29 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 	ctx, span := startSpan(ctx, "CreateAgent")
 	defer span.End()
 
-	wsID := p.WorkspaceID
-	if wsID == "" {
-		var err error
-		wsID, err = db.ensureDefaultWorkspaceID(ctx, p.PublisherID)
-		if err != nil {
-			recordErr(span, err)
-			return nil, err
+	if p.WorkspaceID == "" {
+		return nil, fmt.Errorf("CreateAgent: WorkspaceID is required")
+	}
+
+	var publisherID string
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT publisher_id FROM workspaces WHERE id = $1`, p.WorkspaceID,
+	).Scan(&publisherID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			recordErr(span, ErrNotFound)
+			return nil, ErrNotFound
 		}
+		recordErr(span, err)
+		return nil, fmt.Errorf("resolving workspace publisher: %w", err)
 	}
 
 	id := NewULID()
 	now := time.Now().UTC()
 
 	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO agents (id, publisher_id, workspace_id, slug, name, description, visibility, status, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,'private','draft',$7,$7)`,
-		id, p.PublisherID, wsID, p.Slug, p.Name, p.Description, now,
+		INSERT INTO agents (id, workspace_id, slug, name, description, visibility, status, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,'private','draft',$6,$6)`,
+		id, p.WorkspaceID, p.Slug, p.Name, p.Description, now,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -413,7 +421,7 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 
 	return &domain.Agent{
 		ID:          id,
-		PublisherID: p.PublisherID,
+		PublisherID: publisherID,
 		Slug:        p.Slug,
 		Name:        p.Name,
 		Description: p.Description,
@@ -808,13 +816,14 @@ func (db *DB) getAgentByID(ctx context.Context, id string) (*AgentRow, error) {
 	defer span.End()
 
 	q := `
-		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
+		SELECT a.id, pub.slug, w.publisher_id, a.slug, a.name,
 		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
-		JOIN publishers pub ON pub.id = a.publisher_id
+		JOIN workspaces w ON w.id = a.workspace_id
+		JOIN publishers pub ON pub.id = w.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
 		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
@@ -891,8 +900,10 @@ func (db *DB) IncrementAgentViewCount(ctx context.Context, namespace, slug strin
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE agents a
 		SET view_count = view_count + 1
-		FROM publishers pub
-		WHERE pub.id = a.publisher_id AND pub.slug = $1 AND a.slug = $2`,
+		FROM workspaces w, publishers pub
+		WHERE w.id = a.workspace_id
+		  AND pub.id = w.publisher_id
+		  AND pub.slug = $1 AND a.slug = $2`,
 		namespace, slug,
 	)
 	if err != nil {
@@ -914,8 +925,10 @@ func (db *DB) IncrementAgentCopyCount(ctx context.Context, namespace, slug strin
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE agents a
 		SET copy_count = copy_count + 1
-		FROM publishers pub
-		WHERE pub.id = a.publisher_id AND pub.slug = $1 AND a.slug = $2`,
+		FROM workspaces w, publishers pub
+		WHERE w.id = a.workspace_id
+		  AND pub.id = w.publisher_id
+		  AND pub.slug = $1 AND a.slug = $2`,
 		namespace, slug,
 	)
 	if err != nil {

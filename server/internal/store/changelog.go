@@ -42,7 +42,8 @@ func (db *DB) ListChangelog(ctx context.Context, limit int) ([]ChangelogEntry, e
 			       v.published_at
 			FROM mcp_server_versions v
 			JOIN mcp_servers s ON s.id = v.server_id
-			JOIN publishers pub ON pub.id = s.publisher_id
+			JOIN workspaces w ON w.id = s.workspace_id
+			JOIN publishers pub ON pub.id = w.publisher_id
 			WHERE v.published_at IS NOT NULL
 			  AND s.visibility = 'public'
 			  AND s.status <> 'deleted'
@@ -57,7 +58,8 @@ func (db *DB) ListChangelog(ctx context.Context, limit int) ([]ChangelogEntry, e
 			       v.published_at
 			FROM agent_versions v
 			JOIN agents a ON a.id = v.agent_id
-			JOIN publishers pub ON pub.id = a.publisher_id
+			JOIN workspaces w ON w.id = a.workspace_id
+			JOIN publishers pub ON pub.id = w.publisher_id
 			WHERE v.published_at IS NOT NULL
 			  AND a.visibility = 'public'
 			  AND a.status <> 'deleted'

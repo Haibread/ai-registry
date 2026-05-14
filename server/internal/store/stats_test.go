@@ -35,7 +35,7 @@ func TestGetRegistryCounts_ReflectsInserts(t *testing.T) {
 	// Create 3 MCP servers under pub1.
 	for _, slug := range []string{"srv-a", "srv-b", "srv-c"} {
 		if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-			PublisherID: pub1ID, Slug: slug, Name: slug,
+			WorkspaceID: defaultWS(t, pub1ID), Slug: slug, Name: slug,
 		}); err != nil {
 			t.Fatalf("CreateMCPServer(%q): %v", slug, err)
 		}
@@ -44,7 +44,7 @@ func TestGetRegistryCounts_ReflectsInserts(t *testing.T) {
 	// Create 2 agents under pub1.
 	for _, slug := range []string{"agent-a", "agent-b"} {
 		if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-			PublisherID: pub1ID, Slug: slug, Name: slug,
+			WorkspaceID: defaultWS(t, pub1ID), Slug: slug, Name: slug,
 		}); err != nil {
 			t.Fatalf("CreateAgent(%q): %v", slug, err)
 		}
@@ -74,7 +74,7 @@ func TestGetRegistryCounts_IncludesPrivateEntries(t *testing.T) {
 
 	// Private server (default visibility after CreateMCPServer).
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pubID, Slug: "private-srv", Name: "Private",
+		WorkspaceID: defaultWS(t, pubID), Slug: "private-srv", Name: "Private",
 	}); err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
 	}

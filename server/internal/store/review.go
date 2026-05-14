@@ -479,7 +479,8 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		           coalesce(v.submitted_by_email, '') AS submitted_by_email
 		    FROM mcp_server_versions v
 		    JOIN mcp_servers s ON s.id = v.server_id
-		    JOIN publishers  p ON p.id = s.publisher_id
+		    JOIN workspaces  w ON w.id = s.workspace_id
+		    JOIN publishers  p ON p.id = w.publisher_id
 		    WHERE v.review_state = 'pending_review' AND v.submitted_at IS NOT NULL
 
 		    UNION ALL
@@ -488,7 +489,8 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		           coalesce(av.submitted_by, ''), coalesce(av.submitted_by_email, '')
 		    FROM agent_versions av
 		    JOIN agents     a ON a.id = av.agent_id
-		    JOIN publishers p ON p.id = a.publisher_id
+		    JOIN workspaces w ON w.id = a.workspace_id
+		    JOIN publishers p ON p.id = w.publisher_id
 		    WHERE av.review_state = 'pending_review' AND av.submitted_at IS NOT NULL
 
 		    UNION ALL
@@ -496,7 +498,8 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		           '', 0, s.deletion_requested_at,
 		           coalesce(s.deletion_requested_by, ''), coalesce(s.deletion_requested_by_email, '')
 		    FROM mcp_servers s
-		    JOIN publishers p ON p.id = s.publisher_id
+		    JOIN workspaces w ON w.id = s.workspace_id
+		    JOIN publishers p ON p.id = w.publisher_id
 		    WHERE s.deletion_requested_at IS NOT NULL AND s.deleted_at IS NULL
 
 		    UNION ALL
@@ -504,7 +507,8 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		           '', 0, a.deletion_requested_at,
 		           coalesce(a.deletion_requested_by, ''), coalesce(a.deletion_requested_by_email, '')
 		    FROM agents a
-		    JOIN publishers p ON p.id = a.publisher_id
+		    JOIN workspaces w ON w.id = a.workspace_id
+		    JOIN publishers p ON p.id = w.publisher_id
 		    WHERE a.deletion_requested_at IS NOT NULL AND a.deleted_at IS NULL
 		)
 		SELECT kind, publisher_slug, entry_slug, entry_id, version, revision,

@@ -179,8 +179,14 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wsID, err := h.db.EnsureDefaultWorkspaceID(r.Context(), publisherID)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
 	agent, err := h.db.CreateAgent(r.Context(), store.CreateAgentParams{
-		PublisherID: publisherID,
+		WorkspaceID: wsID,
 		Slug:        body.Slug,
 		Name:        body.Name,
 		Description: body.Description,
