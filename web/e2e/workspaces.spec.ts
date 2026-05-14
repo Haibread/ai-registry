@@ -139,22 +139,20 @@ test.describe('Workspaces API', () => {
     expect(slugs).toContain(MCP_SLUG)
   })
 
-  test('publisher_id on MCP server responses survives the workspaces finalise migration', async ({ page }) => {
-    // After ADR 0001 Step 3 (migration 000011) dropped publisher_id from
-    // mcp_servers, the wire-level publisher_id field on MCP server responses
-    // is derived via JOIN through workspaces.publisher_id. This locks the
-    // wire shape so a future change that drops it from the SELECT — which
-    // wouldn't necessarily be caught by Go unit tests — fails E2E.
-    const pubResp = await apiGet(page, `/api/v1/publishers/${PUBLISHER_SLUG}`)
-    expect(pubResp.status()).toBe(200)
-    const pub = await pubResp.json()
-    expect(pub.id, 'publisher.id non-empty').toBeTruthy()
-
+  test('MCP server detail derives namespace via the post-000011 JOIN', async ({ page }) => {
+    // The wire shape exposes `namespace` (the publisher slug), not the
+    // internal publisher_id FK — serverToResponse() in handlers/mcp.go
+    // never returned publisher_id, so there's nothing to assert on that
+    // field. What we CAN lock against future regressions: the namespace
+    // value is derived through the same JOIN that replaced the direct
+    // `s.publisher_id` read after migration 000011 dropped the column.
+    // If a future change breaks the workspaces → publishers JOIN, this
+    // GET would either 500 or return an empty namespace.
     const srvResp = await apiGet(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     expect(srvResp.status()).toBe(200)
     const srv = await srvResp.json()
-    expect(srv.publisher_id, 'server.publisher_id must be derived via JOIN').toBe(pub.id)
-    expect(srv.namespace).toBe(PUBLISHER_SLUG)
+    expect(srv.namespace, 'namespace derived via workspaces JOIN').toBe(PUBLISHER_SLUG)
+    expect(srv.slug).toBe(MCP_SLUG)
   })
 
   test('workspace-scoped server list isolates by workspace', async ({ page }) => {
