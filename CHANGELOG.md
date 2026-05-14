@@ -4,9 +4,17 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-Phase 7 access-control + change-approval bundle plus an admin UI polish
-sweep. The server-side work landed across PRs #28–#32 and is reflected
-here for the first time; the UI polish landed in PR #37.
+Two distinct workstreams sit here pending the next version stamp:
+
+1. **Phase 7 access-control + change-approval bundle plus an admin UI
+   polish sweep.** Server-side work landed across PRs #28–#32; UI
+   polish landed in PR #37.
+2. **Project-audit follow-ups (PRs #52–#59).** A four-front sweep
+   produced a punch-list; the high-impact findings shipped as a
+   batch of small, surgical PRs.
+
+A real version stamp is overdue — the workstreams below are
+substantial enough that "Unreleased" understates them.
 
 ### 🏢 Workspaces under publishers
 
@@ -90,6 +98,75 @@ new workflow surfaces had landed:
 - List tables hide low-priority columns on small viewports and
   surface the slug inline under the name where the dedicated column
   is hidden; page headers wrap.
+
+### 🧭 Project-audit follow-ups (PRs #52–#59)
+
+A four-front audit (server, web, infra/config, docs) surfaced a P0/P1
+punch-list. The high-impact items shipped as small, surgical PRs;
+the deferred items are documented inline in the relevant PR
+descriptions.
+
+- **PLAN refresh** (#52) — mark v0.2.2 / v0.3.0 / v0.3.1 / v0.3.2 as
+  shipped; PLAN was lagging behind the actual release state.
+- **Doc + dead-code cleanup** (#54) — flip ADRs 0001/0002/0003 from
+  `Proposed` → `Accepted`, drop the stale `next-themes` row from
+  PLAN's Phase 6 migration table, prune dead Renovate rules
+  (`next`, `eslint-config-next`, `next-auth`, `autoprefixer`,
+  `tailwindcss-animate`), bump `@types/node` pin from `^22.0.0` →
+  `^24.0.0` (CI runs Node 24), delete the unused
+  `compatibility-info.tsx` component.
+- **Config-layer fixes** (#55) — `PUBLIC_BASE_URL` and
+  `BOOTSTRAP_FILE` were bypassing the config layer (read directly
+  via `os.Getenv` from handlers and main), violating CLAUDE.md's
+  env+YAML+default mandate. Both are now reachable via env, YAML
+  (`http.public_base_url`, `bootstrap_file`), and a built-in
+  default. The `--bootstrap-file` CLI flag still wins. The
+  `OAuthProtectedResource` handler also dropped its silent
+  `localhost:8081` fallback — empty `PublicBaseURL` now returns
+  HTTP 500, mirroring `GlobalAgentCard`. 8 new tests pin the
+  three-place rule.
+- **Helm CNPG postgres bump** (#56) — `cnpg.postgresVersion: "16"`
+  → `"18"`. Closes the version drift with the docker-compose stack,
+  which moved to `postgres:18-alpine` in PR #41. `pg-probe` snippets
+  in `docs/runbook.md` updated to match.
+- **ADR 0004 backfill** (#57) — Phase 6 (Next.js → Vite migration)
+  was a cross-cutting decision but never got an ADR. `docs/adr/0004-vite-spa-migration.md`
+  captures the rationale, alternatives considered, and historical
+  implementation steps so the decision survives the next "why
+  aren't we on Next.js?" question.
+- **OTel uplift** (#58) — three observability test gaps closed:
+  - `router_otel_test.go` only pinned spans for 4 hand-picked routes;
+    new `router_otel_walk_test.go` enumerates every chi-registered
+    route and asserts every request lands inside an `otelhttp` span,
+    so a future router change that drops instrumentation on any
+    real handler fails CI.
+  - `internal/observability/` was at 0.0% coverage; new
+    `observability_test.go` pins log-level mapping, trace_id /
+    span_id injection, and metric-instrument registration.
+  - `internal/problem/` was at 0.0% coverage; new tests pin the
+    RFC 7807 wire shape, `omitempty` semantics, and slug-as-URL
+    contract.
+  - Bonus: `handlers/config.go` (the SPA's `/config.json` bootstrap)
+    gained its first tests covering the auth_storage coercion and
+    the empty-issuer dev-boot case.
+- **P2 quality fixes** (#59) — three small surgical fixes:
+  - **Counter drift on delete.** `CreateServer` / `CreateAgent`
+    incremented `MCPServersTotal` / `AgentsTotal`; the matching
+    delete handlers never decremented. The OTel `UpDownCounter`
+    monotonically inflated. Fixed.
+  - **Audit metadata silent-drop.** A `json.Marshal` failure in
+    `store.LogAuditEvent` dropped metadata without a log entry;
+    now we `slog.Warn` and continue with `metadata=NULL`.
+  - **`flag.Parse` error swallow.** `_ = fs.Parse(os.Args[1:])` is
+    now a structured `slog.Warn` so log aggregators see flag
+    typos.
+
+Deferred (documented in the audit synthesis but not shipped):
+`DisallowUnknownFields` rollout (no `additionalProperties: false`
+in the OpenAPI spec — needs per-endpoint risk analysis first),
+rate-limiter time-based janitor (bigger change), per-handler
+internal child spans, eager markdown chunk on detail pages
+(`React.lazy` deferral).
 
 ## v0.3.2
 

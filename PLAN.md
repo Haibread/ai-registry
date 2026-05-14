@@ -205,11 +205,20 @@ admin console. No `/api/v1/users` endpoint or `/admin/users` page will be built.
   route on publishers, MCP servers, and agents has dedicated coverage
   in `internal/http/handlers/*_test.go` (testcontainers Postgres).
 
-**TODO — Phase 5:**
-- [ ] `POST /api/v1/api-keys`, `DELETE /api/v1/api-keys/{id}` — hashed API keys (per-publisher, machine-to-machine)
-- [ ] API-key auth middleware (JWT-first, fallback to API-key lookup)
-- [ ] Admin UI: API keys management page (`/admin/api-keys` — placeholder only today)
-- [ ] Docker Compose prod profile (`deploy/docker-compose.prod.yml`)
+**Parked from Phase 5 (now tracked under v0.4.x):**
+
+These items were originally listed as Phase 5 TODOs but were not
+attempted before Phase 5 closed. They are now part of the v0.4.x
+roadmap (see [README — Roadmap](README.md) and CLAUDE.md Decision B):
+
+- `POST /api/v1/api-keys`, `DELETE /api/v1/api-keys/{id}` — hashed API
+  keys (per-publisher, machine-to-machine).
+- API-key auth middleware (JWT-first, fallback to API-key lookup).
+- Admin UI: real API-keys management page (the `/admin/api-keys`
+  route ships as a placeholder today; the test file has a single
+  `it.skip` waiting on the endpoints).
+- Dedicated `deploy/docker-compose.prod.yml` profile for self-hosted
+  production single-host installs.
 
 ### Phase 6 — Migrate web app from Next.js → Vite + React SPA ✅ COMPLETED
 
@@ -316,50 +325,43 @@ test-only — no shipping features in this release unless they fell out
 of fixing a bug surfaced by the new tests. See CHANGELOG `v0.2.2` for
 the full coverage / CI / performance summary.
 
-**Web — admin depth**
-- [ ] Interactive coverage on `admin/mcp/detail.tsx` and `admin/agents/detail.tsx`:
-      per-version publish, deprecation, edit-in-place, status transitions, and
-      the lifecycle stepper. Today these files only have render-and-link smoke
-      tests.
-- [ ] Real flow for `admin/api-keys.tsx` (currently a single `it.skip` waiting
-      on Phase 5). Lifts as soon as the API-key endpoints land.
-- [ ] Extract the shadcn/Radix Select jsdom shims (`hasPointerCapture`,
-      `releasePointerCapture`, `scrollIntoView`) into `web/src/test/setup.ts`
-      so individual test files stop re-declaring them.
-- [ ] OIDC token refresh / expired-session paths in `AuthContext` —
-      `accessTokenExpiring` event, silent-renew failure, logout-on-401.
+**What landed**
 
-**Server — protocol & spec conformance**
-- [ ] OTel span emission tests: every HTTP handler must produce a span with
-      the documented attributes (per CLAUDE.md "every new handler gets a
-      span"). Use the OTel test SDK / in-memory exporter.
-- [ ] Migration tests: forward apply of every numbered migration against a
-      fresh testcontainers Postgres, plus idempotency (running `Migrate`
-      twice must be a no-op).
-- [ ] `/v0/` MCP wire-format conformance suite — assert the exact response
-      shape from the MCP registry spec (`{servers, metadata: {count, nextCursor}}`,
-      single-object detail, `_meta`, `packages[].registryType`, etc.).
-- [ ] A2A Agent Card schema conformance — validate the per-agent
-      `/.well-known/agent-card.json` and the global card against the pinned
-      a2a-project June 2025 schema (decision G).
-- [ ] `openapi.yaml` ↔ handler contract test: every documented path/operation
-      must have a matching route, and every registered route must be
-      documented. Catches drift between spec and implementation.
-- [ ] Router-level test for `PublicRateLimitRPM` wiring — a test request
-      loop that proves the env/YAML value reaches the per-IP bucket and
-      changes the cutoff.
+- *Web admin depth.* Interactive coverage on `admin/mcp/detail.tsx` and
+  `admin/agents/detail.tsx` (per-version publish, deprecation,
+  edit-in-place, status transitions, lifecycle stepper). Shared
+  shadcn/Radix Select jsdom shims (`hasPointerCapture`,
+  `releasePointerCapture`, `scrollIntoView`) extracted into
+  `web/src/test/setup.ts`. OIDC token-refresh / expired-session paths
+  in `AuthContext` (`accessTokenExpiring`, silent-renew failure,
+  logout-on-401).
+- *Server protocol & spec conformance.* Migration forward-and-idempotent
+  apply tests against a fresh testcontainers Postgres. `/v0/` MCP
+  wire-format conformance suite. A2A Agent Card schema conformance
+  against the pinned a2a-project June 2025 schema (decision G).
+  `openapi.yaml` ↔ router contract test (bijection enforced via
+  `chi.Walk`). Router-level test for `PublicRateLimitRPM` wiring.
+- *Server write paths.* Error-branch coverage on every `POST` / `PATCH`
+  / `DELETE` handler (RFC 7807 shapes, 409 conflicts, 422 validation,
+  403 admin-guard short-circuits).
 
-**Server — write paths**
-- [ ] Audit every `POST` / `PATCH` / `DELETE` handler for untested error
-      branches (RFC 7807 problem responses, 409 conflicts, 422 validation,
-      403 admin-guard short-circuits). Today happy paths and 404s are well
-      covered, error branches less so.
+**Carried forward**
 
-**Definition of done for v0.2.2**
+- *OTel span emission tests.* v0.2.2 landed a focused 4-route span
+  smoke test (`router_otel_test.go`); the broader "every handler"
+  coverage came later in PR #58 (audit follow-up) via
+  `router_otel_walk_test.go` which enumerates every chi-registered
+  route and asserts each request lands inside an `otelhttp` span.
+- *`admin/api-keys.tsx` real flow.* Still a single `it.skip` —
+  unblocks once the API-keys endpoints land in v0.4.x.
+
+**Definition of done (met at release)**
+
 - Coverage report shows no admin page below 80 % statement coverage.
-- Every handler has at least one OTel span assertion.
 - `/v0/` and A2A conformance suites are in CI and gating.
 - `openapi.yaml` ↔ router contract test is in CI and gating.
+- "Every handler has at least one OTel span assertion" — partially met
+  in v0.2.2 (focused smoke test), fully met in PR #58.
 
 ### v0.3.0 — Browse polish ✅ SHIPPED
 

@@ -56,11 +56,11 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 
 ## Tech stack
 
-**Server** — Go 1.25 · [chi](https://github.com/go-chi/chi) v5 · [pgx/v5](https://github.com/jackc/pgx) · PostgreSQL 16 · [golang-migrate](https://github.com/golang-migrate/migrate) · [jwt/v5](https://github.com/golang-jwt/jwt) · [oklog/ulid](https://github.com/oklog/ulid) · [testcontainers-go](https://github.com/testcontainers/testcontainers-go) · OpenTelemetry SDK + OTLP exporter
+**Server** — Go 1.25 · [chi](https://github.com/go-chi/chi) v5 · [pgx/v5](https://github.com/jackc/pgx) · PostgreSQL 18 · [golang-migrate](https://github.com/golang-migrate/migrate) · [jwt/v5](https://github.com/golang-jwt/jwt) · [oklog/ulid](https://github.com/oklog/ulid) · [testcontainers-go](https://github.com/testcontainers/testcontainers-go) · OpenTelemetry SDK + OTLP exporter
 
 **Frontend** — [Vite](https://vitejs.dev/) · React 19 · [React Router v7](https://reactrouter.com/) · [TanStack Query v5](https://tanstack.com/query/v5) · TypeScript · [shadcn/ui](https://ui.shadcn.com/) + Radix · Tailwind v4 · [oidc-client-ts](https://github.com/authts/oidc-client-ts) · Vitest + React Testing Library · Playwright (e2e)
 
-**Infra** — docker-compose (dev / ci / prod) · Helm chart with optional CNPG-managed PostgreSQL cluster, HTTPRoute, and Ingress · Keycloak for local OIDC · OTel Collector
+**Infra** — docker-compose (`docker-compose.yml` baseline + `dev` overlay; `ci` overlay for CI only) · Helm chart with optional CNPG-managed PostgreSQL 18 cluster, HTTPRoute, and Ingress · Keycloak for local OIDC · OTel Collector. (A dedicated `docker-compose.prod.yml` profile is parked under v0.4.x.)
 
 **API spec** — Hand-written OpenAPI 3.1 at `server/api/openapi.yaml` (**81 operations**), embedded into the binary and served live at `/openapi.yaml`. Server types and the TypeScript client are generated from the spec. A bijection test ensures the router and spec never drift.
 

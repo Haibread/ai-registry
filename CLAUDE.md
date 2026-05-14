@@ -38,12 +38,13 @@ A centralized registry for AI ecosystem artifacts:
 
 ## Tech stack
 
-- **Server**: Go, `chi` router, PostgreSQL, `sqlc` or `pgx` for DB access,
-  `golang-migrate` for schema migrations.
+- **Server**: Go, `chi` router, PostgreSQL, `pgx` for DB access (no ORM,
+  hand-written SQL), `golang-migrate` for schema migrations.
 - **Auth**: OAuth2 / OIDC (external IdP, Keycloak in dev via docker-compose).
-  JWT access tokens validated via JWKS. MCP-compatible. Also supports hashed
-  API keys for machine-to-machine admin operations. Frontend uses `oidc-client-ts`
-  as a PKCE public client (no client secret; no NextAuth/Auth.js).
+  JWT access tokens validated via JWKS. MCP-compatible. Hashed API keys for
+  machine-to-machine admin operations are planned but not yet implemented —
+  see PLAN.md and Decision B below. Frontend uses `oidc-client-ts` as a PKCE
+  public client (no client secret; no NextAuth/Auth.js).
 - **Frontend**: Vite + React Router v7 + TanStack Query v5 + TypeScript +
   shadcn/ui + Tailwind. A pure SPA served as static files from nginx. Public
   section for browsing; `/admin` section guarded by a `<RequireAuth>` wrapper.
@@ -52,8 +53,12 @@ A centralized registry for AI ecosystem artifacts:
   in `src/pages/`.
 - **OpenAPI**: hand-written OpenAPI 3.1 spec is the source of truth; server
   types and TS client are generated from it.
-- **Dev infra**: docker-compose for Postgres + Keycloak + server + web.
-- **Deployment**: docker-compose (dev + prod profiles) + Helm chart for k8s.
+- **Dev infra**: docker-compose for Postgres + Keycloak + server + web
+  (`docker-compose.yml` baseline + `docker-compose.dev.yml` overlay for
+  local development; `docker-compose.ci.yml` is CI-only).
+- **Deployment**: docker-compose for self-hosted single-host installs +
+  a Helm chart for k8s with optional CNPG-managed Postgres. A dedicated
+  `docker-compose.prod.yml` profile is parked under v0.4.x.
 - **Observability**: OpenTelemetry (OTel) for all signals — traces, metrics,
   and logs. Use the Go `go.opentelemetry.io/otel` SDK in the server; export
   via OTLP (gRPC or HTTP). Every HTTP handler must be traced; DB calls must
@@ -86,9 +91,9 @@ CLAUDE.md             # this file
 
 ## Conventions
 
-- **Branching**: feature work on `claude/ai-registry-setup-KMC3l` for initial
-  setup; subsequent features on descriptive branches. Never push to `main`
-  without explicit request.
+- **Branching**: feature work on descriptive feature branches
+  (`feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`). Never
+  push to `main` without an explicit request.
 - **Commits**: conventional commits (`feat:`, `fix:`, `docs:`, `chore:`).
 - **DB**: schema changes are forward-only migrations. Down migrations are
   maintained for local development convenience only — never rely on them in
@@ -106,8 +111,8 @@ CLAUDE.md             # this file
 
 ## Configuration (non-negotiable)
 
-Every configuration value MUST be settable in **both** of the following ways,
-with the listed precedence (highest wins):
+Every configuration value MUST be settable in **all three** of the following
+ways, with the listed precedence (highest wins):
 
 1. **Environment variable** — `UPPER_SNAKE_CASE` (e.g. `DATABASE_URL`).
 2. **Config file key** — `lower_snake_case` in a YAML file whose path is given
@@ -159,7 +164,7 @@ Rules for implementors:
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
 | A | JWT admin claim | `realm_access.roles[]` contains `"admin"` | Keycloak default shape |
-| B | API-key auth | Deferred to Phase 5 | Phase 2 ships JWT-only; Phase 5 adds hashed API keys |
+| B | API-key auth | Deferred to v0.4.x | Phase 2-5 ship JWT-only; hashed per-publisher API keys parked under v0.4.x roadmap (see PLAN.md and README) |
 | C | `/v0/` wire format | Strict MCP registry spec shape | `{ servers: [{id, name, description, version, packages, repository, _meta}], metadata: {count, nextCursor} }` for list; single object for detail |
 | D | Integration test infra | testcontainers-go (postgres module) with snapshot isolation | No external dependency needed to run `go test` |
 | E | `packages` JSONB validation | Structural: each entry must have `registryType`, `identifier`, `version`, `transport.type` | Matches MCP server.json spec; strict schema deferred |

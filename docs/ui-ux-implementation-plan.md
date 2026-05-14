@@ -1,5 +1,22 @@
 # UI/UX Implementation Plan
 
+> **Status (2026-05-10): largely shipped — retrospective document.**
+>
+> The 10 batches below planned 36 proposals from
+> [`ui-ux-proposals.md`](ui-ux-proposals.md). The vast majority shipped
+> across v0.2.x and v0.3.x — copy buttons, empty states, breadcrumbs,
+> filter bars, MCP host config generators, publisher pages, verified
+> badges, README rendering, version history, audit, reports, the
+> lifecycle stepper, bulk actions, view/copy counts, the
+> getting-started page, and the changelog page are all live. Phase 7
+> added workspaces, the change-approval workflow, and the admin polish
+> sweep on top.
+>
+> The document is preserved as a forensic record of the original
+> sequencing and dependencies. Don't read it as a forward-looking
+> roadmap — for current open work see [`PLAN.md`](../PLAN.md) and
+> [`README.md`](../README.md).
+>
 > **36 accepted proposals organized into 10 dependency-ordered, independently shippable batches.**
 >
 > Each batch lists: proposals covered, scope estimate, whether backend/DB changes are needed, and key files affected.

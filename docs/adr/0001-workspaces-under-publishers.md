@@ -79,24 +79,19 @@ no separate `idx_workspaces_publisher` needed.)
 
 ### Migration
 
-Migration numbers in this and the following ADRs (`000008`, `000009`,
-`000010`) are **placeholders**; the actual sequential number is
-assigned at PR open time.
+Two-step migration as designed. The schema part runs as a forward-only
+SQL migration; the data backfill runs separately because **ULID
+generation lives at the application layer** (no `generate_ulid()` SQL
+function in this codebase).
 
-Two-step migration. The schema part runs as a forward-only SQL
-migration; the data backfill runs separately because **ULID generation
-lives at the application layer** (no `generate_ulid()` SQL function in
-this codebase).
-
-Step 1 — schema migration `000008_workspaces.{up,down}.sql`:
+Step 1 — schema migration `000008_workspaces.{up,down}.sql` (shipped):
 
 1. Create the `workspaces` table.
 2. Add `workspace_id` to `mcp_servers` and `agents` as **nullable**
    `REFERENCES workspaces(id) ON DELETE RESTRICT`.
 
-Step 2 — backfill (Go-side one-shot, runnable via `make
-backfill-workspaces` or invoked once on server boot when
-`workspace_id` is `NULL` anywhere):
+Step 2 — backfill (Go-side one-shot, invoked on server boot via
+`db.BackfillWorkspaces` when `workspace_id` is `NULL` anywhere; shipped):
 
 3. For each row in `publishers`, insert a workspace `(generated ULID,
    publisher.id, 'default', 'Default workspace')`.
@@ -105,8 +100,7 @@ backfill-workspaces` or invoked once on server boot when
 5. Verify: `SELECT count(*) FROM mcp_servers WHERE workspace_id IS
    NULL` returns 0. Same for `agents`.
 
-Step 3 — finalising migration `000008b_workspaces_finalise.{up,down}.sql`,
-gated on the backfill running cleanly in every environment:
+Step 3 — finalising migration **(deferred — not yet shipped)**:
 
 6. `ALTER TABLE … ALTER COLUMN workspace_id SET NOT NULL`.
 7. Drop `publisher_id` columns and the old `UNIQUE(publisher_id, slug)`
@@ -114,9 +108,14 @@ gated on the backfill running cleanly in every environment:
 8. Recreate indexes that referenced `publisher_id` against
    `workspace_id`.
 
-The down migration recreates the dropped columns, backfills them from
-`workspaces.publisher_id`, drops `workspace_id`. Per CLAUDE.md, down
-is for local dev only; production rolls forward.
+> **Status note (2026-05-10).** Step 3 was scoped at design time but
+> never landed; production schema currently keeps both `publisher_id`
+> and `workspace_id` columns coexisting on `mcp_servers` / `agents`,
+> with the Go boot-time backfill ensuring `workspace_id` is non-NULL.
+> Code paths still read `publisher_id` directly. Finalising is parked
+> on the backlog — it's a one-way change that needs a quiet release
+> window to apply safely. Ship the down migration alongside per
+> CLAUDE.md (down migrations are for local dev only).
 
 ### Slug uniqueness
 
