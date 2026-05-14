@@ -71,6 +71,45 @@ func TestCreateAgent_ConflictOnDuplicateSlug(t *testing.T) {
 	}
 }
 
+// TestCreateAgent_SlugUniquenessIsPerWorkspace mirrors the MCP-side test —
+// after the 000011 migration, the unique key is (workspace_id, slug), so
+// two workspaces under one publisher may each expose an agent with the
+// same slug, but a duplicate within one workspace still conflicts.
+func TestCreateAgent_SlugUniquenessIsPerWorkspace(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "agent-multi", "Agent Multi")
+
+	wsA, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pubID, Slug: "team-a", Name: "Team A",
+	})
+	if err != nil {
+		t.Fatalf("create team-a: %v", err)
+	}
+	wsB, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
+		PublisherID: pubID, Slug: "team-b", Name: "Team B",
+	})
+	if err != nil {
+		t.Fatalf("create team-b: %v", err)
+	}
+
+	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		WorkspaceID: wsA.ID, Slug: "planner", Name: "Planner A",
+	}); err != nil {
+		t.Fatalf("create planner in team-a: %v", err)
+	}
+	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		WorkspaceID: wsB.ID, Slug: "planner", Name: "Planner B",
+	}); err != nil {
+		t.Errorf("create planner in team-b should succeed (per-workspace slug), got %v", err)
+	}
+	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		WorkspaceID: wsA.ID, Slug: "planner", Name: "Planner A dup",
+	}); err != store.ErrConflict {
+		t.Errorf("duplicate planner in team-a: expected ErrConflict, got %v", err)
+	}
+}
+
 func TestGetAgent_NotFoundWhenPrivateAndPublicOnly(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

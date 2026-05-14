@@ -1,6 +1,6 @@
 # ADR 0001 — Workspaces under publishers
 
-- **Status:** Accepted (shipped via PR #28; finalising migration via PR #29)
+- **Status:** Accepted (shipped via PR #28; finalising migration via PR #62)
 - **Date:** 2026-05-02
 - **Deciders:** @Haibread
 - **Supersedes:** —

@@ -237,4 +237,35 @@ func TestMigration0011_RoundTrip(t *testing.T) {
 	if err := m.Steps(1); err != nil {
 		t.Fatalf("re-applying 000011: %v", err)
 	}
+
+	// Final state: publisher_id is gone, workspace_id is NOT NULL, and the
+	// unique key is (workspace_id, slug) — not (publisher_id, slug). Verify
+	// the constraint names directly so a future migration that quietly
+	// renames or rebuilds them gets caught.
+	for _, tbl := range []string{"mcp_servers", "agents"} {
+		var hasOldUnique bool
+		if err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+			    SELECT 1 FROM information_schema.table_constraints
+			    WHERE table_name = $1
+			      AND constraint_name = $1 || '_publisher_id_slug_key'
+			)`, tbl).Scan(&hasOldUnique); err != nil {
+			t.Fatalf("introspect %s old unique: %v", tbl, err)
+		}
+		if hasOldUnique {
+			t.Errorf("%s: old (publisher_id, slug) unique key should be dropped", tbl)
+		}
+		var hasNewUnique bool
+		if err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+			    SELECT 1 FROM information_schema.table_constraints
+			    WHERE table_name = $1
+			      AND constraint_name = $1 || '_workspace_id_slug_key'
+			)`, tbl).Scan(&hasNewUnique); err != nil {
+			t.Fatalf("introspect %s new unique: %v", tbl, err)
+		}
+		if !hasNewUnique {
+			t.Errorf("%s: new (workspace_id, slug) unique key missing", tbl)
+		}
+	}
 }
