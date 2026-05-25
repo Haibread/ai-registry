@@ -113,10 +113,12 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
   test('reviewer (registry-reviewers group) approves → published', async ({ browser }) => {
     const page = await pageAs(browser, 'reviewer')
 
+    // approve takes the current revision for optimistic concurrency;
+    // a fresh submit puts the version at revision 1.
     const approve = await apiPost(
       page,
       `/api/v1/mcp/servers/${PUB}/${MCP}/versions/${V1}/approve`,
-      {},
+      { revision: 1 },
     )
     expect(approve.status(), `approve: ${await approve.text()}`).toBe(204)
 
