@@ -26,7 +26,7 @@
  */
 
 import { test, expect, type Browser, type Page } from '@playwright/test'
-import { apiPost, apiGet, apiDelete } from './helpers'
+import { apiPost, apiPatch, apiGet, apiDelete } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB = `e2e-phase7-${RUN_ID}`
@@ -56,23 +56,23 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
     })
     expect(res.status(), 'create publisher').toBe(201)
 
-    // Bind the publisher's `default` workspace to the anthropic-core
-    // group BEFORE the first server POST lazily creates it. The bound
-    // workspace is what makes author@example.com (an anthropic-core
-    // member) able to submit + create versions in the next steps.
-    res = await apiPost(page, `/api/v1/publishers/${PUB}/workspaces`, {
-      slug: 'default',
-      name: 'Default',
-      group_name: 'anthropic-core',
-    })
-    expect(res.status(), 'create+bind default workspace').toBe(201)
-
+    // The flat POST lazily creates the `default` workspace under the
+    // publisher. CreateWorkspaceRequest doesn't accept `group_name`
+    // (see openapi.yaml), so the binding has to land via PATCH after
+    // the workspace exists.
     res = await apiPost(page, '/api/v1/mcp/servers', {
       namespace: PUB,
       slug: MCP,
       name: `Server ${MCP}`,
     })
     expect(res.status(), 'create server').toBe(201)
+
+    res = await apiPatch(
+      page,
+      `/api/v1/publishers/${PUB}/workspaces/default`,
+      { group_name: 'anthropic-core' },
+    )
+    expect(res.status(), 'bind default workspace to anthropic-core').toBe(200)
 
     res = await apiPost(page, `/api/v1/mcp/servers/${PUB}/${MCP}/versions`, {
       version: V1,
