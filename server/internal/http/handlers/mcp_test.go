@@ -291,6 +291,90 @@ func TestMCPHandler_CreateServer_MissingFields(t *testing.T) {
 	}
 }
 
+func TestMCPHandler_CreateServer_RoutesToExplicitWorkspace(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "ws-ns", "WS NS")
+
+	// Seed a non-default workspace under the publisher.
+	pub, err := testDB.GetPublisher(context.Background(), "ws-ns")
+	if err != nil {
+		t.Fatalf("get publisher: %v", err)
+	}
+	ws, err := testDB.CreateWorkspace(context.Background(), store.CreateWorkspaceParams{
+		PublisherID: pub.ID, Slug: "team-b", Name: "Team B",
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	payload := `{"namespace":"ws-ns","slug":"team-b-srv","name":"Team B Srv","workspace":"team-b"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
+		bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// The server-list under team-b must include the new server — proves
+	// the explicit `workspace` field routed past EnsureDefaultWorkspaceID.
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/ws-ns/workspaces/team-b/servers", nil)
+	rec = httptest.NewRecorder()
+	newWorkspaceRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("workspace-scoped list: %d", rec.Code)
+	}
+	var listBody struct {
+		Items []struct {
+			Slug string `json:"slug"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	slugs := make([]string, 0, len(listBody.Items))
+	for _, it := range listBody.Items {
+		slugs = append(slugs, it.Slug)
+	}
+	found := false
+	for _, s := range slugs {
+		if s == "team-b-srv" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("team-b servers = %v, want to include team-b-srv (routed to %s)", slugs, ws.ID)
+	}
+
+	// And the default workspace must NOT have been created — the explicit
+	// `workspace` short-circuits EnsureDefaultWorkspaceID.
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/ws-ns/workspaces/default", nil)
+	rec = httptest.NewRecorder()
+	newWorkspaceRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("default workspace lookup: got %d, want 404 (must not be lazily created when workspace was explicit)", rec.Code)
+	}
+}
+
+func TestMCPHandler_CreateServer_UnknownWorkspaceIs422(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "uw-ns", "UW NS")
+
+	payload := `{"namespace":"uw-ns","slug":"x","name":"X","workspace":"missing"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
+		bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422 for unknown workspace; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMCPHandler_CreateServer_DuplicateSlug(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "dup-ns", "Dup NS")

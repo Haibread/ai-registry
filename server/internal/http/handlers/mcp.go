@@ -160,6 +160,7 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		HomepageURL string `json:"homepage_url"`
 		RepoURL     string `json:"repo_url"`
 		License     string `json:"license"`
+		Workspace   string `json:"workspace"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -179,6 +180,13 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("slug: %s", err), r.URL.Path)
 		return
 	}
+	if body.Workspace != "" {
+		if err := domain.ValidateSlug(body.Workspace); err != nil {
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+				fmt.Sprintf("workspace: %s", err), r.URL.Path)
+			return
+		}
+	}
 
 	publisherID, err := h.db.GetPublisherBySlug(r.Context(), body.Namespace)
 	if errors.Is(err, store.ErrNotFound) {
@@ -191,10 +199,28 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsID, err := h.db.EnsureDefaultWorkspaceID(r.Context(), publisherID)
-	if err != nil {
-		internalError(w, r, err)
-		return
+	// Resolve the target workspace. An explicit `workspace` field hits
+	// ResolveWorkspace (must exist); blank falls back to lazy-creating
+	// `default`, preserving the legacy POST shape.
+	var wsID string
+	if body.Workspace != "" {
+		ws, resErr := h.db.ResolveWorkspace(r.Context(), body.Namespace, body.Workspace)
+		if errors.Is(resErr, store.ErrNotFound) {
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+				fmt.Sprintf("workspace '%s/%s' does not exist", body.Namespace, body.Workspace), r.URL.Path)
+			return
+		}
+		if resErr != nil {
+			internalError(w, r, resErr)
+			return
+		}
+		wsID = ws.ID
+	} else {
+		wsID, err = h.db.EnsureDefaultWorkspaceID(r.Context(), publisherID)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
 	}
 
 	srv, err := h.db.CreateMCPServer(r.Context(), store.CreateMCPServerParams{

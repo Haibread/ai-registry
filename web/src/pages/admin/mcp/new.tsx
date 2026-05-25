@@ -38,6 +38,10 @@ export default function AdminMCPNew() {
   const navigate = useNavigate()
 
   const [namespace, setNamespace] = useState('')
+  // Empty `workspace` falls back to the publisher's `default` (lazily
+  // created on first server POST). Reset when the publisher changes so
+  // we never carry a stale workspace slug across namespaces.
+  const [workspace, setWorkspace] = useState('')
   const [runtime, setRuntime] = useState('stdio')
   const [pkgRegistryType, setPkgRegistryType] = useState('npm')
   const [formError, setFormError] = useState<CreateError | null>(null)
@@ -51,6 +55,20 @@ export default function AdminMCPNew() {
   })
 
   const publishers = publishersData?.items ?? []
+
+  // Workspaces are scoped per publisher, so this is keyed on the
+  // current namespace and disabled when none is selected.
+  const { data: workspacesData } = useQuery({
+    queryKey: ['publisher-workspaces', namespace],
+    queryFn: () =>
+      api
+        .GET('/api/v1/publishers/{publisher_slug}/workspaces', {
+          params: { path: { publisher_slug: namespace }, query: { limit: 100 } },
+        })
+        .then(r => r.data),
+    enabled: !!accessToken && !!namespace,
+  })
+  const workspaces = workspacesData?.items ?? []
 
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -72,6 +90,7 @@ export default function AdminMCPNew() {
           homepage_url: (formData.get('homepage_url') as string) || undefined,
           repo_url: (formData.get('repo_url') as string) || undefined,
           license: (formData.get('license') as string) || undefined,
+          workspace: workspace || undefined,
         },
       })
       if (serverError || !server) {
@@ -198,7 +217,16 @@ export default function AdminMCPNew() {
               <Label htmlFor="namespace-select">
                 Namespace (publisher) <span className="text-destructive" aria-hidden="true">*</span>
               </Label>
-              <Select required value={namespace} onValueChange={setNamespace}>
+              <Select
+                required
+                value={namespace}
+                onValueChange={(v) => {
+                  setNamespace(v)
+                  // Clear workspace when the publisher changes — the
+                  // available slugs differ per publisher.
+                  setWorkspace('')
+                }}
+              >
                 <SelectTrigger id="namespace-select" aria-required="true">
                   <SelectValue placeholder="Select publisher…" />
                 </SelectTrigger>
@@ -210,6 +238,33 @@ export default function AdminMCPNew() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="workspace-select">Workspace</Label>
+              <Select
+                value={workspace || '_default'}
+                onValueChange={(v) => setWorkspace(v === '_default' ? '' : v)}
+                disabled={!namespace}
+              >
+                <SelectTrigger id="workspace-select">
+                  <SelectValue placeholder="Default (admin-only)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_default">
+                    default (lazily created)
+                  </SelectItem>
+                  {workspaces.map((ws) => (
+                    <SelectItem key={ws.id} value={ws.slug}>
+                      {ws.slug}
+                      {ws.group_name ? ` — bound to ${ws.group_name}` : ' — admin-only'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Pick a workspace to delegate writes through its Keycloak group binding. Leaving this as default routes the new server to the publisher's <code>default</code> workspace.
+              </p>
             </div>
 
             <div className="space-y-1.5">

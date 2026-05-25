@@ -2641,6 +2641,14 @@ components:
           type: string
         license:
           type: string
+        workspace:
+          type: string
+          pattern: "^[a-z0-9-]+$"
+          description: |
+            Optional slug of the workspace under `namespace` to attach
+            the server to. Defaults to `default` (lazily created on
+            first use). Use this to author into a non-default workspace
+            without falling back to PATCH-after-create.
 
     MCPServerList:
       type: object
@@ -2884,6 +2892,14 @@ components:
           type: string
         description:
           type: string
+        workspace:
+          type: string
+          pattern: "^[a-z0-9-]+$"
+          description: |
+            Optional slug of the workspace under `namespace` to attach
+            the agent to. Defaults to `default` (lazily created on
+            first use). Use this to author into a non-default workspace
+            without falling back to PATCH-after-create.
 
     AgentList:
       type: object

@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🗂️ Workspace selector on MCP / agent create forms
+
+The MCP and agent "new" forms only let you pick a publisher; the
+target workspace was always hardcoded to `default`, which made the
+per-workspace group binding model invisible from the most common
+entry point. A publisher with two workspaces bound to different
+Keycloak groups had no UI to send a new server / agent to anything
+other than `default`.
+
+- `CreateMCPServerRequest` and `CreateAgentRequest` gain an optional
+  `workspace` field (slug under the same `namespace`). Omitting it
+  preserves the legacy default-workspace fallback so existing API
+  callers are unaffected.
+- Handlers route through `ResolveWorkspace` when set, returning 422
+  with a friendly message if the workspace doesn't exist under the
+  publisher. The default fallback short-circuits
+  `EnsureDefaultWorkspaceID` so picking an explicit workspace never
+  lazily creates `default`.
+- Admin UI: a `Workspace` Select sits below `Namespace` on both
+  create forms. It lists the publisher's workspaces with their group
+  bindings inline (`anthropic-labs — bound to anthropic-team`) so the
+  admin can see what they're picking. Selecting a publisher clears
+  any stale workspace pick.
+- Tests: backend handler tests cover the routed-to-explicit-workspace
+  path and the unknown-workspace 422; vitest cases cover the form
+  forwarding the slug into the POST body.
+- Vitest `testTimeout` bumped to 15s — the new dependent
+  workspace-fetch chain pushed 4 admin-form tests past the 5s ceiling
+  under parallel-suite load.
+
 ### 🔎 Diagnostics, contract guard, version sync
 
 Three small, unrelated fixes bundled to reduce ongoing operator and

@@ -287,6 +287,83 @@ func TestAgentHandler_CreateAgent_MissingFields(t *testing.T) {
 	}
 }
 
+func TestAgentHandler_CreateAgent_RoutesToExplicitWorkspace(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "ag-ws-ns", "WS NS")
+
+	pub, err := testDB.GetPublisher(context.Background(), "ag-ws-ns")
+	if err != nil {
+		t.Fatalf("get publisher: %v", err)
+	}
+	if _, err := testDB.CreateWorkspace(context.Background(), store.CreateWorkspaceParams{
+		PublisherID: pub.ID, Slug: "team-b", Name: "Team B",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	payload := `{"namespace":"ag-ws-ns","slug":"team-b-agent","name":"Team B Agent","workspace":"team-b"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents",
+		bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// team-b should contain the agent.
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/ag-ws-ns/workspaces/team-b/agents", nil)
+	rec = httptest.NewRecorder()
+	newWorkspaceRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("workspace-scoped list: %d", rec.Code)
+	}
+	var listBody struct {
+		Items []struct {
+			Slug string `json:"slug"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	found := false
+	for _, it := range listBody.Items {
+		if it.Slug == "team-b-agent" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("team-b agents = %+v, want to include team-b-agent", listBody.Items)
+	}
+
+	// `default` must not have been lazily created — the explicit workspace
+	// short-circuits EnsureDefaultWorkspaceID.
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/ag-ws-ns/workspaces/default", nil)
+	rec = httptest.NewRecorder()
+	newWorkspaceRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("default workspace lookup: got %d, want 404", rec.Code)
+	}
+}
+
+func TestAgentHandler_CreateAgent_UnknownWorkspaceIs422(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "ag-uw-ns", "UW NS")
+
+	payload := `{"namespace":"ag-uw-ns","slug":"x","name":"X","workspace":"missing"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents",
+		bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422 for unknown workspace; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAgentHandler_CreateAgent_DuplicateSlug(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "ag-dup-ns", "Dup NS")
