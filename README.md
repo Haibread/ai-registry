@@ -148,7 +148,16 @@ Then open:
 | http://localhost:8081/.well-known/agent-card.json | Global A2A Agent Card          |
 | http://localhost:8180/       | Keycloak (realm `ai-registry`)                      |
 
-A sample admin user is provisioned by the dev realm. See `deploy/keycloak-realm-dev.json`.
+The dev realm provisions four users so every Phase 7 path is reachable out of the box. See [`deploy/keycloak-realm-dev.json`](deploy/keycloak-realm-dev.json) for the full definition.
+
+| Username                  | Password   | Realm role | Groups                              | Exercises                                    |
+| ---                       | ---        | ---        | ---                                 | ---                                          |
+| `admin@example.com`       | `admin`    | `admin`    | —                                   | Full admin (every write path)                |
+| `author@example.com`      | `author`   | —          | `anthropic-core`, `anthropic-labs`  | Workspace-scoped authoring + submit-for-review |
+| `reviewer@example.com`    | `reviewer` | —          | `registry-reviewers`                | Approve / reject in the change-approval queue |
+| `user@example.com`        | `user`     | —          | —                                   | 403 baseline (no roles, no groups)           |
+
+Groups bind to the workspaces seeded by `deploy/bootstrap.example.yaml`. The `openai-platform` workspace ships with no demo group member — sign in to Keycloak (`http://localhost:8180/`, master realm, `admin/admin`) and add a user to that group to test it.
 
 ### Seeding from a YAML bootstrap file
 
