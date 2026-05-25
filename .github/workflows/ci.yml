@@ -182,11 +182,21 @@ jobs:
         working-directory: web
         run: npm ci
 
-      # Generate TypeScript types from the OpenAPI spec before typecheck/lint
-      # so src/lib/schema.d.ts exists (it's gitignored).
-      - name: Generate OpenAPI types
+      # Regenerate the TS schema from openapi.yaml and fail the build if
+      # the committed file is out of sync. Catches edits to the OpenAPI
+      # spec that forget to `npm run generate`, and prevents anyone from
+      # hand-editing the generated file. Uses `git diff --quiet` (exits
+      # non-zero on diff) rather than `--exit-status` — the runner image
+      # doesn't recognise the latter flag.
+      - name: Generate OpenAPI types and check committed copy is in sync
         working-directory: web
-        run: npm run generate
+        run: |
+          npm run generate
+          if ! git diff --quiet -- src/lib/schema.d.ts; then
+            echo "::error::src/lib/schema.d.ts is out of sync with ../server/api/openapi.yaml. Run \`npm run generate\` and commit." >&2
+            git --no-pager diff -- src/lib/schema.d.ts | head -40
+            exit 1
+          fi
 
       - name: Lint
         working-directory: web

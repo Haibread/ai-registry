@@ -167,8 +167,11 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
 
     const body = await res.json()
     const message = String(body.detail ?? body.title ?? '')
+    // The richer 403 either names the required group or flags an
+    // admin-only workspace — both are valid Phase-7 enforcement
+    // outcomes depending on the workspace's group_name.
     expect(message, `403 problem+json body: ${JSON.stringify(body)}`).toMatch(
-      /workspace.*group membership|insufficient permissions/i,
+      /require membership in Keycloak group|admin-only/i,
     )
   })
 

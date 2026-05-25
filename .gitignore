@@ -24,8 +24,10 @@ web/.env.*.local
 web/dist/**
 !web/dist/.gitkeep
 
-# Generated OpenAPI types (regenerated via `npm run generate`)
-web/src/lib/schema.d.ts
+# NOTE: web/src/lib/schema.d.ts is intentionally tracked — committing it
+# locks the OpenAPI→TS contract so reviewers see schema diffs in PRs, and
+# CI verifies it stays in sync via `npm run generate && git diff
+# --exit-status`. Do not add it back to this ignore list.
 
 # ── Environment / secrets ─────────────────────────────────────────────────────
 .env
