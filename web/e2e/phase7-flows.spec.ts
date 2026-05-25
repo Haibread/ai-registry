@@ -99,7 +99,7 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
       `/api/v1/mcp/servers/${PUB}/${MCP}/versions/${V1}/submit`,
       {},
     )
-    expect(submit.status(), `submit: ${await submit.text()}`).toBe(200)
+    expect(submit.status(), `submit: ${await submit.text()}`).toBe(204)
 
     // Confirm the state transition via an admin read so we're checking
     // the server's stored value, not the author's view of it.
@@ -118,7 +118,7 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
       `/api/v1/mcp/servers/${PUB}/${MCP}/versions/${V1}/approve`,
       {},
     )
-    expect(approve.status(), `approve: ${await approve.text()}`).toBe(200)
+    expect(approve.status(), `approve: ${await approve.text()}`).toBe(204)
 
     const admin = await pageAs(browser, 'admin')
     const get = await apiGet(admin, `/api/v1/mcp/servers/${PUB}/${MCP}/versions/${V1}`)
