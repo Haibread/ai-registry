@@ -2463,6 +2463,15 @@ components:
           type: string
         contact:
           type: string
+        group_name:
+          type: string
+          description: |
+            Optional Keycloak group binding. When set, members of the
+            named group can author content under the workspace via
+            `RequireWorkspaceWrite`. Empty (or omitted) leaves the
+            workspace admin-only — same semantics as PATCH with an
+            empty group_name. Set at create time to avoid the
+            create-then-PATCH dance.
 
     WorkspaceList:
       type: object

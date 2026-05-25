@@ -42,6 +42,10 @@ type CreateWorkspaceParams struct {
 	Name        string
 	Description string
 	Contact     string
+	// GroupName optionally binds the new workspace to a Keycloak group
+	// at creation time. Empty leaves the column NULL (admin-only), the
+	// same shape PATCH lands on when clearing.
+	GroupName string
 }
 
 // UpdateWorkspaceParams holds the mutable fields for a PATCH operation.
@@ -199,11 +203,18 @@ func (db *DB) CreateWorkspace(ctx context.Context, p CreateWorkspaceParams) (*Wo
 	id := NewULID()
 	now := time.Now().UTC()
 
+	// group_name is stored as NULL when empty so the partial index stays
+	// useful — mirror the encoding UpdateWorkspace uses below.
+	var groupName any
+	if p.GroupName != "" {
+		groupName = p.GroupName
+	}
+
 	_, err := db.Pool.Exec(ctx, `
 		INSERT INTO workspaces
-			(id, publisher_id, slug, name, description, contact, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-		id, p.PublisherID, p.Slug, p.Name, p.Description, p.Contact, now,
+			(id, publisher_id, slug, name, description, contact, group_name, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+		id, p.PublisherID, p.Slug, p.Name, p.Description, p.Contact, groupName, now,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -229,6 +240,7 @@ func (db *DB) CreateWorkspace(ctx context.Context, p CreateWorkspaceParams) (*Wo
 		Name:        p.Name,
 		Description: p.Description,
 		Contact:     p.Contact,
+		GroupName:   p.GroupName,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil

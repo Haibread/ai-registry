@@ -235,6 +235,68 @@ func TestWorkspaceHandler_Patch(t *testing.T) {
 	}
 }
 
+func TestWorkspaceHandler_CreateWithGroupName(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "acme", "Acme")
+	r := newWorkspaceRouter()
+
+	// Set group_name at create time — same one-step path the admin UI
+	// exposes after the create-then-PATCH dance was removed.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/publishers/acme/workspaces",
+		bytes.NewBufferString(`{"slug":"team","name":"Team","group_name":"claude-team"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		GroupName string `json:"group_name"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.GroupName != "claude-team" {
+		t.Errorf("group_name on create response = %q, want claude-team", got.GroupName)
+	}
+
+	// GET round-trips it.
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/publishers/acme/workspaces/team", nil)
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	var fresh struct {
+		GroupName string `json:"group_name"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&fresh); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if fresh.GroupName != "claude-team" {
+		t.Errorf("group_name on GET = %q, want claude-team", fresh.GroupName)
+	}
+
+	// Omitting group_name leaves the workspace admin-only — empty string
+	// in the response (response uses omitempty). The legacy two-step
+	// create → PATCH path must still work.
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/publishers/acme/workspaces",
+		bytes.NewBufferString(`{"slug":"solo","name":"Solo"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create solo: %d", rec.Code)
+	}
+	var solo struct {
+		GroupName string `json:"group_name"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&solo); err != nil {
+		t.Fatalf("decode solo: %v", err)
+	}
+	if solo.GroupName != "" {
+		t.Errorf("solo group_name = %q, want empty (admin-only)", solo.GroupName)
+	}
+}
+
 func TestWorkspaceHandler_PatchSetsAndClearsGroupName(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "acme", "Acme")

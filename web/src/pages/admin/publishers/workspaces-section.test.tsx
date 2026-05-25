@@ -109,6 +109,31 @@ describe('WorkspacesSection', () => {
     })
   })
 
+  it('forwards group_name on create when filled, removing the two-step PATCH dance', async () => {
+    renderSection()
+    fireEvent.click(await screen.findByRole('button', { name: /new workspace/i }))
+
+    fireEvent.change(screen.getByLabelText(/^slug/i), { target: { value: 'paired-team' } })
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Paired team' } })
+    fireEvent.change(screen.getByLabelText(/keycloak group binding/i), {
+      target: { value: 'paired-team-grp' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /create workspace/i }))
+
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/publishers/{publisher_slug}/workspaces',
+        expect.objectContaining({
+          body: expect.objectContaining({
+            slug: 'paired-team',
+            name: 'Paired team',
+            group_name: 'paired-team-grp',
+          }),
+        }),
+      )
+    })
+  })
+
   it('opens an edit form scoped to a row and PATCHes group_name', async () => {
     renderSection()
     const editButtons = await screen.findAllByRole('button', { name: /^edit$/i })

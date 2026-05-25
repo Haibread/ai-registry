@@ -112,6 +112,7 @@ func (h *WorkspaceHandlers) CreateWorkspace(w http.ResponseWriter, r *http.Reque
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Contact     string `json:"contact"`
+		GroupName   string `json:"group_name"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -133,6 +134,7 @@ func (h *WorkspaceHandlers) CreateWorkspace(w http.ResponseWriter, r *http.Reque
 		Name:        body.Name,
 		Description: body.Description,
 		Contact:     body.Contact,
+		GroupName:   body.GroupName,
 	})
 	if errors.Is(err, store.ErrConflict) {
 		problem.Write(w, http.StatusConflict, "conflict",
