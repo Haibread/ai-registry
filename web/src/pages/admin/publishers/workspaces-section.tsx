@@ -75,7 +75,7 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
   }
 
   const createMutation = useMutation({
-    mutationFn: async (body: { slug: string; name: string; description?: string }) => {
+    mutationFn: async (body: { slug: string; name: string; description?: string; group_name?: string }) => {
       setCreateError(null)
       const { error } = await api.POST('/api/v1/publishers/{publisher_slug}/workspaces', {
         params: { path: { publisher_slug: publisherSlug } },
@@ -85,7 +85,13 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
       return body
     },
     onSuccess: (body) => {
-      toast.success(`Workspace ${body.slug} created`)
+      // Surface the group binding in the toast — admins regularly forgot
+      // to PATCH it before this field was on the create form, and a
+      // silent "created" toast made the omission invisible.
+      const suffix = body.group_name
+        ? ` (bound to ${body.group_name})`
+        : ' (admin-only writes)'
+      toast.success(`Workspace ${body.slug} created${suffix}`)
       setCreateOpen(false)
       invalidate()
     },
@@ -186,6 +192,7 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
               slug: (fd.get('slug') as string).trim(),
               name: (fd.get('name') as string).trim(),
               description: ((fd.get('description') as string) || '').trim() || undefined,
+              group_name: ((fd.get('group_name') as string) || '').trim() || undefined,
             })
           }}
         >
@@ -203,6 +210,17 @@ export function WorkspacesSection({ publisherSlug }: WorkspacesSectionProps) {
           <div className="space-y-1">
             <Label htmlFor="ws-desc">Description</Label>
             <Input id="ws-desc" name="description" placeholder="Stuff the Claude team owns" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="ws-group">Keycloak group binding</Label>
+            <Input
+              id="ws-group"
+              name="group_name"
+              placeholder="claude-team (leave blank for admin-only)"
+            />
+            <p className="text-xs text-muted-foreground">
+              Members of this Keycloak group can author content under the workspace. Leave blank to restrict writes to admins.
+            </p>
           </div>
           {/* Inline error sits next to the submit button so the user sees
               it without losing the form state in the viewport. */}
