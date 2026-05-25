@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🔎 Diagnostics, contract guard, version sync
+
+Three small, unrelated fixes bundled to reduce ongoing operator and
+reviewer friction.
+
+- **Richer 403 detail on workspace / reviewer middleware**
+  ([server/internal/auth/middleware.go](server/internal/auth/middleware.go)).
+  The previous `"Insufficient permissions: workspace group membership
+  required"` body was identical whether the workspace was admin-only,
+  the user's JWT lacked the group, or the configured group was empty.
+  Now the detail field names the required group ("Writes to this
+  workspace require membership in Keycloak group `\"anthropic-core\"`.")
+  and distinguishes the admin-only / empty-group cases from a
+  group-mismatch. Two new unit tests pin the wording so a future edit
+  can't silently re-collapse them.
+- **CI lock on the generated TS schema.** `web/src/lib/schema.d.ts`
+  was gitignored, so PR reviewers couldn't see openapi.yaml changes
+  flow through to the SPA's typed surface. The file is now tracked
+  and CI runs `npm run generate && git diff --exit-status -- src/lib/schema.d.ts`
+  so any edit to `openapi.yaml` that forgets the regenerate step
+  fails the build. (Bootstrap commit ships the current generated
+  file; subsequent PRs touching the spec will show the schema diff.)
+- **Version-string sync.** `web/package.json`,
+  `web/package-lock.json`, and `deploy/helm/ai-registry/Chart.yaml`
+  were all frozen at `0.1.0` while git tags reached `v0.3.3`.
+  Bumped to `0.3.3` so `helm show chart` / `npm pack` /
+  `package.json` no longer mislead. The publish workflow continues
+  to override these from the git tag at build time
+  ([.github/workflows/publish.yml](.github/workflows/publish.yml)),
+  so the bump only affects local-from-source flows.
+
 ### 🔑 Dev realm refreshed for Phase 7
 
 `deploy/keycloak-realm-dev.json` predated the workspaces / change-approval

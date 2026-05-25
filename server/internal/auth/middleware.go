@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -168,9 +169,18 @@ func RequireWorkspaceWrite(lookup WorkspaceLookup) func(http.Handler) http.Handl
 					"workspace lookup failed", r.URL.Path)
 				return
 			}
-			if groupName == "" || !claims.HasGroup(groupName) {
+			// Distinguish "workspace has no binding" from "you lack the
+			// binding's group" so a 403 actually tells you what's wrong.
+			// We echo the required group but never the user's claim
+			// values — the caller already has their own token.
+			if groupName == "" {
 				problem.Write(w, http.StatusForbidden, "forbidden",
-					"Insufficient permissions: workspace group membership required", r.URL.Path)
+					"This workspace is admin-only (no Keycloak group binding configured). Bind a group via PATCH .../workspaces/{slug} to delegate writes.", r.URL.Path)
+				return
+			}
+			if !claims.HasGroup(groupName) {
+				problem.Write(w, http.StatusForbidden, "forbidden",
+					fmt.Sprintf("Writes to this workspace require membership in Keycloak group %q.", groupName), r.URL.Path)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -201,9 +211,14 @@ func RequireReviewer(group string) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if group == "" || !claims.HasGroup(group) {
+			if group == "" {
 				problem.Write(w, http.StatusForbidden, "forbidden",
-					"Insufficient permissions: reviewer group membership required", r.URL.Path)
+					"The change-approval workflow is admin-only on this deployment (AUTH_REVIEWER_GROUP is unset).", r.URL.Path)
+				return
+			}
+			if !claims.HasGroup(group) {
+				problem.Write(w, http.StatusForbidden, "forbidden",
+					fmt.Sprintf("Reviewing requires membership in Keycloak group %q.", group), r.URL.Path)
 				return
 			}
 			next.ServeHTTP(w, r)

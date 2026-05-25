@@ -1,8 +1,10 @@
 package auth_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/haibread/ai-registry/internal/auth"
@@ -241,4 +243,98 @@ func TestRequireReviewer_EmptyConfiguredGroupRejectsNonAdmin(t *testing.T) {
 	if called {
 		t.Error("handler should not be called")
 	}
+}
+
+// ── 403 detail messages ────────────────────────────────────────────────────
+//
+// The detail field is what an operator reads when debugging an
+// unexpected 403. The previous wording was identical for "workspace has
+// no binding" and "you lack the binding's group" — two very different
+// failure modes that needed different responses. These tests pin the
+// distinction so a future edit that re-collapses the wording fails CI.
+
+func runRequireWorkspaceWriteBody(t *testing.T, claims *auth.KeycloakClaims, group string) (status int, detail string) {
+	t.Helper()
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	lookup := func(*http.Request) (string, error) { return group, nil }
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	if claims != nil {
+		req = req.WithContext(auth.ContextWithClaims(req.Context(), claims))
+	}
+	rec := httptest.NewRecorder()
+	auth.RequireWorkspaceWrite(lookup)(next).ServeHTTP(rec, req)
+
+	var body struct {
+		Detail string `json:"detail"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	return rec.Code, body.Detail
+}
+
+func TestRequireWorkspaceWrite_403_AdminOnlyVsGroupMismatch(t *testing.T) {
+	t.Run("admin-only workspace says so explicitly", func(t *testing.T) {
+		claims := &auth.KeycloakClaims{Groups: []string{"anthropic-core"}}
+		status, detail := runRequireWorkspaceWriteBody(t, claims, "")
+		if status != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", status)
+		}
+		if !strings.Contains(detail, "admin-only") {
+			t.Errorf("detail should call out admin-only binding; got %q", detail)
+		}
+	})
+
+	t.Run("group mismatch names the required group", func(t *testing.T) {
+		claims := &auth.KeycloakClaims{Groups: []string{"anthropic-labs"}}
+		status, detail := runRequireWorkspaceWriteBody(t, claims, "anthropic-core")
+		if status != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", status)
+		}
+		if !strings.Contains(detail, `"anthropic-core"`) {
+			t.Errorf("detail should quote the required group name; got %q", detail)
+		}
+	})
+}
+
+func TestRequireReviewer_403_NamesGroupOrFlagsDisabled(t *testing.T) {
+	run := func(t *testing.T, claims *auth.KeycloakClaims, group string) (int, string) {
+		t.Helper()
+		next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		if claims != nil {
+			req = req.WithContext(auth.ContextWithClaims(req.Context(), claims))
+		}
+		rec := httptest.NewRecorder()
+		auth.RequireReviewer(group)(next).ServeHTTP(rec, req)
+		var body struct {
+			Detail string `json:"detail"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		return rec.Code, body.Detail
+	}
+
+	t.Run("empty reviewer group says workflow is admin-only", func(t *testing.T) {
+		claims := &auth.KeycloakClaims{Groups: []string{"anything"}}
+		status, detail := run(t, claims, "")
+		if status != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", status)
+		}
+		if !strings.Contains(detail, "admin-only") {
+			t.Errorf("detail should explain that reviewing is admin-only; got %q", detail)
+		}
+	})
+
+	t.Run("mismatch names the required reviewer group", func(t *testing.T) {
+		claims := &auth.KeycloakClaims{Groups: []string{"unrelated"}}
+		status, detail := run(t, claims, "registry-reviewers")
+		if status != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", status)
+		}
+		if !strings.Contains(detail, `"registry-reviewers"`) {
+			t.Errorf("detail should quote the required reviewer group; got %q", detail)
+		}
+	})
 }
