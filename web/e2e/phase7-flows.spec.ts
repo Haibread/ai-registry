@@ -122,12 +122,20 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
     )
     expect(approve.status(), `approve: ${await approve.text()}`).toBe(204)
 
+    // The canonical "is it published?" signal is published_at being
+    // set on the version — same as change-approval.spec.ts. The
+    // status field carries the post-publish lifecycle value
+    // ("active"), which is a separate axis from review_state.
     const admin = await pageAs(browser, 'admin')
-    const get = await apiGet(admin, `/api/v1/mcp/servers/${PUB}/${MCP}/versions/${V1}`)
-    expect(get.status()).toBe(200)
-    const body = await get.json()
-    expect(body.status, 'status after reviewer approve').toBe('published')
-    expect(body.review_state, 'review_state after approve').toBe('none')
+    const list = await apiGet(admin, `/api/v1/mcp/servers/${PUB}/${MCP}/versions`)
+    expect(list.status()).toBe(200)
+    const body = await list.json()
+    const v = (body.items as { version: string; published_at?: string; review_state?: string }[]).find(
+      it => it.version === V1,
+    )
+    expect(v, `${V1} in version list`).toBeDefined()
+    expect(v?.published_at, `${V1} published_at after approve`).toBeTruthy()
+    expect(v?.review_state ?? 'none', 'review_state after approve').toBe('none')
   })
 
   test('user (no roles, no groups) is forbidden from creating a version under the same workspace', async ({ browser }) => {
