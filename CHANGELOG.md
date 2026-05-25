@@ -4,17 +4,27 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-Two distinct workstreams sit here pending the next version stamp:
+_Nothing yet._
+
+## v0.3.3 — 2026-05-25
+
+Two workstreams shipped together as the chunky tail of v0.3.x:
 
 1. **Phase 7 access-control + change-approval bundle plus an admin UI
    polish sweep.** Server-side work landed across PRs #28–#32; UI
    polish landed in PR #37.
-2. **Project-audit follow-ups (PRs #52–#59).** A four-front sweep
-   produced a punch-list; the high-impact findings shipped as a
-   batch of small, surgical PRs.
+2. **Project-audit follow-ups (PRs #52–#59 + #62).** A four-front
+   audit (server, web, infra/config, docs) produced a P0/P1
+   punch-list; the high-impact findings shipped as a batch of small,
+   surgical PRs, capped by the workspaces-finalise migration (#62)
+   that dropped the legacy `publisher_id` FK from resource tables.
 
-A real version stamp is overdue — the workstreams below are
-substantial enough that "Unreleased" understates them.
+> **Breaking schema change.** Migration `000011_workspaces_finalise`
+> drops `publisher_id` from `mcp_servers`/`agents` and swaps slug
+> uniqueness to `(workspace_id, slug)`. Operators upgrading from
+> v0.3.2 must let the prior image's boot-time backfill run once
+> before applying `000011` — the up migration aborts with a friendly
+> *workspace backfill not complete* error otherwise.
 
 ### 🏢 Workspaces under publishers
 
