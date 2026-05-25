@@ -152,5 +152,19 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /review-ui\.spec\.ts/,
     },
+    // Phase 7 group-based authorization: proves that author@ /
+    // reviewer@ / user@ fixture tokens actually carry the right
+    // `groups[]` claim and that RequireWorkspaceWrite +
+    // RequireReviewer enforce the bindings end-to-end. Each test
+    // switches storage state per-describe block (no project-level
+    // default — the spec is intentionally polyglot).
+    {
+      name: "phase7-flows",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      dependencies: ["setup"],
+      testMatch: /phase7-flows\.spec\.ts/,
+    },
   ],
 })

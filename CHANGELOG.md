@@ -4,7 +4,31 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-_Nothing yet._
+### 🔑 Dev realm refreshed for Phase 7
+
+`deploy/keycloak-realm-dev.json` predated the workspaces / change-approval
+work and only shipped an `admin` realm role — no groups, no
+group-membership mapper, no demo non-admin users. That meant the Phase 7
+authoring and review paths returned `403` out of the box because JWTs
+never carried a `groups` claim.
+
+- Seed four Keycloak groups matching `deploy/bootstrap.example.yaml`:
+  `anthropic-core`, `anthropic-labs`, `openai-platform`, plus the
+  `registry-reviewers` reviewer group (default
+  `AUTH_REVIEWER_GROUP`).
+- Add the `oidc-group-membership-mapper` (bare names, `full.path: false`)
+  to the `ai-registry-web` and `ai-registry-cli` clients so access
+  tokens actually carry `groups[]`.
+- Add `author@example.com` (member of `anthropic-core` +
+  `anthropic-labs`) and `reviewer@example.com` (member of
+  `registry-reviewers`). `admin@example.com` and `user@example.com`
+  are unchanged and stay as the admin / 403-baseline reference cases.
+- README dev-stack section now lists all four users, their passwords,
+  and what each one exercises.
+
+Dev only — production realm setup is still the operator's job per
+[ADR 0002](docs/adr/0002-workspace-group-binding.md) until 0002-F4 (Keycloak
+reconciler) lands.
 
 ## v0.3.3 — 2026-05-25
 

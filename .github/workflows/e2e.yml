@@ -110,8 +110,17 @@ jobs:
         working-directory: web
         env:
           E2E_BASE_URL: http://localhost:3000
+          # Fixture credentials match deploy/keycloak-realm-dev.json.
+          # admin / user predate Phase 7; author / reviewer were added
+          # alongside the workspace + change-approval workflow.
           E2E_ADMIN_EMAIL: admin@example.com
           E2E_ADMIN_PASSWORD: admin
+          E2E_AUTHOR_EMAIL: author@example.com
+          E2E_AUTHOR_PASSWORD: author
+          E2E_REVIEWER_EMAIL: reviewer@example.com
+          E2E_REVIEWER_PASSWORD: reviewer
+          E2E_USER_EMAIL: user@example.com
+          E2E_USER_PASSWORD: user
         run: npm run test:e2e
 
       - name: Upload Playwright report
