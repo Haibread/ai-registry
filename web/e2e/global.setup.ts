@@ -1,53 +1,91 @@
 /**
  * global.setup.ts
  *
- * Authenticates as an admin user via the Keycloak-backed OIDC flow and saves
- * the browser storage state to e2e/.auth/admin.json. All admin tests reuse
- * this saved state to avoid logging in before every test.
+ * Authenticates each fixture user against Keycloak via the OIDC PKCE flow
+ * and saves their storage state under e2e/.auth/<role>.json. Specs reuse
+ * these states via `storageState` in playwright.config.ts (or per-describe
+ * with `test.use({ storageState })`) so they never have to log in again.
  *
- * Flow:
- *   1. Navigate to the homepage (RequireAuth redirects /admin → / for guests).
- *   2. Click the "Sign in" button → initiates the OIDC redirect to Keycloak.
- *   3. Fill Keycloak credentials.
- *   4. AuthCallback exchanges the code and navigates to /admin.
- *   5. Save storageState (oidc-client-ts persists the Bearer token in localStorage).
+ * The four fixture users mirror the dev realm
+ * (deploy/keycloak-realm-dev.json):
  *
- * Required env vars:
- *   E2E_ADMIN_EMAIL    - admin user email in Keycloak (default: admin@example.com)
- *   E2E_ADMIN_PASSWORD - admin user password         (default: admin)
+ *   - admin     — realm role `admin` (every write path)
+ *   - author    — groups `anthropic-core`, `anthropic-labs` (workspace
+ *                 authoring + submit-for-review)
+ *   - reviewer  — group `registry-reviewers` (approve / reject)
+ *   - user      — no roles, no groups (403 baseline)
+ *
+ * Each user's credentials can be overridden via E2E_<ROLE>_EMAIL and
+ * E2E_<ROLE>_PASSWORD env vars; the defaults match the dev realm so
+ * `npm run test:e2e` works out of the box.
  */
 
-import { test as setup, expect } from '@playwright/test'
+import { test as setup, expect, type Page } from '@playwright/test'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@example.com'
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'admin'
-const AUTH_FILE = path.join(__dirname, '.auth/admin.json')
+type Fixture = {
+  role: 'admin' | 'author' | 'reviewer' | 'user'
+  email: string
+  password: string
+}
 
-setup('authenticate as admin', async ({ page }) => {
-  // Start from the homepage — unauthenticated visits to /admin are redirected
-  // here by RequireAuth (<Navigate to="/" />).
+const fixtures: Fixture[] = [
+  {
+    role: 'admin',
+    email: process.env.E2E_ADMIN_EMAIL ?? 'admin@example.com',
+    password: process.env.E2E_ADMIN_PASSWORD ?? 'admin',
+  },
+  {
+    role: 'author',
+    email: process.env.E2E_AUTHOR_EMAIL ?? 'author@example.com',
+    password: process.env.E2E_AUTHOR_PASSWORD ?? 'author',
+  },
+  {
+    role: 'reviewer',
+    email: process.env.E2E_REVIEWER_EMAIL ?? 'reviewer@example.com',
+    password: process.env.E2E_REVIEWER_PASSWORD ?? 'reviewer',
+  },
+  {
+    role: 'user',
+    email: process.env.E2E_USER_EMAIL ?? 'user@example.com',
+    password: process.env.E2E_USER_PASSWORD ?? 'user',
+  },
+]
+
+async function loginAs(page: Page, email: string, password: string) {
+  // RequireAuth redirects /admin → / for guests, so start from the homepage
+  // and click the Sign in button to initiate the OIDC redirect.
   await page.goto('/')
   await page.waitForLoadState('networkidle')
 
-  // Click the Sign In button to initiate the OIDC Authorization Code + PKCE flow.
   await page.click('button:has-text("Sign in")')
 
-  // Keycloak login page.
   await page.waitForURL(/\/realms\/ai-registry\/protocol\/openid-connect\/auth/)
   await expect(page.locator('#username, input[name="username"]')).toBeVisible()
 
-  await page.fill('#username, input[name="username"]', ADMIN_EMAIL)
-  await page.fill('#password, input[name="password"]', ADMIN_PASSWORD)
+  await page.fill('#username, input[name="username"]', email)
+  await page.fill('#password, input[name="password"]', password)
   await page.click('#kc-login, input[type="submit"]')
+}
 
-  // AuthCallback (at /auth/callback) exchanges the code then navigates to /admin.
-  await page.waitForURL(/\/admin/, { timeout: 30_000 })
-  await expect(page.locator('h1')).toBeVisible()
+for (const fx of fixtures) {
+  setup(`authenticate as ${fx.role}`, async ({ page }) => {
+    await loginAs(page, fx.email, fx.password)
 
-  // Persist the authenticated session (localStorage with the OIDC tokens).
-  await page.context().storageState({ path: AUTH_FILE })
-})
+    // For admin / author / reviewer the AuthCallback lands on /admin (or
+    // wherever RequireAuth would have sent them). For the no-roles `user`
+    // the SPA still completes the OIDC exchange — the 403s arrive later,
+    // at the API layer when the test attempts a write. Either way wait
+    // for the callback to settle.
+    await page.waitForURL(url => !/\/realms\//.test(url.toString()), {
+      timeout: 30_000,
+    })
+    await page.waitForLoadState('networkidle')
+
+    const file = path.join(__dirname, `.auth/${fx.role}.json`)
+    await page.context().storageState({ path: file })
+  })
+}
