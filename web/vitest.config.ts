@@ -13,6 +13,13 @@ export default defineConfig({
       },
     },
     globals: true,
+    // Default 5000ms is fine for hermetic tests but several admin form
+    // tests legitimately chain 3–4 async waits (publishers fetch →
+    // namespace Select interaction → dependent workspaces fetch →
+    // mutation). They pass individually but bump up against the 5s
+    // ceiling under parallel-suite load — bump to 15s so CI variance
+    // doesn't manifest as flakes.
+    testTimeout: 15_000,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "*.test.ts"],
     coverage: {

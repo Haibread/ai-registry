@@ -1420,6 +1420,13 @@ export interface components {
             homepage_url?: string;
             repo_url?: string;
             license?: string;
+            /**
+             * @description Optional slug of the workspace under `namespace` to attach
+             *     the server to. Defaults to `default` (lazily created on
+             *     first use). Use this to author into a non-default workspace
+             *     without falling back to PATCH-after-create.
+             */
+            workspace?: string;
         };
         MCPServerList: {
             items: components["schemas"]["MCPServer"][];
@@ -1545,6 +1552,13 @@ export interface components {
             slug: string;
             name: string;
             description?: string;
+            /**
+             * @description Optional slug of the workspace under `namespace` to attach
+             *     the agent to. Defaults to `default` (lazily created on
+             *     first use). Use this to author into a non-default workspace
+             *     without falling back to PATCH-after-create.
+             */
+            workspace?: string;
         };
         AgentList: {
             items: components["schemas"]["Agent"][];
