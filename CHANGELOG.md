@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 📐 OpenAPI server / agent status enum gains `deleted`
+
+Follow-up to the previous entry. `MCPServer.status` and `Agent.status`
+in [openapi.yaml](server/api/openapi.yaml) declared
+`enum: [draft, published, deprecated]`, but the code also returns
+`deleted` for soft-deleted tombstones (see
+[server/internal/domain/mcp.go](server/internal/domain/mcp.go) —
+`ServerStatus`, used by both entities). Public list responses filter
+deleted parents out, so most callers never see one — but
+`GetMCPServer` / `GetAgent` don't filter on status, so an admin hitting
+`/api/v1/mcp/servers/{ns}/{slug}` after a delete can land on a deleted
+record. The `/v0/servers?include_deleted=true` path is also explicit
+about returning them.
+
+- Add `deleted` to both `MCPServer.status` and `Agent.status`
+  enums. Status query-param filters keep the three-value union
+  intact — they're filter inputs and the list endpoints still don't
+  accept `deleted`.
+- Regenerate `web/src/lib/schema.d.ts` (CI gate from PR #72 enforces
+  the sync).
+- `StatusBadge` ([web/src/components/ui/badge.tsx](web/src/components/ui/badge.tsx)
+  and `statusVariant` in
+  [badge-variants.ts](web/src/components/ui/badge-variants.ts)) now
+  accept `"deleted"` and render an outline-style tombstone with an
+  `XCircle` icon — visually distinct from the muted `draft`, the
+  green `published`, and the red `deprecated`. New unit test pins
+  the variant mapping; the distinct-variants invariant is widened
+  from 3 to 4 colours.
+
 ### 📐 OpenAPI version-status enum matches the code
 
 `MCPServerVersion.status` and `AgentVersion.status` in

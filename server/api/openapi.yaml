@@ -2593,7 +2593,13 @@ components:
           enum: [private, public]
         status:
           type: string
-          enum: [draft, published, deprecated]
+          # MCPServer.status mirrors the lifecycle column on the row:
+          # `draft` (never published), `published` (at least one version
+          # active), `deprecated` (all versions superseded), or `deleted`
+          # (soft-deleted tombstone). Public list responses exclude
+          # `deleted`; admin reads and detail by namespace/slug can
+          # still surface a deleted parent.
+          enum: [draft, published, deprecated, deleted]
         created_at:
           type: string
           format: date-time
@@ -2854,7 +2860,13 @@ components:
           enum: [private, public]
         status:
           type: string
-          enum: [draft, published, deprecated]
+          # Agent.status mirrors the lifecycle column on the row:
+          # `draft` (never published), `published` (at least one version
+          # active), `deprecated` (all versions superseded), or `deleted`
+          # (soft-deleted tombstone). Public list responses exclude
+          # `deleted`; admin reads and detail by namespace/slug can
+          # still surface a deleted parent.
+          enum: [draft, published, deprecated, deleted]
         created_at:
           type: string
           format: date-time

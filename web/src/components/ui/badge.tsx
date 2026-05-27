@@ -1,6 +1,6 @@
 import * as React from "react"
 import { type VariantProps } from "class-variance-authority"
-import { Circle, CheckCircle2, AlertTriangle, Globe, Lock, ShieldCheck } from "lucide-react"
+import { Circle, CheckCircle2, AlertTriangle, XCircle, Globe, Lock, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { badgeVariants, statusVariant, visibilityVariant } from "./badge-variants"
 
@@ -13,11 +13,12 @@ function Badge({ className, variant, ...props }: BadgeProps) {
 }
 
 /** Status badge with icon prefix for colorblind-safe communication. */
-function StatusBadge({ status, className }: { status: "draft" | "published" | "deprecated"; className?: string }) {
+function StatusBadge({ status, className }: { status: "draft" | "published" | "deprecated" | "deleted"; className?: string }) {
   const icons = {
     draft: <Circle className="h-2.5 w-2.5" aria-hidden="true" />,
     published: <CheckCircle2 className="h-2.5 w-2.5" aria-hidden="true" />,
     deprecated: <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />,
+    deleted: <XCircle className="h-2.5 w-2.5" aria-hidden="true" />,
   }
   return (
     <Badge variant={statusVariant(status)} className={className}>
