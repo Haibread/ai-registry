@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 📐 OpenAPI version-status enum matches the code
+
+`MCPServerVersion.status` and `AgentVersion.status` in
+[openapi.yaml](server/api/openapi.yaml) declared `enum: [draft,
+published, deprecated]` but the server has always returned values
+from `[active, deprecated, deleted]` (see
+[server/internal/domain/mcp.go](server/internal/domain/mcp.go) —
+`VersionStatus`). The spec and the wire were silently inconsistent
+and generated TS types mislead the SPA: `version-history.tsx`
+compares `v.status !== 'active'`, which was unreachable per the
+declared types. The PR-#70 E2E test originally asserted
+`status === 'published'` and had to be rewritten to use
+`published_at`-truthy to work around the gap.
+
+- Fix the two version schemas to declare the actual code shape.
+- Regenerate `web/src/lib/schema.d.ts` (PR #72's CI gate now keeps
+  this honest going forward).
+- No backend or frontend code change required — the wire shape was
+  already correct.
+
+Not in this PR: `MCPServer.status` and `Agent.status` declare
+`[draft, published, deprecated]` but the code also allows `deleted`
+([domain.ServerStatus](server/internal/domain/mcp.go)). That's a
+missing value rather than wrong values; deleted parents are filtered
+out of list responses by default, so the SPA never sees them today.
+Worth a separate small change.
+
 ### 🗂️ Workspace selector on MCP / agent create forms
 
 The MCP and agent "new" forms only let you pick a publisher; the

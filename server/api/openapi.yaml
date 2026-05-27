@@ -2696,7 +2696,11 @@ components:
           type: string
         status:
           type: string
-          enum: [draft, published, deprecated]
+          # MCPServerVersion lifecycle is orthogonal to MCPServer.status:
+          # a version becomes `active` when published, `deprecated` when
+          # superseded, or `deleted` when withdrawn. Draft / pending /
+          # rejected states live on `review_state`, not here.
+          enum: [active, deprecated, deleted]
         published_at:
           type: string
           format: date-time
@@ -2955,7 +2959,11 @@ components:
           type: string
         status:
           type: string
-          enum: [draft, published, deprecated]
+          # AgentVersion lifecycle mirrors MCPServerVersion: a version
+          # becomes `active` on publish, `deprecated` when superseded,
+          # `deleted` when withdrawn. Pre-publish / pending / rejected
+          # states live on `review_state`.
+          enum: [active, deprecated, deleted]
         status_message:
           type: string
         published_at:

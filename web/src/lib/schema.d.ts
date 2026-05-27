@@ -1450,7 +1450,7 @@ export interface components {
             checksum?: string;
             signature?: string;
             /** @enum {string} */
-            status: "draft" | "published" | "deprecated";
+            status: "active" | "deprecated" | "deleted";
             /** Format: date-time */
             published_at?: string;
             /**
@@ -1584,7 +1584,7 @@ export interface components {
             icon_url?: string;
             protocol_version?: string;
             /** @enum {string} */
-            status: "draft" | "published" | "deprecated";
+            status: "active" | "deprecated" | "deleted";
             status_message?: string;
             /** Format: date-time */
             published_at?: string;
