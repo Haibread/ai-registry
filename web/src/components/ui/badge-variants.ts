@@ -30,13 +30,15 @@ export const badgeVariants = cva(
 
 /** Returns the badge variant for a status value. */
 export function statusVariant(
-  status: "draft" | "published" | "deprecated"
+  status: "draft" | "published" | "deprecated" | "deleted"
 ): VariantProps<typeof badgeVariants>["variant"] {
   switch (status) {
     case "published":
       return "success"
     case "deprecated":
       return "destructive"
+    case "deleted":
+      return "outline"
     case "draft":
     default:
       return "muted"

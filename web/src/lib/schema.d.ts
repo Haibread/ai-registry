@@ -1394,7 +1394,7 @@ export interface components {
             /** @enum {string} */
             visibility: "private" | "public";
             /** @enum {string} */
-            status: "draft" | "published" | "deprecated";
+            status: "draft" | "published" | "deprecated" | "deleted";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1529,7 +1529,7 @@ export interface components {
             /** @enum {string} */
             visibility: "private" | "public";
             /** @enum {string} */
-            status: "draft" | "published" | "deprecated";
+            status: "draft" | "published" | "deprecated" | "deleted";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */

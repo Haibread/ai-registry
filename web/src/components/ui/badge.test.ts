@@ -26,14 +26,19 @@ describe("statusVariant", () => {
     expect(statusVariant("draft")).toBe("muted")
   })
 
+  it("maps 'deleted' to outline (no fill)", () => {
+    expect(statusVariant("deleted")).toBe("outline")
+  })
+
   it("returns a distinct variant for each status", () => {
     const variants = new Set([
       statusVariant("published"),
       statusVariant("deprecated"),
       statusVariant("draft"),
+      statusVariant("deleted"),
     ])
-    // All three should be different — no two statuses share a colour.
-    expect(variants.size).toBe(3)
+    // All four should be different — no two statuses share a colour.
+    expect(variants.size).toBe(4)
   })
 })
 

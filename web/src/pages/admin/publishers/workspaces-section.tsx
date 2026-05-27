@@ -574,7 +574,7 @@ function WorkspaceResources({
   )
 }
 
-type ResourceStatus = 'draft' | 'published' | 'deprecated'
+type ResourceStatus = 'draft' | 'published' | 'deprecated' | 'deleted'
 
 interface ResourceItem {
   key: string
