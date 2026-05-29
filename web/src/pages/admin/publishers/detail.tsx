@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/ui/badge'
 import { DeleteButton } from '@/components/admin/delete-button'
+import { GrantsSection } from '@/components/admin/grants-section'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
@@ -192,6 +193,10 @@ export default function AdminPublisherDetail() {
           </p>
         )}
       </div>
+
+      <Separator />
+
+      <GrantsSection publisherSlug={slug!} />
 
       <Separator />
 
