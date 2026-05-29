@@ -1,9 +1,12 @@
 # ADR 0003 — Change-approval workflow
 
-- **Status:** Accepted (shipped via PRs #29 → #32)
+- **Status:** Accepted (shipped via PRs #29 → #32); reviewer authorization
+  gate amended by [ADR 0006](0006-publisher-scoped-rbac.md) — the workflow
+  itself is unchanged.
 - **Date:** 2026-05-02
 - **Deciders:** @Haibread
 - **Builds on:** [ADR 0001 — Workspaces under publishers](0001-workspaces-under-publishers.md), [ADR 0002 — Workspace OIDC group binding](0002-workspace-group-binding.md)
+- **Amended by:** [ADR 0006 — Publisher-scoped RBAC](0006-publisher-scoped-rbac.md)
 
 ## TL;DR
 

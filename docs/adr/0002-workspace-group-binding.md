@@ -1,6 +1,9 @@
 # ADR 0002 — Workspace OIDC group binding
 
-- **Status:** Accepted (shipped via PR #29)
+- **Status:** Superseded by [ADR 0006](0006-publisher-scoped-rbac.md) —
+  workspace group binding is replaced by publisher-scoped role grants.
+  (Originally shipped via PR #29.)
+- **Superseded by:** [ADR 0006 — Publisher-scoped RBAC](0006-publisher-scoped-rbac.md)
 - **Date:** 2026-05-02
 - **Deciders:** @Haibread
 - **Builds on:** [ADR 0001 — Workspaces under publishers](0001-workspaces-under-publishers.md)

@@ -19,10 +19,14 @@ A centralized registry for AI ecosystem artifacts:
    API.
 2. **Two UIs, one API.**
    - *User UI*: read-only. Browse/search/view entries. No mutations.
-   - *Admin UI*: full CRUD. Only authenticated admins can mutate.
-3. **All writes go through admins.** Creation, update, publishing, and deletion
-   of any registry entry is restricted to admin principals (via UI or API).
-   Non-admins get 403 on any write endpoint.
+   - *Admin UI*: CRUD for authorized principals. What a principal may mutate
+     is governed by their role on the owning publisher (see #3).
+3. **Writes require authorization (RBAC).** Creating, updating, publishing,
+   or deleting a registry entry requires the appropriate role on the owning
+   publisher — **Editor** to author, **Reviewer** to approve, **Admin** to
+   manage — or global **Server Admin**. Unauthorized principals get 403 on
+   any write endpoint. Roles are granted to users/groups in the registry
+   (ADR 0006); claims carry group membership only.
 4. **Spec compatibility.**
    - MCP endpoints MUST conform to the MCP specification
      (https://modelcontextprotocol.io/). Authentication MUST follow the MCP
@@ -40,11 +44,16 @@ A centralized registry for AI ecosystem artifacts:
 
 - **Server**: Go, `chi` router, PostgreSQL, `pgx` for DB access (no ORM,
   hand-written SQL), `golang-migrate` for schema migrations.
-- **Auth**: OAuth2 / OIDC (external IdP, Keycloak in dev via docker-compose).
-  JWT access tokens validated via JWKS. MCP-compatible. Hashed API keys for
-  machine-to-machine admin operations are planned but not yet implemented —
-  see PLAN.md and Decision B below. Frontend uses `oidc-client-ts` as a PKCE
-  public client (no client secret; no NextAuth/Auth.js).
+- **Auth**: two login front doors — OIDC (external IdP, Keycloak in dev) and
+  local email + password accounts; the registry signs its own tokens for the
+  latter and validates both issuers, with local tokens walled off the MCP
+  surface (OAuth-only per principle #4). **Authorization** is publisher-scoped
+  RBAC: users, groups, and role grants live in the registry (ADR 0006); claims
+  carry group membership only. Server Admin comes from the `realm_access.roles`
+  claim **or** a local `is_server_admin` flag (bootstrap admin). Hashed
+  per-publisher API keys for machine-to-machine ops remain planned (Decision
+  B). Frontend uses `oidc-client-ts` (PKCE public client) plus a local login
+  form (no client secret; no NextAuth/Auth.js).
 - **Frontend**: Vite + React Router v7 + TanStack Query v5 + TypeScript +
   shadcn/ui + Tailwind. A pure SPA served as static files from nginx. Public
   section for browsing; `/admin` section guarded by a `<RequireAuth>` wrapper.
@@ -163,7 +172,7 @@ Rules for implementors:
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
-| A | JWT admin claim | `realm_access.roles[]` contains `"admin"` | Keycloak default shape |
+| A | Server Admin source | `realm_access.roles[]` contains `"admin"` **or** local `users.is_server_admin` (ADR 0006) | Keycloak default shape; local flag lets the bootstrap admin run with no IdP |
 | B | API-key auth | Deferred to v0.4.x | Phase 2-5 ship JWT-only; hashed per-publisher API keys parked under v0.4.x roadmap (see PLAN.md and README) |
 | C | `/v0/` wire format | Strict MCP registry spec shape | `{ servers: [{id, name, description, version, packages, repository, _meta}], metadata: {count, nextCursor} }` for list; single object for detail |
 | D | Integration test infra | testcontainers-go (postgres module) with snapshot isolation | No external dependency needed to run `go test` |
@@ -174,6 +183,10 @@ Rules for implementors:
 | I | Agent version lifecycle | Same draft→published→deprecated state machine as MCP servers | Consumers cache agent cards; silent mutation breaks them |
 | J | `skills[]` validation | Structural: `id`, `name`, `description` required strings; `tags` required string array | Skills has a defined A2A schema; enforce at write time |
 | K | `authentication` schemes allowlist | `Bearer`, `ApiKey`, `OAuth2`, `OpenIdConnect` | Arbitrary schemes can't be reliably introspected; add to allowlist explicitly |
+| L | Authorization model | Publisher-scoped RBAC — roles (Viewer/Editor/Reviewer/Admin) granted to users or groups; Editor and Reviewer are independent (lattice) (ADR 0006) | Self-managed in-registry; separation of duties by default |
+| M | Workspaces | **Removed** (ADR 0006) — resources are publisher-scoped again; `/v0/` drops the workspace segment | Workspace layer (ADR 0001/0002) didn't earn its keep; closer to the MCP spec |
+| N | Local accounts | Local email+password login alongside OIDC; registry issues its own tokens, walled off the MCP surface (ADR 0006) | Run without an external IdP; bootstrap admin seeded from config |
+| O | Claim → authorization | Claims carry **group membership only**; roles are grants on users/groups (ADR 0006) | Only two principal types (user, group); no claim-to-role side channel |
 
 ## References
 
