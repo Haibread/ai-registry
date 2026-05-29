@@ -11,6 +11,7 @@ const mockLogout = vi.fn()
 vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({
     accessToken: 'test-token',
+    email: 'admin@example.com',
     user: { profile: { email: 'admin@example.com', preferred_username: 'admin' } },
     logout: mockLogout,
     clearSession: vi.fn(),

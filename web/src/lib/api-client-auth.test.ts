@@ -14,6 +14,8 @@ vi.mock('@/auth/AuthContext', () => ({
   useAuth: vi.fn(() => ({
     accessToken: 'test-token',
     clearSession: mockClearSession,
+    email: undefined,
+    loginLocal: vi.fn(),
   })),
 }))
 
@@ -43,6 +45,8 @@ beforeEach(() => {
   mockUseAuth.mockReturnValue({
     accessToken: 'test-token',
     clearSession: mockClearSession,
+    email: undefined,
+    loginLocal: vi.fn(),
     login: vi.fn(),
     logout: vi.fn(),
     user: null,
@@ -96,6 +100,8 @@ describe('useAuthClient', () => {
     mockUseAuth.mockReturnValue({
       accessToken: undefined,
       clearSession: mockClearSession,
+      email: undefined,
+      loginLocal: vi.fn(),
       login: vi.fn(),
       logout: vi.fn(),
       user: null,

@@ -8,7 +8,7 @@ import { SearchBar } from '@/components/ui/search-bar'
 import { useAuth } from '@/auth/AuthContext'
 
 export function Header() {
-  const { accessToken, login, logout, loginError } = useAuth()
+  const { accessToken, logout, loginError } = useAuth()
   const location = useLocation()
   // The home hero already hosts a big SearchBar — don't duplicate it in the
   // header on `/`, but surface it on every other page so cross-type search is
@@ -64,8 +64,8 @@ export function Header() {
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={login}>
-              Sign in
+            <Button size="sm" asChild>
+              <Link to="/login">Sign in</Link>
             </Button>
           )}
         </div>

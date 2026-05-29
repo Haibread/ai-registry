@@ -379,3 +379,79 @@ describe('AuthProvider — login() with UserManager ready', () => {
     )
   })
 })
+
+// makeLocalJWT builds an unsigned-looking JWT whose payload carries email + a
+// future exp, enough for the client's jwtEmail/jwtExpired decode (the server
+// signs the real one; the client never verifies it).
+function makeLocalJWT(email: string, expSecondsFromNow = 3600): string {
+  const b64url = (o: unknown) =>
+    btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const payload = { email, exp: Math.floor(Date.now() / 1000) + expSecondsFromNow }
+  return `${b64url({ alg: 'RS256', typ: 'JWT' })}.${b64url(payload)}.sig`
+}
+
+function LocalAuthConsumer() {
+  const { isLoading, accessToken, email, loginLocal } = useAuth()
+  return (
+    <div>
+      <span data-testid="loading">{String(isLoading)}</span>
+      <span data-testid="token">{accessToken ?? ''}</span>
+      <span data-testid="email">{email ?? ''}</span>
+      <button onClick={() => { void loginLocal('admin@example.com', 'pw').catch(() => {}) }}>Local sign in</button>
+    </div>
+  )
+}
+
+function renderLocalAuth() {
+  return render(
+    <AuthProvider>
+      <LocalAuthConsumer />
+    </AuthProvider>,
+  )
+}
+
+describe('AuthProvider — local login', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear()
+    window.localStorage.clear()
+  })
+
+  it('stores the registry token and derives email on a successful loginLocal', async () => {
+    const um = makeUserManager()
+    mockConfigJson(um) // first fetch → /config.json
+    const token = makeLocalJWT('admin@example.com')
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ access_token: token, token_type: 'Bearer', expires_in: 3600 }), { status: 200 }),
+    )
+
+    renderLocalAuth()
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'))
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: /local sign in/i }))
+    })
+
+    await waitFor(() => expect(screen.getByTestId('token').textContent).toBe(token))
+    expect(screen.getByTestId('email').textContent).toBe('admin@example.com')
+    expect(window.sessionStorage.getItem('ai-registry.local_token')).toBe(token)
+  })
+
+  it('does not store a token when loginLocal fails (401)', async () => {
+    const um = makeUserManager()
+    mockConfigJson(um)
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'invalid email or password' }), { status: 401 }),
+    )
+
+    renderLocalAuth()
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'))
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: /local sign in/i }))
+    })
+
+    // Token stays empty; nothing persisted.
+    expect(screen.getByTestId('token').textContent).toBe('')
+    expect(window.sessionStorage.getItem('ai-registry.local_token')).toBeNull()
+  })
+})

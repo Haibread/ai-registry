@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
 
 export default function AdminLayout() {
-  const { logout, user } = useAuth()
+  const { logout, email } = useAuth()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -65,9 +65,9 @@ export default function AdminLayout() {
           <ThemeToggle />
           <span
             className="text-sm text-muted-foreground hidden lg:block truncate max-w-[14rem]"
-            title={user?.profile?.email}
+            title={email}
           >
-            {user?.profile?.email}
+            {email}
           </span>
           <Button variant="ghost" size="sm" onClick={logout}>Sign out</Button>
         </div>
