@@ -115,21 +115,9 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /activity\.spec\.ts/,
     },
-    // Workspaces API surface. No UI yet — the spec drives the live
-    // stack via the admin API and asserts publisher → workspace →
-    // resource → group binding end-to-end.
-    {
-      name: "workspaces",
-      use: {
-        ...devices["Desktop Chrome"],
-        storageState: "e2e/.auth/admin.json",
-      },
-      dependencies: ["setup"],
-      testMatch: /workspaces\.spec\.ts/,
-    },
     // Change-approval workflow: submit / approve / reject / withdraw,
-    // discriminated 409 responses, request + approve deletion. Same
-    // pattern as workspaces — no UI, just the live API surface.
+    // discriminated 409 responses, request + approve deletion — drives the
+    // live API surface directly, no UI.
     {
       name: "change-approval",
       use: {
@@ -152,10 +140,10 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /review-ui\.spec\.ts/,
     },
-    // Phase 7 group-based authorization: proves that author@ /
+    // Publisher-scoped authorization: proves that author@ /
     // reviewer@ / user@ fixture tokens actually carry the right
-    // `groups[]` claim and that RequireWorkspaceWrite +
-    // RequireReviewer enforce the bindings end-to-end. Each test
+    // `groups[]` claim and that RequirePublisherRole +
+    // RequireReviewer enforce the grants end-to-end. Each test
     // switches storage state per-describe block (no project-level
     // default — the spec is intentionally polyglot).
     {

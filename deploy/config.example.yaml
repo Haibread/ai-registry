@@ -47,7 +47,7 @@ log:
   level: "info"
 
 # Optional bootstrap data file. Path to a YAML/JSON document of publishers,
-# workspaces, MCP servers and agents that the server upserts on startup
+# MCP servers and agents that the server upserts on startup
 # before accepting traffic. The `--bootstrap-file` CLI flag overrides
 # this YAML key and the BOOTSTRAP_FILE env var.
 bootstrap_file: ""
@@ -68,10 +68,10 @@ auth:
   # Playwright's storageState() captures localStorage). Never use "local" in
   # production.
   auth_storage: "session"
-  # JWT claim path for the user's group memberships, used by
-  # RequireWorkspaceWrite to gate workspace authorship. Defaults to "groups";
-  # set to e.g. "realm_access.groups" if your IdP nests group memberships
-  # under a different key. See ADR 0002.
+  # JWT claim path for the user's group memberships. Group membership
+  # resolves to publisher-scoped role grants for authorization. Defaults to
+  # "groups"; set to e.g. "realm_access.groups" if your IdP nests group
+  # memberships under a different key. See ADR 0006.
   groups_claim: "groups"
   # Group seeded on boot with a global Reviewer grant (ADR 0006). Members
   # (local group_members or a matching OIDC claim group) can approve/reject

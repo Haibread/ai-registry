@@ -16,7 +16,7 @@ func seedDraftMCPVersion(t *testing.T, ctx context.Context, ns, slug, ver string
 	t.Helper()
 	pubID := insertPublisher(t, ns, ns)
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: slug, Name: slug,
+		PublisherID: pubID, Slug: slug, Name: slug,
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
@@ -312,7 +312,7 @@ func seedDraftAgentVersion(t *testing.T, ctx context.Context, ns, slug, ver stri
 	t.Helper()
 	pubID := insertPublisher(t, ns, ns)
 	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: slug, Name: slug,
+		PublisherID: pubID, Slug: slug, Name: slug,
 	})
 	if err != nil {
 		t.Fatalf("CreateAgent: %v", err)
@@ -635,7 +635,7 @@ func TestVersionPublicReadFilter_HidesPendingAndRejected(t *testing.T) {
 	ctx := context.Background()
 	pubID := insertPublisher(t, "acme", "Acme")
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "weather", Name: "Weather",
+		PublisherID: pubID, Slug: "weather", Name: "Weather",
 	})
 	if err != nil {
 		t.Fatalf("create server: %v", err)

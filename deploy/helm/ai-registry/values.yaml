@@ -34,9 +34,9 @@ server:
   # at runtime without baking this value into the Docker image.
   # Example: ai-registry-web
   oidcClientId: ""
-  # JWT claim path for the user's group memberships, used by
-  # RequireWorkspaceWrite to gate workspace authorship. Empty = server
-  # default ("groups"). Set this to the path your IdP emits (e.g.
+  # JWT claim path for the user's group memberships. Group membership
+  # resolves to publisher-scoped role grants for authorization. Empty =
+  # server default ("groups"). Set this to the path your IdP emits (e.g.
   # "realm_access.groups" for Keycloak realm-mapper deployments).
   authGroupsClaim: ""
   # Reviewer group whose members can approve / reject pending changes

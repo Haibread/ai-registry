@@ -36,7 +36,6 @@ type AgentRow struct {
 type ListAgentsParams struct {
 	PublicOnly     bool
 	Namespace      string
-	WorkspaceID    string // filter by workspace ULID (optional). Applied independently of Namespace.
 	Status         string // filter by status: "draft" | "published" | "deprecated" | "" (all non-deleted)
 	Visibility     string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string
@@ -91,12 +90,6 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
-		argN++
-		countArgN++
-	}
-	if p.WorkspaceID != "" {
-		filterWhere += fmt.Sprintf(" AND a.workspace_id = $%d", argN)
-		filterArgs = append(filterArgs, p.WorkspaceID)
 		argN++
 		countArgN++
 	}
@@ -195,14 +188,13 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 
 	args = append(args, p.Limit)
 	q := fmt.Sprintf(`
-		SELECT a.id, pub.slug AS namespace, w.publisher_id, a.slug, a.name,
+		SELECT a.id, pub.slug AS namespace, a.publisher_id, a.slug, a.name,
 		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
-		JOIN workspaces w ON w.id = a.workspace_id
-		JOIN publishers pub ON pub.id = w.publisher_id
+		JOIN publishers pub ON pub.id = a.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
 		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
@@ -273,8 +265,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		countQ = fmt.Sprintf(`
 			SELECT COUNT(*)
 			FROM agents a
-			JOIN workspaces w ON w.id = a.workspace_id
-			JOIN publishers pub ON pub.id = w.publisher_id
+			JOIN publishers pub ON pub.id = a.publisher_id
 			LEFT JOIN LATERAL (
 			    SELECT av.published_at
 			    FROM agent_versions av
@@ -287,8 +278,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		countQ = fmt.Sprintf(`
 			SELECT COUNT(*)
 			FROM agents a
-			JOIN workspaces w ON w.id = a.workspace_id
-			JOIN publishers pub ON pub.id = w.publisher_id
+			JOIN publishers pub ON pub.id = a.publisher_id
 			%s`, filterWhere)
 	}
 
@@ -307,14 +297,13 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 	defer span.End()
 
 	q := `
-		SELECT a.id, pub.slug, w.publisher_id, a.slug, a.name,
+		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
 		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
-		JOIN workspaces w ON w.id = a.workspace_id
-		JOIN publishers pub ON pub.id = w.publisher_id
+		JOIN publishers pub ON pub.id = a.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
 		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
@@ -371,49 +360,44 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 }
 
 // CreateAgentParams holds the fields needed to insert a new agent.
-// WorkspaceID is required. Handlers that only have a publisher in hand must
-// resolve it via DB.EnsureDefaultWorkspaceID before calling.
+// PublisherID is required — resources are publisher-scoped (ADR 0006).
 type CreateAgentParams struct {
-	WorkspaceID string
+	PublisherID string
 	Slug        string
 	Name        string
 	Description string
 }
 
-// CreateAgent inserts a new agent (draft, private by default).
+// CreateAgent inserts a new agent (draft, private by default). Returns
+// ErrConflict on a duplicate (publisher_id, slug) and ErrNotFound when the
+// publisher_id FK does not resolve.
 func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Agent, error) {
 	ctx, span := startSpan(ctx, "CreateAgent")
 	defer span.End()
 
-	if p.WorkspaceID == "" {
-		return nil, fmt.Errorf("CreateAgent: WorkspaceID is required")
-	}
-
-	var publisherID string
-	if err := db.Pool.QueryRow(ctx,
-		`SELECT publisher_id FROM workspaces WHERE id = $1`, p.WorkspaceID,
-	).Scan(&publisherID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			recordErr(span, ErrNotFound)
-			return nil, ErrNotFound
-		}
-		recordErr(span, err)
-		return nil, fmt.Errorf("resolving workspace publisher: %w", err)
+	if p.PublisherID == "" {
+		return nil, fmt.Errorf("CreateAgent: PublisherID is required")
 	}
 
 	id := NewULID()
 	now := time.Now().UTC()
 
 	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO agents (id, workspace_id, slug, name, description, visibility, status, created_at, updated_at)
+		INSERT INTO agents (id, publisher_id, slug, name, description, visibility, status, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,'private','draft',$6,$6)`,
-		id, p.WorkspaceID, p.Slug, p.Name, p.Description, now,
+		id, p.PublisherID, p.Slug, p.Name, p.Description, now,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			recordErr(span, ErrConflict)
-			return nil, ErrConflict
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505":
+				recordErr(span, ErrConflict)
+				return nil, ErrConflict
+			case "23503":
+				recordErr(span, ErrNotFound)
+				return nil, ErrNotFound
+			}
 		}
 		recordErr(span, err)
 		return nil, fmt.Errorf("creating agent: %w", err)
@@ -421,7 +405,7 @@ func (db *DB) CreateAgent(ctx context.Context, p CreateAgentParams) (*domain.Age
 
 	return &domain.Agent{
 		ID:          id,
-		PublisherID: publisherID,
+		PublisherID: p.PublisherID,
 		Slug:        p.Slug,
 		Name:        p.Name,
 		Description: p.Description,
@@ -816,14 +800,13 @@ func (db *DB) getAgentByID(ctx context.Context, id string) (*AgentRow, error) {
 	defer span.End()
 
 	q := `
-		SELECT a.id, pub.slug, w.publisher_id, a.slug, a.name,
+		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
 		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
 		FROM agents a
-		JOIN workspaces w ON w.id = a.workspace_id
-		JOIN publishers pub ON pub.id = w.publisher_id
+		JOIN publishers pub ON pub.id = a.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
 		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
@@ -900,9 +883,8 @@ func (db *DB) IncrementAgentViewCount(ctx context.Context, namespace, slug strin
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE agents a
 		SET view_count = view_count + 1
-		FROM workspaces w, publishers pub
-		WHERE w.id = a.workspace_id
-		  AND pub.id = w.publisher_id
+		FROM publishers pub
+		WHERE pub.id = a.publisher_id
 		  AND pub.slug = $1 AND a.slug = $2`,
 		namespace, slug,
 	)
@@ -925,9 +907,8 @@ func (db *DB) IncrementAgentCopyCount(ctx context.Context, namespace, slug strin
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE agents a
 		SET copy_count = copy_count + 1
-		FROM workspaces w, publishers pub
-		WHERE w.id = a.workspace_id
-		  AND pub.id = w.publisher_id
+		FROM publishers pub
+		WHERE pub.id = a.publisher_id
 		  AND pub.slug = $1 AND a.slug = $2`,
 		namespace, slug,
 	)

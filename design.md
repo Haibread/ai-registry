@@ -41,14 +41,16 @@ observability strategy, data and API design, and UI/UX specification.
 │                                                                 │
 │  Middleware chain:                                              │
 │  OTel trace → request-id → CORS → rate-limit → auth guard       │
-│  → workspace-write / reviewer guards (per route)                │
+│  → publisher-role / reviewer guards (per route)                 │
 │                                                                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐   │
 │  │  /api/v1/    │  │  /v0/ (MCP)  │  │  /.well-known/     │   │
 │  │  publishers/ │  │  servers     │  │  oauth-protected-  │   │
-│  │  ↳ workspaces│  │  publish     │  │  resource          │   │
-│  │  mcp/*       │  └──────────────┘  │  agent-card.json   │   │
-│  │  agents/*    │                    └────────────────────┘   │
+│  │  ↳ grants    │  │  publish     │  │  resource          │   │
+│  │  groups/     │  └──────────────┘  │  agent-card.json   │   │
+│  │  users/      │                    │  jwks.json         │   │
+│  │  mcp/*       │                    └────────────────────┘   │
+│  │  agents/*    │                                              │
 │  │  review-     │                                              │
 │  │   queue      │                                              │
 │  │  audit       │                                              │
@@ -64,12 +66,13 @@ observability strategy, data and API design, and UI/UX specification.
 │     PostgreSQL       │  │   Keycloak (IdP)     │
 │                      │  │                      │
 │  publishers          │  │  OIDC / OAuth 2.1    │
-│  workspaces          │  │  JWKS endpoint       │
-│  mcp_servers         │  │  realm role: admin   │
-│  mcp_server_versions │  │  groups: workspace   │
-│  agents              │  │    bindings + the    │
-│  agent_versions      │  │    reviewer group    │
-│  audit_log           │  └──────────────────────┘
+│  users / groups      │  │  JWKS endpoint       │
+│  role_grants         │  │  realm role: admin   │
+│  mcp_servers         │  │  groups: membership  │
+│  mcp_server_versions │  │    + the reviewer    │
+│  agents              │  │    group             │
+│  agent_versions      │  └──────────────────────┘
+│  audit_log           │
 │  reports             │
 │                      │  ┌──────────────────────┐
 └──────────────────────┘  │   OTel Collector     │
@@ -94,16 +97,17 @@ Browser → SPA (TanStack Query) → GET /api/v1/mcp/servers
   → OTel middleware (end span, record latency metric)
 ```
 
-**Workspace write (workspace member submits a version for review)**
+**Publisher write (Editor submits a version for review)**
 ```
-Admin SPA (oidc-client-ts session) → POST .../versions/{v}/submit
+Admin SPA (oidc-client-ts or local session) → POST .../versions/{v}/submit
   → OTel middleware (start span)
   → auth middleware: validate JWT (issuer, signature, audience)
-  → RequireWorkspaceWrite middleware:
-       • read groups from JWT claim configured by AUTH_GROUPS_CLAIM
-       • lookup the workspace's group_name via the entity's
-         (publisher_slug, server_slug) → workspace_id chain
-       • allow if claims contain group_name OR realm role "admin"
+  → RequirePublisherRole(Editor) middleware:
+       • resolve the target publisher from the {namespace} path segment
+       • resolve the caller's effective role on that publisher from
+         role_grants (direct user grant or via a group the JWT lists),
+         falling back to claim groups when no users row is provisioned
+       • allow if the effective role satisfies Editor OR Server Admin
   → handler: domain.TransitionToPendingReview(version, reason="submit")
     → Postgres UPDATE on review_state, increment revision (child span)
   → audit log write (child span)
@@ -247,21 +251,25 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production
 ### 3.1 Entity-Relationship Diagram
 
 ```
-publishers ──< workspaces ──< mcp_servers ──< mcp_server_versions
-                          │
-                          └─< agents       ──< agent_versions
+publishers ──< mcp_servers ──< mcp_server_versions
+           │
+           └─< agents      ──< agent_versions
+
+publishers ──< role_grants >── users / groups   (authorization, ADR 0006)
+groups     ──< group_members >── users
 
 audit_log (polymorphic: resource_type + resource_id, includes synthetic
            bootstrap-loader events)
 reports (polymorphic: target_type + target_id; admin triages)
 ```
 
-Each workspace belongs to exactly one publisher. Every MCP server / agent
-belongs to exactly one workspace; bare publisher → entry FKs no longer
-exist (migration `000008` introduced workspaces; `000011` finalised the
-pivot — drops `publisher_id` from resources and swaps the unique key to
-`(workspace_id, slug)`). A publisher gets a lazily-created `default`
-workspace on the first MCP/agent create when no `workspace:` is specified.
+Every MCP server / agent belongs to exactly one publisher. The workspace
+layer (ADR 0001/0002, migrations `000008`–`000011`) was removed by
+migration `000013` (ADR 0006): `publisher_id` is restored `NOT NULL` on
+resources, the `(publisher_id, slug)` unique key is back, and the
+`workspaces` table is dropped. Authorization is now publisher-scoped
+RBAC — `role_grants` ties a role (Viewer/Editor/Reviewer/Admin) to a user
+or group on a publisher.
 
 ### 3.2 Key Table Schemas
 
@@ -275,21 +283,18 @@ verified    BOOLEAN NOT NULL DEFAULT false,
 created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 
--- workspaces (introduced in migration 000008; group_name added by 000009)
-id           TEXT PRIMARY KEY,         -- ULID
-publisher_id TEXT NOT NULL REFERENCES publishers(id),
-slug         TEXT NOT NULL,
-name         TEXT NOT NULL,
-description  TEXT,
-contact      TEXT,
-group_name   TEXT,                     -- Keycloak group; NULL = admin-only
-created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-UNIQUE (publisher_id, slug)
+-- role_grants (authorization, ADR 0006 / migration 000012)
+id             TEXT PRIMARY KEY,       -- ULID
+publisher_id   TEXT REFERENCES publishers(id),  -- NULL = global (server-wide) grant
+principal_type TEXT NOT NULL,          -- 'user' | 'group'
+principal_id   TEXT NOT NULL,          -- users.id or groups.id
+role           TEXT NOT NULL,          -- viewer | editor | reviewer | admin
+source         TEXT NOT NULL,          -- 'api' | 'seed'
+created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 
 -- mcp_servers
 id           TEXT PRIMARY KEY,         -- ULID
-workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+publisher_id TEXT NOT NULL REFERENCES publishers(id),
 slug         TEXT NOT NULL,
 name         TEXT NOT NULL,
 description  TEXT,
@@ -300,9 +305,9 @@ visibility   TEXT NOT NULL DEFAULT 'private',  -- private | public
 status       TEXT NOT NULL DEFAULT 'draft',    -- draft | published | deprecated
 created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-UNIQUE (workspace_id, slug)
--- Slug uniqueness is workspace-scoped, not publisher-scoped, so two
--- workspaces under the same publisher can each own a `files` server.
+UNIQUE (publisher_id, slug)
+-- Slug uniqueness is publisher-scoped: two different publishers can each
+-- own a `files` server, but a publisher cannot own two.
 
 -- mcp_server_versions
 id                  TEXT PRIMARY KEY,  -- ULID
@@ -339,7 +344,7 @@ UNIQUE (server_id, version)
 id            BIGSERIAL PRIMARY KEY,
 actor_subject TEXT NOT NULL,           -- OIDC sub or "system:bootstrap"
 actor_email   TEXT,
-action        TEXT NOT NULL,           -- e.g. mcp_server.publish, workspace.created
+action        TEXT NOT NULL,           -- e.g. mcp_server.publish, publisher.created
 resource_type TEXT NOT NULL,
 resource_id   TEXT NOT NULL,
 resource_ns   TEXT,                    -- publisher slug for scoped resources
@@ -348,8 +353,9 @@ metadata      JSONB,
 created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 ```
 
-Indexes: `(workspace_id, slug)` on entry tables, `(publisher_id, slug)` on
-workspaces, `(server_id, version)` on versions, `status`, `visibility`,
+Indexes: `(publisher_id, slug)` on entry tables, `(server_id, version)` on
+versions, `(publisher_id, principal_type, principal_id, role)` on
+`role_grants`, `status`, `visibility`,
 `review_state` (partial index `WHERE review_state = 'pending_review'`)
 to make the review queue scan cheap. Full-text index on
 `name || ' ' || description` via `tsvector`.
@@ -412,8 +418,8 @@ row after `published_at` is set.
         └──────────┘    moves them back to pending_review.
 ```
 
-Workspace group members can drive `none → pending_review` and
-`pending_review → none` (withdraw). Only the reviewer group can drive
+Publisher Editors can drive `none → pending_review` and
+`pending_review → none` (withdraw). Only Reviewers can drive
 `pending_review → none` via approve (which also runs the publish-axis
 transition) or `pending_review → rejected`. Every transition increments
 the row's `revision` counter, so concurrent edits surface a discriminated
@@ -454,7 +460,7 @@ Response:
 | Type slug | Status | Meaning |
 |-----------|--------|---------|
 | `not-found` | 404 | Entity does not exist or is not visible |
-| `forbidden` | 403 | Authenticated but lacks `registry:admin`, the workspace's group, or the reviewer group (depending on the route) |
+| `forbidden` | 403 | Authenticated but lacks the required role on the target publisher (Editor/Reviewer/Admin), Server Admin, or the reviewer group (depending on the route) |
 | `unauthorized` | 401 | Missing or invalid bearer token |
 | `validation-error` | 422 | Request body failed schema validation; `errors[]` extension field |
 | `conflict` | 409 | Duplicate slug or version |
@@ -600,7 +606,8 @@ redirect to the IdP authorize endpoint and a callback flow handled by
 │ Review   │                                           │
 │   queue  │  ⓘ                                        │
 │ Publishers│                                          │
-│ Workspaces│ (Phase 7 — nested under each publisher) │
+│ Groups   │                                           │
+│ Users    │                                           │
 │ MCP      │                                           │
 │  Servers │                                           │
 │ Agents   │                                           │
@@ -623,20 +630,13 @@ redirect to the IdP authorize endpoint and a callback flow handled by
   on Escape, on backdrop click, on a nav-link tap, and on
   `location.pathname` change. Body scroll is locked while open.
 
-**Workspaces section** (publisher detail page):
+**Grants section** (publisher detail page):
 - Renders below the publisher Edit / Delete actions, before the MCP
   servers and agents tables.
-- Table columns: chevron toggle · slug · name · group · updated · row
-  actions (Edit, Delete workspace).
-- Each row is expandable: clicking the chevron mounts an inline
-  `WorkspaceResources` panel that fetches the workspace's MCP servers
-  and agents in parallel via the per-workspace list endpoints. Each
-  result row in that panel has a Manage shortcut to the entry admin
-  page.
-- "New workspace" creates a row in-place; the row's "Edit" action
-  opens a centered modal dialog (`role="dialog"`, `aria-modal`,
-  Escape closes, body scroll locked, backdrop dismiss) so the form
-  doesn't push the table down.
+- Lists the publisher's role grants — principal (user/group) · role ·
+  source — with a "Grant role" form to add a Viewer/Editor/Reviewer/Admin
+  grant to a user or group and a per-row Revoke action. Backed by the
+  `/api/v1/publishers/{slug}/grants` endpoints (ADR 0006).
 
 **Review queue page** (`/admin/review`):
 - Reviewer-only (gated by `RequireReviewer`; non-reviewers see a 403
@@ -673,7 +673,7 @@ enough that `FormData` parsing inside the submit handler suffices.
 
 **Toast notifications** (`sonner`, mounted at the app root):
 - Triggered on every change-approval mutation (submit, withdraw,
-  approve, reject, request deletion) and on workspace CRUD.
+  approve, reject, request deletion) and on grant/group/user CRUD.
 - Position: top-right; rich colors; close button.
 - The cache for the sidebar's review-queue badge is invalidated
   alongside change-approval toasts so the count stays in sync.
@@ -690,7 +690,7 @@ enough that `FormData` parsing inside the submit handler suffices.
 | `Table` (shadcn) | `components/ui/table.tsx` | Wraps responsive horizontal scroll; columns hide via Tailwind breakpoints |
 | `InstallCommand` / `ConfigGenerator` | `components/{ui,mcp}/*.tsx` | Code blocks + copy |
 | `AdminSidebar` | `components/layout/admin-sidebar.tsx` | Includes the live review-queue badge hook |
-| `WorkspacesSection` | `pages/admin/publishers/workspaces-section.tsx` | Expandable rows + modal Edit dialog |
+| `GrantsSection` | `components/admin/grants-section.tsx` | Lists/creates/revokes publisher role grants |
 | `VersionsSection` | `components/admin/versions-section.tsx` | Per-version submit / withdraw / resubmit |
 | `RequestDeletionButton` | `components/admin/request-deletion-button.tsx` | Submits a deletion review |
 | `DeleteButton` | `components/admin/delete-button.tsx` | Quiet outline + window.confirm gate |

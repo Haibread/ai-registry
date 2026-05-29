@@ -481,17 +481,12 @@ func (h *V0MCPHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 			v0InternalError(w, r, pubErr)
 			return
 		}
-		wsID, wsErr := h.db.EnsureDefaultWorkspaceID(r.Context(), publisherID)
-		if wsErr != nil {
-			v0InternalError(w, r, wsErr)
-			return
-		}
 		repoURL := ""
 		if p.Repository != nil {
 			repoURL = p.Repository.URL
 		}
 		newSrv, createErr := h.db.CreateMCPServer(r.Context(), store.CreateMCPServerParams{
-			WorkspaceID: wsID,
+			PublisherID: publisherID,
 			Slug:        slug,
 			Name:        slug,
 			Description: p.Description,

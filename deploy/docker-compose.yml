@@ -63,7 +63,7 @@ services:
       # the realm must carry aud=ai-registry-server; the realm's
       # ai-registry-server-audience client scope adds this automatically.
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ai-registry-server}
-      # Workspace + change-approval auth knobs (see ADRs 0002 / 0003).
+      # RBAC + change-approval auth knobs (see ADRs 0006 / 0003).
       # Defaults match the server's built-in fallbacks; override in .env
       # when binding to a non-default IdP claim or reviewer group.
       AUTH_GROUPS_CLAIM: ${AUTH_GROUPS_CLAIM:-groups}

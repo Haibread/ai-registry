@@ -57,10 +57,10 @@ func TestDevRealm_Phase7Bindings(t *testing.T) {
 		t.Errorf("realm name = %q, want %q", realm.Realm, "ai-registry")
 	}
 
-	// Groups must match the workspace group_name bindings in
-	// deploy/bootstrap.example.yaml plus the default
-	// AUTH_REVIEWER_GROUP. Bumping a binding here means bumping the
-	// bootstrap YAML in the same change.
+	// Groups the e2e fixtures rely on: the author/reviewer users join
+	// these in the realm, and the phase7 flow grants the matching
+	// in-registry group a role (ADR 0006). Plus the default
+	// AUTH_REVIEWER_GROUP for the review queue.
 	wantGroups := []string{
 		"anthropic-core",
 		"anthropic-labs",
@@ -78,7 +78,7 @@ func TestDevRealm_Phase7Bindings(t *testing.T) {
 	}
 
 	// Both browser-facing clients must emit `groups` on the access
-	// token. RequireWorkspaceWrite and RequireReviewer read this claim;
+	// token. RequirePublisherRole and RequireReviewer read this claim;
 	// drop the mapper and every non-admin write returns 403.
 	wantMapperOn := []string{"ai-registry-web", "ai-registry-cli"}
 	for _, clientID := range wantMapperOn {

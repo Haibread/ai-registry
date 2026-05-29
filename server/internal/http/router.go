@@ -87,7 +87,6 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	v0H := handlers.NewV0MCPHandlers(deps.DB, deps.DB)
 	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB, deps.Metrics)
 	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
-	wsH := handlers.NewWorkspaceHandlers(deps.DB, deps.DB)
 	revH := handlers.NewReviewHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
@@ -233,7 +232,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		})
 
 		// Review queue (reviewer-gated, lists pending versions and
-		// pending deletions across all workspaces).
+		// pending deletions across all publishers).
 		r.With(requireReviewer).Get("/review-queue", revH.ListReviewQueue)
 
 		// Publishers
@@ -243,18 +242,6 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
 			r.With(auth.RequireAdmin).Patch("/{slug}", pubH.PatchPublisher)
 			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
-
-			// Workspaces under a publisher.
-			r.Route("/{publisher_slug}/workspaces", func(r chi.Router) {
-				r.With(publicRL).Get("/", wsH.ListWorkspaces)
-				r.With(auth.RequireAdmin).Post("/", wsH.CreateWorkspace)
-				r.With(publicRL).Get("/{workspace_slug}", wsH.GetWorkspace)
-				r.With(auth.RequireAdmin).Patch("/{workspace_slug}", wsH.PatchWorkspace)
-				r.With(auth.RequireAdmin).Delete("/{workspace_slug}", wsH.DeleteWorkspace)
-				// Workspace-scoped resource lists.
-				r.With(publicRL).Get("/{workspace_slug}/servers", wsH.ListWorkspaceServers)
-				r.With(publicRL).Get("/{workspace_slug}/agents", wsH.ListWorkspaceAgents)
-			})
 
 			// Per-publisher role grants (ADR 0006). Publisher Admin or Server
 			// Admin; RequirePublisherRole resolves {slug} → publisher.
@@ -272,14 +259,13 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", mcpH.GetServer)
-				// Edits delegate to RequireWorkspaceWrite so that publisher
-				// group members can author content for their workspace.
+				// Edits require Editor on the owning publisher (ADR 0006).
 				// Admin override is built in.
 				r.With(requireMCPServerNS).Patch("/", mcpH.PatchServer)
 				// Legacy direct delete is admin-only: it bypasses the
 				// change-approval workflow (deletion-request /
-				// deletion-request/approve). Workspace group members
-				// must use the workflow path; admins keep this as a
+				// deletion-request/approve). Publisher Editors must use
+				// the workflow path; admins keep this as a
 				// force-delete escape hatch.
 				r.With(auth.RequireAdmin).Delete("/", mcpH.DeleteServer)
 				r.With(requireMCPServerNS).Post("/deprecate", mcpH.DeprecateServer)

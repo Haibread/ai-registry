@@ -14,7 +14,6 @@ import { GrantsSection } from '@/components/admin/grants-section'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
-import { WorkspacesSection } from './workspaces-section'
 
 export default function AdminPublisherDetail() {
   const { slug } = useParams<{ slug: string }>()
@@ -197,10 +196,6 @@ export default function AdminPublisherDetail() {
       <Separator />
 
       <GrantsSection publisherSlug={slug!} />
-
-      <Separator />
-
-      <WorkspacesSection publisherSlug={slug!} />
 
       <Separator />
 

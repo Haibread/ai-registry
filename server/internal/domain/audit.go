@@ -33,11 +33,6 @@ const (
 	ActionPublisherUpdated AuditAction = "publisher.updated"
 	ActionPublisherDeleted AuditAction = "publisher.deleted"
 
-	// Workspace actions
-	ActionWorkspaceCreated AuditAction = "workspace.created"
-	ActionWorkspaceUpdated AuditAction = "workspace.updated"
-	ActionWorkspaceDeleted AuditAction = "workspace.deleted"
-
 	// Change-approval workflow actions.
 	ActionMCPVersionSubmitted  AuditAction = "mcp_server_version.submitted"
 	ActionMCPVersionWithdrawn  AuditAction = "mcp_server_version.withdrawn"

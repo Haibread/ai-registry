@@ -24,7 +24,7 @@ type Config struct {
 	Auth     AuthConfig
 
 	// BootstrapFile is the optional path to a YAML/JSON file containing
-	// initial registry data (publishers, workspaces, MCP servers, agents)
+	// initial registry data (publishers, MCP servers, agents)
 	// that the server upserts on startup before accepting traffic. Empty
 	// disables bootstrap loading. Settable via env (BOOTSTRAP_FILE), YAML
 	// (top-level `bootstrap_file`), or the `--bootstrap-file` CLI flag —

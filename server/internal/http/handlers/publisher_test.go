@@ -334,7 +334,7 @@ func TestPublisherHandler_Delete_ConflictWithActiveEntries(t *testing.T) {
 	// Create publisher with an MCP server.
 	pubID := seedPublisher(t, "busy-pub", "Busy")
 	if _, err := testDB.CreateMCPServer(t.Context(), store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID),
+		PublisherID: pubID,
 		Slug:        "server",
 		Name:        "Server",
 	}); err != nil {

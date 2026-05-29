@@ -23,7 +23,7 @@ func TestCreateAndGetAgent(t *testing.T) {
 	pubID := insertPublisher(t, "agent-ns", "Agent Corp")
 
 	agent, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID),
+		PublisherID: pubID,
 		Slug:        "my-agent",
 		Name:        "My Agent",
 		Description: "A test agent",
@@ -61,7 +61,7 @@ func TestCreateAgent_ConflictOnDuplicateSlug(t *testing.T) {
 	ctx := context.Background()
 	pubID := insertPublisher(t, "agent-ns2", "Agent Corp 2")
 
-	params := store.CreateAgentParams{WorkspaceID: defaultWS(t, pubID), Slug: "dup-agent", Name: "Dup"}
+	params := store.CreateAgentParams{PublisherID: pubID, Slug: "dup-agent", Name: "Dup"}
 	if _, err := sharedDB.CreateAgent(ctx, params); err != nil {
 		t.Fatalf("first create: %v", err)
 	}
@@ -71,42 +71,30 @@ func TestCreateAgent_ConflictOnDuplicateSlug(t *testing.T) {
 	}
 }
 
-// TestCreateAgent_SlugUniquenessIsPerWorkspace mirrors the MCP-side test —
-// after the 000011 migration, the unique key is (workspace_id, slug), so
-// two workspaces under one publisher may each expose an agent with the
-// same slug, but a duplicate within one workspace still conflicts.
-func TestCreateAgent_SlugUniquenessIsPerWorkspace(t *testing.T) {
+// TestCreateAgent_SlugUniquenessIsPerPublisher verifies that after workspaces
+// are removed (migration 000013), the unique key is (publisher_id, slug): two
+// different publishers may each expose an agent with the same slug, but a
+// duplicate within one publisher conflicts.
+func TestCreateAgent_SlugUniquenessIsPerPublisher(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
-	pubID := insertPublisher(t, "agent-multi", "Agent Multi")
-
-	wsA, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
-		PublisherID: pubID, Slug: "team-a", Name: "Team A",
-	})
-	if err != nil {
-		t.Fatalf("create team-a: %v", err)
-	}
-	wsB, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
-		PublisherID: pubID, Slug: "team-b", Name: "Team B",
-	})
-	if err != nil {
-		t.Fatalf("create team-b: %v", err)
-	}
+	pubA := insertPublisher(t, "agent-pub-a", "Agent Pub A")
+	pubB := insertPublisher(t, "agent-pub-b", "Agent Pub B")
 
 	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: wsA.ID, Slug: "planner", Name: "Planner A",
+		PublisherID: pubA, Slug: "planner", Name: "Planner A",
 	}); err != nil {
-		t.Fatalf("create planner in team-a: %v", err)
+		t.Fatalf("create planner in pub-a: %v", err)
 	}
 	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: wsB.ID, Slug: "planner", Name: "Planner B",
+		PublisherID: pubB, Slug: "planner", Name: "Planner B",
 	}); err != nil {
-		t.Errorf("create planner in team-b should succeed (per-workspace slug), got %v", err)
+		t.Errorf("create planner in pub-b should succeed (per-publisher slug), got %v", err)
 	}
 	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: wsA.ID, Slug: "planner", Name: "Planner A dup",
+		PublisherID: pubA, Slug: "planner", Name: "Planner A dup",
 	}); err != store.ErrConflict {
-		t.Errorf("duplicate planner in team-a: expected ErrConflict, got %v", err)
+		t.Errorf("duplicate planner in pub-a: expected ErrConflict, got %v", err)
 	}
 }
 
@@ -116,7 +104,7 @@ func TestGetAgent_NotFoundWhenPrivateAndPublicOnly(t *testing.T) {
 	pubID := insertPublisher(t, "agent-ns3", "Agent Corp 3")
 
 	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "priv-agent", Name: "Private",
+		PublisherID: pubID, Slug: "priv-agent", Name: "Private",
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -133,7 +121,7 @@ func TestAgentVersionLifecycle(t *testing.T) {
 	pubID := insertPublisher(t, "lifecycle-agent-ns", "Lifecycle Agent Corp")
 
 	agent, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "lifecycle-agent", Name: "Lifecycle Agent",
+		PublisherID: pubID, Slug: "lifecycle-agent", Name: "Lifecycle Agent",
 	})
 	if err != nil {
 		t.Fatalf("CreateAgent: %v", err)
@@ -196,7 +184,7 @@ func TestGetLatestPublishedAgentVersion(t *testing.T) {
 	pubID := insertPublisher(t, "latest-agent-ns", "Latest Agent Corp")
 
 	agent, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "latest-agent", Name: "Latest Agent",
+		PublisherID: pubID, Slug: "latest-agent", Name: "Latest Agent",
 	})
 
 	// No published version yet.
@@ -237,13 +225,13 @@ func TestListAgents_Filtering(t *testing.T) {
 
 	// Create a public agent under pub1.
 	ag1, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pub1), Slug: "public-agent", Name: "Public Agent",
+		PublisherID: pub1, Slug: "public-agent", Name: "Public Agent",
 	})
 	sharedDB.SetAgentVisibility(ctx, ag1.ID, domain.VisibilityPublic)
 
 	// Create a private agent under pub2.
 	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pub2), Slug: "private-agent", Name: "Private Agent",
+		PublisherID: pub2, Slug: "private-agent", Name: "Private Agent",
 	})
 
 	// PublicOnly=true should return only public entries.
@@ -275,7 +263,7 @@ func TestDeprecateAgent(t *testing.T) {
 	pubID := insertPublisher(t, "dep-agent-ns", "Deprecate Agent NS")
 
 	agent, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "dep-agent", Name: "Dep Agent",
+		PublisherID: pubID, Slug: "dep-agent", Name: "Dep Agent",
 	})
 
 	// Can't deprecate a draft agent.
@@ -307,7 +295,7 @@ func TestListAgentVersions(t *testing.T) {
 	pubID := insertPublisher(t, "listver-agent-ns", "ListVer Agent NS")
 
 	agent, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "listver-agent", Name: "ListVer Agent",
+		PublisherID: pubID, Slug: "listver-agent", Name: "ListVer Agent",
 	})
 
 	for _, v := range []string{"1.0.0", "1.1.0", "2.0.0"} {
@@ -332,7 +320,7 @@ func TestGetAgentVersion_NotFound(t *testing.T) {
 	pubID := insertPublisher(t, "getaver-ns", "GetAgentVer NS")
 
 	agent, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "getaver-agent", Name: "GetAgentVer Agent",
+		PublisherID: pubID, Slug: "getaver-agent", Name: "GetAgentVer Agent",
 	})
 
 	_, err := sharedDB.GetAgentVersion(ctx, agent.ID, "9.9.9", false)
@@ -347,7 +335,7 @@ func TestSetAgentVisibility(t *testing.T) {
 	pubID := insertPublisher(t, "avis-ns", "AgentVis NS")
 
 	agent, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "avis-agent", Name: "AgentVis Agent",
+		PublisherID: pubID, Slug: "avis-agent", Name: "AgentVis Agent",
 	})
 
 	// Set to public.
@@ -383,11 +371,11 @@ func TestListAgents_SearchQuery(t *testing.T) {
 	pubID := insertPublisher(t, "asearch-ns", "AgentSearch NS")
 
 	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "alpha-agent", Name: "AlphaSearch Agent",
+		PublisherID: pubID, Slug: "alpha-agent", Name: "AlphaSearch Agent",
 		Description: "Unique alpha description for agent search test",
 	})
 	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "beta-agent", Name: "BetaOther Agent",
+		PublisherID: pubID, Slug: "beta-agent", Name: "BetaOther Agent",
 		Description: "Completely different beta description",
 	})
 
@@ -412,10 +400,10 @@ func TestListAgents_NamespaceFilter(t *testing.T) {
 	pub2 := insertPublisher(t, "ansfilt-ns2", "AgentNS Filter 2")
 
 	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pub1), Slug: "agent-in-ns1", Name: "Agent In NS1",
+		PublisherID: pub1, Slug: "agent-in-ns1", Name: "Agent In NS1",
 	})
 	sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pub2), Slug: "agent-in-ns2", Name: "Agent In NS2",
+		PublisherID: pub2, Slug: "agent-in-ns2", Name: "Agent In NS2",
 	})
 
 	rows, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{
@@ -449,9 +437,9 @@ func TestListAgents_FilterByStatus(t *testing.T) {
 	ctx := context.Background()
 	pubID := insertPublisher(t, "ag-status-ns", "Agent Status NS")
 
-	ag1, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pubID), Slug: "ag-status-draft", Name: "Draft Agent"})
-	ag2, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pubID), Slug: "ag-status-published", Name: "Published Agent"})
-	ag3, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pubID), Slug: "ag-status-deprecated", Name: "Deprecated Agent"})
+	ag1, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-status-draft", Name: "Draft Agent"})
+	ag2, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-status-published", Name: "Published Agent"})
+	ag3, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-status-deprecated", Name: "Deprecated Agent"})
 
 	if _, err := sharedDB.Pool.Exec(ctx, "UPDATE agents SET status=$1 WHERE id=$2", "published", ag2.ID); err != nil {
 		t.Fatalf("setting published status: %v", err)
@@ -490,9 +478,9 @@ func TestListAgents_FilterByVisibility(t *testing.T) {
 	ctx := context.Background()
 	pubID := insertPublisher(t, "ag-vis-filter-ns", "Agent Vis Filter NS")
 
-	ag1, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pubID), Slug: "ag-vf-public-1", Name: "Public Agent 1"})
-	ag2, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pubID), Slug: "ag-vf-public-2", Name: "Public Agent 2"})
-	_, _ = sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pubID), Slug: "ag-vf-private", Name: "Private Agent"})
+	ag1, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-vf-public-1", Name: "Public Agent 1"})
+	ag2, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-vf-public-2", Name: "Public Agent 2"})
+	_, _ = sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag-vf-private", Name: "Private Agent"})
 
 	for _, id := range []string{ag1.ID, ag2.ID} {
 		if _, err := sharedDB.Pool.Exec(ctx, "UPDATE agents SET visibility=$1 WHERE id=$2", "public", id); err != nil {
@@ -532,11 +520,11 @@ func TestListAgents_FilterCombined(t *testing.T) {
 	pub2 := insertPublisher(t, "ag-comb-ns2", "Agent Combined NS2")
 
 	// ns1: one public+published, one public+draft, one private+published
-	agA, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pub1), Slug: "ag-comb-a", Name: "Comb A"})
-	agB, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pub1), Slug: "ag-comb-b", Name: "Comb B"})
-	agC, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pub1), Slug: "ag-comb-c", Name: "Comb C"})
+	agA, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pub1, Slug: "ag-comb-a", Name: "Comb A"})
+	agB, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pub1, Slug: "ag-comb-b", Name: "Comb B"})
+	agC, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pub1, Slug: "ag-comb-c", Name: "Comb C"})
 	// ns2: one public+published
-	agD, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{WorkspaceID: defaultWS(t, pub2), Slug: "ag-comb-d", Name: "Comb D"})
+	agD, _ := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pub2, Slug: "ag-comb-d", Name: "Comb D"})
 
 	type update struct{ id, col, val string }
 	for _, u := range []update{
@@ -580,7 +568,7 @@ func TestListAgents_TotalCount(t *testing.T) {
 	// Create 3 agents.
 	for i := range 3 {
 		sharedDB.CreateAgent(ctx, store.CreateAgentParams{ //nolint:errcheck
-			WorkspaceID: defaultWS(t, pubID),
+			PublisherID: pubID,
 			Slug:        fmt.Sprintf("atc-ag-%d", i),
 			Name:        fmt.Sprintf("AgentTotalCount %d", i),
 		})
@@ -615,7 +603,7 @@ func TestUpdateAgent(t *testing.T) {
 	pubID := insertPublisher(t, "ag-update-pub", "Update Pub")
 
 	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID),
+		PublisherID: pubID,
 		Slug:        "update-agent",
 		Name:        "Original Agent",
 		Description: "Original description",
@@ -654,7 +642,7 @@ func TestDeleteAgent(t *testing.T) {
 	pubID := insertPublisher(t, "ag-del-pub", "Delete Pub")
 
 	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID),
+		PublisherID: pubID,
 		Slug:        "del-agent",
 		Name:        "Delete Me",
 	})
@@ -724,7 +712,7 @@ func TestIncrementAgentViewCount(t *testing.T) {
 	pubID := insertPublisher(t, "view-ns", "View Corp")
 
 	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "view-agent", Name: "View Agent",
+		PublisherID: pubID, Slug: "view-agent", Name: "View Agent",
 	}); err != nil {
 		t.Fatalf("CreateAgent: %v", err)
 	}
@@ -780,7 +768,7 @@ func TestIncrementAgentCopyCount(t *testing.T) {
 	pubID := insertPublisher(t, "copy-ns", "Copy Corp")
 
 	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "copy-agent", Name: "Copy Agent",
+		PublisherID: pubID, Slug: "copy-agent", Name: "Copy Agent",
 	}); err != nil {
 		t.Fatalf("CreateAgent: %v", err)
 	}

@@ -586,12 +586,14 @@ From [ADR 0003](docs/adr/0003-change-approval-workflow.md):
 - **0003-F7.** Diff view in the admin UI between revisions.
 - **0003-F8.** Cleanup of long-abandoned `rejected` versions.
 
-### Phase 8 — Publisher-scoped RBAC, local accounts, remove workspaces 🔜
+### Phase 8 — Publisher-scoped RBAC, local accounts, remove workspaces ✅
 ([ADR 0006](docs/adr/0006-publisher-scoped-rbac.md))
 
 - **Remove workspaces**: resources go back to publisher-scoped
-  (`publisher_id` restored, `workspace_id` + `workspaces` dropped, `/v0/`
-  loses the workspace segment with 301s from the old paths).
+  (`publisher_id` restored and `NOT NULL`, `(publisher_id, slug)`
+  uniqueness restored, `workspace_id` + `workspaces` dropped in migration
+  `000013`; the `/v0/` wire format is publisher-scoped again with no
+  workspace segment).
 - **RBAC**: `users`, `groups`, `group_members`, `role_grants` tables; roles
   Viewer / Editor / Reviewer / Admin granted to users or groups per publisher
   (Editor and Reviewer independent). Server Admin via claim or local flag.

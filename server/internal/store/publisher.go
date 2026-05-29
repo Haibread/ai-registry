@@ -218,7 +218,7 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 	var mcpCount, agentCount int
 	if err := tx.QueryRow(ctx,
 		`SELECT COUNT(*) FROM mcp_servers
-		  WHERE workspace_id IN (SELECT id FROM workspaces WHERE publisher_id=$1)
+		  WHERE publisher_id=$1
 		    AND status != 'deleted'`,
 		publisherID).Scan(&mcpCount); err != nil {
 		recordErr(span, err)
@@ -226,7 +226,7 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 	}
 	if err := tx.QueryRow(ctx,
 		`SELECT COUNT(*) FROM agents
-		  WHERE workspace_id IN (SELECT id FROM workspaces WHERE publisher_id=$1)
+		  WHERE publisher_id=$1
 		    AND status != 'deleted'`,
 		publisherID).Scan(&agentCount); err != nil {
 		recordErr(span, err)
@@ -244,7 +244,7 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 		`DELETE FROM mcp_server_versions
 		 WHERE server_id IN (
 		     SELECT id FROM mcp_servers
-		      WHERE workspace_id IN (SELECT id FROM workspaces WHERE publisher_id=$1)
+		      WHERE publisher_id=$1
 		        AND status='deleted'
 		 )`,
 		publisherID); err != nil {
@@ -253,7 +253,7 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 	}
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM mcp_servers
-		  WHERE workspace_id IN (SELECT id FROM workspaces WHERE publisher_id=$1)
+		  WHERE publisher_id=$1
 		    AND status='deleted'`,
 		publisherID); err != nil {
 		recordErr(span, err)
@@ -263,7 +263,7 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 		`DELETE FROM agent_versions
 		 WHERE agent_id IN (
 		     SELECT id FROM agents
-		      WHERE workspace_id IN (SELECT id FROM workspaces WHERE publisher_id=$1)
+		      WHERE publisher_id=$1
 		        AND status='deleted'
 		 )`,
 		publisherID); err != nil {
@@ -272,25 +272,13 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 	}
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM agents
-		  WHERE workspace_id IN (SELECT id FROM workspaces WHERE publisher_id=$1)
+		  WHERE publisher_id=$1
 		    AND status='deleted'`,
 		publisherID); err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("purging tombstoned agents: %w", err)
 	}
 
-	// Purge any workspaces owned by this publisher. After the resource
-	// purges above the workspaces are guaranteed empty (the active-count
-	// check earlier ensured no active resource holds a workspace_id FK,
-	// and tombstoned ones were just deleted). The workspace → publisher
-	// FK is also ON DELETE RESTRICT, so this must run before the
-	// publisher delete: publisher deletion is a multi-step cleanup.
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM workspaces WHERE publisher_id=$1`,
-		publisherID); err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("purging workspaces: %w", err)
-	}
 
 	tag, err := tx.Exec(ctx, `DELETE FROM publishers WHERE id=$1`, publisherID)
 	if err != nil {

@@ -445,80 +445,6 @@ export interface paths {
         patch: operations["patchPublisher"];
         trace?: never;
     };
-    "/api/v1/publishers/{publisher_slug}/workspaces": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List workspaces under a publisher */
-        get: operations["listWorkspaces"];
-        put?: never;
-        /** Create a workspace under a publisher (admin only) */
-        post: operations["createWorkspace"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a workspace by (publisher slug, workspace slug) */
-        get: operations["getWorkspace"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete a workspace (admin only)
-         * @description Hard-deletes the workspace. Returns 409 if any MCP server or agent still references it.
-         */
-        delete: operations["deleteWorkspace"];
-        options?: never;
-        head?: never;
-        /** Update a workspace's metadata (admin only) */
-        patch: operations["patchWorkspace"];
-        trace?: never;
-    };
-    "/api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/servers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List MCP servers under a workspace */
-        get: operations["listWorkspaceServers"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/publishers/{publisher_slug}/workspaces/{workspace_slug}/agents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List agents under a workspace */
-        get: operations["listWorkspaceAgents"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/mcp/servers": {
         parameters: {
             query?: never;
@@ -552,7 +478,7 @@ export interface paths {
          * Force-delete an MCP server (admin only — bypasses workflow)
          * @description Admin-only escape hatch that hard-tombstones the server and all its
          *     versions to status='deleted' without going through the
-         *     change-approval workflow. Workspace group members must use
+         *     change-approval workflow. Publisher Editors must use
          *     POST /api/v1/mcp/servers/{namespace}/{slug}/deletion-request and
          *     wait for a reviewer's approve to delete; this endpoint is the
          *     admin force-delete path.
@@ -696,7 +622,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an MCP server version for review (workspace group) */
+        /** Submit an MCP server version for review */
         post: operations["submitMCPVersion"];
         delete?: never;
         options?: never;
@@ -765,7 +691,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Request deletion of an MCP server (workspace group)
+         * Request deletion of an MCP server
          * @description Marks the entry as having a pending deletion review. The entry stays visible on public reads until a reviewer approves the deletion (which sets deleted_at).
          */
         post: operations["requestMCPDeletion"];
@@ -862,7 +788,7 @@ export interface paths {
          * Force-delete an agent (admin only — bypasses workflow)
          * @description Admin-only escape hatch that hard-tombstones the agent and all its
          *     versions to status='deleted' without going through the
-         *     change-approval workflow. Workspace group members must use
+         *     change-approval workflow. Publisher Editors must use
          *     POST /api/v1/agents/{namespace}/{slug}/deletion-request and wait
          *     for a reviewer's approve to delete; this endpoint is the admin
          *     force-delete path.
@@ -1006,7 +932,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an agent version for review (workspace group) */
+        /** Submit an agent version for review */
         post: operations["submitAgentVersion"];
         delete?: never;
         options?: never;
@@ -1074,7 +1000,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request deletion of an agent (workspace group) */
+        /** Request deletion of an agent */
         post: operations["requestAgentDeletion"];
         delete?: never;
         options?: never;
@@ -1650,47 +1576,6 @@ export interface components {
             detail?: string;
             instance?: string;
         };
-        Workspace: {
-            /** @description ULID */
-            id: string;
-            /** @description ULID of the parent publisher */
-            publisher_id: string;
-            slug: string;
-            name: string;
-            description?: string;
-            contact?: string;
-            /**
-             * @description Keycloak group whose members can write to this workspace's
-             *     resources. Empty / absent means the workspace is
-             *     admin-only. Bare group name; the Keycloak group-membership
-             *     mapper must emit the `groups` JWT claim with full path
-             *     disabled.
-             */
-            group_name?: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        CreateWorkspaceRequest: {
-            slug: string;
-            name: string;
-            description?: string;
-            contact?: string;
-            /**
-             * @description Optional Keycloak group binding. When set, members of the
-             *     named group can author content under the workspace via
-             *     `RequireWorkspaceWrite`. Empty (or omitted) leaves the
-             *     workspace admin-only — same semantics as PATCH with an
-             *     empty group_name. Set at create time to avoid the
-             *     create-then-PATCH dance.
-             */
-            group_name?: string;
-        };
-        WorkspaceList: {
-            items: components["schemas"]["Workspace"][];
-            next_cursor?: string;
-        };
         PackageTransport: {
             /** @enum {string} */
             type: "stdio" | "http" | "sse" | "streamable_http";
@@ -1771,13 +1656,6 @@ export interface components {
             homepage_url?: string;
             repo_url?: string;
             license?: string;
-            /**
-             * @description Optional slug of the workspace under `namespace` to attach
-             *     the server to. Defaults to `default` (lazily created on
-             *     first use). Use this to author into a non-default workspace
-             *     without falling back to PATCH-after-create.
-             */
-            workspace?: string;
         };
         MCPServerList: {
             items: components["schemas"]["MCPServer"][];
@@ -1903,13 +1781,6 @@ export interface components {
             slug: string;
             name: string;
             description?: string;
-            /**
-             * @description Optional slug of the workspace under `namespace` to attach
-             *     the agent to. Defaults to `default` (lazily created on
-             *     first use). Use this to author into a non-default workspace
-             *     without falling back to PATCH-after-create.
-             */
-            workspace?: string;
         };
         AgentList: {
             items: components["schemas"]["Agent"][];
@@ -2233,7 +2104,6 @@ export interface components {
         /** @description ULID of the MCP server */
         ServerIDParam: string;
         PublisherSlugParam: string;
-        WorkspaceSlugParam: string;
         LimitParam: number;
         CursorParam: string;
     };
@@ -3100,207 +2970,6 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationError"];
-        };
-    };
-    listWorkspaces: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["LimitParam"];
-                cursor?: components["parameters"]["CursorParam"];
-            };
-            header?: never;
-            path: {
-                publisher_slug: components["parameters"]["PublisherSlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated list of workspaces */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceList"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    createWorkspace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                publisher_slug: components["parameters"]["PublisherSlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkspaceRequest"];
-            };
-        };
-        responses: {
-            /** @description Workspace created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Workspace"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    getWorkspace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                publisher_slug: components["parameters"]["PublisherSlugParam"];
-                workspace_slug: components["parameters"]["WorkspaceSlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace detail */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Workspace"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    deleteWorkspace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                publisher_slug: components["parameters"]["PublisherSlugParam"];
-                workspace_slug: components["parameters"]["WorkspaceSlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-        };
-    };
-    patchWorkspace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                publisher_slug: components["parameters"]["PublisherSlugParam"];
-                workspace_slug: components["parameters"]["WorkspaceSlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    name?: string;
-                    description?: string;
-                    contact?: string;
-                    /**
-                     * @description Bind the workspace to a Keycloak group. Empty
-                     *     string clears the binding, returning the workspace
-                     *     to admin-only.
-                     */
-                    group_name?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Updated workspace */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Workspace"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
-        };
-    };
-    listWorkspaceServers: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["LimitParam"];
-                cursor?: components["parameters"]["CursorParam"];
-            };
-            header?: never;
-            path: {
-                publisher_slug: components["parameters"]["PublisherSlugParam"];
-                workspace_slug: components["parameters"]["WorkspaceSlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated list of MCP servers in the workspace */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MCPServerList"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listWorkspaceAgents: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["LimitParam"];
-                cursor?: components["parameters"]["CursorParam"];
-            };
-            header?: never;
-            path: {
-                publisher_slug: components["parameters"]["PublisherSlugParam"];
-                workspace_slug: components["parameters"]["WorkspaceSlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated list of agents in the workspace */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentList"];
-                };
-            };
-            404: components["responses"]["NotFound"];
         };
     };
     listMCPServers: {

@@ -12,7 +12,7 @@ interface RequestDeletionButtonProps {
   entityName: string
 }
 
-// Surface for the deletion-request workflow: workspace group members
+// Surface for the deletion-request workflow: publisher Editors
 // (and admins) submit a deletion through review here. The reviewer
 // approves or rejects from /admin/review.
 //

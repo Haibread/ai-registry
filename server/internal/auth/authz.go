@@ -25,7 +25,8 @@ type PublisherResolver func(r *http.Request) (publisherID string, err error)
 
 // RequirePublisherRole returns chi middleware that authorizes a write/review
 // request against the caller's effective role on the target publisher
-// (ADR 0006 §6). It replaces RequireWorkspaceWrite / RequireReviewer.
+// (ADR 0006 §6). It is the per-publisher replacement for the old
+// workspace-group write gate.
 //
 // The check is a capability check over the role lattice (domain.Satisfies),
 // not a threshold: Editor satisfies an Editor requirement, Reviewer satisfies
