@@ -154,22 +154,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!um) return
 
-    // Restore a persisted local-login token (independent of any OIDC user).
-    // The store is resolved by now (set when getUserManager resolved). Discard
-    // an expired token so a stale value never briefly appears authenticated.
-    const stored = localTokenStore().getItem(LOCAL_TOKEN_KEY)
-    if (stored && !jwtExpired(stored)) {
-      setLocalToken(stored)
-    } else if (stored) {
-      localTokenStore().removeItem(LOCAL_TOKEN_KEY)
+    // Restore a persisted local-login token (independent of any OIDC user),
+    // discarding an expired one so a stale value never briefly appears
+    // authenticated. Done inside the async chain (not synchronously in the
+    // effect body) so it doesn't trigger a cascading render on mount.
+    const restoreLocalToken = () => {
+      const stored = localTokenStore().getItem(LOCAL_TOKEN_KEY)
+      if (stored && !jwtExpired(stored)) setLocalToken(stored)
+      else if (stored) localTokenStore().removeItem(LOCAL_TOKEN_KEY)
     }
 
     um.getUser()
-      .then((u) => {
-        setUser(u)
+      .then((u) => setUser(u))
+      .catch(() => {})
+      .finally(() => {
+        restoreLocalToken()
         setIsLoading(false)
       })
-      .catch(() => setIsLoading(false))
 
     const onUserLoaded = (u: User) => setUser(u)
     const onUserUnloaded = () => setUser(null)
