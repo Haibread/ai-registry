@@ -35,6 +35,7 @@ const AdminGroupDetail = lazy(() => import('@/pages/admin/groups/detail'))
 const AdminUserList = lazy(() => import('@/pages/admin/users/list'))
 const AdminUserNew = lazy(() => import('@/pages/admin/users/new'))
 const AdminUserDetail = lazy(() => import('@/pages/admin/users/detail'))
+const AdminGrants = lazy(() => import('@/pages/admin/grants'))
 const AdminApiKeys = lazy(() => import('@/pages/admin/api-keys'))
 const AdminReports = lazy(() => import('@/pages/admin/reports'))
 const AdminAudit = lazy(() => import('@/pages/admin/audit'))
@@ -92,6 +93,7 @@ export function AppRoutes() {
         <Route path="users" element={<AdminUserList />} />
         <Route path="users/new" element={<AdminUserNew />} />
         <Route path="users/:id" element={<AdminUserDetail />} />
+        <Route path="grants" element={<AdminGrants />} />
         <Route path="api-keys" element={<AdminApiKeys />} />
         <Route path="reports" element={<AdminReports />} />
         <Route path="review" element={<AdminReviewQueue />} />
