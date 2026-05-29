@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -108,30 +109,34 @@ func (v *Validator) Authenticate(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, issuerKindKey, issKind)
 
 		// Resolve the principal (users.id + effective admin) when a store is
-		// configured. A claim-admin federated token is never locked out by a
-		// DB failure (ADR 0006 §6); other principals fail closed.
+		// configured. Resolution is best-effort and additive: `disabled` is the
+		// only hard stop. A token that cannot be provisioned into a users row
+		// (e.g. an access token that carries no email claim) proceeds with
+		// claims only — legacy claim-based guards still authorize, and routes
+		// that require a resolved Principal deny on their own. A claim-admin is
+		// never locked out by a DB failure (ADR 0006 §6).
 		if v.store != nil {
 			princ, perr := v.resolvePrincipal(ctx, issKind, claims)
 			switch {
 			case perr == nil:
 				ctx = context.WithValue(ctx, principalKey, princ)
 				ctx = context.WithValue(ctx, isAdminKey, princ.IsServerAdmin)
+			case errors.Is(perr, errAccountDisabled):
+				problem.Write(w, http.StatusForbidden, "forbidden",
+					"This account is disabled.", r.URL.Path)
+				return
 			case claims.IsAdmin():
-				// Federated Server Admin escape hatch: proceed without a DB row.
+				// Federated Server Admin: a missing / unprovisionable row never
+				// locks out an admin.
 				ctx = context.WithValue(ctx, principalKey, &Principal{
 					Email:         claims.Email,
 					ClaimGroups:   claims.Groups,
 					IsServerAdmin: true,
 					Issuer:        issKind,
 				})
-			case errors.Is(perr, errAccountDisabled):
-				problem.Write(w, http.StatusForbidden, "forbidden",
-					"This account is disabled.", r.URL.Path)
-				return
 			default:
-				problem.Write(w, http.StatusUnauthorized, "unauthorized",
-					"Could not resolve the authenticated principal.", r.URL.Path)
-				return
+				slog.WarnContext(ctx, "auth: proceeding without a resolved principal",
+					slog.String("issuer", string(issKind)), slog.String("error", perr.Error()))
 			}
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
