@@ -1,9 +1,12 @@
 # ADR 0001 — Workspaces under publishers
 
-- **Status:** Accepted (shipped via PR #28; finalising migration via PR #62)
+- **Status:** Superseded by [ADR 0006](0006-publisher-scoped-rbac.md) —
+  the workspace layer is removed; resources are publisher-scoped again.
+  (Originally shipped via PR #28; finalising migration via PR #62.)
 - **Date:** 2026-05-02
 - **Deciders:** @Haibread
 - **Supersedes:** —
+- **Superseded by:** [ADR 0006 — Publisher-scoped RBAC](0006-publisher-scoped-rbac.md)
 - **Followed by:** [ADR 0002 — Workspace OIDC group binding](0002-workspace-group-binding.md), [ADR 0003 — Change-approval workflow](0003-change-approval-workflow.md)
 
 ## TL;DR

@@ -107,7 +107,10 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 - Agents: symmetric endpoints.
 - Visibility: `POST /{ns}/{slug}:set-visibility` (toggle `private`/`public`).
 - API keys: `POST/DELETE /api/v1/api-keys` — manage per-publisher API keys.
-- Users & roles: **delegated to the IdP** — no user/role endpoints in this API.
+- Users, groups & roles: **registry-managed** (ADR 0006) — `GET/POST
+  /api/v1/users`, `/api/v1/groups[...]`, per-publisher
+  `/api/v1/publishers/{slug}/grants` and global `/api/v1/grants`.
+  Authentication is OIDC or local password.
 
 ### 3.4 System
 
@@ -116,16 +119,22 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 
 ## 4. Authentication & authorization
 
-- External IdP (Keycloak in dev). Backend validates JWTs via JWKS.
-- Token claims required for admin writes: `scope` includes `registry:admin`
-  OR `roles` contains `admin`.
+- **Two token issuers** (ADR 0006): external IdP (Keycloak in dev) validated
+  via JWKS, **and** registry-signed local tokens from email+password login.
+  The validator checks `iss` and routes to the right key; local tokens are
+  rejected on the MCP surface.
+- **Authorization** is publisher-scoped RBAC (ADR 0006): writes require
+  Editor / Reviewer / Admin on the owning publisher, or Server Admin
+  (`realm_access.roles` contains `admin`, or local `is_server_admin`). Roles
+  are granted to users/groups; claims carry group membership only.
 - **MCP-compatibility**: implement the MCP authorization spec
   - Serve `/.well-known/oauth-protected-resource` advertising the IdP as
     authorization server.
   - Accept `resource` parameter per RFC 8707.
   - Require PKCE on any OAuth flow we initiate.
-- Admin UI uses `oidc-client-ts` (PKCE public client) with the same IdP;
-  access token stored in React context and passed as Bearer on API calls.
+- Admin UI uses `oidc-client-ts` (PKCE public client) with the IdP **and** a
+  local email+password login form (ADR 0006); the access token is stored in
+  React context and passed as Bearer on API calls.
 - Public GETs are unauthenticated by default; feature flag to require auth.
 - **API-key auth**: alongside OIDC, support static API keys for
   machine-to-machine admin operations (CI/CD publish pipelines). API keys are
@@ -186,12 +195,14 @@ agents, and publishers are wired into the admin detail pages
 (`web/src/pages/admin/{mcp,agents,publishers}/detail.tsx`) with
 confirmation dialogs.
 
-**Out of scope — User & role management:**
-User and role management is intentionally delegated to the identity provider
-(Keycloak in dev, any OIDC-compliant IdP in production). The registry never
-stores or manages users or roles itself — it only reads the `realm_access.roles`
-claim from the JWT. Adding or removing the `admin` role is done in the IdP's
-admin console. No `/api/v1/users` endpoint or `/admin/users` page will be built.
+**User & role management — now registry-managed (ADR 0006):**
+Superseded by ADR 0006. *Authentication* stays delegated to the IdP (OIDC)
+and is joined by local email+password accounts; *authorization* is managed in
+the registry via `users`, `groups`, and per-publisher `role_grants`, exposed
+through `/api/v1/users`, `/api/v1/groups`, and the grants endpoints (+ admin
+pages). Server Admin comes from `realm_access.roles` or a local
+`is_server_admin` flag. (This reverses the original "no user table / IdP-only"
+stance.)
 
 **Public UI — complete.** Search (`?q=`), namespace/status filters, cursor-based "Load more" pagination, and empty-state handling are all implemented on both `/mcp` and `/agents` list pages.
 
@@ -505,7 +516,9 @@ how changes are reviewed before going live. All three sub-phases
 shipped (PRs #28 → #32) plus an admin UI polish sweep (PR #37) that
 made the new surfaces usable end-to-end.
 
-**Phase 7.1 — Workspaces under publishers ✅**
+**Phase 7.1 — Workspaces under publishers ✅** — **superseded by
+[ADR 0006](docs/adr/0006-publisher-scoped-rbac.md)** (workspace layer removed;
+resources are publisher-scoped again)
 ([ADR 0001](docs/adr/0001-workspaces-under-publishers.md))
 
 - New `workspaces` entity between publishers and resources.
@@ -520,7 +533,9 @@ made the new surfaces usable end-to-end.
   per-entry `workspace:` ref so seed data demonstrates the feature.
 - Auth model unchanged in this phase (delivered in 7.2).
 
-**Phase 7.2 — Workspace OIDC group binding ✅**
+**Phase 7.2 — Workspace OIDC group binding ✅** — **superseded by
+[ADR 0006](docs/adr/0006-publisher-scoped-rbac.md)** (replaced by
+publisher-scoped role grants)
 ([ADR 0002](docs/adr/0002-workspace-group-binding.md))
 
 - `workspaces.group_name` (1:1, nullable; `NULL` = admin-only).
@@ -528,7 +543,9 @@ made the new surfaces usable end-to-end.
 - Configurable `AUTH_GROUPS_CLAIM` (default `groups`).
 - Manual Keycloak setup; reconciler ("operator") deferred to F4.
 
-**Phase 7.3 — Change-approval workflow ✅**
+**Phase 7.3 — Change-approval workflow ✅** (reviewer authorization gate
+amended by [ADR 0006](docs/adr/0006-publisher-scoped-rbac.md); workflow
+unchanged)
 ([ADR 0003](docs/adr/0003-change-approval-workflow.md))
 
 - New `review_state` column orthogonal to existing `status` /
@@ -569,7 +586,26 @@ From [ADR 0003](docs/adr/0003-change-approval-workflow.md):
 - **0003-F7.** Diff view in the admin UI between revisions.
 - **0003-F8.** Cleanup of long-abandoned `rejected` versions.
 
-### Phase 8 — Later
+### Phase 8 — Publisher-scoped RBAC, local accounts, remove workspaces 🔜
+([ADR 0006](docs/adr/0006-publisher-scoped-rbac.md))
+
+- **Remove workspaces**: resources go back to publisher-scoped
+  (`publisher_id` restored, `workspace_id` + `workspaces` dropped, `/v0/`
+  loses the workspace segment with 301s from the old paths).
+- **RBAC**: `users`, `groups`, `group_members`, `role_grants` tables; roles
+  Viewer / Editor / Reviewer / Admin granted to users or groups per publisher
+  (Editor and Reviewer independent). Server Admin via claim or local flag.
+- **Identity**: OIDC (JIT-provisioned) **and** local email+password accounts,
+  handled together; the registry signs local tokens and validates both
+  issuers, with local tokens walled off the MCP surface. Bootstrap admin
+  seeded from config.
+- **Claims** carry group membership only (`AUTH_GROUPS_CLAIM`); the
+  reviewer-group seed (`AUTH_REVIEWER_GROUP`) becomes a group + global
+  Reviewer grant.
+- Two-step migration (`000012` additive, `000013` finalise), shipped as two
+  PRs. Supersedes ADR 0001/0002, amends ADR 0003.
+
+### Phase 9 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
 - Signed publishes (sigstore/cosign).
 - Webhooks on publish events.
@@ -589,7 +625,7 @@ From [ADR 0003](docs/adr/0003-change-approval-workflow.md):
 | 4 | Deployment target | Docker Compose **and** Helm chart for k8s |
 | 5 | API-key auth | Yes — support both OIDC (interactive) and hashed API keys (machine-to-machine). Middleware tries JWT first, falls back to API-key. |
 | 6 | UI template | shadcn/ui blocks (minimal) — build from primitives, no third-party admin template |
-| 7 | User & role management | Fully delegated to the IdP (Keycloak or any OIDC provider). The registry reads `realm_access.roles` from the JWT but never stores or manages users or roles. No `/api/v1/users` endpoint or admin users page. |
+| 7 | User & role management | **Superseded by ADR 0006.** *Authentication* delegated to the IdP (OIDC) **and** local password accounts; *authorization* is registry-managed — `users`, `groups`, and per-publisher `role_grants`. Server Admin from `realm_access.roles` or a local `is_server_admin` flag. `/api/v1/users`, `/api/v1/groups`, and grants endpoints + admin pages exist. *(Reverses the original "no user table / IdP-only" decision.)* |
 
 ## 7. Definition of done (per phase)
 
