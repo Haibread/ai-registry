@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, Users, Server, Bot, Key, Flag, Activity, ClipboardCheck } from 'lucide-react'
+import { LayoutDashboard, Users, UsersRound, UserCog, Server, Bot, Key, Flag, Activity, ClipboardCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
@@ -9,6 +9,8 @@ const navItems = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review' as const },
   { to: '/admin/publishers', label: 'Publishers', icon: Users },
+  { to: '/admin/groups', label: 'Groups', icon: UsersRound },
+  { to: '/admin/users', label: 'Users', icon: UserCog },
   { to: '/admin/mcp', label: 'MCP Servers', icon: Server },
   { to: '/admin/agents', label: 'Agents', icon: Bot },
   { to: '/admin/reports', label: 'Reports', icon: Flag },
