@@ -29,6 +29,12 @@ const AdminAgentNew = lazy(() => import('@/pages/admin/agents/new'))
 const AdminPublisherList = lazy(() => import('@/pages/admin/publishers/list'))
 const AdminPublisherDetail = lazy(() => import('@/pages/admin/publishers/detail'))
 const AdminPublisherNew = lazy(() => import('@/pages/admin/publishers/new'))
+const AdminGroupList = lazy(() => import('@/pages/admin/groups/list'))
+const AdminGroupNew = lazy(() => import('@/pages/admin/groups/new'))
+const AdminGroupDetail = lazy(() => import('@/pages/admin/groups/detail'))
+const AdminUserList = lazy(() => import('@/pages/admin/users/list'))
+const AdminUserNew = lazy(() => import('@/pages/admin/users/new'))
+const AdminUserDetail = lazy(() => import('@/pages/admin/users/detail'))
 const AdminApiKeys = lazy(() => import('@/pages/admin/api-keys'))
 const AdminReports = lazy(() => import('@/pages/admin/reports'))
 const AdminAudit = lazy(() => import('@/pages/admin/audit'))
@@ -80,6 +86,12 @@ export function AppRoutes() {
         <Route path="publishers" element={<AdminPublisherList />} />
         <Route path="publishers/new" element={<AdminPublisherNew />} />
         <Route path="publishers/:slug" element={<AdminPublisherDetail />} />
+        <Route path="groups" element={<AdminGroupList />} />
+        <Route path="groups/new" element={<AdminGroupNew />} />
+        <Route path="groups/:slug" element={<AdminGroupDetail />} />
+        <Route path="users" element={<AdminUserList />} />
+        <Route path="users/new" element={<AdminUserNew />} />
+        <Route path="users/:id" element={<AdminUserDetail />} />
         <Route path="api-keys" element={<AdminApiKeys />} />
         <Route path="reports" element={<AdminReports />} />
         <Route path="review" element={<AdminReviewQueue />} />
