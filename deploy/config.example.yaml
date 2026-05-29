@@ -73,7 +73,19 @@ auth:
   # set to e.g. "realm_access.groups" if your IdP nests group memberships
   # under a different key. See ADR 0002.
   groups_claim: "groups"
-  # Reviewer group whose members can approve/reject pending changes in the
-  # change-approval workflow (ADR 0003). Must match a value emitted in the
-  # JWT claim configured above.
+  # Group seeded on boot with a global Reviewer grant (ADR 0006). Members
+  # (local group_members or a matching OIDC claim group) can approve/reject
+  # pending changes on any publisher. Deprecated in favour of managing the
+  # group + grant via the API.
   reviewer_group: "registry-reviewers"
+  # Local email+password login (ADR 0006). Default true so the registry is
+  # usable without an IdP. The signing key and the bootstrap admin PASSWORD are
+  # credentials and are intentionally NOT settable here — supply them via
+  # AUTH_LOCAL_SIGNING_KEY / AUTH_BOOTSTRAP_ADMIN_PASSWORD (env / secret only).
+  local_login: true
+  # Lifetime of a registry-issued local token (Go duration). Default 1h.
+  local_token_ttl: "1h"
+  # Email of the bootstrap Server Admin seeded on first boot. The email is not
+  # a secret; the matching AUTH_BOOTSTRAP_ADMIN_PASSWORD must be set via env.
+  # Leave empty to skip bootstrap seeding.
+  bootstrap_admin_email: ""
