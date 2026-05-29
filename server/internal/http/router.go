@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/haibread/ai-registry/internal/auth"
+	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/http/handlers"
 	"github.com/haibread/ai-registry/internal/http/middleware"
 	"github.com/haibread/ai-registry/internal/observability"
@@ -94,6 +95,20 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
 	authH := handlers.NewAuthHandlers(deps.LocalIssuer, deps.DB)
+	groupH := handlers.NewGroupHandlers(deps.DB, deps.DB)
+	userH := handlers.NewUserHandlers(deps.DB, deps.DB)
+	grantH := handlers.NewGrantHandlers(deps.DB, deps.DB)
+
+	// resolvePublisherSlug maps the {slug} path param to a publisher id for
+	// RequirePublisherRole on the per-publisher grants routes.
+	resolvePublisherSlug := func(r *http.Request) (string, error) {
+		pub, err := deps.DB.GetPublisher(r.Context(), chi.URLParam(r, "slug"))
+		if err != nil {
+			return "", err
+		}
+		return pub.ID, nil
+	}
+	requirePublisherAdmin := auth.RequirePublisherRole(deps.DB, domain.RoleAdmin, resolvePublisherSlug)
 
 	// Workspace lookup adapters bind the auth.WorkspaceLookup signature to
 	// concrete URL patterns. RequireWorkspaceWrite uses these to resolve
@@ -183,6 +198,35 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// Unauthenticated by design; rate-limited and lockout-protected.
 		r.With(publicRL).Post("/auth/login", authH.Login)
 
+		// ── RBAC administration (ADR 0006 §7) ─────────────────────────────────
+		// Groups (Server Admin).
+		r.Route("/groups", func(r chi.Router) {
+			r.With(auth.RequireAdmin).Get("/", groupH.ListGroups)
+			r.With(auth.RequireAdmin).Post("/", groupH.CreateGroup)
+			r.With(auth.RequireAdmin).Get("/{slug}", groupH.GetGroup)
+			r.With(auth.RequireAdmin).Patch("/{slug}", groupH.PatchGroup)
+			r.With(auth.RequireAdmin).Delete("/{slug}", groupH.DeleteGroup)
+			r.With(auth.RequireAdmin).Put("/{slug}/members/{email}", groupH.PutMember)
+			r.With(auth.RequireAdmin).Delete("/{slug}/members/{email}", groupH.DeleteMember)
+		})
+
+		// Users (Server Admin), except set-password which is self-or-admin and
+		// so is only authenticated — the handler enforces the rule.
+		r.Route("/users", func(r chi.Router) {
+			r.With(auth.RequireAdmin).Get("/", userH.ListUsers)
+			r.With(auth.RequireAdmin).Post("/", userH.CreateUser)
+			r.With(auth.RequireAdmin).Get("/{id}", userH.GetUser)
+			r.With(auth.RequireAdmin).Patch("/{id}", userH.PatchUser)
+			r.Post("/{id}/set-password", userH.SetPassword)
+		})
+
+		// Global (all-publishers) role grants (Server Admin).
+		r.Route("/grants", func(r chi.Router) {
+			r.With(auth.RequireAdmin).Get("/", grantH.ListGlobalGrants)
+			r.With(auth.RequireAdmin).Post("/", grantH.CreateGlobalGrant)
+			r.With(auth.RequireAdmin).Delete("/{id}", grantH.DeleteGlobalGrant)
+		})
+
 		// Review queue (reviewer-gated, lists pending versions and
 		// pending deletions across all workspaces).
 		r.With(requireReviewer).Get("/review-queue", revH.ListReviewQueue)
@@ -205,6 +249,14 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				// Workspace-scoped resource lists.
 				r.With(publicRL).Get("/{workspace_slug}/servers", wsH.ListWorkspaceServers)
 				r.With(publicRL).Get("/{workspace_slug}/agents", wsH.ListWorkspaceAgents)
+			})
+
+			// Per-publisher role grants (ADR 0006). Publisher Admin or Server
+			// Admin; RequirePublisherRole resolves {slug} → publisher.
+			r.Route("/{slug}/grants", func(r chi.Router) {
+				r.With(requirePublisherAdmin).Get("/", grantH.ListPublisherGrants)
+				r.With(requirePublisherAdmin).Post("/", grantH.CreatePublisherGrant)
+				r.With(requirePublisherAdmin).Delete("/{id}", grantH.DeletePublisherGrant)
 			})
 		})
 
