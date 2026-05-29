@@ -41,8 +41,24 @@ func RequirePublisherRole(rs RoleStore, required domain.Role, resolve PublisherR
 				return
 			}
 
-			p, ok := PrincipalFromContext(r.Context())
-			if !ok || p == nil {
+			// Identify the caller. Prefer the resolved Principal, but fall back
+			// to the token's claims: a federated group-writer whose access token
+			// carries no email isn't provisioned into a users row, yet still
+			// names its groups in the claim — and the ADR's model authorizes via
+			// the group's grant (claim slug → group → grant), no users row
+			// required. Either source must be present (authenticated).
+			var userID string
+			var groups []string
+			authed := false
+			if p, ok := PrincipalFromContext(r.Context()); ok && p != nil {
+				userID = p.UserID
+				groups = p.ClaimGroups
+				authed = true
+			} else if c, ok := ClaimsFromContext(r.Context()); ok && c != nil {
+				groups = c.Groups
+				authed = true
+			}
+			if !authed {
 				problem.Write(w, http.StatusUnauthorized, "unauthorized",
 					"Missing or invalid bearer token", r.URL.Path)
 				return
@@ -57,8 +73,8 @@ func RequirePublisherRole(rs RoleStore, required domain.Role, resolve PublisherR
 			}
 
 			held, err := rs.EffectiveRoles(r.Context(), store.EffectiveRolesParams{
-				UserID:          p.UserID,
-				ClaimGroupSlugs: p.ClaimGroups,
+				UserID:          userID,
+				ClaimGroupSlugs: groups,
 				PublisherID:     publisherID,
 			})
 			if err != nil {
