@@ -38,6 +38,10 @@ type RouterDeps struct {
 	// global agent-card). Empty triggers HTTP 500 in those handlers rather
 	// than silently advertising localhost.
 	PublicBaseURL string
+	// LocalIssuer signs/verifies registry-issued local tokens (ADR 0006).
+	// Nil when local login is disabled — then only OIDC tokens are accepted
+	// and the /api/v1/auth/login + JWKS routes report local login disabled.
+	LocalIssuer *auth.LocalIssuer
 }
 
 // NewRouter builds and returns the fully wrapped HTTP handler: the chi router
@@ -67,7 +71,15 @@ func NewRouterForTest(deps RouterDeps) *chi.Mux {
 func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Auth validator ────────────────────────────────────────────────────────
 	jwksCache := auth.NewJWKSCache(deps.AuthConf.JWKSEndpoint(), 0)
-	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCAudience, deps.AuthConf.GroupsClaim)
+	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCAudience, deps.AuthConf.GroupsClaim).
+		WithLocalIssuer(deps.LocalIssuer)
+	// Only attach a principal store when a real DB is present. Passing a nil
+	// *store.DB would wrap a typed-nil in the interface (non-nil interface),
+	// making Authenticate attempt DB calls on it. Route-walk tests build the
+	// router with a nil DB and must not trip that.
+	if deps.DB != nil {
+		validator.WithPrincipalStore(deps.DB)
+	}
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)
@@ -81,6 +93,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger, deps.PublicBaseURL)
 	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
+	authH := handlers.NewAuthHandlers(deps.LocalIssuer, deps.DB)
 
 	// Workspace lookup adapters bind the auth.WorkspaceLookup signature to
 	// concrete URL patterns. RequireWorkspaceWrite uses these to resolve
@@ -125,9 +138,15 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		handlers.OAuthProtectedResource(deps.PublicBaseURL, deps.AuthConf.OIDCIssuer, deps.Logger))
 	// Global registry agent card (makes the registry a first-class A2A citizen)
 	r.Get("/.well-known/agent-card.json", cardH.GlobalAgentCard)
+	// Registry JWKS for self-verifying locally-issued tokens (ADR 0006).
+	r.Get("/.well-known/jwks.json", authH.JWKS)
 
 	// ── MCP registry wire-format compat layer ─────────────────────────────────
 	r.Route("/v0", func(r chi.Router) {
+		// MCP wall (ADR 0006 §3): the MCP surface is OAuth-only — reject
+		// registry-issued local tokens here even though they are valid on the
+		// human/admin API.
+		r.Use(auth.RejectLocalToken)
 		r.Get("/servers", v0H.ListServers)
 		r.Get("/servers/{id}", v0H.GetServer)
 
@@ -159,6 +178,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	}
 	publicRL := middleware.RateLimit(publicRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
+
+		// Local email+password login → registry-issued token (ADR 0006).
+		// Unauthenticated by design; rate-limited and lockout-protected.
+		r.With(publicRL).Post("/auth/login", authH.Login)
 
 		// Review queue (reviewer-gated, lists pending versions and
 		// pending deletions across all workspaces).

@@ -6,8 +6,12 @@ import "github.com/golang-jwt/jwt/v5"
 // Keycloak-specific fields.
 type KeycloakClaims struct {
 	jwt.RegisteredClaims
-	Email       string      `json:"email"`
-	RealmAccess RealmAccess `json:"realm_access"`
+	Email string `json:"email"`
+	// EmailVerified gates the federated bind-once path (ADR 0006 §2): a first
+	// OIDC login only binds onto a pre-invited local row when the token's email
+	// is verified, never on an unverified one.
+	EmailVerified bool        `json:"email_verified"`
+	RealmAccess   RealmAccess `json:"realm_access"`
 	// Groups carries the Keycloak group memberships used for per-workspace
 	// authorization. The Keycloak group-membership mapper must emit a
 	// claim named "groups" with bare group names (Full group path

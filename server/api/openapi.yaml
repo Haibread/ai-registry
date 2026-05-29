@@ -138,6 +138,55 @@ paths:
               schema:
                 type: object
 
+  /.well-known/jwks.json:
+    get:
+      operationId: registryJWKS
+      summary: Registry JSON Web Key Set
+      description: >
+        Public keys for verifying registry-issued local access tokens
+        (ADR 0006). Empty `keys` when local login is disabled.
+      tags: [system]
+      responses:
+        "200":
+          description: JSON Web Key Set
+          content:
+            application/json:
+              schema:
+                type: object
+
+  # ── Authentication ─────────────────────────────────────────────────────────
+
+  /api/v1/auth/login:
+    post:
+      operationId: localLogin
+      summary: Local email + password login
+      description: >
+        Exchanges an email and password for a short-lived, registry-signed
+        access token (ADR 0006). Local tokens are accepted only on the
+        human/admin API — they are rejected on the MCP surface, which stays
+        OAuth-only. Available only when local login is enabled.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: A registry-issued access token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429":
+          description: Too many failed login attempts; retry later
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
   # ── Publishers ────────────────────────────────────────────────────────────
 
   # ── Review queue ───────────────────────────────────────────────────────────
@@ -2208,6 +2257,33 @@ components:
         type: string
 
   schemas:
+    # ── Authentication ────────────────────────────────────────────────────────
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: Registry-signed bearer token (RS256), verifiable via /.well-known/jwks.json.
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds.
+
     # ── System ──────────────────────────────────────────────────────────────
 
     StatusResponse:

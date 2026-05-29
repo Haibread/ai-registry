@@ -70,6 +70,10 @@ func TestAllWriteRoutesRequireAdmin(t *testing.T) {
 		// Community-submitted issue reports — unauthenticated users can file
 		// reports. List and Patch on /reports remain admin-only.
 		"POST /api/v1/reports": "public report submission",
+
+		// Local login issues a token from email+password — it cannot itself
+		// require a token (ADR 0006). It is rate-limited + lockout-protected.
+		"POST /api/v1/auth/login": "public local login (issues the token)",
 	}
 
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
@@ -181,6 +185,7 @@ func TestPublicWriteRoutesBypassAdmin(t *testing.T) {
 		"POST /api/v1/agents/{namespace}/{slug}/view",
 		"POST /api/v1/agents/{namespace}/{slug}/copy",
 		"POST /api/v1/reports",
+		"POST /api/v1/auth/login",
 	}
 
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
