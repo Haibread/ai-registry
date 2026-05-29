@@ -187,6 +187,353 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
 
+  # ── RBAC administration (ADR 0006) ──────────────────────────────────────────
+
+  /api/v1/groups:
+    get:
+      operationId: listGroups
+      summary: List groups (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated groups
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createGroup
+      summary: Create a group (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateGroupRequest" }
+      responses:
+        "201":
+          description: The created group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/groups/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getGroup
+      summary: Get a group by slug (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: patchGroup
+      summary: Update a group (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchGroupRequest" }
+      responses:
+        "200":
+          description: The updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteGroup
+      summary: Delete a group (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/groups/{slug}/members/{email}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: { type: string }
+      - name: email
+        in: path
+        required: true
+        schema: { type: string, format: email }
+    put:
+      operationId: addGroupMember
+      summary: Add a member to a group by email (Server Admin)
+      description: Auto-creates an invited user when the email is unknown.
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The added (or auto-created) user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: removeGroupMember
+      summary: Remove a member from a group (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Removed
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      summary: List users (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated users
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createUser
+      summary: Create a local or invited user (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateUserRequest" }
+      responses:
+        "201":
+          description: The created user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getUser
+      summary: Get a user by id (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: patchUser
+      summary: Update a user's display name, disabled, or is_server_admin (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchUserRequest" }
+      responses:
+        "200":
+          description: The updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/users/{id}/set-password:
+    post:
+      operationId: setUserPassword
+      summary: Set a user's password (self or Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetPasswordRequest" }
+      responses:
+        "204":
+          description: Password set
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/grants:
+    get:
+      operationId: listGlobalGrants
+      summary: List global (all-publishers) role grants (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Global grants
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleGrantList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createGlobalGrant
+      summary: Create a global role grant (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GrantRequest" }
+      responses:
+        "201":
+          description: The created grant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleGrant" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/grants/{id}:
+    delete:
+      operationId: deleteGlobalGrant
+      summary: Delete a global role grant (Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/publishers/{slug}/grants:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: listPublisherGrants
+      summary: List a publisher's role grants (publisher Admin or Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The publisher's grants
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleGrantList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: createPublisherGrant
+      summary: Grant a role on a publisher (publisher Admin or Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GrantRequest" }
+      responses:
+        "201":
+          description: The created grant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RoleGrant" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/publishers/{slug}/grants/{id}:
+    delete:
+      operationId: deletePublisherGrant
+      summary: Revoke a role grant on a publisher (publisher Admin or Server Admin)
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Revoked
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ── Publishers ────────────────────────────────────────────────────────────
 
   # ── Review queue ───────────────────────────────────────────────────────────
@@ -2283,6 +2630,126 @@ components:
         expires_in:
           type: integer
           description: Token lifetime in seconds.
+
+    # ── RBAC (ADR 0006) ───────────────────────────────────────────────────────
+
+    Group:
+      type: object
+      required: [id, slug, name, created_at, updated_at]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    GroupList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Group" }
+        next_cursor: { type: string }
+
+    CreateGroupRequest:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+
+    PatchGroupRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+
+    User:
+      type: object
+      required: [id, email, has_password, is_server_admin, disabled, created_at, updated_at]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        subject:
+          type: string
+          description: OIDC subject; empty for local-only users.
+        has_password: { type: boolean }
+        is_server_admin: { type: boolean }
+        disabled: { type: boolean }
+        last_seen_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UserList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/User" }
+        next_cursor: { type: string }
+
+    CreateUserRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+        display_name: { type: string }
+        password:
+          type: string
+          format: password
+          description: Optional; omit to create an invited user that cannot log in until a credential is set.
+        is_server_admin: { type: boolean }
+
+    PatchUserRequest:
+      type: object
+      properties:
+        display_name: { type: string }
+        disabled: { type: boolean }
+        is_server_admin: { type: boolean }
+
+    SetPasswordRequest:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, format: password, minLength: 8 }
+
+    RoleGrant:
+      type: object
+      required: [id, principal_type, principal_id, role, source, created_at]
+      properties:
+        id: { type: string }
+        principal_type: { type: string, enum: [user, group] }
+        principal_id: { type: string }
+        principal_label:
+          type: string
+          description: Human handle for the principal — a user's email or a group's slug.
+        publisher_id:
+          type: string
+          description: Empty for a global (all-publishers) grant.
+        role: { type: string, enum: [viewer, editor, reviewer, admin] }
+        source: { type: string, enum: [api, config] }
+        created_at: { type: string, format: date-time }
+
+    RoleGrantList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RoleGrant" }
+
+    GrantRequest:
+      type: object
+      required: [principal_type, principal_id, role]
+      properties:
+        principal_type: { type: string, enum: [user, group] }
+        principal_id: { type: string }
+        role: { type: string, enum: [viewer, editor, reviewer, admin] }
 
     # ── System ──────────────────────────────────────────────────────────────
 

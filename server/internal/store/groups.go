@@ -99,6 +99,24 @@ func (db *DB) ListGroups(ctx context.Context, p ListGroupsParams) ([]Group, erro
 	return result, nil
 }
 
+// GetGroupByID returns a single group by ULID. Returns ErrNotFound if absent.
+func (db *DB) GetGroupByID(ctx context.Context, id string) (*Group, error) {
+	ctx, span := startSpan(ctx, "GetGroupByID")
+	defer span.End()
+
+	g, err := scanGroup(db.Pool.QueryRow(ctx,
+		`SELECT `+groupColumns+` FROM groups WHERE id = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		recordErr(span, ErrNotFound)
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("getting group by id: %w", err)
+	}
+	return g, nil
+}
+
 // GetGroupBySlug returns a single group by slug. Returns ErrNotFound if absent.
 func (db *DB) GetGroupBySlug(ctx context.Context, slug string) (*Group, error) {
 	ctx, span := startSpan(ctx, "GetGroupBySlug")
