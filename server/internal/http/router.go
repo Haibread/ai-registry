@@ -210,6 +210,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(auth.RequireAdmin).Get("/{slug}", groupH.GetGroup)
 			r.With(auth.RequireAdmin).Patch("/{slug}", groupH.PatchGroup)
 			r.With(auth.RequireAdmin).Delete("/{slug}", groupH.DeleteGroup)
+			r.With(auth.RequireAdmin).Get("/{slug}/members", groupH.ListMembers)
 			r.With(auth.RequireAdmin).Put("/{slug}/members/{email}", groupH.PutMember)
 			r.With(auth.RequireAdmin).Delete("/{slug}/members/{email}", groupH.DeleteMember)
 		})

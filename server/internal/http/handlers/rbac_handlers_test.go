@@ -25,6 +25,7 @@ func newGroupRouter() *chi.Mux {
 	r.Get("/api/v1/groups/{slug}", h.GetGroup)
 	r.Patch("/api/v1/groups/{slug}", h.PatchGroup)
 	r.Delete("/api/v1/groups/{slug}", h.DeleteGroup)
+	r.Get("/api/v1/groups/{slug}/members", h.ListMembers)
 	r.Put("/api/v1/groups/{slug}/members/{email}", h.PutMember)
 	r.Delete("/api/v1/groups/{slug}/members/{email}", h.DeleteMember)
 	return r
@@ -125,6 +126,43 @@ func TestGroupHandler_PutMemberAutoCreatesUser(t *testing.T) {
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/groups/team/members/new@example.com", nil))
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("delete member: %d, want 204", rec.Code)
+	}
+}
+
+func TestGroupHandler_ListMembers(t *testing.T) {
+	resetTables(t)
+	router := newGroupRouter()
+	router.ServeHTTP(httptest.NewRecorder(), jsonReq(http.MethodPost, "/api/v1/groups", `{"slug":"team","name":"Team"}`))
+
+	// Add two members by email (auto-creates the users).
+	for _, email := range []string{"a@x.test", "b@x.test"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/groups/team/members/"+email, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("put member %s: %d", email, rec.Code)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/groups/team/members", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list members: %d", rec.Code)
+	}
+	var body struct {
+		Items []struct {
+			Email string `json:"email"`
+		} `json:"items"`
+	}
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+	if len(body.Items) != 2 {
+		t.Errorf("members = %d, want 2", len(body.Items))
+	}
+
+	// Unknown group → 404.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/groups/ghost/members", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("list members of unknown group: %d, want 404", rec.Code)
 	}
 }
 

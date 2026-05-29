@@ -160,6 +160,28 @@ func (h *GroupHandlers) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ListMembers: GET /api/v1/groups/{slug}/members
+func (h *GroupHandlers) ListMembers(w http.ResponseWriter, r *http.Request) {
+	g, err := h.db.GetGroupBySlug(r.Context(), chi.URLParam(r, "slug"))
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found", "group does not exist", r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	members, err := h.db.ListGroupMembers(r.Context(), g.ID)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	if members == nil {
+		members = []store.User{}
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"items": members})
+}
+
 // PutMember: PUT /api/v1/groups/{slug}/members/{email}
 // Adds the user (by email) to the group, auto-creating an invited user row
 // when the email is unknown (ADR 0006 §7).
