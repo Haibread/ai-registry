@@ -56,12 +56,13 @@ const fixtures: Fixture[] = [
 ]
 
 async function loginAs(page: Page, email: string, password: string) {
-  // RequireAuth redirects /admin → / for guests, so start from the homepage
-  // and click the Sign in button to initiate the OIDC redirect.
-  await page.goto('/')
+  // The login page offers both the OIDC ("organization") button and a local
+  // email+password form (ADR 0006). The e2e identities live in Keycloak, so
+  // drive the OIDC button to initiate the redirect.
+  await page.goto('/login')
   await page.waitForLoadState('networkidle')
 
-  await page.click('button:has-text("Sign in")')
+  await page.click('button:has-text("Sign in with your organization")')
 
   await page.waitForURL(/\/realms\/ai-registry\/protocol\/openid-connect\/auth/)
   await expect(page.locator('#username, input[name="username"]')).toBeVisible()
