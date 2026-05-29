@@ -125,6 +125,26 @@ func run() error {
 	}
 	logger.Info("migrations complete")
 
+	// ── RBAC boot seed (ADR 0006) ────────────────────────────────────────────
+	// Idempotent: ensures the reviewer group + its global Reviewer grant, and
+	// seeds the bootstrap Server Admin (create-only). Runs after migrations so
+	// the RBAC tables exist.
+	var bootstrapAdminHash string
+	if cfg.Auth.BootstrapAdminEmail != "" {
+		bootstrapAdminHash, err = authpkg.HashPassword(cfg.Auth.BootstrapAdminPassword)
+		if err != nil {
+			return fmt.Errorf("hashing bootstrap admin password: %w", err)
+		}
+	}
+	if err := db.SeedRBAC(ctx, store.SeedRBACParams{
+		ReviewerGroupSlug:          cfg.Auth.ReviewerGroup,
+		BootstrapAdminEmail:        cfg.Auth.BootstrapAdminEmail,
+		BootstrapAdminPasswordHash: bootstrapAdminHash,
+	}); err != nil {
+		return err
+	}
+	logger.Info("rbac seed complete")
+
 	// ── Bootstrap (optional) ─────────────────────────────────────────────────
 	if bootstrapPath != "" {
 		logger.Info("loading bootstrap file", slog.String("path", bootstrapPath))
@@ -147,6 +167,23 @@ func run() error {
 		logger.Info("trusted proxy configured", slog.String("cidr", cidr))
 	}
 
+	// ── Local token issuer (ADR 0006) ────────────────────────────────────────
+	// Built only when local login is enabled. This is where the
+	// "signing key required when local login is enabled" rule is enforced —
+	// config.Load deliberately defers it here so an unrelated config load is
+	// never rejected for a half-built feature.
+	var localIssuer *authpkg.LocalIssuer
+	if cfg.Auth.LocalLoginEnabled {
+		if cfg.Auth.LocalSigningKey == "" {
+			return fmt.Errorf("AUTH_LOCAL_SIGNING_KEY is required when local login is enabled (set AUTH_LOCAL_LOGIN_ENABLED=false to disable local login)")
+		}
+		localIssuer, err = authpkg.NewLocalIssuer(cfg.Auth.LocalSigningKey, cfg.Auth.LocalTokenTTL)
+		if err != nil {
+			return fmt.Errorf("initialising local token issuer: %w", err)
+		}
+		logger.Info("local login enabled", slog.String("kid", localIssuer.KID()))
+	}
+
 	// ── HTTP server ──────────────────────────────────────────────────────────
 	handler := registryhttp.NewRouter(registryhttp.RouterDeps{
 		Logger:  logger,
@@ -165,6 +202,7 @@ func run() error {
 		TrustedProxy:       trustedProxy,
 		PublicRateLimitRPM: cfg.HTTP.PublicRateLimitRPM,
 		PublicBaseURL:      cfg.HTTP.PublicBaseURL,
+		LocalIssuer:        localIssuer,
 	})
 	srv := registryhttp.NewServer(handler, registryhttp.ServerConfig{
 		Addr:         cfg.HTTP.Addr,

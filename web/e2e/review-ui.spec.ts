@@ -92,7 +92,10 @@ test.describe('Admin review UI', () => {
 
   test('Reject from queue returns the version to draft (rejected) with the reason', async ({ page }) => {
     await page.goto('/admin/review')
-    const row = page.locator('li', { hasText: `${PUB}/${MCP}` })
+    // Scope to the queue's version row; the trailing `.filter` excludes the
+    // sonner success toast, which also contains the entry name (matches the
+    // MCP-deletion row pattern below).
+    const row = page.locator('li', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP version/i })
     await expect(row).toBeVisible()
     await row.getByRole('button', { name: /^reject$/i }).click()
 
@@ -120,7 +123,7 @@ test.describe('Admin review UI', () => {
     await expect(detailRow.getByText(/pending review/i)).toBeVisible({ timeout: 10_000 })
 
     await page.goto('/admin/review')
-    const queueRow = page.locator('li', { hasText: `${PUB}/${MCP}` })
+    const queueRow = page.locator('li', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP version/i })
     await expect(queueRow).toBeVisible()
     await queueRow.getByRole('button', { name: /^approve$/i }).click()
 

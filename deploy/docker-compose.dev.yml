@@ -63,6 +63,10 @@ services:
       # in .env when overriding for a custom IdP setup.
       AUTH_GROUPS_CLAIM: ${AUTH_GROUPS_CLAIM:-groups}
       AUTH_REVIEWER_GROUP: ${AUTH_REVIEWER_GROUP:-registry-reviewers}
+      # Local login (ADR 0006) is OFF until the login UI + a signing key land.
+      # Enabling it requires AUTH_LOCAL_SIGNING_KEY (PEM RSA) or the server
+      # will not boot.
+      AUTH_LOCAL_LOGIN_ENABLED: ${AUTH_LOCAL_LOGIN_ENABLED:-false}
       # AUTH_STORAGE=local is required by the Playwright E2E harness
       # (storageState() persists localStorage but not session). Production
       # must keep "session"; the .env in this directory flips it for dev.

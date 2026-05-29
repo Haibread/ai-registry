@@ -488,6 +488,103 @@ bootstrap_file: "/from/file.yaml"
 	}
 }
 
+// ── Local-auth knobs (ADR 0006) — env+YAML+default rule ─────────────────────
+
+func TestLoad_LocalAuth_Defaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Auth.LocalLoginEnabled {
+		t.Error("LocalLoginEnabled default = false, want true")
+	}
+	if cfg.Auth.LocalTokenTTL != time.Hour {
+		t.Errorf("LocalTokenTTL default = %v, want 1h", cfg.Auth.LocalTokenTTL)
+	}
+	if cfg.Auth.BootstrapAdminEmail != "" {
+		t.Errorf("BootstrapAdminEmail default = %q, want empty", cfg.Auth.BootstrapAdminEmail)
+	}
+}
+
+func TestLoad_LocalAuth_FromEnv(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "false")
+	t.Setenv("AUTH_LOCAL_SIGNING_KEY", "pem-key-value")
+	t.Setenv("AUTH_LOCAL_TOKEN_TTL", "30m")
+	t.Setenv("AUTH_BOOTSTRAP_ADMIN_EMAIL", "admin@example.com")
+	t.Setenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD", "s3cret")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Auth.LocalLoginEnabled {
+		t.Error("AUTH_LOCAL_LOGIN_ENABLED=false should disable local login")
+	}
+	if cfg.Auth.LocalSigningKey != "pem-key-value" {
+		t.Errorf("LocalSigningKey = %q, want env value", cfg.Auth.LocalSigningKey)
+	}
+	if cfg.Auth.LocalTokenTTL != 30*time.Minute {
+		t.Errorf("LocalTokenTTL = %v, want 30m", cfg.Auth.LocalTokenTTL)
+	}
+	if cfg.Auth.BootstrapAdminEmail != "admin@example.com" || cfg.Auth.BootstrapAdminPassword != "s3cret" {
+		t.Errorf("bootstrap admin = (%q,%q), want env values", cfg.Auth.BootstrapAdminEmail, cfg.Auth.BootstrapAdminPassword)
+	}
+}
+
+func TestLoad_LocalAuth_FromYAML(t *testing.T) {
+	path := writeConfigFile(t, `
+database:
+  url: "postgres://p:p@localhost/db"
+auth:
+  oidc_issuer: "https://auth.example.com/realm"
+  local_login: false
+  local_token_ttl: "2h"
+  bootstrap_admin_email: "boot@example.com"
+`)
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "")
+	t.Setenv("AUTH_LOCAL_TOKEN_TTL", "")
+	t.Setenv("AUTH_BOOTSTRAP_ADMIN_EMAIL", "")
+	// The bootstrap email comes from the YAML file; its password is a
+	// credential supplied via env (never the file), so set it to satisfy the
+	// password-required-with-email validation.
+	t.Setenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD", "from-secret")
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Auth.LocalLoginEnabled {
+		t.Error("local_login: false in YAML should disable local login")
+	}
+	if cfg.Auth.LocalTokenTTL != 2*time.Hour {
+		t.Errorf("LocalTokenTTL = %v, want 2h from YAML", cfg.Auth.LocalTokenTTL)
+	}
+	if cfg.Auth.BootstrapAdminEmail != "boot@example.com" {
+		t.Errorf("BootstrapAdminEmail = %q, want YAML value", cfg.Auth.BootstrapAdminEmail)
+	}
+}
+
+// TestLoad_BootstrapAdmin_PasswordRequiredWithEmail pins the validation that a
+// bootstrap admin email without a password is rejected (the password is a
+// credential that cannot live in the config file).
+func TestLoad_BootstrapAdmin_PasswordRequiredWithEmail(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	t.Setenv("AUTH_BOOTSTRAP_ADMIN_EMAIL", "admin@example.com")
+	t.Setenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD", "")
+
+	if _, err := config.Load(""); err == nil {
+		t.Error("expected error when bootstrap admin email is set without a password")
+	}
+}
+
 func TestLoad_ExplicitPathWinsOverCONFIGFILE(t *testing.T) {
 	pathA := writeConfigFile(t, `
 database:

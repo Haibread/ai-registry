@@ -69,21 +69,50 @@ type AuthConfig struct {
 	// the e2e stack sets AUTH_STORAGE=local. Never use "local" in production.
 	AuthStorage string
 
-	// ReviewerGroup is the Keycloak group that gates the change-approval
-	// workflow. Members of this group can approve / reject version
-	// submissions and pending deletions for any workspace. Default:
-	// "registry-reviewers". Configurable via env + YAML + default per
-	// CLAUDE.md's configuration rule.
+	// ReviewerGroup is the group seeded on boot with a global Reviewer
+	// grant (ADR 0006 §5). Retained for back-compat: on boot the server
+	// ensures a group of this name exists with a global (publisher_id NULL)
+	// Reviewer grant (source = config). Deprecated in favour of managing the
+	// group + grant via the API. Default: "registry-reviewers". Configurable
+	// via env + YAML + default per CLAUDE.md's configuration rule.
 	ReviewerGroup string
+
+	// LocalLoginEnabled turns the local email+password front door on or off
+	// (ADR 0006 §3). When true, LocalSigningKey is required. Default true so
+	// the registry is usable without an external IdP.
+	LocalLoginEnabled bool
+
+	// LocalSigningKey is the PEM-encoded private key (RSA or Ed25519) the
+	// registry uses to sign its own access tokens for local logins and to
+	// publish a self-verification JWKS. It is a credential — supply via env
+	// or a secrets manager, never a committed config file. Required when
+	// LocalLoginEnabled is true.
+	LocalSigningKey string
+
+	// LocalTokenTTL is how long a registry-issued local token is valid.
+	// Default 1h; local users re-login at expiry (no refresh tokens in v1).
+	LocalTokenTTL time.Duration
+
+	// BootstrapAdminEmail is the email of the local Server Admin seeded on
+	// first boot (is_server_admin = true). Empty disables bootstrap seeding.
+	// The seed is create-only: it never overwrites an existing account's
+	// password, so a rotated password survives reboots.
+	BootstrapAdminEmail string
+
+	// BootstrapAdminPassword is the initial password for the bootstrap admin.
+	// It is a credential — env / secret only, never a config file. Consumed
+	// at first boot and should be rotated. Required when BootstrapAdminEmail
+	// is set.
+	BootstrapAdminPassword string
 }
 
 // HTTPConfig holds HTTP server settings.
 type HTTPConfig struct {
-	Addr             string
-	ReadTimeout      time.Duration
-	WriteTimeout     time.Duration
-	IdleTimeout      time.Duration
-	CORSOrigins      []string
+	Addr         string
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	IdleTimeout  time.Duration
+	CORSOrigins  []string
 	// TrustedProxyCIDR is the optional CIDR (e.g. "10.0.0.0/8") of the
 	// reverse proxy in front of this server. When set, X-Forwarded-For is
 	// trusted for rate-limiting IP extraction. Parsed and stored as a string;
@@ -163,6 +192,13 @@ type fileAuthConfig struct {
 	AuthStorage   string `yaml:"auth_storage"`
 	GroupsClaim   string `yaml:"groups_claim"`
 	ReviewerGroup string `yaml:"reviewer_group"`
+	LocalLogin    bool   `yaml:"local_login"`
+	// local_signing_key and the bootstrap admin password are credentials —
+	// env / secret only, never read from the config file (secrets
+	// conventions). The bootstrap admin EMAIL is not a secret, so it may be
+	// set in the file.
+	LocalTokenTTL       string `yaml:"local_token_ttl"`
+	BootstrapAdminEmail string `yaml:"bootstrap_admin_email"`
 }
 
 type fileConfig struct {
@@ -199,6 +235,8 @@ func defaultFileConfig() fileConfig {
 		Auth: fileAuthConfig{
 			GroupsClaim:   "groups",
 			ReviewerGroup: "registry-reviewers",
+			LocalLogin:    true,
+			LocalTokenTTL: "1h",
 		},
 	}
 }
@@ -232,6 +270,7 @@ func Load(configFile string) (*Config, error) {
 	readTimeout := parseDurationDefault(fc.HTTP.ReadTimeout, 30*time.Second)
 	writeTimeout := parseDurationDefault(fc.HTTP.WriteTimeout, 30*time.Second)
 	idleTimeout := parseDurationDefault(fc.HTTP.IdleTimeout, 120*time.Second)
+	localTokenTTL := parseDurationDefault(fc.Auth.LocalTokenTTL, time.Hour)
 
 	// Build final config: env vars win over file values.
 	cfg := &Config{
@@ -259,13 +298,18 @@ func Load(configFile string) (*Config, error) {
 			Level: envString("LOG_LEVEL", fc.Log.Level),
 		},
 		Auth: AuthConfig{
-			OIDCIssuer:    envString("OIDC_ISSUER", fc.Auth.OIDCIssuer),
-			OIDCJWKSUrl:   envString("OIDC_JWKS_URL", fc.Auth.OIDCJWKSUrl),
-			OIDCClientID:  envString("OIDC_CLIENT_ID", fc.Auth.OIDCClientID),
-			OIDCAudience:  envString("OIDC_AUDIENCE", fc.Auth.OIDCAudience),
-			AuthStorage:   envString("AUTH_STORAGE", fc.Auth.AuthStorage),
-			GroupsClaim:   envString("AUTH_GROUPS_CLAIM", fc.Auth.GroupsClaim),
-			ReviewerGroup: envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
+			OIDCIssuer:             envString("OIDC_ISSUER", fc.Auth.OIDCIssuer),
+			OIDCJWKSUrl:            envString("OIDC_JWKS_URL", fc.Auth.OIDCJWKSUrl),
+			OIDCClientID:           envString("OIDC_CLIENT_ID", fc.Auth.OIDCClientID),
+			OIDCAudience:           envString("OIDC_AUDIENCE", fc.Auth.OIDCAudience),
+			AuthStorage:            envString("AUTH_STORAGE", fc.Auth.AuthStorage),
+			GroupsClaim:            envString("AUTH_GROUPS_CLAIM", fc.Auth.GroupsClaim),
+			ReviewerGroup:          envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
+			LocalLoginEnabled:      envBool("AUTH_LOCAL_LOGIN_ENABLED", fc.Auth.LocalLogin),
+			LocalSigningKey:        envString("AUTH_LOCAL_SIGNING_KEY", ""),
+			LocalTokenTTL:          envDuration("AUTH_LOCAL_TOKEN_TTL", localTokenTTL),
+			BootstrapAdminEmail:    envString("AUTH_BOOTSTRAP_ADMIN_EMAIL", fc.Auth.BootstrapAdminEmail),
+			BootstrapAdminPassword: envString("AUTH_BOOTSTRAP_ADMIN_PASSWORD", ""),
 		},
 		BootstrapFile: envString("BOOTSTRAP_FILE", fc.BootstrapFile),
 	}
@@ -304,6 +348,15 @@ func (c *Config) validate() error {
 	if c.Auth.OIDCIssuer == "" {
 		return fmt.Errorf("OIDC_ISSUER is required")
 	}
+	// The "AUTH_LOCAL_SIGNING_KEY required when local login is enabled" rule is
+	// enforced where the local-auth subsystem initialises (it is the component
+	// that actually needs the key and can fail closed without a half-built
+	// feature breaking unrelated config loads). LocalLoginEnabled defaults to
+	// true, so validating the key here would reject every deployment until the
+	// local-auth wiring lands.
+	if c.Auth.BootstrapAdminEmail != "" && c.Auth.BootstrapAdminPassword == "" {
+		return fmt.Errorf("AUTH_BOOTSTRAP_ADMIN_PASSWORD is required when AUTH_BOOTSTRAP_ADMIN_EMAIL is set")
+	}
 	return nil
 }
 
@@ -321,6 +374,20 @@ func envInt(key string, def int) int {
 		n, err := strconv.Atoi(v)
 		if err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+// envBool reads a boolean env var, falling back to def when unset or
+// unparseable. Accepts the forms strconv.ParseBool understands
+// (1/t/T/TRUE/true/0/f/F/FALSE/false, …). Needed for knobs whose default is
+// true, where an explicit "false" must override the default.
+func envBool(key string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err == nil {
+			return b
 		}
 	}
 	return def
