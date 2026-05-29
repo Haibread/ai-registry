@@ -7,11 +7,12 @@
  * exercises:
  *
  *   - author@example.com    (groups: anthropic-core, anthropic-labs)
- *                           — RequireWorkspaceWrite: submit + create version
+ *                           — RequirePublisherRole(Editor) via the
+ *                             anthropic-core group's grant: submit + create
  *   - reviewer@example.com  (group: registry-reviewers)
- *                           — RequireReviewer: approve a pending submission
+ *                           — approve via the seeded global Reviewer grant
  *   - user@example.com      (no roles, no groups)
- *                           — 403 baseline with the workspace-group message
+ *                           — 403 baseline: holds no role on the publisher
  *
  * Storage states are minted by global.setup.ts. The spec uses
  * browser.newContext({ storageState }) per role rather than a single
@@ -46,7 +47,7 @@ async function pageAs(browser: Browser, role: 'admin' | 'author' | 'reviewer' | 
 }
 
 test.describe('Phase 7: group-based authorization end-to-end', () => {
-  test('admin seeds publisher, workspace bound to anthropic-core, server, draft version', async ({ browser }) => {
+  test('admin seeds publisher, grants anthropic-core editor, server, draft version', async ({ browser }) => {
     const page = await pageAs(browser, 'admin')
 
     let res = await apiPost(page, '/api/v1/publishers', {
@@ -56,16 +57,29 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
     })
     expect(res.status(), 'create publisher').toBe(201)
 
-    // Create the workspace with its group_name bound in a single POST
-    // — the create-then-PATCH dance was removed. Use a non-default
-    // slug so we're not racing the flat `/api/v1/mcp/servers` lazy
-    // default-workspace creation.
-    res = await apiPost(page, `/api/v1/publishers/${PUB}/workspaces`, {
-      slug: 'default',
-      name: 'Default',
-      group_name: 'anthropic-core',
+    // Authorize the anthropic-core group to author on this publisher
+    // (ADR 0006). The author's `groups` claim names "anthropic-core"; the
+    // matching registry group carries an Editor grant, so the claim resolves
+    // to write access — no users-table row or workspace binding needed.
+    // The group is global, so it may already exist from a previous run.
+    let groupId: string
+    const mkGroup = await apiPost(page, '/api/v1/groups', {
+      slug: 'anthropic-core',
+      name: 'Anthropic Core',
     })
-    expect(res.status(), 'create+bind workspace').toBe(201)
+    if (mkGroup.status() === 201) {
+      groupId = (await mkGroup.json()).id
+    } else {
+      const existing = await apiGet(page, '/api/v1/groups/anthropic-core')
+      expect(existing.status(), 'get existing anthropic-core group').toBe(200)
+      groupId = (await existing.json()).id
+    }
+    res = await apiPost(page, `/api/v1/publishers/${PUB}/grants`, {
+      principal_type: 'group',
+      principal_id: groupId,
+      role: 'editor',
+    })
+    expect(res.status(), `grant editor to anthropic-core: ${await res.text()}`).toBe(201)
 
     res = await apiPost(page, '/api/v1/mcp/servers', {
       namespace: PUB,
@@ -142,8 +156,8 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
     const page = await pageAs(browser, 'user')
 
     // user@example.com is authenticated but carries an empty groups[]
-    // claim and no admin realm role, so RequireWorkspaceWrite must
-    // 403 with the workspace-group message.
+    // claim and no admin realm role, so it holds no role on this publisher
+    // and RequirePublisherRole must 403 (ADR 0006).
     const v2 = '2.0.0'
     const res = await apiPost(
       page,
@@ -167,11 +181,9 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
 
     const body = await res.json()
     const message = String(body.detail ?? body.title ?? '')
-    // The richer 403 either names the required group or flags an
-    // admin-only workspace — both are valid Phase-7 enforcement
-    // outcomes depending on the workspace's group_name.
+    // The RBAC 403 names the role the caller is missing on the publisher.
     expect(message, `403 problem+json body: ${JSON.stringify(body)}`).toMatch(
-      /require membership in Keycloak group|admin-only/i,
+      /insufficient role|editor required/i,
     )
   })
 

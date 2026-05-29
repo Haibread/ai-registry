@@ -110,21 +110,25 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	}
 	requirePublisherAdmin := auth.RequirePublisherRole(deps.DB, domain.RoleAdmin, resolvePublisherSlug)
 
-	// Workspace lookup adapters bind the auth.WorkspaceLookup signature to
-	// concrete URL patterns. RequireWorkspaceWrite uses these to resolve
-	// the workspace's group_name without consuming the request body.
-	mcpServerNSLookup := func(r *http.Request) (string, error) {
-		ns := chi.URLParam(r, "namespace")
-		slug := chi.URLParam(r, "slug")
-		return deps.DB.LookupGroupNameByMCPServerNS(r.Context(), ns, slug)
+	// Publisher-scoped RBAC guards (ADR 0006). A resource's {namespace} path
+	// segment IS its owning publisher's slug, so the publisher is resolved from
+	// the slug — not from the resource's publisher_id column — which keeps the
+	// authorization decision a single publishers lookup. Writes require Editor,
+	// per-resource approvals require Reviewer; Admin and Server Admin satisfy
+	// either via the lattice.
+	resolvePublisherByNamespace := func(r *http.Request) (string, error) {
+		pub, err := deps.DB.GetPublisher(r.Context(), chi.URLParam(r, "namespace"))
+		if err != nil {
+			return "", err
+		}
+		return pub.ID, nil
 	}
-	agentNSLookup := func(r *http.Request) (string, error) {
-		ns := chi.URLParam(r, "namespace")
-		slug := chi.URLParam(r, "slug")
-		return deps.DB.LookupGroupNameByAgentNS(r.Context(), ns, slug)
-	}
-	requireMCPServerNS := auth.RequireWorkspaceWrite(mcpServerNSLookup)
-	requireAgentNS := auth.RequireWorkspaceWrite(agentNSLookup)
+	requireMCPServerNS := auth.RequirePublisherRole(deps.DB, domain.RoleEditor, resolvePublisherByNamespace)
+	requireAgentNS := auth.RequirePublisherRole(deps.DB, domain.RoleEditor, resolvePublisherByNamespace)
+	requireReviewerNS := auth.RequirePublisherRole(deps.DB, domain.RoleReviewer, resolvePublisherByNamespace)
+	// The cross-publisher review-queue listing stays a "reviewer anywhere"
+	// check: members of the seeded reviewer group (global Reviewer grant) and
+	// Server Admins. Per-publisher result filtering is a follow-up.
 	requireReviewer := auth.RequireReviewer(deps.AuthConf.ReviewerGroup)
 
 	r := chi.NewRouter()
@@ -293,13 +297,13 @@ func buildMux(deps RouterDeps) *chi.Mux {
 					// Change-approval workflow.
 					r.With(requireMCPServerNS).Post("/{version}/submit", revH.SubmitMCPVersion)
 					r.With(requireMCPServerNS).Post("/{version}/withdraw", revH.WithdrawMCPVersion)
-					r.With(requireReviewer).Post("/{version}/approve", revH.ApproveMCPVersion)
-					r.With(requireReviewer).Post("/{version}/reject", revH.RejectMCPVersion)
+					r.With(requireReviewerNS).Post("/{version}/approve", revH.ApproveMCPVersion)
+					r.With(requireReviewerNS).Post("/{version}/reject", revH.RejectMCPVersion)
 				})
 				// Pending-deletion review flow.
 				r.With(requireMCPServerNS).Post("/deletion-request", revH.RequestMCPDeletion)
-				r.With(requireReviewer).Post("/deletion-request/approve", revH.ApproveMCPDeletion)
-				r.With(requireReviewer).Post("/deletion-request/reject", revH.RejectMCPDeletion)
+				r.With(requireReviewerNS).Post("/deletion-request/approve", revH.ApproveMCPDeletion)
+				r.With(requireReviewerNS).Post("/deletion-request/reject", revH.RejectMCPDeletion)
 			})
 		})
 
@@ -329,13 +333,13 @@ func buildMux(deps RouterDeps) *chi.Mux {
 					// Change-approval workflow.
 					r.With(requireAgentNS).Post("/{version}/submit", revH.SubmitAgentVersion)
 					r.With(requireAgentNS).Post("/{version}/withdraw", revH.WithdrawAgentVersion)
-					r.With(requireReviewer).Post("/{version}/approve", revH.ApproveAgentVersion)
-					r.With(requireReviewer).Post("/{version}/reject", revH.RejectAgentVersion)
+					r.With(requireReviewerNS).Post("/{version}/approve", revH.ApproveAgentVersion)
+					r.With(requireReviewerNS).Post("/{version}/reject", revH.RejectAgentVersion)
 				})
 				// Pending-deletion review flow.
 				r.With(requireAgentNS).Post("/deletion-request", revH.RequestAgentDeletion)
-				r.With(requireReviewer).Post("/deletion-request/approve", revH.ApproveAgentDeletion)
-				r.With(requireReviewer).Post("/deletion-request/reject", revH.RejectAgentDeletion)
+				r.With(requireReviewerNS).Post("/deletion-request/approve", revH.ApproveAgentDeletion)
+				r.With(requireReviewerNS).Post("/deletion-request/reject", revH.RejectAgentDeletion)
 			})
 		})
 
