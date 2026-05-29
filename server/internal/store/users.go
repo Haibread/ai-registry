@@ -81,9 +81,13 @@ func (db *DB) scanUser(row pgx.Row) (*User, error) {
 	return &u, nil
 }
 
-const userColumns = `id, email, display_name, subject,
-	(password_hash IS NOT NULL) AS has_password,
-	is_server_admin, disabled, last_seen_at, created_at, updated_at`
+// userColumns is table-qualified so it is safe to embed in a JOIN (e.g.
+// ListGroupMembers, where group_members also has created_at). The qualifier is
+// equally valid in single-table SELECTs and in RETURNING on the users table.
+const userColumns = `users.id, users.email, users.display_name, users.subject,
+	(users.password_hash IS NOT NULL) AS has_password,
+	users.is_server_admin, users.disabled, users.last_seen_at,
+	users.created_at, users.updated_at`
 
 // GetUserByID returns a single user by ULID. Returns ErrNotFound if absent.
 func (db *DB) GetUserByID(ctx context.Context, id string) (*User, error) {
