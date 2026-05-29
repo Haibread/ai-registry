@@ -13,6 +13,7 @@ import AgentListPage from '@/pages/agents/list'
 import AgentNamespacePage from '@/pages/agents/namespace'
 import AgentDetailPage from '@/pages/agents/detail'
 import { AuthCallback } from '@/auth/AuthCallback'
+import LoginPage from '@/pages/login'
 import NotFoundPage from '@/pages/not-found'
 
 // Admin pages are code-split: the admin bundle is only fetched when an
@@ -67,6 +68,7 @@ export function AppRoutes() {
       <Route path="/agents/:namespace" element={<AgentNamespacePage />} />
       <Route path="/agents/:ns/:slug" element={<AgentDetailPage />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/login" element={<LoginPage />} />
       <Route
         path="/admin"
         element={
