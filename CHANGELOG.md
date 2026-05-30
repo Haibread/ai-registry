@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🔧 Pre-commit hooks + CI lint gate
+
+Added a root [`.pre-commit-config.yaml`](.pre-commit-config.yaml) — baseline
+hygiene, gitleaks, gofmt, golangci-lint, eslint, tsc, helm lint/docs, hadolint,
+actionlint — plus a `pre-commit` CI job that runs the hygiene hooks, gofmt,
+golangci-lint, and actionlint (the rest are already covered by dedicated jobs).
+This closes the gap where Go formatting and linting weren't gated in CI. A new
+[`server/.golangci.yml`](server/.golangci.yml) pins the v2 standard linter set.
+Cleared the findings it surfaced (unchecked `Close()` on three `defer`s, an
+unused first-call result in an auth test) and gofmt-normalised the tree.
+Stopped tracking the regenerated `web/tsconfig.tsbuildinfo` build cache.
+
 ### 🚀 Tag pushes now cut a GitHub Release
 
 The `Publish` workflow gained a `github-release` job: on a `v*.*.*` tag it

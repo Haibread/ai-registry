@@ -39,11 +39,11 @@ type LatestMCPVersion struct {
 
 // ListMCPServersParams controls filtering and pagination for ListMCPServers.
 type ListMCPServersParams struct {
-	PublicOnly     bool       // when true, only visibility='public' rows are returned
-	Namespace      string     // filter by publisher slug (optional)
-	Status         string     // filter by status: "draft" | "published" | "deprecated" | "" (all)
-	Visibility     string     // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
-	Query          string     // full-text search term (optional)
+	PublicOnly     bool   // when true, only visibility='public' rows are returned
+	Namespace      string // filter by publisher slug (optional)
+	Status         string // filter by status: "draft" | "published" | "deprecated" | "" (all)
+	Visibility     string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
+	Query          string // full-text search term (optional)
 	Limit          int32
 	Cursor         string     // opaque cursor (created_at::text + "," + id)
 	UpdatedSince   *time.Time // when non-nil, only rows updated after this time
@@ -247,7 +247,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 			orderClause = "ORDER BY s.name ASC, s.id ASC"
 		case "name_desc":
 			orderClause = "ORDER BY s.name DESC, s.id DESC"
-		// default: created_at_desc — already set above
+			// default: created_at_desc — already set above
 		}
 	}
 
@@ -265,7 +265,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		// Count query arg (uses countArgN for its own numbering)
 		lateralCountCond += fmt.Sprintf(" AND v.version = $%d", countArgN)
 		countArgs = append(countArgs, p.VersionFilter)
-		countArgN++
+		countArgN++ //nolint:ineffassign // kept in lockstep with argN so any arg appended below stays correctly numbered
 		// Only include servers that actually have this version.
 		whereClause += " AND lv.version IS NOT NULL"
 		filterWhere += " AND lv.version IS NOT NULL" // also for count query

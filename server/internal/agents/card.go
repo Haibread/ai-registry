@@ -4,11 +4,12 @@
 // https://github.com/a2aproject/a2a (commit-stable shape at that date)
 //
 // AgentCard fields:
-//   name, description, version, url, provider, iconUrl, documentationUrl,
-//   capabilities (streaming, pushNotifications, stateTransitionHistory, extendedAgentCard),
-//   defaultInputModes, defaultOutputModes,
-//   skills[] (id, name, description, tags[], examples[], inputModes[], outputModes[]),
-//   securitySchemes (Bearer | ApiKey | OAuth2 | OpenIdConnect)
+//
+//	name, description, version, url, provider, iconUrl, documentationUrl,
+//	capabilities (streaming, pushNotifications, stateTransitionHistory, extendedAgentCard),
+//	defaultInputModes, defaultOutputModes,
+//	skills[] (id, name, description, tags[], examples[], inputModes[], outputModes[]),
+//	securitySchemes (Bearer | ApiKey | OAuth2 | OpenIdConnect)
 package agents
 
 import (
@@ -22,18 +23,18 @@ import (
 // AgentCard is the A2A-compatible agent card document.
 // Ref: https://github.com/a2aproject/a2a/blob/main/docs/specification.md §2.1
 type AgentCard struct {
-	Name               string             `json:"name"`
-	Description        string             `json:"description,omitempty"`
-	Version            string             `json:"version"`
-	URL                string             `json:"url"`
-	Provider           *AgentProvider     `json:"provider,omitempty"`
-	IconURL            string             `json:"iconUrl,omitempty"`
-	DocumentationURL   string             `json:"documentationUrl,omitempty"`
-	Capabilities       AgentCapabilities  `json:"capabilities"`
-	DefaultInputModes  []string           `json:"defaultInputModes"`
-	DefaultOutputModes []string           `json:"defaultOutputModes"`
-	Skills             []AgentSkill       `json:"skills"`
-	SecuritySchemes    map[string]any     `json:"securitySchemes,omitempty"`
+	Name               string            `json:"name"`
+	Description        string            `json:"description,omitempty"`
+	Version            string            `json:"version"`
+	URL                string            `json:"url"`
+	Provider           *AgentProvider    `json:"provider,omitempty"`
+	IconURL            string            `json:"iconUrl,omitempty"`
+	DocumentationURL   string            `json:"documentationUrl,omitempty"`
+	Capabilities       AgentCapabilities `json:"capabilities"`
+	DefaultInputModes  []string          `json:"defaultInputModes"`
+	DefaultOutputModes []string          `json:"defaultOutputModes"`
+	Skills             []AgentSkill      `json:"skills"`
+	SecuritySchemes    map[string]any    `json:"securitySchemes,omitempty"`
 }
 
 // AgentProvider describes the organisation that owns the agent.
@@ -44,10 +45,10 @@ type AgentProvider struct {
 
 // AgentCapabilities lists the optional A2A features the agent supports.
 type AgentCapabilities struct {
-	Streaming               bool `json:"streaming,omitempty"`
-	PushNotifications       bool `json:"pushNotifications,omitempty"`
-	StateTransitionHistory  bool `json:"stateTransitionHistory,omitempty"`
-	ExtendedAgentCard       bool `json:"extendedAgentCard,omitempty"`
+	Streaming              bool `json:"streaming,omitempty"`
+	PushNotifications      bool `json:"pushNotifications,omitempty"`
+	StateTransitionHistory bool `json:"stateTransitionHistory,omitempty"`
+	ExtendedAgentCard      bool `json:"extendedAgentCard,omitempty"`
 }
 
 // AgentSkill is one skill entry in the A2A AgentCard skills array.

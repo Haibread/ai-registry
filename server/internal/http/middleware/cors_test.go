@@ -157,10 +157,10 @@ func TestCORS_Wildcard(t *testing.T) {
 // allowlisted origin.
 func TestCORS_NoCredentialsEver(t *testing.T) {
 	cases := []struct {
-		name    string
-		allow   []string
-		origin  string
-		method  string
+		name   string
+		allow  []string
+		origin string
+		method string
 	}{
 		{"GET allowed origin", []string{"http://example.com"}, "http://example.com", http.MethodGet},
 		{"preflight allowed origin", []string{"http://example.com"}, "http://example.com", http.MethodOptions},

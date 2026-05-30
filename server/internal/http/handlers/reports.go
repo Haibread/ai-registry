@@ -33,14 +33,14 @@ func NewReportHandlers(db *store.DB, trustedProxy *net.IPNet) *ReportHandlers {
 // allowed issue types — keep short, structured, and stable. Free-form
 // descriptions carry the details.
 var allowedIssueTypes = map[string]struct{}{
-	"broken":        {},
-	"misleading":    {},
-	"spam":          {},
-	"security":      {},
-	"licensing":     {},
-	"outdated":      {},
-	"duplicate":     {},
-	"other":         {},
+	"broken":     {},
+	"misleading": {},
+	"spam":       {},
+	"security":   {},
+	"licensing":  {},
+	"outdated":   {},
+	"duplicate":  {},
+	"other":      {},
 }
 
 var allowedResourceTypes = map[string]struct{}{
@@ -215,4 +215,3 @@ func reportToResponse(r *domain.Report, includeIP bool) map[string]any {
 	}
 	return m
 }
-

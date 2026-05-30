@@ -109,8 +109,8 @@ func TestPublisherHandler_Create_ValidationErrors(t *testing.T) {
 	r := newPublisherRouter()
 
 	tests := []struct {
-		name    string
-		payload string
+		name       string
+		payload    string
 		wantStatus int
 	}{
 		{"missing slug", `{"name":"No Slug"}`, http.StatusUnprocessableEntity},
@@ -203,8 +203,10 @@ func TestPublisherHandler_List_Pagination(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	var page1 struct {
-		Items      []struct{ ID string `json:"id"` } `json:"items"`
-		NextCursor string                             `json:"next_cursor"`
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+		NextCursor string `json:"next_cursor"`
 	}
 	json.NewDecoder(rec.Body).Decode(&page1) //nolint:errcheck
 	if len(page1.Items) != 3 {
@@ -221,7 +223,9 @@ func TestPublisherHandler_List_Pagination(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	var page2 struct {
-		Items []struct{ ID string `json:"id"` } `json:"items"`
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
 	}
 	json.NewDecoder(rec.Body).Decode(&page2) //nolint:errcheck
 	if len(page2.Items) != 2 {

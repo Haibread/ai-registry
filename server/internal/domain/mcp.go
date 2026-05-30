@@ -104,8 +104,8 @@ type MCPServerVersion struct {
 	ReviewedByEmail  string         `json:"reviewed_by_email,omitempty"`
 	ReviewDecision   ReviewDecision `json:"review_decision,omitempty"`
 	RejectionReason  string         `json:"rejection_reason,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
 // IsPublished reports whether the version has been published (immutable after this).

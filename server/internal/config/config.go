@@ -331,7 +331,7 @@ func loadFile(path string, fc *fileConfig) error {
 		}
 		return fmt.Errorf("config: open %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	dec := yaml.NewDecoder(f)
 	dec.KnownFields(true) // reject unknown keys to catch typos

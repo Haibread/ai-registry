@@ -114,8 +114,8 @@ func TestToServerResponse_RepoSourceInference(t *testing.T) {
 
 func TestMapServerStatus(t *testing.T) {
 	tests := []struct {
-		srv     store.MCPServerRow
-		want    string
+		srv  store.MCPServerRow
+		want string
 	}{
 		{store.MCPServerRow{MCPServer: domain.MCPServer{Status: domain.StatusPublished}}, "active"},
 		{store.MCPServerRow{MCPServer: domain.MCPServer{Status: domain.StatusDeprecated}}, "deprecated"},

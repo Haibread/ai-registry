@@ -116,7 +116,7 @@ type AgentSpec struct {
 
 // AgentVersionSpec describes a single version of an agent.
 type AgentVersionSpec struct {
-	Version            string      `yaml:"version"              json:"version"`
+	Version string `yaml:"version"              json:"version"`
 	// Status: "draft" | "published" | "deprecated". Defaults to "draft".
 	Status             string      `yaml:"status"               json:"status"`
 	StatusMessage      string      `yaml:"status_message"       json:"status_message"`

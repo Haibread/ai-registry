@@ -259,3 +259,49 @@ jobs:
             | kubeconform -strict -summary -ignore-missing-schemas \
                 -schema-location default \
                 -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+  # ── Pre-commit hooks ─────────────────────────────────────────────────────────
+  # Runs the repo's pre-commit hooks. The full hook set is defined in
+  # .pre-commit-config.yaml for local use; this job runs the fast hygiene hooks
+  # (trailing whitespace, EOF, YAML, large files, merge markers, private keys),
+  # gofmt, golangci-lint, and actionlint. The hooks that already have a
+  # purpose-built job above (with better caching and clearer PR signal) are
+  # skipped here to avoid double work:
+  #   gitleaks → secret-scan   go-vet → server   web-eslint/web-tsc → web
+  #   helm-lint → helm
+  # helm-docs and hadolint stay local-only for now (they need extra tooling on
+  # the runner); promote them here once installed.
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      # golangci-lint and actionlint are language: system hooks, so the binaries
+      # must be on PATH before pre-commit runs them. Versions are pinned for
+      # reproducibility — bump them in lockstep with local dev tooling.
+      - name: Install Go-based linters
+        run: |
+          set -euo pipefail
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install pre-commit
+        run: pipx install pre-commit
+
+      - name: Run hooks
+        env:
+          # Skip hooks covered by a dedicated job, plus the two that need
+          # tooling not installed here (see the job comment above).
+          SKIP: gitleaks,go-vet,web-eslint,web-tsc,helm-lint,helm-docs,hadolint
+        run: pre-commit run --all-files --show-diff-on-failure --color always

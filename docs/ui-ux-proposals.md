@@ -98,7 +98,7 @@ renderer.
 
 > **Decision: Accepted**
 >
-> 
+>
 
 ---
 
@@ -556,7 +556,7 @@ returned in the API.
 
 > **Decision: Accepted**
 >
-> 
+>
 
 ---
 
@@ -718,7 +718,7 @@ version needs tags or a recommendation engine.
 
 > **Decision: Accepted**
 >
-> 
+>
 
 ---
 
@@ -1204,7 +1204,7 @@ Fix:         Use Tailwind's dark: variant to adjust badge colors
 
 > **Decision: Accepted**
 >
-> 
+>
 
 ---
 
@@ -1871,7 +1871,7 @@ schema update. Admin toggle. Frontend badge rendering.
 
 > **Decision: Accepted**
 >
-> 
+>
 
 ---
 

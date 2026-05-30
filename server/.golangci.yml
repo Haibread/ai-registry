@@ -1,0 +1,25 @@
+# golangci-lint v2 configuration for the AI Registry Go module.
+# Run from this directory (server/):  golangci-lint run ./...
+#
+# Uses the v2 "standard" linter set: errcheck, govet, ineffassign,
+# staticcheck, unused. Formatting is handled separately by the gofmt
+# pre-commit hook, so no formatters are enabled here.
+version: "2"
+
+linters:
+  default: standard
+  exclusions:
+    rules:
+      # Test setup helpers intentionally ignore errors from fixture inserts
+      # (the assertion fails anyway if the row is missing), so errcheck on
+      # *_test.go is noise rather than signal. Production code stays gated.
+      - path: _test\.go
+        linters:
+          - errcheck
+      # staticcheck "QFxxxx" hints are stylistic quick-fixes (embedded-field
+      # selectors, De Morgan rewrites); the explicit form often reads clearer
+      # in tests. Correctness checks (SAxxxx/STxxxx) still apply everywhere.
+      - path: _test\.go
+        text: "QF[0-9]+"
+        linters:
+          - staticcheck

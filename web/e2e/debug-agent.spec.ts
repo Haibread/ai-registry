@@ -6,13 +6,13 @@ test('debug agent new page', async ({ page }) => {
 
   await page.goto('/admin/agents/new')
   await page.waitForTimeout(5000)
-  
+
   const url = page.url()
   console.log('URL after 5s:', url)
-  
+
   const bodyHTML = await page.evaluate(() => document.body.innerHTML.slice(0, 1000))
   console.log('Body HTML:', bodyHTML)
-  
+
   const title = await page.title()
   console.log('Title:', title)
 })
