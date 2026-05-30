@@ -97,6 +97,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	groupH := handlers.NewGroupHandlers(deps.DB, deps.DB)
 	userH := handlers.NewUserHandlers(deps.DB, deps.DB)
 	grantH := handlers.NewGrantHandlers(deps.DB, deps.DB)
+	meH := handlers.NewMeHandlers(deps.DB)
 
 	// resolvePublisherSlug maps the {slug} path param to a publisher id for
 	// RequirePublisherRole on the per-publisher grants routes.
@@ -201,6 +202,11 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// Unauthenticated by design; rate-limited and lockout-protected.
 		r.With(publicRL).Post("/auth/login", authH.Login)
 
+		// Resolved identity + effective role grants for the authenticated
+		// caller. Powers the SPA's role-gated admin UI (ADR 0006). 401 when no
+		// token; the handler resolves the principal/claims itself.
+		r.Get("/me", meH.Me)
+
 		// ── RBAC administration (ADR 0006 §7) ─────────────────────────────────
 		// Groups (Server Admin).
 		r.Route("/groups", func(r chi.Router) {
@@ -255,7 +261,11 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// MCP servers
 		r.Route("/mcp/servers", func(r chi.Router) {
 			r.With(publicRL).Get("/", mcpH.ListServers)
-			r.With(auth.RequireAdmin).Post("/", mcpH.CreateServer)
+			// Create is publisher-scoped (ADR 0006): a publisher Editor may
+			// author. The role check is in-handler because the target publisher
+			// is in the request body, not the path; CreateServer 401s anonymous
+			// callers and 403s non-Editors.
+			r.Post("/", mcpH.CreateServer)
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", mcpH.GetServer)
@@ -297,7 +307,8 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// Agents
 		r.Route("/agents", func(r chi.Router) {
 			r.With(publicRL).Get("/", agentH.ListAgents)
-			r.With(auth.RequireAdmin).Post("/", agentH.CreateAgent)
+			// Create is publisher-scoped (ADR 0006); see the MCP create note.
+			r.Post("/", agentH.CreateAgent)
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", agentH.GetAgent)

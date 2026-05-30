@@ -187,6 +187,28 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
 
+  /api/v1/me:
+    get:
+      operationId: getMe
+      summary: Resolved identity and effective role grants for the caller
+      description: >
+        Returns the authenticated caller's identity together with their
+        effective role grants (ADR 0006), so a client can gate the admin UI by
+        role without trusting any client-side claim. Grants include both
+        per-publisher grants (with the publisher slug/name) and global grants
+        (empty publisher fields). `is_server_admin` short-circuits every
+        publisher-scoped check. Works for both OIDC and local tokens.
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's identity and grants
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   # ── RBAC administration (ADR 0006) ──────────────────────────────────────────
 
   /api/v1/groups:
@@ -718,6 +740,16 @@ paths:
           description: Filter by publisher slug
           schema:
             type: string
+        - name: mine
+          in: query
+          description: >-
+            Scope the listing to resources the authenticated caller can manage
+            (ADR 0006). Server Admins and global-grant holders see every
+            publisher; an author sees only the publishers they hold a role on,
+            including their own private/draft entries; a caller with no grants
+            sees nothing. Requires authentication (401 otherwise).
+          schema:
+            type: boolean
         - name: status
           in: query
           description: Filter by lifecycle status
@@ -773,7 +805,14 @@ paths:
                 $ref: "#/components/schemas/MCPServerList"
     post:
       operationId: createMCPServer
-      summary: Create an MCP server entry (admin only)
+      summary: Create an MCP server entry (publisher Editor)
+      description: >
+        Creates a server under the publisher named by `namespace`. Requires the
+        Editor role on that publisher (Admin / Server Admin satisfy it via the
+        lattice). The new server is private + draft, so it only reaches the
+        public catalog once a version is published and an Admin flips visibility
+        — the approval gate stays intact (ADR 0006). 401 when unauthenticated,
+        403 without the role.
       tags: [mcp]
       security:
         - bearerAuth: []
@@ -1300,6 +1339,16 @@ paths:
           description: Filter by publisher slug
           schema:
             type: string
+        - name: mine
+          in: query
+          description: >-
+            Scope the listing to resources the authenticated caller can manage
+            (ADR 0006). Server Admins and global-grant holders see every
+            publisher; an author sees only the publishers they hold a role on,
+            including their own private/draft entries; a caller with no grants
+            sees nothing. Requires authentication (401 otherwise).
+          schema:
+            type: boolean
         - name: status
           in: query
           description: Filter by lifecycle status
@@ -1344,7 +1393,12 @@ paths:
                 $ref: "#/components/schemas/AgentList"
     post:
       operationId: createAgent
-      summary: Create an agent entry (admin only)
+      summary: Create an agent entry (publisher Editor)
+      description: >
+        Creates an agent under the publisher named by `namespace`. Requires the
+        Editor role on that publisher (Admin / Server Admin satisfy it). The new
+        agent is private + draft (ADR 0006). 401 when unauthenticated, 403
+        without the role.
       tags: [agents]
       security:
         - bearerAuth: []
@@ -2591,6 +2645,43 @@ components:
         principal_type: { type: string, enum: [user, group] }
         principal_id: { type: string }
         role: { type: string, enum: [viewer, editor, reviewer, admin] }
+
+    MeGrant:
+      type: object
+      required: [role]
+      description: >
+        An effective role grant held by the caller. Per-publisher grants carry
+        the publisher slug/name; a global (all-publishers) grant leaves the
+        publisher fields empty.
+      properties:
+        role: { type: string, enum: [viewer, editor, reviewer, admin] }
+        publisher_id:
+          type: string
+          description: Empty for a global (all-publishers) grant.
+        publisher_slug: { type: string }
+        publisher_name: { type: string }
+
+    Me:
+      type: object
+      required: [authenticated, is_server_admin, grants]
+      description: Resolved identity and effective authorization for the caller (ADR 0006).
+      properties:
+        authenticated: { type: boolean }
+        user_id:
+          type: string
+          description: Registry users.id; empty for a federated caller with no provisioned row.
+        email: { type: string, format: email }
+        display_name: { type: string }
+        is_server_admin:
+          type: boolean
+          description: When true, the caller satisfies every publisher-scoped role check.
+        issuer:
+          type: string
+          enum: [oidc, local]
+          description: Which front door authenticated the request.
+        grants:
+          type: array
+          items: { $ref: "#/components/schemas/MeGrant" }
 
     # ── System ──────────────────────────────────────────────────────────────
 

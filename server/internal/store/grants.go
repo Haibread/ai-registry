@@ -118,6 +118,121 @@ func (db *DB) EffectiveRoles(ctx context.Context, p EffectiveRolesParams) (map[d
 	return held, nil
 }
 
+// EffectivePublisherIDs returns the distinct publisher ids on which the caller
+// holds any role grant — direct user grants ∪ claim-matched groups ∪ local
+// group_members — together with whether the caller holds a global
+// (all-publishers) grant. A global grant means "every publisher", so callers
+// must NOT apply the returned ids as a filter when hasGlobal is true; they
+// should treat the caller as scoped to all publishers instead.
+//
+// Backs the mine-scoped admin listing (ADR 0006): an author sees only the
+// resources of publishers they hold a role on.
+func (db *DB) EffectivePublisherIDs(ctx context.Context, userID string, claimGroupSlugs []string) (ids []string, hasGlobal bool, err error) {
+	ctx, span := startSpan(ctx, "EffectivePublisherIDs")
+	defer span.End()
+
+	slugs := claimGroupSlugs
+	if slugs == nil {
+		slugs = []string{}
+	}
+
+	rows, err := db.Pool.Query(ctx, `
+		SELECT DISTINCT publisher_id FROM role_grants
+		WHERE (
+		        (principal_type = 'user'  AND principal_id = $1)
+		     OR (principal_type = 'group' AND principal_id IN (
+		            SELECT id FROM groups WHERE slug = ANY($2::text[])
+		            UNION
+		            SELECT group_id FROM group_members WHERE user_id = $1
+		         ))
+		      )`,
+		userID, slugs)
+	if err != nil {
+		recordErr(span, err)
+		return nil, false, fmt.Errorf("resolving effective publishers: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pid *string
+		if err := rows.Scan(&pid); err != nil {
+			recordErr(span, err)
+			return nil, false, fmt.Errorf("scanning effective publisher: %w", err)
+		}
+		if pid == nil {
+			hasGlobal = true
+			continue
+		}
+		ids = append(ids, *pid)
+	}
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, false, err
+	}
+	return ids, hasGlobal, nil
+}
+
+// PrincipalGrant is a single role grant held by the caller, enriched with the
+// target publisher's slug and name for display. PublisherID/Slug/Name are empty
+// for a global (all-publishers) grant. Powers GET /api/v1/me.
+type PrincipalGrant struct {
+	Role          domain.Role `json:"role"`
+	PublisherID   string      `json:"publisher_id,omitempty"`
+	PublisherSlug string      `json:"publisher_slug,omitempty"`
+	PublisherName string      `json:"publisher_name,omitempty"`
+}
+
+// ListGrantsForPrincipal returns every role grant the caller holds — direct
+// user grants ∪ claim-matched groups ∪ local group_members — enriched with the
+// target publisher's slug/name (empty for global grants). Powers GET
+// /api/v1/me so the SPA can gate the admin UI by role without trusting any
+// client-side claim.
+func (db *DB) ListGrantsForPrincipal(ctx context.Context, userID string, claimGroupSlugs []string) ([]PrincipalGrant, error) {
+	ctx, span := startSpan(ctx, "ListGrantsForPrincipal")
+	defer span.End()
+
+	slugs := claimGroupSlugs
+	if slugs == nil {
+		slugs = []string{}
+	}
+
+	rows, err := db.Pool.Query(ctx, `
+		SELECT DISTINCT g.role, coalesce(g.publisher_id, ''),
+		       coalesce(p.slug, ''), coalesce(p.name, '')
+		FROM role_grants g
+		LEFT JOIN publishers p ON p.id = g.publisher_id
+		WHERE (
+		        (g.principal_type = 'user'  AND g.principal_id = $1)
+		     OR (g.principal_type = 'group' AND g.principal_id IN (
+		            SELECT id FROM groups WHERE slug = ANY($2::text[])
+		            UNION
+		            SELECT group_id FROM group_members WHERE user_id = $1
+		         ))
+		      )
+		ORDER BY 2, 1`,
+		userID, slugs)
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("listing principal grants: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PrincipalGrant
+	for rows.Next() {
+		var pg PrincipalGrant
+		if err := rows.Scan(&pg.Role, &pg.PublisherID, &pg.PublisherSlug, &pg.PublisherName); err != nil {
+			recordErr(span, err)
+			return nil, fmt.Errorf("scanning principal grant: %w", err)
+		}
+		out = append(out, pg)
+	}
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return out, nil
+}
+
 // ListGrantsByPublisher returns the grants scoped to a single publisher
 // (publisher_id = X). Global grants are excluded — list those via
 // ListGlobalGrants.

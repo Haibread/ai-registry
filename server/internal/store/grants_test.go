@@ -195,6 +195,141 @@ func TestListAndDeleteGrant(t *testing.T) {
 	}
 }
 
+// TestEffectivePublisherIDs verifies the mine-scope query (ADR 0006): the set
+// of publishers a caller holds a grant on, plus the global-grant flag.
+func TestEffectivePublisherIDs(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pubA := insertPublisher(t, "acme", "Acme")
+	pubB := insertPublisher(t, "globex", "Globex")
+	insertPublisher(t, "initech", "Initech") // no grant — must not appear
+
+	user, err := sharedDB.CreateUser(ctx, store.CreateUserParams{Email: "dev@acme.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	editors, err := sharedDB.CreateGroup(ctx, store.CreateGroupParams{Slug: "globex-editors", Name: "Globex Editors"})
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	if err := sharedDB.AddGroupMember(ctx, editors.ID, user.ID); err != nil {
+		t.Fatalf("AddGroupMember: %v", err)
+	}
+	// Direct grant on pubA, group grant (via local membership) on pubB.
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalUser, PrincipalID: user.ID, PublisherID: pubA, Role: domain.RoleEditor})
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalGroup, PrincipalID: editors.ID, PublisherID: pubB, Role: domain.RoleEditor})
+
+	t.Run("scoped to granted publishers, no global", func(t *testing.T) {
+		ids, hasGlobal, err := sharedDB.EffectivePublisherIDs(ctx, user.ID, nil)
+		if err != nil {
+			t.Fatalf("EffectivePublisherIDs: %v", err)
+		}
+		if hasGlobal {
+			t.Errorf("hasGlobal = true, want false")
+		}
+		assertStringSet(t, ids, pubA, pubB)
+	})
+
+	t.Run("no grants returns empty, no global", func(t *testing.T) {
+		other, err := sharedDB.CreateUser(ctx, store.CreateUserParams{Email: "nobody@acme.test"})
+		if err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+		ids, hasGlobal, err := sharedDB.EffectivePublisherIDs(ctx, other.ID, nil)
+		if err != nil {
+			t.Fatalf("EffectivePublisherIDs: %v", err)
+		}
+		if hasGlobal || len(ids) != 0 {
+			t.Errorf("got ids=%v hasGlobal=%v, want empty + false", ids, hasGlobal)
+		}
+	})
+
+	t.Run("global grant sets hasGlobal", func(t *testing.T) {
+		g, err := sharedDB.CreateGroup(ctx, store.CreateGroupParams{Slug: "global-admins", Name: "Global"})
+		if err != nil {
+			t.Fatalf("CreateGroup: %v", err)
+		}
+		mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalGroup, PrincipalID: g.ID, Role: domain.RoleAdmin})
+		// Reached only via a claim slug, not local membership.
+		_, hasGlobal, err := sharedDB.EffectivePublisherIDs(ctx, "", []string{"global-admins"})
+		if err != nil {
+			t.Fatalf("EffectivePublisherIDs: %v", err)
+		}
+		if !hasGlobal {
+			t.Errorf("hasGlobal = false, want true")
+		}
+	})
+}
+
+// TestListGrantsForPrincipal verifies the /me grants projection: per-publisher
+// grants carry the publisher slug/name; a global grant comes back with empty
+// publisher fields.
+func TestListGrantsForPrincipal(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pubA := insertPublisher(t, "acme", "Acme Corp")
+
+	user, err := sharedDB.CreateUser(ctx, store.CreateUserParams{Email: "dev@acme.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	reviewers, err := sharedDB.CreateGroup(ctx, store.CreateGroupParams{Slug: "registry-reviewers", Name: "Reviewers"})
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalUser, PrincipalID: user.ID, PublisherID: pubA, Role: domain.RoleEditor})
+	// Global reviewer grant reached via claim slug.
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalGroup, PrincipalID: reviewers.ID, Role: domain.RoleReviewer, Source: domain.GrantSourceConfig})
+
+	grants, err := sharedDB.ListGrantsForPrincipal(ctx, user.ID, []string{"registry-reviewers"})
+	if err != nil {
+		t.Fatalf("ListGrantsForPrincipal: %v", err)
+	}
+	if len(grants) != 2 {
+		t.Fatalf("got %d grants, want 2: %+v", len(grants), grants)
+	}
+
+	var sawPubGrant, sawGlobalGrant bool
+	for _, g := range grants {
+		switch {
+		case g.PublisherID == pubA:
+			sawPubGrant = true
+			if g.Role != domain.RoleEditor || g.PublisherSlug != "acme" || g.PublisherName != "Acme Corp" {
+				t.Errorf("publisher grant = %+v, want editor on acme/Acme Corp", g)
+			}
+		case g.PublisherID == "":
+			sawGlobalGrant = true
+			if g.Role != domain.RoleReviewer || g.PublisherSlug != "" || g.PublisherName != "" {
+				t.Errorf("global grant = %+v, want reviewer with empty publisher fields", g)
+			}
+		default:
+			t.Errorf("unexpected grant: %+v", g)
+		}
+	}
+	if !sawPubGrant || !sawGlobalGrant {
+		t.Errorf("missing grants: pub=%v global=%v", sawPubGrant, sawGlobalGrant)
+	}
+}
+
+// assertStringSet checks got contains exactly the want values, order-independent.
+func assertStringSet(t *testing.T, got []string, want ...string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %d values %v, want %d %v", len(got), got, len(want), want)
+	}
+	set := make(map[string]bool, len(got))
+	for _, v := range got {
+		set[v] = true
+	}
+	for _, w := range want {
+		if !set[w] {
+			t.Errorf("missing %q in %v", w, got)
+		}
+	}
+}
+
 func mustGrant(t *testing.T, p store.CreateGrantParams) {
 	t.Helper()
 	if _, err := sharedDB.CreateGrant(context.Background(), p); err != nil {

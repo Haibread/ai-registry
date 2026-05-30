@@ -238,7 +238,7 @@ func TestAgentHandler_CreateAgent_Valid(t *testing.T) {
 
 	payload := `{"namespace":"ag-create-ns","slug":"new-ag","name":"New Agent"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents",
-		bytes.NewBufferString(payload))
+		bytes.NewBufferString(payload)).WithContext(adminCtx())
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	newAgentRouter().ServeHTTP(rec, req)
@@ -276,7 +276,7 @@ func TestAgentHandler_CreateAgent_MissingFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/agents",
-				bytes.NewBufferString(tt.payload))
+				bytes.NewBufferString(tt.payload)).WithContext(adminCtx())
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
@@ -287,6 +287,25 @@ func TestAgentHandler_CreateAgent_MissingFields(t *testing.T) {
 	}
 }
 
+// TestAgentHandler_CreateAgent_ForbiddenWithoutEditor verifies an authenticated
+// caller with no Editor role on the target publisher gets 403 (ADR 0006).
+func TestAgentHandler_CreateAgent_ForbiddenWithoutEditor(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "ag-locked-ns", "Locked NS")
+
+	ctx := auth.ContextWithClaims(context.Background(), &auth.KeycloakClaims{
+		Groups: []string{"randos"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents",
+		bytes.NewBufferString(`{"namespace":"ag-locked-ns","slug":"nope","name":"Nope"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAgentHandler_CreateAgent_DuplicateSlug(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "ag-dup-ns", "Dup NS")
@@ -294,7 +313,7 @@ func TestAgentHandler_CreateAgent_DuplicateSlug(t *testing.T) {
 	payload := `{"namespace":"ag-dup-ns","slug":"dup-ag","name":"Dup"}`
 	post := func() int {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents",
-			bytes.NewBufferString(payload))
+			bytes.NewBufferString(payload)).WithContext(adminCtx())
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		newAgentRouter().ServeHTTP(rec, req)

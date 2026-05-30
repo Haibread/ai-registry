@@ -39,11 +39,12 @@ type LatestMCPVersion struct {
 
 // ListMCPServersParams controls filtering and pagination for ListMCPServers.
 type ListMCPServersParams struct {
-	PublicOnly     bool   // when true, only visibility='public' rows are returned
-	Namespace      string // filter by publisher slug (optional)
-	Status         string // filter by status: "draft" | "published" | "deprecated" | "" (all)
-	Visibility     string // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
-	Query          string // full-text search term (optional)
+	PublicOnly     bool     // when true, only visibility='public' rows are returned
+	Namespace      string   // filter by publisher slug (optional)
+	PublisherIDs   []string // when non-empty, restrict to these publisher ids (mine-scoped admin listing, ADR 0006)
+	Status         string   // filter by status: "draft" | "published" | "deprecated" | "" (all)
+	Visibility     string   // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
+	Query          string   // full-text search term (optional)
 	Limit          int32
 	Cursor         string     // opaque cursor (created_at::text + "," + id)
 	UpdatedSince   *time.Time // when non-nil, only rows updated after this time
@@ -111,6 +112,14 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
+		argN++
+		countArgN++
+	}
+	if len(p.PublisherIDs) > 0 {
+		// Mine-scoped admin listing: restrict to the publishers the caller holds
+		// a grant on (ADR 0006). Combines with Namespace if both are set.
+		filterWhere += fmt.Sprintf(" AND s.publisher_id = ANY($%d)", argN)
+		filterArgs = append(filterArgs, p.PublisherIDs)
 		argN++
 		countArgN++
 	}

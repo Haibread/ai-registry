@@ -74,8 +74,38 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// mine=true scopes the listing to resources the caller can manage
+	// (ADR 0006): Server Admins / global-grant holders see everything, an
+	// author sees only the publishers they hold a role on (including their own
+	// private/draft entries), and a caller with no grants sees nothing.
+	publicOnly := !auth.IsAdminFromContext(r.Context())
+	var publisherIDs []string
+	if r.URL.Query().Get("mine") == "true" {
+		ids, all, authed, err := mineScope(r.Context(), h.db)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		if !authed {
+			problem.Write(w, http.StatusUnauthorized, "unauthorized",
+				"Authentication is required for mine=true.", r.URL.Path)
+			return
+		}
+		publicOnly = false // show the caller's own private/draft entries
+		if !all {
+			if len(ids) == 0 {
+				writeJSON(w, r, http.StatusOK, map[string]any{
+					"items": []map[string]any{}, "next_cursor": "", "total_count": 0,
+				})
+				return
+			}
+			publisherIDs = ids
+		}
+	}
+
 	p := store.ListMCPServersParams{
-		PublicOnly:     !auth.IsAdminFromContext(r.Context()),
+		PublicOnly:     publicOnly,
+		PublisherIDs:   publisherIDs,
 		Namespace:      r.URL.Query().Get("namespace"),
 		Status:         status,
 		Visibility:     visibility,
@@ -152,6 +182,14 @@ func (h *MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 // ── POST /api/v1/mcp/servers ──────────────────────────────────────────────
 
 func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
+	// Authorization is publisher-scoped (ADR 0006) and the target publisher is
+	// in the body, so the role check happens in-handler once it is parsed.
+	// Reject anonymous callers up front — before parsing or any DB work.
+	if !auth.IsAuthenticated(r.Context()) {
+		problem.Write(w, http.StatusUnauthorized, "unauthorized",
+			"Missing or invalid bearer token", r.URL.Path)
+		return
+	}
 	var body struct {
 		Namespace   string `json:"namespace"`
 		Slug        string `json:"slug"`
@@ -188,6 +226,21 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		internalError(w, r, err)
+		return
+	}
+
+	// Authoring requires Editor on the owning publisher (Admin / Server Admin
+	// satisfy it via the lattice). The new server is created private + draft, so
+	// it only reaches the public catalog once a version is published and an
+	// Admin flips visibility — the approval gate stays intact (ADR 0006).
+	ok, _, err := auth.CheckPublisherRole(r.Context(), h.db, publisherID, domain.RoleEditor)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	if !ok {
+		problem.Write(w, http.StatusForbidden, "forbidden",
+			"Insufficient role on this publisher: editor required to author resources.", r.URL.Path)
 		return
 	}
 

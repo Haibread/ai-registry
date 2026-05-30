@@ -93,6 +93,61 @@ func RequirePublisherRole(rs RoleStore, required domain.Role, resolve PublisherR
 	}
 }
 
+// IsAuthenticated reports whether the request carries any usable identity — a
+// resolved Principal or token claims. Handlers that authorize from the request
+// body (e.g. resource create, where the target publisher is only known after
+// parsing) call this first to reject anonymous callers with 401 before doing
+// any work, so the unauthenticated path never reaches the body parser or the DB.
+func IsAuthenticated(ctx context.Context) bool {
+	if p, ok := PrincipalFromContext(ctx); ok && p != nil {
+		return true
+	}
+	if c, ok := ClaimsFromContext(ctx); ok && c != nil {
+		return true
+	}
+	return false
+}
+
+// CheckPublisherRole is the function form of RequirePublisherRole, for handlers
+// that can only resolve the target publisher after parsing the request body
+// (resource create carries its publisher in the body, not the path). It mirrors
+// the middleware's capability check over the role lattice:
+//
+//   - Server Admin satisfies any requirement (ok=true).
+//   - Otherwise the caller's effective roles on publisherID are resolved from
+//     their user grants and effective groups, and checked with domain.Satisfies.
+//
+// authed is false when the request carries no identity — callers should map
+// that to 401 (prefer an IsAuthenticated guard up front). When authed is true,
+// ok is the authorization decision (map false to 403).
+func CheckPublisherRole(ctx context.Context, rs RoleStore, publisherID string, required domain.Role) (ok, authed bool, err error) {
+	if IsServerAdminFromContext(ctx) {
+		return true, true, nil
+	}
+	var userID string
+	var groups []string
+	if p, ok := PrincipalFromContext(ctx); ok && p != nil {
+		userID = p.UserID
+		groups = p.ClaimGroups
+		authed = true
+	} else if c, ok := ClaimsFromContext(ctx); ok && c != nil {
+		groups = c.Groups
+		authed = true
+	}
+	if !authed {
+		return false, false, nil
+	}
+	held, err := rs.EffectiveRoles(ctx, store.EffectiveRolesParams{
+		UserID:          userID,
+		ClaimGroupSlugs: groups,
+		PublisherID:     publisherID,
+	})
+	if err != nil {
+		return false, true, err
+	}
+	return domain.Satisfies(held, required), true, nil
+}
+
 // RejectLocalToken is the MCP wall (ADR 0006 §3, non-negotiable): the MCP and
 // agent protocol surface is OAuth-only, so a registry-issued local token is
 // refused there even though it is valid on the human/admin API. Unauthenticated

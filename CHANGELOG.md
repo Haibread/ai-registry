@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🔭 Publisher-scoped admin visibility + `GET /api/v1/me`
+
+The admin list endpoints (`GET /api/v1/mcp/servers`, `GET /api/v1/agents`)
+gained a `mine=true` query parameter that scopes the listing to the resources
+the authenticated caller can manage (ADR 0006): Server Admins and global-grant
+holders still see every publisher, an author sees only the publishers they hold
+a role on — **including their own private and draft entries** — and a caller
+with no grants sees nothing. This is how the admin UI keeps multiple authors
+from seeing each other's resources.
+
+A new `GET /api/v1/me` returns the caller's resolved identity and effective
+role grants (per-publisher and global, plus `is_server_admin`), so the SPA can
+gate the admin UI by role without trusting any client-side claim.
+
+### ✍️ Publisher Editors can author resources
+
+Creating an MCP server or agent (`POST /api/v1/mcp/servers`, `POST
+/api/v1/agents`) no longer requires Server Admin — a publisher **Editor** may
+author for their own publisher (Admin / Server Admin still satisfy it). The new
+resource is created **private + draft**, so it only reaches the public catalog
+once a version is published and an Admin flips visibility; the approval gate is
+unchanged. Anonymous create attempts get 401, non-Editors 403.
+
 ### 🔧 Pre-commit hooks + CI lint gate
 
 Added a root [`.pre-commit-config.yaml`](.pre-commit-config.yaml) — baseline
