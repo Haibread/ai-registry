@@ -1,12 +1,14 @@
 name: Publish
 
-# Publishes Docker images and the Helm chart to GHCR.
+# Publishes Docker images and the Helm chart to GHCR, and on a tag cuts the
+# matching GitHub Release.
 #
 # Triggers:
 #   push to main  → images tagged :latest + :main-<short-sha>
 #                   chart version  0.0.0-main.g<short-sha>
 #   push of v* tag → images tagged :<semver> + :<major>.<minor>
 #                   chart version  <semver-without-v>
+#                   GitHub Release cut from the CHANGELOG section for the tag
 
 on:
   push:
@@ -295,3 +297,57 @@ jobs:
         run: |
           helm push /tmp/chart/*.tgz \
             oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ai-registry/charts
+
+  # ── GitHub Release ───────────────────────────────────────────────────────────
+  # On a semver tag, cut a GitHub Release whose body is the matching CHANGELOG
+  # section. Gated behind a successful image + chart publish so a release is
+  # never announced for artifacts that failed to ship. Idempotent: if a release
+  # for the tag already exists (e.g. cut by hand) its notes are refreshed in
+  # place rather than erroring, so re-runs are safe.
+  github-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    needs: [build-server, build-web, publish-chart]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Pull the CHANGELOG section between "## <tag>" and the next "## " header.
+      # The startswith + trailing-char check matches both "## v0.3.2" (header at
+      # EOL) and "## v0.3.3 — 2026-05-25" (header followed by a space) without
+      # matching a longer version such as "## v0.3.30".
+      - name: Extract release notes from CHANGELOG
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          awk -v tag="$TAG" '
+            BEGIN { head = "## " tag }
+            substr($0, 1, length(head)) == head {
+              rest = substr($0, length(head) + 1)
+              if (rest == "" || rest ~ /^[ \t]/) { flag = 1; next }
+            }
+            /^## / && flag { exit }
+            flag { print }
+          ' CHANGELOG.md > /tmp/relnotes.md
+          if [[ ! -s /tmp/relnotes.md ]]; then
+            printf 'Release %s. See CHANGELOG.md for details.\n' "$TAG" > /tmp/relnotes.md
+          fi
+
+      # Omitting --latest lets gh decide by semver, so a backport patch release
+      # doesn't wrongly steal "Latest" from a higher version.
+      - name: Create or refresh the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --notes-file /tmp/relnotes.md --verify-tag
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" --notes-file /tmp/relnotes.md --verify-tag
+          fi

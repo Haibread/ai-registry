@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🚀 Tag pushes now cut a GitHub Release
+
+The `Publish` workflow gained a `github-release` job: on a `v*.*.*` tag it
+cuts a GitHub Release whose body is the matching `CHANGELOG.md` section,
+gated behind a successful image + chart publish. The step is idempotent —
+an existing release (e.g. cut by hand) has its notes refreshed instead of
+erroring — and omits `--latest` so `gh` picks "Latest" by semver. Closes the
+gap where `v0.3.2` and `v0.3.3` shipped images/charts but no Release.
+
 ### 🧹 Remove the workspace layer (ADR 0006)
 
 Workspaces are gone. Resources are scoped directly to their owning
