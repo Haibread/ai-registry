@@ -1,6 +1,6 @@
 # ADR 0006 — Publisher-scoped RBAC, removing workspaces
 
-- **Status:** Accepted (2026-05-29; not yet implemented)
+- **Status:** Accepted (2026-05-29); implemented 2026-05-30 (PRs #79–#85)
 - **Date:** 2026-05-29
 - **Deciders:** @Haibread
 - **Supersedes:** [ADR 0001 — Workspaces under publishers](0001-workspaces-under-publishers.md),
