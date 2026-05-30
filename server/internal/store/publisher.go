@@ -279,7 +279,6 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 		return fmt.Errorf("purging tombstoned agents: %w", err)
 	}
 
-
 	tag, err := tx.Exec(ctx, `DELETE FROM publishers WHERE id=$1`, publisherID)
 	if err != nil {
 		recordErr(span, err)

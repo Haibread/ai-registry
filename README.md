@@ -256,6 +256,33 @@ cd web && npm run test:e2e
 
 See [`CLAUDE.md`](./CLAUDE.md) for the full set of non-negotiables.
 
+### Pre-commit hooks
+
+[pre-commit](https://pre-commit.com) runs the formatters, linters, and secret
+scanners before each commit; the same hooks (minus the ones already covered by
+dedicated jobs) run in CI. Install the framework, enable the git hook, then
+install the tools the `language: system` hooks shell out to:
+
+```bash
+# framework + git hook (run once per clone)
+pipx install pre-commit            # or: brew install pre-commit
+pre-commit install
+
+# tools the hooks invoke (must be on PATH)
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
+# gofmt ships with the Go toolchain; helm is already required for the chart.
+# hadolint: see https://github.com/hadolint/hadolint (or `brew install hadolint`).
+# The web hooks (eslint, tsc) need `npm ci` run in web/ first.
+```
+
+Run every hook across the whole tree:
+
+```bash
+pre-commit run --all-files
+```
+
 ---
 
 ## Roadmap

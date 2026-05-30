@@ -73,7 +73,7 @@ func TestValidatePackages(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid npm package",
+			name:  "valid npm package",
 			input: `[{"registryType":"npm","identifier":"@scope/pkg","version":"1.0.0","transport":{"type":"stdio"}}]`,
 		},
 		{
@@ -82,7 +82,7 @@ func TestValidatePackages(t *testing.T) {
 			input: `[{"registryType":"oci","identifier":"myimage","version":"1.0.0","transport":{"type":"http"}}]`,
 		},
 		{
-			name: "valid streamable-http transport",
+			name:  "valid streamable-http transport",
 			input: `[{"registryType":"npm","identifier":"pkg","version":"1.0.0","transport":{"type":"streamable-http"}}]`,
 		},
 		{

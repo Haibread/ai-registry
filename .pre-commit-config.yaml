@@ -1,0 +1,124 @@
+# Pre-commit hooks for the AI Registry monorepo (Go server + Vite/React web +
+# Helm chart + Docker + GitHub Actions). See https://pre-commit.com.
+#
+# One-time setup:
+#   pre-commit install            # enable the git hook
+#   pre-commit run --all-files    # run every hook across the whole tree
+#
+# The baseline and gitleaks hooks are fetched and managed by pre-commit. The
+# language/tool linters are `language: system` hooks that shell out to binaries
+# you must have on PATH:
+#   - Go:     go (gofmt ships with the toolchain), golangci-lint
+#   - Web:    node + npm (run `npm ci` in web/ first)
+#   - Helm:   helm, helm-docs
+#   - Docker: hadolint
+#   - CI:     actionlint
+# See "Development workflow → Pre-commit hooks" in README.md for install commands.
+
+minimum_pre_commit_version: "3.2.0"
+
+repos:
+  # ── Baseline (managed by pre-commit) ────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Generated from openapi.yaml via `npm run generate`; never hand-edited.
+        exclude: ^web/src/lib/schema\.d\.ts$
+      - id: end-of-file-fixer
+        exclude: ^web/src/lib/schema\.d\.ts$
+      - id: check-yaml
+        args:
+          - --allow-multiple-documents
+        # Helm templates are Go-templated and not valid standalone YAML.
+        exclude: ^deploy/helm/.*/templates/
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # ── Secret scanning (managed by pre-commit) ─────────────────────────────────
+  # detect-private-key (above) only catches PEM headers; gitleaks catches API
+  # key patterns from dozens of providers.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+
+  # ── Local tool hooks (binaries must be on PATH) ─────────────────────────────
+  - repo: local
+    hooks:
+      # ── Go ──────────────────────────────────────────────────────────────────
+      - id: gofmt
+        name: gofmt
+        description: Format Go files with gofmt.
+        entry: gofmt
+        args:
+          - -l
+          - -w
+        language: system
+        types:
+          - go
+      - id: go-vet
+        name: go vet
+        description: Report suspicious constructs in the Go module.
+        entry: bash -c 'cd server && go vet ./...'
+        language: system
+        types:
+          - go
+        pass_filenames: false
+      - id: golangci-lint
+        name: golangci-lint
+        description: Run the golangci-lint meta-linter over the Go module.
+        entry: bash -c 'cd server && golangci-lint run'
+        language: system
+        types:
+          - go
+        pass_filenames: false
+
+      # ── Web (Vite + React) ────────────────────────────────────────────────────
+      - id: web-eslint
+        name: eslint (web)
+        description: Lint the web sources with ESLint.
+        entry: bash -c 'cd web && npm run lint'
+        language: system
+        files: ^web/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: web-tsc
+        name: tsc --noEmit (web)
+        description: Type-check the web sources (noEmit via tsconfig project refs).
+        entry: bash -c 'cd web && npx tsc -b'
+        language: system
+        files: ^web/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      # ── Helm ──────────────────────────────────────────────────────────────────
+      - id: helm-lint
+        name: helm lint
+        description: Lint the ai-registry Helm chart.
+        entry: helm lint deploy/helm/ai-registry
+        language: system
+        files: ^deploy/helm/ai-registry/
+        pass_filenames: false
+      - id: helm-docs
+        name: helm-docs
+        description: Regenerate the chart README from values.yaml.
+        entry: bash -c 'cd deploy/helm/ai-registry && helm-docs'
+        language: system
+        files: ^deploy/helm/ai-registry/(Chart\.yaml|values\.yaml|README\.md|templates/)
+        pass_filenames: false
+
+      # ── Docker ────────────────────────────────────────────────────────────────
+      - id: hadolint
+        name: hadolint
+        description: Lint Dockerfiles.
+        entry: hadolint
+        language: system
+        files: (^|/)Dockerfile$
+
+      # ── GitHub Actions ─────────────────────────────────────────────────────────
+      - id: actionlint
+        name: actionlint
+        description: Lint GitHub Actions workflow files.
+        entry: actionlint
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$

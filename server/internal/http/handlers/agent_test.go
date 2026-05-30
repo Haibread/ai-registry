@@ -140,7 +140,7 @@ func TestAgentHandler_ListAgents_WithAgents(t *testing.T) {
 
 func TestAgentHandler_ListAgents_PublicOnlyFilter(t *testing.T) {
 	resetTables(t)
-	seedAgent(t, "ag-vis1", "private-ag")         // private by default
+	seedAgent(t, "ag-vis1", "private-ag") // private by default
 	seedAgentPublic(t, "ag-vis2", "public-ag")
 
 	// Unauthenticated — sees only public

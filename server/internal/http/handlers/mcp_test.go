@@ -851,7 +851,6 @@ func TestMCPHandler_ListServers_TotalCount(t *testing.T) {
 	}
 }
 
-
 func TestMCPHandler_PatchServer_Success(t *testing.T) {
 	resetTables(t)
 	seedMCPServer(t, "patch-ns", "patch-srv")

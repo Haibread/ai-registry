@@ -402,9 +402,9 @@ func TestBearerToken_ExtractedCorrectly(t *testing.T) {
 	token := signJWT(t, priv, kid, issuer, []string{"admin"})
 
 	tests := []struct {
-		name          string
-		headerValue   string
-		expectClaims  bool
+		name         string
+		headerValue  string
+		expectClaims bool
 	}{
 		{"correct Bearer prefix", "Bearer " + token, true},
 		{"lowercase bearer", "bearer " + token, false}, // case-sensitive
@@ -597,7 +597,6 @@ func TestJWKSEndpoint_ReturnsExpectedURL(t *testing.T) {
 		})
 	}
 }
-
 
 // signJWTWithGroups returns a token whose payload carries group memberships
 // under a configurable claim name. Used to test the validator's

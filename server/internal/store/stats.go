@@ -14,10 +14,10 @@ type StatusBreakdown struct {
 
 // RegistryCounts holds the total number of entries for each resource type.
 type RegistryCounts struct {
-	MCPServers        int             `json:"mcp_servers"`
-	Agents            int             `json:"agents"`
-	Publishers        int             `json:"publishers"`
-	MCPStatusBreakdown *StatusBreakdown `json:"mcp_status_breakdown,omitempty"`
+	MCPServers           int              `json:"mcp_servers"`
+	Agents               int              `json:"agents"`
+	Publishers           int              `json:"publishers"`
+	MCPStatusBreakdown   *StatusBreakdown `json:"mcp_status_breakdown,omitempty"`
 	AgentStatusBreakdown *StatusBreakdown `json:"agent_status_breakdown,omitempty"`
 }
 

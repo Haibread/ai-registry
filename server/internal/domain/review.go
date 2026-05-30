@@ -9,9 +9,9 @@ import "time"
 type ReviewState string
 
 const (
-	ReviewStateNone           ReviewState = "none"
-	ReviewStatePendingReview  ReviewState = "pending_review"
-	ReviewStateRejected       ReviewState = "rejected"
+	ReviewStateNone          ReviewState = "none"
+	ReviewStatePendingReview ReviewState = "pending_review"
+	ReviewStateRejected      ReviewState = "rejected"
 )
 
 // ReviewDecision is the terminal value written to a version's

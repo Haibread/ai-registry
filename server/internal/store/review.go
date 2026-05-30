@@ -408,9 +408,9 @@ func diagnoseAgentDeletionMiss(ctx context.Context, db *DB, agentID string) erro
 type ReviewQueueItemKind string
 
 const (
-	ReviewQueueItemMCPVersion   ReviewQueueItemKind = "mcp_version"
-	ReviewQueueItemAgentVersion ReviewQueueItemKind = "agent_version"
-	ReviewQueueItemMCPDeletion  ReviewQueueItemKind = "mcp_deletion"
+	ReviewQueueItemMCPVersion    ReviewQueueItemKind = "mcp_version"
+	ReviewQueueItemAgentVersion  ReviewQueueItemKind = "agent_version"
+	ReviewQueueItemMCPDeletion   ReviewQueueItemKind = "mcp_deletion"
 	ReviewQueueItemAgentDeletion ReviewQueueItemKind = "agent_deletion"
 )
 

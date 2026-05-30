@@ -460,7 +460,9 @@ func TestReviewHandler_DiscriminatedConflicts_StateAndConflict(t *testing.T) {
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("approve draft: %d, body: %s", rec.Code, rec.Body.String())
 	}
-	var p struct{ Type string `json:"type"` }
+	var p struct {
+		Type string `json:"type"`
+	}
 	_ = json.NewDecoder(rec.Body).Decode(&p)
 	if p.Type[len(p.Type)-len("review-state-mismatch"):] != "review-state-mismatch" {
 		t.Errorf("type = %q, want review-state-mismatch suffix", p.Type)
@@ -510,7 +512,9 @@ func TestReviewHandler_ApproveMCP_AlreadyPublished(t *testing.T) {
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("re-approve: %d, body: %s", rec.Code, rec.Body.String())
 	}
-	var p struct{ Type string `json:"type"` }
+	var p struct {
+		Type string `json:"type"`
+	}
 	_ = json.NewDecoder(rec.Body).Decode(&p)
 	if !(p.Type[len(p.Type)-len("already-published"):] == "already-published" ||
 		p.Type[len(p.Type)-len("review-state-mismatch"):] == "review-state-mismatch") {

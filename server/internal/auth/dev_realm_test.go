@@ -25,8 +25,8 @@ func TestDevRealm_Phase7Bindings(t *testing.T) {
 	}
 
 	var realm struct {
-		Realm   string `json:"realm"`
-		Roles   struct {
+		Realm string `json:"realm"`
+		Roles struct {
 			Realm []struct {
 				Name string `json:"name"`
 			} `json:"realm"`

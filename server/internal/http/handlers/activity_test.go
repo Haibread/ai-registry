@@ -33,9 +33,9 @@ func newActivityRouter() *chi.Mux {
 func logEventFor(t *testing.T, resourceType, resourceID string, action domain.AuditAction, extra map[string]any) {
 	t.Helper()
 	metadata := map[string]any{
-		"client_ip":     "10.0.0.5",        // must be scrubbed (not on allowlist)
-		"user_agent":    "curl/8.0",        // must be scrubbed
-		"internal_note": "do not expose",   // must be scrubbed
+		"client_ip":     "10.0.0.5",      // must be scrubbed (not on allowlist)
+		"user_agent":    "curl/8.0",      // must be scrubbed
+		"internal_note": "do not expose", // must be scrubbed
 	}
 	for k, v := range extra {
 		metadata[k] = v

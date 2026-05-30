@@ -89,7 +89,7 @@ func TestResolvePrincipal_Local(t *testing.T) {
 	f.add(&store.User{ID: "u1", Email: "a@x.test", IsServerAdmin: true})
 	v := validatorWithStore(f)
 
-	p, err := v.resolvePrincipal(context.Background(), IssuerLocal, &KeycloakClaims{Email: "a@x.test"})
+	_, err := v.resolvePrincipal(context.Background(), IssuerLocal, &KeycloakClaims{Email: "a@x.test"})
 	// Local resolution keys on Subject == users.id.
 	if err == nil {
 		t.Fatal("expected unresolved when subject does not match a user id")
@@ -97,7 +97,7 @@ func TestResolvePrincipal_Local(t *testing.T) {
 
 	claims := &KeycloakClaims{}
 	claims.Subject = "u1"
-	p, err = v.resolvePrincipal(context.Background(), IssuerLocal, claims)
+	p, err := v.resolvePrincipal(context.Background(), IssuerLocal, claims)
 	if err != nil {
 		t.Fatalf("resolvePrincipal: %v", err)
 	}
