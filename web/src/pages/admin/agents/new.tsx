@@ -39,9 +39,6 @@ export default function AdminAgentNew() {
   const navigate = useNavigate()
 
   const [namespace, setNamespace] = useState('')
-  // Empty `workspace` falls back to default (lazy-created on first POST).
-  // Reset when namespace changes so we never leak a stale workspace slug.
-  const [workspace, setWorkspace] = useState('')
   const [authScheme, setAuthScheme] = useState('_none')
   const [formError, setFormError] = useState<CreateError | null>(null)
 
@@ -54,18 +51,6 @@ export default function AdminAgentNew() {
   })
 
   const publishers = publishersData?.items ?? []
-
-  const { data: workspacesData } = useQuery({
-    queryKey: ['publisher-workspaces', namespace],
-    queryFn: () =>
-      api
-        .GET('/api/v1/publishers/{publisher_slug}/workspaces', {
-          params: { path: { publisher_slug: namespace }, query: { limit: 100 } },
-        })
-        .then(r => r.data),
-    enabled: !!accessToken && !!namespace,
-  })
-  const workspaces = workspacesData?.items ?? []
 
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -84,7 +69,6 @@ export default function AdminAgentNew() {
           slug,
           name,
           description: (formData.get('description') as string) || undefined,
-          workspace: workspace || undefined,
         },
       })
       if (agentError || !agent) {
@@ -201,10 +185,7 @@ export default function AdminAgentNew() {
               </Label>
               <Select
                 value={namespace}
-                onValueChange={(v) => {
-                  setNamespace(v)
-                  setWorkspace('')
-                }}
+                onValueChange={setNamespace}
                 required
               >
                 <SelectTrigger id="namespace-select" aria-required="true">
@@ -218,33 +199,6 @@ export default function AdminAgentNew() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="workspace-select">Workspace</Label>
-              <Select
-                value={workspace || '_default'}
-                onValueChange={(v) => setWorkspace(v === '_default' ? '' : v)}
-                disabled={!namespace}
-              >
-                <SelectTrigger id="workspace-select">
-                  <SelectValue placeholder="Default (admin-only)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_default">
-                    default (lazily created)
-                  </SelectItem>
-                  {workspaces.map((ws) => (
-                    <SelectItem key={ws.id} value={ws.slug}>
-                      {ws.slug}
-                      {ws.group_name ? ` — bound to ${ws.group_name}` : ' — admin-only'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Pick a workspace to delegate writes through its Keycloak group binding. Leaving this as default routes the new agent to the publisher's <code>default</code> workspace.
-              </p>
             </div>
 
             <div className="space-y-1.5">

@@ -2,10 +2,10 @@
 //
 // All seven workflow operations are wired up per resource type:
 //
-//   submit / withdraw                  -> RequireWorkspaceWrite
-//   approve / reject                   -> RequireReviewer (revision-checked)
-//   deletion-request                   -> RequireWorkspaceWrite
-//   deletion-request/approve / reject  -> RequireReviewer
+//   submit / withdraw                  -> RequirePublisherRole (Editor)
+//   approve / reject                   -> RequirePublisherRole (Reviewer)
+//   deletion-request                   -> RequirePublisherRole (Editor)
+//   deletion-request/approve / reject  -> RequirePublisherRole (Reviewer)
 //
 // All non-OK responses use RFC 7807 problem+json with a slug that maps to
 // the type URI documented in the OpenAPI spec.

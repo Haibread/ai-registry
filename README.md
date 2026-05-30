@@ -33,16 +33,16 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 ### Two UIs, one API
 
 - **Public UI** — read-only. Browse, search, detail pages, JSON inspect, copy endpoints. No auth required.
-- **Admin UI** (`/admin`) — full CRUD, guarded by OIDC login. Publishers, workspaces (with Keycloak group bindings), MCP servers + versions, agents + versions, audit log, reports triage, feature-flag management, and a review queue for the change-approval workflow.
+- **Admin UI** (`/admin`) — full CRUD, guarded by OIDC or local login. Publishers (with role grants), groups, users, MCP servers + versions, agents + versions, audit log, reports triage, feature-flag management, and a review queue for the change-approval workflow.
 - **Both UIs consume the same versioned HTTP API.** Zero client-only features.
 
 ### AuthN/AuthZ
 
 - OAuth 2.1 / OIDC with PKCE (public client via [`oidc-client-ts`](https://github.com/authts/oidc-client-ts) — no client secret, no NextAuth/Auth.js).
 - Keycloak in local dev via docker-compose with a pre-seeded realm.
-- `realm_access.roles[]` contains `"admin"` → unlocks the admin scope. Write endpoints 403 without it, independent of the UI. Middleware-enforced, never UI-enforced.
-- **Workspace authorship via Keycloak groups** — each workspace can bind to a group; members can author MCPs and agents under that workspace without admin role (see [ADR 0001](docs/adr/0001-workspaces-under-publishers.md) / [0002](docs/adr/0002-workspace-group-binding.md)). The JWT claim path is configurable via `AUTH_GROUPS_CLAIM` (default `groups`).
-- **Change-approval workflow** — workspace authors submit version edits or deletion requests that a reviewer group approves before they go live. The reviewer group is configurable via `AUTH_REVIEWER_GROUP` (default `registry-reviewers`). Discriminated 409 errors prevent stale-edit clobbering. See [ADR 0003](docs/adr/0003-change-approval-workflow.md).
+- Two login front doors: OIDC (Keycloak in dev) **and** local email + password accounts — the registry signs its own RS256 tokens for the latter and walls them off the MCP surface. Server Admin comes from `realm_access.roles[]` containing `"admin"` **or** a local `is_server_admin` flag.
+- **Publisher-scoped RBAC** — roles (Viewer/Editor/Reviewer/Admin) are granted to users or groups on a publisher; Editor authors, Reviewer approves, Admin manages, or global Server Admin. Write endpoints 403 without the role, independent of the UI. Claims carry **group membership only** — the JWT claim path is configurable via `AUTH_GROUPS_CLAIM` (default `groups`). See [ADR 0006](docs/adr/0006-publisher-scoped-rbac.md).
+- **Change-approval workflow** — publisher Editors submit version edits or deletion requests that a Reviewer approves before they go live. The cross-publisher review queue is gated by the reviewer group (`AUTH_REVIEWER_GROUP`, default `registry-reviewers`). Discriminated 409 errors prevent stale-edit clobbering. See [ADR 0003](docs/adr/0003-change-approval-workflow.md).
 - MCP-authorization-spec compatible (resource indicators, protected resource metadata).
 
 ### Observability
@@ -153,15 +153,18 @@ The dev realm provisions four users so every Phase 7 path is reachable out of th
 | Username                  | Password   | Realm role | Groups                              | Exercises                                    |
 | ---                       | ---        | ---        | ---                                 | ---                                          |
 | `admin@example.com`       | `admin`    | `admin`    | —                                   | Full admin (every write path)                |
-| `author@example.com`      | `author`   | —          | `anthropic-core`, `anthropic-labs`  | Workspace-scoped authoring + submit-for-review |
+| `author@example.com`      | `author`   | —          | `anthropic-core`, `anthropic-labs`  | Editor authoring via a group role grant + submit-for-review |
 | `reviewer@example.com`    | `reviewer` | —          | `registry-reviewers`                | Approve / reject in the change-approval queue |
 | `user@example.com`        | `user`     | —          | —                                   | 403 baseline (no roles, no groups)           |
 
-Groups bind to the workspaces seeded by `deploy/bootstrap.example.yaml`. The `openai-platform` workspace ships with no demo group member — sign in to Keycloak (`http://localhost:8180/`, master realm, `admin/admin`) and add a user to that group to test it.
+Claims carry only group membership; a group authorizes writes when it
+holds a role grant (e.g. Editor) on the target publisher. Grant roles
+to users or groups from the publisher detail page in the admin UI, or
+via the `/api/v1/publishers/{slug}/grants` API.
 
 ### Seeding from a YAML bootstrap file
 
-Point the server at a bootstrap file and it will upsert publishers, workspaces, MCP servers, and agents on every boot:
+Point the server at a bootstrap file and it will upsert publishers, MCP servers, and agents on every boot:
 
 ```yaml
 # deploy/bootstrap.example.yaml
@@ -170,25 +173,14 @@ publishers:
     name: Acme Corp
     verified: true
 
-# Optional — workspaces group MCPs and agents under a publisher and bind
-# each set to a Keycloak group whose members can author content. Entries
-# without a `workspace` field land in the publisher's lazy-created
-# `default` workspace.
-workspaces:
-  - publisher: acme
-    slug: core
-    name: Core
-    group_name: acme-core      # empty / omitted = admin-only writes
-
 mcp_servers:
   - publisher: acme
-    workspace: core            # optional; defaults to `default`
     slug: files
     name: Files Server
     # …
 ```
 
-The full reference lives in [`deploy/bootstrap.example.yaml`](deploy/bootstrap.example.yaml). Bootstrap is idempotent — existing rows are skipped on re-runs, with two narrow documented exceptions: it backfills `tools[]` when it has just been declared in the YAML, and `group_name` is only applied on first workspace creation so re-runs never silently overwrite operator-tweaked bindings.
+The full reference lives in [`deploy/bootstrap.example.yaml`](deploy/bootstrap.example.yaml). Bootstrap seeds the catalog only (publishers, servers, agents) — role grants are managed via the admin API. It is idempotent — existing rows are skipped on re-runs, with one narrow documented exception: it backfills `tools[]` when it has just been declared in the YAML.
 
 ---
 
@@ -206,15 +198,17 @@ See `deploy/config.example.yaml` and `deploy/.env.example` for the full list. Se
 
 ## API surface
 
-81 operations across these tags:
+95 operations across these tags:
 
 | Tag          | Purpose                                                        |
 | ---          | ---                                                            |
 | `system`     | `/healthz`, `/readyz`, OpenAPI spec, global `.well-known/*`    |
+| `auth`       | Local email + password login (`POST /api/v1/auth/login`)      |
 | `publishers` | Namespace/publisher CRUD                                       |
-| `workspaces` | Workspaces under publishers; group binding; per-workspace listings |
+| `rbac`       | Groups, users, and publisher-scoped role grants (ADR 0006)    |
 | `mcp`        | MCP server + version CRUD, search, detail, view/copy, reports, change-approval (submit / withdraw / approve / reject / deletion-request) |
 | `agents`     | Agent + version CRUD, per-agent A2A card, change-approval (same shape as MCP) |
+| `reports`    | Abuse / issue reports + admin triage                          |
 | `review`     | Reviewer-only `GET /review-queue` listing pending versions and deletions |
 | `audit`      | Admin-only audit log                                           |
 | `v0`         | Strict MCP-registry-spec-compatible read layer                 |

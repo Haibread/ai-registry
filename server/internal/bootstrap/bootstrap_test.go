@@ -273,27 +273,11 @@ func TestLoadSpec_ExampleYAML(t *testing.T) {
 	if len(spec.Publishers) == 0 {
 		t.Error("example has zero publishers; expected at least one")
 	}
-	if len(spec.Workspaces) == 0 {
-		t.Error("example has zero workspaces; expected at least one (workspaces are a documented v0.3 feature)")
-	}
 	if len(spec.MCPServers) == 0 {
 		t.Error("example has zero MCP servers; expected at least one")
 	}
 	if len(spec.Agents) == 0 {
 		t.Error("example has zero agents; expected at least one")
-	}
-	// At least one MCP server should be assigned to a non-default
-	// workspace so the admin UI's expansion has content to show out
-	// of the box on a fresh stack.
-	var assignedToWorkspace bool
-	for _, s := range spec.MCPServers {
-		if s.Workspace != "" {
-			assignedToWorkspace = true
-			break
-		}
-	}
-	if !assignedToWorkspace {
-		t.Error("no MCP server is pinned to a workspace via the `workspace` field — the workspaces UI demo will be empty")
 	}
 	// Sanity-check that at least one entry exercises the v0.2 fields,
 	// otherwise the example isn't demonstrating what the release notes claim.
@@ -1034,11 +1018,9 @@ agents:
 	}
 }
 
-// ── Workspaces ────────────────────────────────────────────────────────────────
-
 // TestLoadSpec_ValidationError_EmptySlugDoesNotPoisonLookups ensures that
 // when a publisher row has an empty slug, the empty-key entry doesn't
-// silently make a downstream workspace's `publisher: ""` reference look
+// silently make a downstream resource's `publisher` reference look
 // resolvable. We expect both errors to surface so the operator sees the
 // real cause (publisher row malformed) and not just the symptom.
 func TestLoadSpec_ValidationError_EmptySlugDoesNotPoisonLookups(t *testing.T) {
@@ -1047,41 +1029,8 @@ publishers:
   - slug: ""
     name: "Headless"
 
-workspaces:
-  - publisher: "ghost"
-    slug: "core"
-    name: "Core"
-`)
-	_, err := bootstrap.LoadSpec(path)
-	if err == nil {
-		t.Fatal("expected validation error, got nil")
-	}
-	msg := err.Error()
-	if !strings.Contains(msg, "publishers[0]: slug is required") {
-		t.Errorf("error %q does not mention the malformed publisher row", msg)
-	}
-	if !strings.Contains(msg, `publisher "ghost" not found`) {
-		t.Errorf("error %q does not mention the missing-publisher reference", msg)
-	}
-}
-
-// TestLoadSpec_ValidationError_UnknownWorkspaceRef ensures an MCP server
-// that references a workspace not declared in the workspaces[] list fails
-// validation up front rather than blowing up halfway through Run.
-func TestLoadSpec_ValidationError_UnknownWorkspaceRef(t *testing.T) {
-	path := writeFile(t, "bootstrap.yaml", `
-publishers:
-  - slug: "acme"
-    name: "Acme Corp"
-
-workspaces:
-  - publisher: "acme"
-    slug: "core"
-    name: "Core"
-
 mcp_servers:
-  - publisher: "acme"
-    workspace: "ghost"
+  - publisher: "ghost"
     slug: "srv"
     name: "Server"
     versions:
@@ -1095,177 +1044,13 @@ mcp_servers:
 `)
 	_, err := bootstrap.LoadSpec(path)
 	if err == nil {
-		t.Fatal("expected validation error for unknown workspace ref, got nil")
+		t.Fatal("expected validation error, got nil")
 	}
-	if !strings.Contains(err.Error(), `workspace "ghost"`) {
-		t.Errorf("error %q does not mention the offending workspace slug", err)
+	msg := err.Error()
+	if !strings.Contains(msg, "publishers[0]: slug is required") {
+		t.Errorf("error %q does not mention the malformed publisher row", msg)
 	}
-}
-
-// TestRun_Workspaces verifies that bootstrap creates the declared workspaces
-// under their publisher, applies group_name bindings, and pins MCP servers
-// and agents that reference a workspace to the correct workspace_id (rather
-// than silently falling back to the publisher's `default`).
-func TestRun_Workspaces(t *testing.T) {
-	resetDB(t)
-	ctx := context.Background()
-
-	path := writeFile(t, "bootstrap.yaml", `
-publishers:
-  - slug: "acme"
-    name: "Acme Corp"
-
-workspaces:
-  - publisher: "acme"
-    slug: "core"
-    name: "Core team"
-    description: "Officially supported."
-    group_name: "acme-core"
-  - publisher: "acme"
-    slug: "labs"
-    name: "Labs"
-    # No group_name — admin-only.
-
-mcp_servers:
-  - publisher: "acme"
-    workspace: "core"
-    slug: "core-srv"
-    name: "Core Server"
-    description: "Lives in core."
-    public: true
-    versions:
-      - version: "1.0.0"
-        status: "published"
-        packages:
-          - registry_type: "npm"
-            identifier: "@acme/core"
-            version: "1.0.0"
-            transport:
-              type: "stdio"
-
-  - publisher: "acme"
-    # No workspace field — must land in the lazy-created default.
-    slug: "default-srv"
-    name: "Default Server"
-    description: "Lives in default."
-    versions:
-      - version: "1.0.0"
-        status: "published"
-        packages:
-          - registry_type: "npm"
-            identifier: "@acme/default"
-            version: "1.0.0"
-            transport:
-              type: "stdio"
-
-agents:
-  - publisher: "acme"
-    workspace: "labs"
-    slug: "labs-agent"
-    name: "Labs Agent"
-    description: "Lives in labs."
-    versions:
-      - version: "1.0.0"
-        status: "published"
-        endpoint_url: "https://agents.acme.com/labs"
-        skills:
-          - id: "do-thing"
-            name: "Do Thing"
-            description: "Does the thing"
-            tags: ["thing"]
-        authentication:
-          - scheme: "Bearer"
-`)
-	spec, err := bootstrap.LoadSpec(path)
-	if err != nil {
-		t.Fatalf("LoadSpec() error = %v", err)
-	}
-	if err := bootstrap.Run(ctx, sharedDB, spec, nil); err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
-
-	var pubID string
-	if err := sharedDB.Pool.QueryRow(ctx, `SELECT id FROM publishers WHERE slug = $1`, "acme").Scan(&pubID); err != nil {
-		t.Fatalf("publisher: %v", err)
-	}
-
-	// Both declared workspaces should be present, plus the lazy
-	// `default` (created on the first MCP create that doesn't pin a
-	// workspace) — three rows total.
-	core, err := sharedDB.GetWorkspace(ctx, pubID, "core")
-	if err != nil {
-		t.Fatalf("GetWorkspace(core): %v", err)
-	}
-	if core.GroupName != "acme-core" {
-		t.Errorf("core.group_name = %q, want acme-core", core.GroupName)
-	}
-	labs, err := sharedDB.GetWorkspace(ctx, pubID, "labs")
-	if err != nil {
-		t.Fatalf("GetWorkspace(labs): %v", err)
-	}
-	if labs.GroupName != "" {
-		t.Errorf("labs.group_name = %q, want empty (admin-only)", labs.GroupName)
-	}
-	def, err := sharedDB.GetWorkspace(ctx, pubID, "default")
-	if err != nil {
-		t.Fatalf("GetWorkspace(default): %v", err)
-	}
-
-	// MCP servers land in the right workspaces.
-	coreSrv, err := sharedDB.GetMCPServer(ctx, "acme", "core-srv", false)
-	if err != nil {
-		t.Fatalf("GetMCPServer(core-srv): %v", err)
-	}
-	var coreSrvWS string
-	if err := sharedDB.Pool.QueryRow(ctx,
-		`SELECT workspace_id FROM mcp_servers WHERE id = $1`, coreSrv.ID,
-	).Scan(&coreSrvWS); err != nil {
-		t.Fatalf("read core-srv workspace_id: %v", err)
-	}
-	if coreSrvWS != core.ID {
-		t.Errorf("core-srv workspace_id = %q, want core (%q)", coreSrvWS, core.ID)
-	}
-
-	defSrv, err := sharedDB.GetMCPServer(ctx, "acme", "default-srv", false)
-	if err != nil {
-		t.Fatalf("GetMCPServer(default-srv): %v", err)
-	}
-	var defSrvWS string
-	if err := sharedDB.Pool.QueryRow(ctx,
-		`SELECT workspace_id FROM mcp_servers WHERE id = $1`, defSrv.ID,
-	).Scan(&defSrvWS); err != nil {
-		t.Fatalf("read default-srv workspace_id: %v", err)
-	}
-	if defSrvWS != def.ID {
-		t.Errorf("default-srv workspace_id = %q, want default (%q)", defSrvWS, def.ID)
-	}
-
-	// Agent lands in labs.
-	labsAgent, err := sharedDB.GetAgent(ctx, "acme", "labs-agent", false)
-	if err != nil {
-		t.Fatalf("GetAgent(labs-agent): %v", err)
-	}
-	var labsAgentWS string
-	if err := sharedDB.Pool.QueryRow(ctx,
-		`SELECT workspace_id FROM agents WHERE id = $1`, labsAgent.ID,
-	).Scan(&labsAgentWS); err != nil {
-		t.Fatalf("read labs-agent workspace_id: %v", err)
-	}
-	if labsAgentWS != labs.ID {
-		t.Errorf("labs-agent workspace_id = %q, want labs (%q)", labsAgentWS, labs.ID)
-	}
-
-	// Re-running must be idempotent — no duplicate workspaces, no error.
-	if err := bootstrap.Run(ctx, sharedDB, spec, nil); err != nil {
-		t.Fatalf("idempotent Run() error = %v", err)
-	}
-	var wsCount int
-	if err := sharedDB.Pool.QueryRow(ctx,
-		`SELECT count(*) FROM workspaces WHERE publisher_id = $1`, pubID,
-	).Scan(&wsCount); err != nil {
-		t.Fatalf("count workspaces: %v", err)
-	}
-	if wsCount != 3 {
-		t.Errorf("workspace count = %d after 2 runs, want 3 (core/labs/default)", wsCount)
+	if !strings.Contains(msg, `publisher "ghost" not found`) {
+		t.Errorf("error %q does not mention the missing-publisher reference", msg)
 	}
 }

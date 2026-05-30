@@ -135,36 +135,6 @@ test.describe('Admin review UI', () => {
     await expect(detailRow.getByRole('button', { name: /submit|withdraw|resubmit/i })).toHaveCount(0)
   })
 
-  test('Workspaces section on publisher detail can set a group binding', async ({ page }) => {
-    await page.goto(`/admin/publishers/${PUB}`)
-    // The default workspace should already exist (lazy-created on the
-    // first MCP create earlier in this run).
-    await expect(page.getByRole('heading', { name: /workspaces/i })).toBeVisible({
-      timeout: 15_000,
-    })
-    // Click Edit on the default row.
-    const defaultRow = page.locator('tr', { hasText: 'default' })
-    await expect(defaultRow).toBeVisible()
-    await defaultRow.getByRole('button', { name: /^edit$/i }).click()
-
-    // The edit form's Keycloak group field defaults to the current
-    // group_name (empty here) — fill it.
-    await page.getByLabel(/keycloak group/i).fill('e2e-team-grp')
-    await page.getByRole('button', { name: /save changes/i }).click()
-
-    // Row re-renders with the new badge. Scope to the row because the
-    // success toast also contains the group name and would collide with
-    // a page-wide getByText match.
-    await expect(defaultRow.getByText('e2e-team-grp')).toBeVisible({ timeout: 10_000 })
-
-    // Clear it back to admin-only via another edit.
-    await defaultRow.getByRole('button', { name: /^edit$/i }).click()
-    const groupField = page.getByLabel(/keycloak group/i)
-    await groupField.fill('')
-    await page.getByRole('button', { name: /save changes/i }).click()
-    await expect(defaultRow.getByText(/admin-only/i)).toBeVisible({ timeout: 10_000 })
-  })
-
   test('Request deletion button on the entry submits a deletion review', async ({ page }) => {
     await page.goto(`/admin/mcp/${PUB}/${MCP}`)
     page.once('dialog', (d) => d.accept())

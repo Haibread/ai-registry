@@ -60,7 +60,7 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
     // Authorize the anthropic-core group to author on this publisher
     // (ADR 0006). The author's `groups` claim names "anthropic-core"; the
     // matching registry group carries an Editor grant, so the claim resolves
-    // to write access — no users-table row or workspace binding needed.
+    // to write access — no users-table row needed.
     // The group is global, so it may already exist from a previous run.
     let groupId: string
     const mkGroup = await apiPost(page, '/api/v1/groups', {
@@ -152,7 +152,7 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
     expect(v?.review_state ?? 'none', 'review_state after approve').toBe('none')
   })
 
-  test('user (no roles, no groups) is forbidden from creating a version under the same workspace', async ({ browser }) => {
+  test('user (no roles, no groups) is forbidden from creating a version under the same publisher', async ({ browser }) => {
     const page = await pageAs(browser, 'user')
 
     // user@example.com is authenticated but carries an empty groups[]
@@ -193,7 +193,6 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
     // surfaces the real failure above this.
     const page = await pageAs(browser, 'admin')
     await apiDelete(page, `/api/v1/mcp/servers/${PUB}/${MCP}`).catch(() => {})
-    await apiDelete(page, `/api/v1/publishers/${PUB}/workspaces/default`).catch(() => {})
     await apiDelete(page, `/api/v1/publishers/${PUB}`).catch(() => {})
   })
 })

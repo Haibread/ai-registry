@@ -68,100 +68,6 @@ func TestRequireAdmin_AdminClaims(t *testing.T) {
 	}
 }
 
-// ── RequireWorkspaceWrite ──────────────────────────────────────────────────
-
-func runRequireWorkspaceWrite(t *testing.T, claims *auth.KeycloakClaims, group string, lookupErr error) (status int, called bool) {
-	t.Helper()
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-	})
-	lookup := func(*http.Request) (string, error) { return group, lookupErr }
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	if claims != nil {
-		req = req.WithContext(auth.ContextWithClaims(req.Context(), claims))
-	}
-	rec := httptest.NewRecorder()
-	auth.RequireWorkspaceWrite(lookup)(next).ServeHTTP(rec, req)
-	return rec.Code, called
-}
-
-func TestRequireWorkspaceWrite_NoTokenIs401(t *testing.T) {
-	status, called := runRequireWorkspaceWrite(t, nil, "claude-team", nil)
-	if status != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401", status)
-	}
-	if called {
-		t.Error("handler should not have been called")
-	}
-}
-
-func TestRequireWorkspaceWrite_AdminPasses(t *testing.T) {
-	claims := &auth.KeycloakClaims{
-		RealmAccess: auth.RealmAccess{Roles: []string{"admin"}},
-	}
-	status, called := runRequireWorkspaceWrite(t, claims, "", nil)
-	if status != http.StatusOK {
-		t.Errorf("status = %d, want 200", status)
-	}
-	if !called {
-		t.Error("handler should have been called")
-	}
-}
-
-func TestRequireWorkspaceWrite_GroupMatchPasses(t *testing.T) {
-	claims := &auth.KeycloakClaims{
-		Groups: []string{"other-team", "claude-team"},
-	}
-	status, called := runRequireWorkspaceWrite(t, claims, "claude-team", nil)
-	if status != http.StatusOK {
-		t.Errorf("status = %d, want 200", status)
-	}
-	if !called {
-		t.Error("handler should have been called")
-	}
-}
-
-func TestRequireWorkspaceWrite_GroupMismatchIs403(t *testing.T) {
-	claims := &auth.KeycloakClaims{
-		Groups: []string{"other-team"},
-	}
-	status, called := runRequireWorkspaceWrite(t, claims, "claude-team", nil)
-	if status != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", status)
-	}
-	if called {
-		t.Error("handler should not have been called")
-	}
-}
-
-func TestRequireWorkspaceWrite_NullGroupIs403ForNonAdmin(t *testing.T) {
-	// A workspace with NULL/empty group_name is admin-only. Non-admins
-	// must not be allowed in just because they happen to be in some group.
-	claims := &auth.KeycloakClaims{
-		Groups: []string{"any-group"},
-	}
-	status, called := runRequireWorkspaceWrite(t, claims, "", nil)
-	if status != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", status)
-	}
-	if called {
-		t.Error("handler should not have been called")
-	}
-}
-
-func TestRequireWorkspaceWrite_LookupErrorIs500(t *testing.T) {
-	claims := &auth.KeycloakClaims{Groups: []string{"claude-team"}}
-	lookupErr := http.ErrAbortHandler // any non-nil error
-	status, called := runRequireWorkspaceWrite(t, claims, "", lookupErr)
-	if status != http.StatusInternalServerError {
-		t.Errorf("status = %d, want 500", status)
-	}
-	if called {
-		t.Error("handler should not have been called")
-	}
-}
-
 // ── RequireReviewer ─────────────────────────────────────────────────────
 
 func runRequireReviewer(t *testing.T, claims *auth.KeycloakClaims, configuredGroup string) (status int, called bool) {
@@ -248,54 +154,8 @@ func TestRequireReviewer_EmptyConfiguredGroupRejectsNonAdmin(t *testing.T) {
 // ── 403 detail messages ────────────────────────────────────────────────────
 //
 // The detail field is what an operator reads when debugging an
-// unexpected 403. The previous wording was identical for "workspace has
-// no binding" and "you lack the binding's group" — two very different
-// failure modes that needed different responses. These tests pin the
-// distinction so a future edit that re-collapses the wording fails CI.
-
-func runRequireWorkspaceWriteBody(t *testing.T, claims *auth.KeycloakClaims, group string) (status int, detail string) {
-	t.Helper()
-	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-	lookup := func(*http.Request) (string, error) { return group, nil }
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	if claims != nil {
-		req = req.WithContext(auth.ContextWithClaims(req.Context(), claims))
-	}
-	rec := httptest.NewRecorder()
-	auth.RequireWorkspaceWrite(lookup)(next).ServeHTTP(rec, req)
-
-	var body struct {
-		Detail string `json:"detail"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	return rec.Code, body.Detail
-}
-
-func TestRequireWorkspaceWrite_403_AdminOnlyVsGroupMismatch(t *testing.T) {
-	t.Run("admin-only workspace says so explicitly", func(t *testing.T) {
-		claims := &auth.KeycloakClaims{Groups: []string{"anthropic-core"}}
-		status, detail := runRequireWorkspaceWriteBody(t, claims, "")
-		if status != http.StatusForbidden {
-			t.Fatalf("status = %d, want 403", status)
-		}
-		if !strings.Contains(detail, "admin-only") {
-			t.Errorf("detail should call out admin-only binding; got %q", detail)
-		}
-	})
-
-	t.Run("group mismatch names the required group", func(t *testing.T) {
-		claims := &auth.KeycloakClaims{Groups: []string{"anthropic-labs"}}
-		status, detail := runRequireWorkspaceWriteBody(t, claims, "anthropic-core")
-		if status != http.StatusForbidden {
-			t.Fatalf("status = %d, want 403", status)
-		}
-		if !strings.Contains(detail, `"anthropic-core"`) {
-			t.Errorf("detail should quote the required group name; got %q", detail)
-		}
-	})
-}
+// unexpected 403. These tests pin the wording so a future edit that
+// degrades it fails CI.
 
 func TestRequireReviewer_403_NamesGroupOrFlagsDisabled(t *testing.T) {
 	run := func(t *testing.T, claims *auth.KeycloakClaims, group string) (int, string) {

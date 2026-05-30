@@ -41,7 +41,6 @@ type LatestMCPVersion struct {
 type ListMCPServersParams struct {
 	PublicOnly     bool       // when true, only visibility='public' rows are returned
 	Namespace      string     // filter by publisher slug (optional)
-	WorkspaceID    string     // filter by workspace ULID (optional). Applied independently of Namespace.
 	Status         string     // filter by status: "draft" | "published" | "deprecated" | "" (all)
 	Visibility     string     // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string     // full-text search term (optional)
@@ -112,12 +111,6 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	if p.Namespace != "" {
 		filterWhere += fmt.Sprintf(" AND pub.slug = $%d", argN)
 		filterArgs = append(filterArgs, p.Namespace)
-		argN++
-		countArgN++
-	}
-	if p.WorkspaceID != "" {
-		filterWhere += fmt.Sprintf(" AND s.workspace_id = $%d", argN)
-		filterArgs = append(filterArgs, p.WorkspaceID)
 		argN++
 		countArgN++
 	}
@@ -287,14 +280,13 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 
 	args = append(args, p.Limit)
 	q := fmt.Sprintf(`
-		SELECT s.id, pub.slug AS namespace, w.publisher_id, s.slug, s.name,
+		SELECT s.id, pub.slug AS namespace, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
 		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
-		JOIN workspaces w ON w.id = s.workspace_id
-		JOIN publishers pub ON pub.id = w.publisher_id
+		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.tools, v.published_at
 		    FROM mcp_server_versions v
@@ -358,8 +350,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	countQ := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM mcp_servers s
-		JOIN workspaces w ON w.id = s.workspace_id
-		JOIN publishers pub ON pub.id = w.publisher_id
+		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT v.version, v.packages
 		    FROM mcp_server_versions v
@@ -385,14 +376,13 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 	defer span.End()
 
 	q := `
-		SELECT s.id, pub.slug, w.publisher_id, s.slug, s.name,
+		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
 		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
-		JOIN workspaces w ON w.id = s.workspace_id
-		JOIN publishers pub ON pub.id = w.publisher_id
+		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.tools, v.published_at
 		    FROM mcp_server_versions v
@@ -451,14 +441,13 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 	defer span.End()
 
 	q := `
-		SELECT s.id, pub.slug, w.publisher_id, s.slug, s.name,
+		SELECT s.id, pub.slug, s.publisher_id, s.slug, s.name,
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
 		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
-		JOIN workspaces w ON w.id = s.workspace_id
-		JOIN publishers pub ON pub.id = w.publisher_id
+		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.tools, v.published_at
 		    FROM mcp_server_versions v
@@ -508,10 +497,9 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 }
 
 // CreateMCPServerParams holds the fields needed to insert a new MCP server.
-// WorkspaceID is required. Handlers that only have a publisher in hand must
-// resolve it via DB.EnsureDefaultWorkspaceID before calling.
+// PublisherID is required — resources are publisher-scoped (ADR 0006).
 type CreateMCPServerParams struct {
-	WorkspaceID string
+	PublisherID string
 	Slug        string
 	Name        string
 	Description string
@@ -521,25 +509,14 @@ type CreateMCPServerParams struct {
 }
 
 // CreateMCPServer inserts a new MCP server row (draft, private by default).
-// Returns ErrConflict if the (workspace_id, slug) pair already exists.
+// Returns ErrConflict if the (publisher_id, slug) pair already exists, and
+// ErrNotFound if the publisher_id FK does not resolve.
 func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*domain.MCPServer, error) {
 	ctx, span := startSpan(ctx, "CreateMCPServer")
 	defer span.End()
 
-	if p.WorkspaceID == "" {
-		return nil, fmt.Errorf("CreateMCPServer: WorkspaceID is required")
-	}
-
-	var publisherID string
-	if err := db.Pool.QueryRow(ctx,
-		`SELECT publisher_id FROM workspaces WHERE id = $1`, p.WorkspaceID,
-	).Scan(&publisherID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			recordErr(span, ErrNotFound)
-			return nil, ErrNotFound
-		}
-		recordErr(span, err)
-		return nil, fmt.Errorf("resolving workspace publisher: %w", err)
+	if p.PublisherID == "" {
+		return nil, fmt.Errorf("CreateMCPServer: PublisherID is required")
 	}
 
 	id := NewULID()
@@ -547,17 +524,23 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 
 	_, err := db.Pool.Exec(ctx, `
 		INSERT INTO mcp_servers
-		    (id, workspace_id, slug, name, description, homepage_url, repo_url, license,
+		    (id, publisher_id, slug, name, description, homepage_url, repo_url, license,
 		     visibility, status, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'private','draft',$9,$9)`,
-		id, p.WorkspaceID, p.Slug, p.Name,
+		id, p.PublisherID, p.Slug, p.Name,
 		p.Description, p.HomepageURL, p.RepoURL, p.License, now,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			recordErr(span, ErrConflict)
-			return nil, ErrConflict
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505":
+				recordErr(span, ErrConflict)
+				return nil, ErrConflict
+			case "23503":
+				recordErr(span, ErrNotFound)
+				return nil, ErrNotFound
+			}
 		}
 		recordErr(span, err)
 		return nil, fmt.Errorf("creating mcp server: %w", err)
@@ -565,7 +548,7 @@ func (db *DB) CreateMCPServer(ctx context.Context, p CreateMCPServerParams) (*do
 
 	return &domain.MCPServer{
 		ID:          id,
-		PublisherID: publisherID,
+		PublisherID: p.PublisherID,
 		Slug:        p.Slug,
 		Name:        p.Name,
 		Description: p.Description,
@@ -1031,9 +1014,8 @@ func (db *DB) IncrementMCPServerViewCount(ctx context.Context, namespace, slug s
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE mcp_servers s
 		SET view_count = view_count + 1
-		FROM workspaces w, publishers pub
-		WHERE w.id = s.workspace_id
-		  AND pub.id = w.publisher_id
+		FROM publishers pub
+		WHERE pub.id = s.publisher_id
 		  AND pub.slug = $1 AND s.slug = $2`,
 		namespace, slug,
 	)
@@ -1056,9 +1038,8 @@ func (db *DB) IncrementMCPServerCopyCount(ctx context.Context, namespace, slug s
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE mcp_servers s
 		SET copy_count = copy_count + 1
-		FROM workspaces w, publishers pub
-		WHERE w.id = s.workspace_id
-		  AND pub.id = w.publisher_id
+		FROM publishers pub
+		WHERE pub.id = s.publisher_id
 		  AND pub.slug = $1 AND s.slug = $2`,
 		namespace, slug,
 	)

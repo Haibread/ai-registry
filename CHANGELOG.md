@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🧹 Remove the workspace layer (ADR 0006)
+
+Workspaces are gone. Resources are scoped directly to their owning
+publisher again, and authorization is publisher-scoped RBAC (roles
+granted to users/groups) rather than a per-workspace Keycloak-group
+binding. See [ADR 0006](docs/adr/0006-publisher-scoped-rbac.md); this
+is the destructive second half (the additive RBAC + local-auth half
+shipped earlier).
+
+> **Breaking schema change.** Migration `000013_workspaces_remove`
+> backfills `publisher_id` from the workspace link, flips it `NOT NULL`,
+> restores the `(publisher_id, slug)` uniqueness key, drops
+> `workspace_id`, and `DROP`s the `workspaces` table. It aborts with a
+> friendly error if any resource still has a NULL `publisher_id` or a
+> `(publisher_id, slug)` collision — resolve those before upgrading. The
+> down migration recreates one `default` workspace per publisher.
+
+- Removes the seven `/api/v1/publishers/{slug}/workspaces…` endpoints
+  and the `Workspace` / `CreateWorkspaceRequest` / `WorkspaceList`
+  schemas from [openapi.yaml](server/api/openapi.yaml); regenerates
+  `web/src/lib/schema.d.ts`.
+- Drops the `workspace` field from the MCP-server and agent create
+  payloads, the workspace `<Select>` from both admin create forms, and
+  the Workspaces section from the publisher detail page.
+- Deletes the workspace store/handlers/domain types and the dead
+  `RequireWorkspaceWrite` middleware; write/approve routes already moved
+  to `RequirePublisherRole` in the previous PR.
+- Removes the CI "no stray publisher_id reads" guard — `publisher_id` is
+  the canonical column on `mcp_servers` / `agents` once more.
+
 ### 📐 OpenAPI server / agent status enum gains `deleted`
 
 Follow-up to the previous entry. `MCPServer.status` and `Agent.status`

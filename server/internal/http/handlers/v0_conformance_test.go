@@ -424,7 +424,7 @@ func TestV0Conformance_ListServers_CursorPagination(t *testing.T) {
 		slug := "srv" + string(rune('a'+i))
 		pubID := seedPublisher(t, ns+"-"+slug, ns+"-"+slug)
 		srv, err := testDB.CreateMCPServer(context.Background(), store.CreateMCPServerParams{
-			WorkspaceID: defaultWS(t, pubID), Slug: slug, Name: slug,
+			PublisherID: pubID, Slug: slug, Name: slug,
 		})
 		if err != nil {
 			t.Fatalf("CreateMCPServer: %v", err)

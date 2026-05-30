@@ -104,69 +104,6 @@ describe('AdminMCPNew', () => {
     })
   })
 
-  it('forwards a non-default workspace slug in the POST body when picked', async () => {
-    // Differentiate the two GET callers so the workspace Select gets a
-    // realistic shape (with group_name) instead of inheriting the
-    // publishers fixture.
-    mockGET.mockImplementation((url: string) => {
-      if (url === '/api/v1/publishers') {
-        return Promise.resolve({ data: { items: [{ id: 'pub-1', slug: 'acme', name: 'Acme' }] } })
-      }
-      if (url === '/api/v1/publishers/{publisher_slug}/workspaces') {
-        return Promise.resolve({
-          data: {
-            items: [
-              { id: 'ws-1', slug: 'experimental', name: 'Experimental', group_name: 'acme-labs' },
-            ],
-          },
-        })
-      }
-      return Promise.resolve({ data: { items: [] } })
-    })
-
-    const { container } = renderPage()
-    await waitFor(() => expect(mockGET).toHaveBeenCalled())
-    await selectNamespace()
-
-    // The dependent workspaces fetch fires once the namespace is picked.
-    await waitFor(() => {
-      expect(mockGET).toHaveBeenCalledWith(
-        '/api/v1/publishers/{publisher_slug}/workspaces',
-        expect.objectContaining({
-          params: expect.objectContaining({
-            path: { publisher_slug: 'acme' },
-          }),
-        }),
-      )
-    })
-
-    // Pick the non-default workspace from the new Select.
-    const wsTrigger = screen.getByLabelText(/workspace/i)
-    fireEvent.pointerDown(wsTrigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
-    fireEvent.click(wsTrigger)
-    fireEvent.click(await screen.findByRole('option', { name: /experimental/i }))
-
-    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
-    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
-    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '' } })
-    fireEvent.click(container.querySelector('#publish') as HTMLInputElement)
-
-    fireEvent.submit(container.querySelector('form')!)
-
-    await waitFor(() => {
-      expect(mockPOST).toHaveBeenCalledWith(
-        '/api/v1/mcp/servers',
-        expect.objectContaining({
-          body: expect.objectContaining({
-            namespace: 'acme',
-            slug: 'my-srv',
-            workspace: 'experimental',
-          }),
-        }),
-      )
-    })
-  })
-
   it('calls publish endpoint via fetch when publish checkbox is checked', async () => {
     const { container } = renderPage()
     await waitFor(() => expect(mockGET).toHaveBeenCalled())

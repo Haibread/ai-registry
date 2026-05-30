@@ -285,66 +285,6 @@ func extractGroupsClaim(tokenString, claimName string) []string {
 	return out
 }
 
-// WorkspaceLookup resolves the request's target workspace. Implementations
-// typically read URL path params or look up the resource referenced in the
-// request. They MUST NOT consume the request body — RequireWorkspaceWrite
-// runs before the handler and the body must remain readable downstream.
-//
-// Returning an empty groupName is the legitimate "admin-only workspace"
-// signal: the middleware then falls through to the admin check. Errors
-// trigger a 500 — they're an indication that the URL or DB state is bad,
-// not an authorization decision.
-type WorkspaceLookup func(*http.Request) (groupName string, err error)
-
-// RequireWorkspaceWrite is chi middleware that authorizes a write
-// request against a workspace's group_name binding. The contract:
-//
-//   - Admins (realm role "admin") always pass.
-//   - Non-admins pass only when the workspace's group_name is non-empty
-//     and the JWT's `groups` claim contains it.
-//   - Anyone else gets 403.
-//   - Missing JWT entirely gets 401 (mirrors RequireAdmin's wording).
-//
-// The WorkspaceLookup runs after the auth gate so a missing token short-
-// circuits before any DB work.
-func RequireWorkspaceWrite(lookup WorkspaceLookup) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			claims, ok := ClaimsFromContext(r.Context())
-			if !ok || claims == nil {
-				problem.Write(w, http.StatusUnauthorized, "unauthorized",
-					"Missing or invalid bearer token", r.URL.Path)
-				return
-			}
-			if claims.IsAdmin() {
-				next.ServeHTTP(w, r)
-				return
-			}
-			groupName, err := lookup(r)
-			if err != nil {
-				problem.Write(w, http.StatusInternalServerError, "internal",
-					"workspace lookup failed", r.URL.Path)
-				return
-			}
-			// Distinguish "workspace has no binding" from "you lack the
-			// binding's group" so a 403 actually tells you what's wrong.
-			// We echo the required group but never the user's claim
-			// values — the caller already has their own token.
-			if groupName == "" {
-				problem.Write(w, http.StatusForbidden, "forbidden",
-					"This workspace is admin-only (no Keycloak group binding configured). Bind a group via PATCH .../workspaces/{slug} to delegate writes.", r.URL.Path)
-				return
-			}
-			if !claims.HasGroup(groupName) {
-				problem.Write(w, http.StatusForbidden, "forbidden",
-					fmt.Sprintf("Writes to this workspace require membership in Keycloak group %q.", groupName), r.URL.Path)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // RequireReviewer returns chi middleware that gates a route to admins
 // or members of the configured reviewer group. Group name is passed as
 // an argument because it is configured per-deployment via
@@ -352,9 +292,8 @@ func RequireWorkspaceWrite(lookup WorkspaceLookup) func(http.Handler) http.Handl
 // When the group is empty or the JWT carries no matching membership, only
 // admins pass.
 //
-// Wire this onto approve / reject endpoints and deletion-confirmation
-// routes. Publisher-side endpoints (submit, withdraw, edit,
-// request-deletion) keep using RequireWorkspaceWrite.
+// Wired onto the cross-publisher review queue. Per-resource write and
+// approve routes use RequirePublisherRole (ADR 0006).
 func RequireReviewer(group string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

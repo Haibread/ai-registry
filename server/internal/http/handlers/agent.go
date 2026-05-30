@@ -148,7 +148,6 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		Slug        string `json:"slug"`
 		Name        string `json:"name"`
 		Description string `json:"description"`
-		Workspace   string `json:"workspace"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -168,14 +167,6 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("slug: %s", err), r.URL.Path)
 		return
 	}
-	if body.Workspace != "" {
-		if err := domain.ValidateSlug(body.Workspace); err != nil {
-			problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
-				fmt.Sprintf("workspace: %s", err), r.URL.Path)
-			return
-		}
-	}
-
 	publisherID, err := h.db.GetPublisherBySlug(r.Context(), body.Namespace)
 	if errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
@@ -187,31 +178,8 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mirror MCP CreateServer: explicit `workspace` hits ResolveWorkspace,
-	// blank falls back to lazy-creating `default`.
-	var wsID string
-	if body.Workspace != "" {
-		ws, resErr := h.db.ResolveWorkspace(r.Context(), body.Namespace, body.Workspace)
-		if errors.Is(resErr, store.ErrNotFound) {
-			problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
-				fmt.Sprintf("workspace '%s/%s' does not exist", body.Namespace, body.Workspace), r.URL.Path)
-			return
-		}
-		if resErr != nil {
-			internalError(w, r, resErr)
-			return
-		}
-		wsID = ws.ID
-	} else {
-		wsID, err = h.db.EnsureDefaultWorkspaceID(r.Context(), publisherID)
-		if err != nil {
-			internalError(w, r, err)
-			return
-		}
-	}
-
 	agent, err := h.db.CreateAgent(r.Context(), store.CreateAgentParams{
-		WorkspaceID: wsID,
+		PublisherID: publisherID,
 		Slug:        body.Slug,
 		Name:        body.Name,
 		Description: body.Description,

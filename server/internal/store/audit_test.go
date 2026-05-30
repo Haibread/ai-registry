@@ -16,7 +16,7 @@ func TestAuditLog_LogAndList(t *testing.T) {
 	pubID := insertPublisher(t, "audit-ns", "Audit Corp")
 
 	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "audit-srv", Name: "Audit Server",
+		PublisherID: pubID, Slug: "audit-srv", Name: "Audit Server",
 	})
 
 	events := []domain.AuditEvent{

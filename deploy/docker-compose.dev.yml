@@ -58,7 +58,7 @@ services:
       # Enforce OAuth 2.1 audience binding (MCP auth spec). Matches the
       # ai-registry-server-audience client scope defined in the realm import.
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ai-registry-server}
-      # Workspace + change-approval auth knobs. Defaults match the
+      # RBAC + change-approval auth knobs. Defaults match the
       # server's built-in fallbacks, so the keys only need to be set
       # in .env when overriding for a custom IdP setup.
       AUTH_GROUPS_CLAIM: ${AUTH_GROUPS_CLAIM:-groups}

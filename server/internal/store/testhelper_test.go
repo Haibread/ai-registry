@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 func resetDB(t *testing.T) {
 	t.Helper()
 	_, err := sharedDB.Pool.Exec(context.Background(),
-		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, workspaces, publishers, audit_log, reports, role_grants, group_members, groups, users RESTART IDENTITY CASCADE`)
+		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers, audit_log, reports, role_grants, group_members, groups, users RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("truncating tables: %v", err)
 	}
@@ -71,16 +71,4 @@ func insertPublisher(t *testing.T, slug, name string) string {
 		t.Fatalf("inserting publisher: %v", err)
 	}
 	return id
-}
-
-// defaultWS returns the ULID of the publisher's default workspace, creating
-// it lazily on first call. Used to populate CreateMCPServerParams /
-// CreateAgentParams in tests after the publisher_id columns went away.
-func defaultWS(t *testing.T, publisherID string) string {
-	t.Helper()
-	wsID, err := sharedDB.EnsureDefaultWorkspaceID(context.Background(), publisherID)
-	if err != nil {
-		t.Fatalf("EnsureDefaultWorkspaceID(%q): %v", publisherID, err)
-	}
-	return wsID
 }

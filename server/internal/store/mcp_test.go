@@ -22,7 +22,7 @@ func TestCreateAndGetMCPServer(t *testing.T) {
 	pubID := insertPublisher(t, "acme", "Acme Corp")
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID),
+		PublisherID: pubID,
 		Slug:        "my-server",
 		Name:        "My Server",
 		Description: "A test server",
@@ -58,7 +58,7 @@ func TestCreateMCPServer_ConflictOnDuplicateSlug(t *testing.T) {
 	ctx := context.Background()
 	pubID := insertPublisher(t, "acme2", "Acme 2")
 
-	params := store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pubID), Slug: "dup", Name: "Dup"}
+	params := store.CreateMCPServerParams{PublisherID: pubID, Slug: "dup", Name: "Dup"}
 	if _, err := sharedDB.CreateMCPServer(ctx, params); err != nil {
 		t.Fatalf("first create: %v", err)
 	}
@@ -68,45 +68,33 @@ func TestCreateMCPServer_ConflictOnDuplicateSlug(t *testing.T) {
 	}
 }
 
-// TestCreateMCPServer_SlugUniquenessIsPerWorkspace verifies that after the
-// 000011 migration, the unique key is (workspace_id, slug) — so two
-// workspaces under a single publisher may each expose a server with the
-// same slug, but a duplicate within one workspace is still rejected.
-func TestCreateMCPServer_SlugUniquenessIsPerWorkspace(t *testing.T) {
+// TestCreateMCPServer_SlugUniquenessIsPerPublisher verifies that after
+// workspaces are removed (migration 000013), the unique key is
+// (publisher_id, slug) — so two different publishers may each expose a server
+// with the same slug, but a duplicate within one publisher is still rejected.
+func TestCreateMCPServer_SlugUniquenessIsPerPublisher(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
-	pubID := insertPublisher(t, "acme-multi", "Acme Multi")
+	pubA := insertPublisher(t, "acme-pub-a", "Acme Pub A")
+	pubB := insertPublisher(t, "acme-pub-b", "Acme Pub B")
 
-	wsA, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
-		PublisherID: pubID, Slug: "team-a", Name: "Team A",
-	})
-	if err != nil {
-		t.Fatalf("create team-a workspace: %v", err)
-	}
-	wsB, err := sharedDB.CreateWorkspace(ctx, store.CreateWorkspaceParams{
-		PublisherID: pubID, Slug: "team-b", Name: "Team B",
-	})
-	if err != nil {
-		t.Fatalf("create team-b workspace: %v", err)
-	}
-
-	// `weather` in team-a — should succeed.
+	// `weather` under pub-a — should succeed.
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: wsA.ID, Slug: "weather", Name: "Weather A",
+		PublisherID: pubA, Slug: "weather", Name: "Weather A",
 	}); err != nil {
-		t.Fatalf("create weather in team-a: %v", err)
+		t.Fatalf("create weather in pub-a: %v", err)
 	}
-	// Same slug `weather` in team-b — must ALSO succeed (per-workspace key).
+	// Same slug `weather` under pub-b — must ALSO succeed (per-publisher key).
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: wsB.ID, Slug: "weather", Name: "Weather B",
+		PublisherID: pubB, Slug: "weather", Name: "Weather B",
 	}); err != nil {
-		t.Errorf("create weather in team-b should succeed (per-workspace slug), got %v", err)
+		t.Errorf("create weather in pub-b should succeed (per-publisher slug), got %v", err)
 	}
-	// Second `weather` in team-a — must conflict.
+	// Second `weather` under pub-a — must conflict.
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: wsA.ID, Slug: "weather", Name: "Weather A dup",
+		PublisherID: pubA, Slug: "weather", Name: "Weather A dup",
 	}); err != store.ErrConflict {
-		t.Errorf("duplicate weather in team-a: expected ErrConflict, got %v", err)
+		t.Errorf("duplicate weather in pub-a: expected ErrConflict, got %v", err)
 	}
 }
 
@@ -116,7 +104,7 @@ func TestGetMCPServer_NotFoundWhenPrivateAndPublicOnly(t *testing.T) {
 	pubID := insertPublisher(t, "acme3", "Acme 3")
 
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "priv", Name: "Private",
+		PublisherID: pubID, Slug: "priv", Name: "Private",
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -133,7 +121,7 @@ func TestMCPServerVersionLifecycle(t *testing.T) {
 	pubID := insertPublisher(t, "lifecycle", "Lifecycle Corp")
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "srv", Name: "Server",
+		PublisherID: pubID, Slug: "srv", Name: "Server",
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
@@ -193,13 +181,13 @@ func TestListMCPServers_Filtering(t *testing.T) {
 
 	// Create a public server under ns1.
 	srv1, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pub1), Slug: "public-srv", Name: "Public Server",
+		PublisherID: pub1, Slug: "public-srv", Name: "Public Server",
 	})
 	sharedDB.SetMCPServerVisibility(ctx, srv1.ID, domain.VisibilityPublic)
 
 	// Create a private server under ns2.
 	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pub2), Slug: "private-srv", Name: "Private Server",
+		PublisherID: pub2, Slug: "private-srv", Name: "Private Server",
 	})
 
 	// PublicOnly=true should return only public entries.
@@ -231,7 +219,7 @@ func TestDeprecateMCPServer(t *testing.T) {
 	pubID := insertPublisher(t, "dep-ns", "Deprecate NS")
 
 	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "dep-srv", Name: "Dep Server",
+		PublisherID: pubID, Slug: "dep-srv", Name: "Dep Server",
 	})
 
 	// Can't deprecate a draft server.
@@ -257,7 +245,7 @@ func TestGetMCPServerByID(t *testing.T) {
 	pubID := insertPublisher(t, "byid-ns", "ByID NS")
 
 	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "by-id-server", Name: "By ID Server",
+		PublisherID: pubID, Slug: "by-id-server", Name: "By ID Server",
 	})
 
 	got, err := sharedDB.GetMCPServerByID(ctx, srv.ID)
@@ -280,7 +268,7 @@ func TestListMCPServerVersions(t *testing.T) {
 	pubID := insertPublisher(t, "listver-ns", "ListVer NS")
 
 	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "listver-srv", Name: "ListVer Server",
+		PublisherID: pubID, Slug: "listver-srv", Name: "ListVer Server",
 	})
 
 	for _, v := range []string{"1.0.0", "1.1.0", "2.0.0"} {
@@ -327,7 +315,7 @@ func TestGetLatestPublishedVersion(t *testing.T) {
 	pubID := insertPublisher(t, "latest-ns", "Latest NS")
 
 	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "latest-srv", Name: "Latest Server",
+		PublisherID: pubID, Slug: "latest-srv", Name: "Latest Server",
 	})
 
 	// No published version yet — must return ErrNotFound.
@@ -378,7 +366,7 @@ func TestSetMCPServerVisibility(t *testing.T) {
 	pubID := insertPublisher(t, "vis-ns", "Vis NS")
 
 	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "vis-srv", Name: "Vis Server",
+		PublisherID: pubID, Slug: "vis-srv", Name: "Vis Server",
 	})
 
 	// Set to public.
@@ -414,11 +402,11 @@ func TestListMCPServers_SearchQuery(t *testing.T) {
 	pubID := insertPublisher(t, "search-ns", "Search NS")
 
 	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "alpha-search", Name: "AlphaSearch Tool",
+		PublisherID: pubID, Slug: "alpha-search", Name: "AlphaSearch Tool",
 		Description: "Unique alpha description for search test",
 	})
 	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "beta-other", Name: "BetaOther Tool",
+		PublisherID: pubID, Slug: "beta-other", Name: "BetaOther Tool",
 		Description: "Completely different beta description",
 	})
 
@@ -443,10 +431,10 @@ func TestListMCPServers_NamespaceFilter(t *testing.T) {
 	pub2 := insertPublisher(t, "nsfilt-ns2", "NS Filter 2")
 
 	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pub1), Slug: "srv-in-ns1", Name: "Server In NS1",
+		PublisherID: pub1, Slug: "srv-in-ns1", Name: "Server In NS1",
 	})
 	sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pub2), Slug: "srv-in-ns2", Name: "Server In NS2",
+		PublisherID: pub2, Slug: "srv-in-ns2", Name: "Server In NS2",
 	})
 
 	rows, _, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
@@ -471,7 +459,7 @@ func TestGetMCPServerVersion_NotFound(t *testing.T) {
 	pubID := insertPublisher(t, "getver-ns", "GetVer NS")
 
 	srv, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "getver-srv", Name: "GetVer Server",
+		PublisherID: pubID, Slug: "getver-srv", Name: "GetVer Server",
 	})
 
 	_, err := sharedDB.GetMCPServerVersion(ctx, srv.ID, "9.9.9", false)
@@ -544,9 +532,9 @@ func TestListMCPServers_FilterByStatus(t *testing.T) {
 	pubID := insertPublisher(t, "status-ns", "Status NS")
 
 	// Create three servers; default status is draft.
-	srv1, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pubID), Slug: "status-draft", Name: "Draft Server"})
-	srv2, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pubID), Slug: "status-published", Name: "Published Server"})
-	srv3, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pubID), Slug: "status-deprecated", Name: "Deprecated Server"})
+	srv1, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "status-draft", Name: "Draft Server"})
+	srv2, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "status-published", Name: "Published Server"})
+	srv3, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "status-deprecated", Name: "Deprecated Server"})
 
 	// Promote srv2 to published and srv3 to deprecated via direct SQL.
 	if _, err := sharedDB.Pool.Exec(ctx, "UPDATE mcp_servers SET status=$1 WHERE id=$2", "published", srv2.ID); err != nil {
@@ -586,9 +574,9 @@ func TestListMCPServers_FilterByVisibility(t *testing.T) {
 	ctx := context.Background()
 	pubID := insertPublisher(t, "vis-filter-ns", "Vis Filter NS")
 
-	srv1, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pubID), Slug: "vf-public-1", Name: "Public 1"})
-	srv2, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pubID), Slug: "vf-public-2", Name: "Public 2"})
-	_, _ = sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pubID), Slug: "vf-private", Name: "Private"})
+	srv1, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "vf-public-1", Name: "Public 1"})
+	srv2, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "vf-public-2", Name: "Public 2"})
+	_, _ = sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubID, Slug: "vf-private", Name: "Private"})
 
 	// Make srv1 and srv2 public.
 	for _, id := range []string{srv1.ID, srv2.ID} {
@@ -631,11 +619,11 @@ func TestListMCPServers_FilterCombined(t *testing.T) {
 	pub2 := insertPublisher(t, "comb-ns2", "Combined NS2")
 
 	// ns1: one public+published, one public+draft, one private+published
-	srvA, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pub1), Slug: "comb-a", Name: "Comb A"})
-	srvB, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pub1), Slug: "comb-b", Name: "Comb B"})
-	srvC, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pub1), Slug: "comb-c", Name: "Comb C"})
+	srvA, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pub1, Slug: "comb-a", Name: "Comb A"})
+	srvB, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pub1, Slug: "comb-b", Name: "Comb B"})
+	srvC, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pub1, Slug: "comb-c", Name: "Comb C"})
 	// ns2: one public+published
-	srvD, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{WorkspaceID: defaultWS(t, pub2), Slug: "comb-d", Name: "Comb D"})
+	srvD, _ := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pub2, Slug: "comb-d", Name: "Comb D"})
 
 	type update struct{ id, col, val string }
 	for _, u := range []update{
@@ -679,7 +667,7 @@ func TestListMCPServers_TotalCount(t *testing.T) {
 	// Create 3 servers.
 	for i := range 3 {
 		sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{ //nolint:errcheck
-			WorkspaceID: defaultWS(t, pubID),
+			PublisherID: pubID,
 			Slug:        fmt.Sprintf("tc-srv-%d", i),
 			Name:        fmt.Sprintf("TotalCount Server %d", i),
 		})
@@ -714,7 +702,7 @@ func TestUpdateMCPServer(t *testing.T) {
 	pubID := insertPublisher(t, "update-pub", "Update Pub")
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID),
+		PublisherID: pubID,
 		Slug:        "update-srv",
 		Name:        "Original Name",
 		Description: "Original description",
@@ -763,7 +751,7 @@ func TestDeleteMCPServer(t *testing.T) {
 	pubID := insertPublisher(t, "del-pub", "Delete Pub")
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID),
+		PublisherID: pubID,
 		Slug:        "del-srv",
 		Name:        "Delete Me",
 	})
@@ -817,7 +805,7 @@ func TestIncrementMCPServerViewCount(t *testing.T) {
 	pubID := insertPublisher(t, "view-mcp-ns", "View MCP Corp")
 
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "view-srv", Name: "View Server",
+		PublisherID: pubID, Slug: "view-srv", Name: "View Server",
 	}); err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
 	}
@@ -868,7 +856,7 @@ func TestIncrementMCPServerCopyCount(t *testing.T) {
 	pubID := insertPublisher(t, "copy-mcp-ns", "Copy MCP Corp")
 
 	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "copy-srv", Name: "Copy Server",
+		PublisherID: pubID, Slug: "copy-srv", Name: "Copy Server",
 	}); err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
 	}
@@ -910,7 +898,7 @@ func TestMCPServerVersion_ToolsRoundTrip(t *testing.T) {
 	pubID := insertPublisher(t, "tools-ns", "Tools Corp")
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "tooly", Name: "Tooly",
+		PublisherID: pubID, Slug: "tooly", Name: "Tooly",
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
@@ -1034,7 +1022,7 @@ func TestMCPServerVersion_ToolsDefaultEmptyArray(t *testing.T) {
 	pubID := insertPublisher(t, "tools-default-ns", "Default Corp")
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "default-srv", Name: "Default",
+		PublisherID: pubID, Slug: "default-srv", Name: "Default",
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)

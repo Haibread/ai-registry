@@ -10,8 +10,8 @@
  * (deploy/keycloak-realm-dev.json):
  *
  *   - admin     — realm role `admin` (every write path)
- *   - author    — groups `anthropic-core`, `anthropic-labs` (workspace
- *                 authoring + submit-for-review)
+ *   - author    — groups `anthropic-core`, `anthropic-labs` (Editor
+ *                 authoring + submit-for-review via a group role grant)
  *   - reviewer  — group `registry-reviewers` (approve / reject)
  *   - user      — no roles, no groups (403 baseline)
  *

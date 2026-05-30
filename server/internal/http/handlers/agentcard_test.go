@@ -89,7 +89,7 @@ func seedPublishedAgent(t *testing.T, ns, slug string) {
 	pubID := seedPublisher(t, ns, ns)
 
 	ag, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID),
+		PublisherID: pubID,
 		Slug:        slug,
 		Name:        slug,
 		Description: "Test agent",
@@ -168,7 +168,7 @@ func TestAgentCardHandler_PerAgentCard_HidesPendingVersion(t *testing.T) {
 	pubID := seedPublisher(t, "card-leak-ns", "card-leak-ns")
 
 	ag, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
-		WorkspaceID: defaultWS(t, pubID), Slug: "leak-ag", Name: "leak-ag",
+		PublisherID: pubID, Slug: "leak-ag", Name: "leak-ag",
 	})
 	if err != nil {
 		t.Fatalf("CreateAgent: %v", err)

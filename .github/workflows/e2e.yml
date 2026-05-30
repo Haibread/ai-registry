@@ -111,8 +111,8 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost:3000
           # Fixture credentials match deploy/keycloak-realm-dev.json.
-          # admin / user predate Phase 7; author / reviewer were added
-          # alongside the workspace + change-approval workflow.
+          # admin / user predate group-based auth; author / reviewer were
+          # added alongside the RBAC + change-approval workflow.
           E2E_ADMIN_EMAIL: admin@example.com
           E2E_ADMIN_PASSWORD: admin
           E2E_AUTHOR_EMAIL: author@example.com
