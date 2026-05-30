@@ -143,8 +143,8 @@ paths:
       operationId: registryJWKS
       summary: Registry JSON Web Key Set
       description: >
-        Public keys for verifying registry-issued local access tokens
-        (ADR 0006). Empty `keys` when local login is disabled.
+        Public keys for verifying registry-issued local access tokens.
+        Empty `keys` when local login is disabled.
       tags: [system]
       responses:
         "200":
@@ -162,7 +162,7 @@ paths:
       summary: Local email + password login
       description: >
         Exchanges an email and password for a short-lived, registry-signed
-        access token (ADR 0006). Local tokens are accepted only on the
+        access token. Local tokens are accepted only on the
         human/admin API — they are rejected on the MCP surface, which stays
         OAuth-only. Available only when local login is enabled.
       tags: [auth]
@@ -193,7 +193,7 @@ paths:
       summary: Resolved identity and effective role grants for the caller
       description: >
         Returns the authenticated caller's identity together with their
-        effective role grants (ADR 0006), so a client can gate the admin UI by
+        effective role grants, so a client can gate the admin UI by
         role without trusting any client-side claim. Grants include both
         per-publisher grants (with the publisher slug/name) and global grants
         (empty publisher fields). `is_server_admin` short-circuits every
@@ -209,7 +209,7 @@ paths:
               schema: { $ref: "#/components/schemas/Me" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  # ── RBAC administration (ADR 0006) ──────────────────────────────────────────
+  # ── RBAC administration ─────────────────────────────────────────────────────
 
   /api/v1/groups:
     get:
@@ -743,8 +743,8 @@ paths:
         - name: mine
           in: query
           description: >-
-            Scope the listing to resources the authenticated caller can manage
-            (ADR 0006). Server Admins and global-grant holders see every
+            Scope the listing to resources the authenticated caller can manage.
+            Server Admins and global-grant holders see every
             publisher; an author sees only the publishers they hold a role on,
             including their own private/draft entries; a caller with no grants
             sees nothing. Requires authentication (401 otherwise).
@@ -811,7 +811,7 @@ paths:
         Editor role on that publisher (Admin / Server Admin satisfy it via the
         lattice). The new server is private + draft, so it only reaches the
         public catalog once a version is published and an Admin flips visibility
-        — the approval gate stays intact (ADR 0006). 401 when unauthenticated,
+        — the approval gate stays intact. 401 when unauthenticated,
         403 without the role.
       tags: [mcp]
       security:
@@ -1342,8 +1342,8 @@ paths:
         - name: mine
           in: query
           description: >-
-            Scope the listing to resources the authenticated caller can manage
-            (ADR 0006). Server Admins and global-grant holders see every
+            Scope the listing to resources the authenticated caller can manage.
+            Server Admins and global-grant holders see every
             publisher; an author sees only the publishers they hold a role on,
             including their own private/draft entries; a caller with no grants
             sees nothing. Requires authentication (401 otherwise).
@@ -1397,7 +1397,7 @@ paths:
       description: >
         Creates an agent under the publisher named by `namespace`. Requires the
         Editor role on that publisher (Admin / Server Admin satisfy it). The new
-        agent is private + draft (ADR 0006). 401 when unauthenticated, 403
+        agent is private + draft. 401 when unauthenticated, 403
         without the role.
       tags: [agents]
       security:
@@ -2526,7 +2526,7 @@ components:
           type: integer
           description: Token lifetime in seconds.
 
-    # ── RBAC (ADR 0006) ───────────────────────────────────────────────────────
+    # ── RBAC ──────────────────────────────────────────────────────────────────
 
     Group:
       type: object
@@ -2664,7 +2664,7 @@ components:
     Me:
       type: object
       required: [authenticated, is_server_admin, grants]
-      description: Resolved identity and effective authorization for the caller (ADR 0006).
+      description: Resolved identity and effective authorization for the caller.
       properties:
         authenticated: { type: boolean }
         user_id:

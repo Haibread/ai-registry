@@ -147,7 +147,7 @@ export interface paths {
         };
         /**
          * Registry JSON Web Key Set
-         * @description Public keys for verifying registry-issued local access tokens (ADR 0006). Empty `keys` when local login is disabled.
+         * @description Public keys for verifying registry-issued local access tokens. Empty `keys` when local login is disabled.
          */
         get: operations["registryJWKS"];
         put?: never;
@@ -169,7 +169,7 @@ export interface paths {
         put?: never;
         /**
          * Local email + password login
-         * @description Exchanges an email and password for a short-lived, registry-signed access token (ADR 0006). Local tokens are accepted only on the human/admin API — they are rejected on the MCP surface, which stays OAuth-only. Available only when local login is enabled.
+         * @description Exchanges an email and password for a short-lived, registry-signed access token. Local tokens are accepted only on the human/admin API — they are rejected on the MCP surface, which stays OAuth-only. Available only when local login is enabled.
          */
         post: operations["localLogin"];
         delete?: never;
@@ -187,7 +187,7 @@ export interface paths {
         };
         /**
          * Resolved identity and effective role grants for the caller
-         * @description Returns the authenticated caller's identity together with their effective role grants (ADR 0006), so a client can gate the admin UI by role without trusting any client-side claim. Grants include both per-publisher grants (with the publisher slug/name) and global grants (empty publisher fields). `is_server_admin` short-circuits every publisher-scoped check. Works for both OIDC and local tokens.
+         * @description Returns the authenticated caller's identity together with their effective role grants, so a client can gate the admin UI by role without trusting any client-side claim. Grants include both per-publisher grants (with the publisher slug/name) and global grants (empty publisher fields). `is_server_admin` short-circuits every publisher-scoped check. Works for both OIDC and local tokens.
          */
         get: operations["getMe"];
         put?: never;
@@ -477,7 +477,7 @@ export interface paths {
         put?: never;
         /**
          * Create an MCP server entry (publisher Editor)
-         * @description Creates a server under the publisher named by `namespace`. Requires the Editor role on that publisher (Admin / Server Admin satisfy it via the lattice). The new server is private + draft, so it only reaches the public catalog once a version is published and an Admin flips visibility — the approval gate stays intact (ADR 0006). 401 when unauthenticated, 403 without the role.
+         * @description Creates a server under the publisher named by `namespace`. Requires the Editor role on that publisher (Admin / Server Admin satisfy it via the lattice). The new server is private + draft, so it only reaches the public catalog once a version is published and an Admin flips visibility — the approval gate stays intact. 401 when unauthenticated, 403 without the role.
          */
         post: operations["createMCPServer"];
         delete?: never;
@@ -790,7 +790,7 @@ export interface paths {
         put?: never;
         /**
          * Create an agent entry (publisher Editor)
-         * @description Creates an agent under the publisher named by `namespace`. Requires the Editor role on that publisher (Admin / Server Admin satisfy it). The new agent is private + draft (ADR 0006). 401 when unauthenticated, 403 without the role.
+         * @description Creates an agent under the publisher named by `namespace`. Requires the Editor role on that publisher (Admin / Server Admin satisfy it). The new agent is private + draft. 401 when unauthenticated, 403 without the role.
          */
         post: operations["createAgent"];
         delete?: never;
@@ -1498,7 +1498,7 @@ export interface components {
             publisher_slug?: string;
             publisher_name?: string;
         };
-        /** @description Resolved identity and effective authorization for the caller (ADR 0006). */
+        /** @description Resolved identity and effective authorization for the caller. */
         Me: {
             authenticated: boolean;
             /** @description Registry users.id; empty for a federated caller with no provisioned row. */
@@ -3054,7 +3054,7 @@ export interface operations {
                 q?: string;
                 /** @description Filter by publisher slug */
                 namespace?: string;
-                /** @description Scope the listing to resources the authenticated caller can manage (ADR 0006). Server Admins and global-grant holders see every publisher; an author sees only the publishers they hold a role on, including their own private/draft entries; a caller with no grants sees nothing. Requires authentication (401 otherwise). */
+                /** @description Scope the listing to resources the authenticated caller can manage. Server Admins and global-grant holders see every publisher; an author sees only the publishers they hold a role on, including their own private/draft entries; a caller with no grants sees nothing. Requires authentication (401 otherwise). */
                 mine?: boolean;
                 /** @description Filter by lifecycle status */
                 status?: "draft" | "published" | "deprecated";
@@ -3717,7 +3717,7 @@ export interface operations {
                 q?: string;
                 /** @description Filter by publisher slug */
                 namespace?: string;
-                /** @description Scope the listing to resources the authenticated caller can manage (ADR 0006). Server Admins and global-grant holders see every publisher; an author sees only the publishers they hold a role on, including their own private/draft entries; a caller with no grants sees nothing. Requires authentication (401 otherwise). */
+                /** @description Scope the listing to resources the authenticated caller can manage. Server Admins and global-grant holders see every publisher; an author sees only the publishers they hold a role on, including their own private/draft entries; a caller with no grants sees nothing. Requires authentication (401 otherwise). */
                 mine?: boolean;
                 /** @description Filter by lifecycle status */
                 status?: "draft" | "published" | "deprecated";
