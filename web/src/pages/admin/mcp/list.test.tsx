@@ -14,6 +14,25 @@ vi.mock('@/lib/api-client', () => ({
   useAuthClient: () => ({ GET: mockGET, POST: mockPOST, DELETE: mockDELETE }),
 }))
 
+// Default the caller to a Server Admin so role-gated affordances (New, bulk
+// delete/visibility) render; per-role gating is covered in useMe.test.ts.
+vi.mock('@/auth/useMe', () => ({
+  usePermissions: () => ({
+    isLoading: false,
+    isAuthenticated: true,
+    isServerAdmin: true,
+    grants: [],
+    rolesOn: () => new Set(),
+    canEdit: () => true,
+    canReview: () => true,
+    canAdmin: () => true,
+    isEditorAnywhere: true,
+    isReviewerAnywhere: true,
+  }),
+  useMe: () => ({ data: { authenticated: true, is_server_admin: true, grants: [] }, isLoading: false }),
+  satisfiesRole: () => true,
+}))
+
 import AdminMCPList from './list'
 
 function renderPage(initialEntries: string[] = ['/admin/mcp']) {
@@ -72,6 +91,7 @@ describe('AdminMCPList', () => {
         params: {
           query: {
             limit: 50,
+            mine: true,
             q: 'file',
             namespace: 'acme',
             cursor: 'c1',

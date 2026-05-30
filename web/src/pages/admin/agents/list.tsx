@@ -11,11 +11,13 @@ import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
+import { usePermissions } from '@/auth/useMe'
 
 const PAGE_LIMIT = 50
 
 export default function AdminAgentList() {
   const { accessToken } = useAuth()
+  const perms = usePermissions()
   const api = useAuthClient()
   const [searchParams] = useSearchParams()
   const q = searchParams.get('q') ?? undefined
@@ -29,6 +31,9 @@ export default function AdminAgentList() {
       params: {
         query: {
           limit: PAGE_LIMIT,
+          // mine=true scopes the list to the publishers the caller manages
+          // (ADR 0006); Server Admins still see everything.
+          mine: true,
           q,
           namespace,
           cursor,
@@ -110,11 +115,13 @@ export default function AdminAgentList() {
             {agents.length}{data?.total_count && data.total_count > agents.length ? ` of ${data.total_count}` : ''} entr{agents.length !== 1 ? 'ies' : 'y'}
           </p>
         </div>
-        <Button asChild>
-          <Link to="/admin/agents/new" className="flex items-center gap-1.5">
-            <Plus className="h-4 w-4" /> New Agent
-          </Link>
-        </Button>
+        {perms.isEditorAnywhere && (
+          <Button asChild>
+            <Link to="/admin/agents/new" className="flex items-center gap-1.5">
+              <Plus className="h-4 w-4" /> New Agent
+            </Link>
+          </Button>
+        )}
       </div>
 
       <FilterBar
@@ -206,6 +213,11 @@ export default function AdminAgentList() {
             onDeprecate={bulkDeprecate}
             onDelete={bulkDelete}
             isBusy={bulkMutation.isPending}
+            // Visibility flips + deletes are Server-Admin-only; deprecate is an
+            // Editor action (ADR 0006). The backend still enforces per-resource.
+            canSetVisibility={perms.isServerAdmin}
+            canDelete={perms.isServerAdmin}
+            canDeprecate={perms.isEditorAnywhere}
           />
 
           {data?.next_cursor && (

@@ -4,20 +4,46 @@ import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, 
 import { cn } from '@/lib/utils'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
+import { usePermissions, type Permissions } from '@/auth/useMe'
 
-const navItems = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review' as const },
-  { to: '/admin/publishers', label: 'Publishers', icon: Users },
-  { to: '/admin/groups', label: 'Groups', icon: UsersRound },
-  { to: '/admin/users', label: 'Users', icon: UserCog },
-  { to: '/admin/grants', label: 'Global grants', icon: Shield },
-  { to: '/admin/mcp', label: 'MCP Servers', icon: Server },
-  { to: '/admin/agents', label: 'Agents', icon: Bot },
-  { to: '/admin/reports', label: 'Reports', icon: Flag },
-  { to: '/admin/audit', label: 'Activity', icon: Activity },
-  { to: '/admin/api-keys', label: 'API Keys', icon: Key },
+// `requires` gates each nav entry by role (ADR 0006):
+//   - 'always'      → any authenticated admin-area user (the resource lists are
+//                     themselves mine-scoped, so an author sees only their own).
+//   - 'reviewer'    → can review on at least one publisher (or Server Admin).
+//   - 'serverAdmin' → Server-Admin-only management surfaces.
+type NavRequirement = 'always' | 'reviewer' | 'serverAdmin'
+
+const navItems: {
+  to: string
+  label: string
+  icon: typeof LayoutDashboard
+  exact?: boolean
+  badge?: 'review'
+  requires: NavRequirement
+}[] = [
+  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, requires: 'always' },
+  { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review', requires: 'reviewer' },
+  { to: '/admin/publishers', label: 'Publishers', icon: Users, requires: 'serverAdmin' },
+  { to: '/admin/groups', label: 'Groups', icon: UsersRound, requires: 'serverAdmin' },
+  { to: '/admin/users', label: 'Users', icon: UserCog, requires: 'serverAdmin' },
+  { to: '/admin/grants', label: 'Global grants', icon: Shield, requires: 'serverAdmin' },
+  { to: '/admin/mcp', label: 'MCP Servers', icon: Server, requires: 'always' },
+  { to: '/admin/agents', label: 'Agents', icon: Bot, requires: 'always' },
+  { to: '/admin/reports', label: 'Reports', icon: Flag, requires: 'serverAdmin' },
+  { to: '/admin/audit', label: 'Activity', icon: Activity, requires: 'serverAdmin' },
+  { to: '/admin/api-keys', label: 'API Keys', icon: Key, requires: 'serverAdmin' },
 ]
+
+function navItemVisible(requires: NavRequirement, perms: Permissions): boolean {
+  switch (requires) {
+    case 'always':
+      return true
+    case 'reviewer':
+      return perms.isReviewerAnywhere
+    case 'serverAdmin':
+      return perms.isServerAdmin
+  }
+}
 
 interface AdminSidebarProps {
   pathname?: string
@@ -73,6 +99,8 @@ function ReviewQueueBadge() {
 export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: AdminSidebarProps = {}) {
   const location = useLocation()
   const pathname = pathnameProp ?? location.pathname
+  const perms = usePermissions()
+  const visibleItems = navItems.filter((item) => navItemVisible(item.requires, perms))
 
   return (
     <aside
@@ -84,7 +112,7 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
       )}
     >
       <nav className="flex flex-col gap-1 p-3">
-        {navItems.map(({ to, label, icon: Icon, exact, badge }) => {
+        {visibleItems.map(({ to, label, icon: Icon, exact, badge }) => {
           const active = exact ? pathname === to : pathname.startsWith(to)
           return (
             <Link

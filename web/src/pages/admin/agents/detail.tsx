@@ -17,6 +17,7 @@ import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
+import { usePermissions } from '@/auth/useMe'
 import type { components } from '@/lib/schema'
 
 type AgentSkill = components['schemas']['AgentSkill']
@@ -24,6 +25,7 @@ type AgentSkill = components['schemas']['AgentSkill']
 export default function AdminAgentDetail() {
   const { ns, slug } = useParams<{ ns: string; slug: string }>()
   const { accessToken } = useAuth()
+  const perms = usePermissions()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
@@ -285,49 +287,62 @@ export default function AdminAgentDetail() {
         </form>
       )}
 
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Actions</h2>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setEditOpen(v => !v)}
-          >
-            {editOpen ? 'Cancel edit' : 'Edit'}
-          </Button>
+      {/* Role-gated actions (ADR 0006): edit/deprecate/request-deletion need
+          Editor on this publisher; visibility + direct delete are Server-Admin
+          only. The server still enforces each. */}
+      {(perms.canEdit(ns) || perms.isServerAdmin) && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Actions</h2>
+          <div className="flex flex-wrap gap-2">
+            {perms.canEdit(ns) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditOpen(v => !v)}
+              >
+                {editOpen ? 'Cancel edit' : 'Edit'}
+              </Button>
+            )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={visibilityMutation.isPending}
-            onClick={() => visibilityMutation.mutate(data.visibility === 'public' ? 'private' : 'public')}
-          >
-            Make {data.visibility === 'public' ? 'private' : 'public'}
-          </Button>
+            {perms.isServerAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={visibilityMutation.isPending}
+                onClick={() => visibilityMutation.mutate(data.visibility === 'public' ? 'private' : 'public')}
+              >
+                Make {data.visibility === 'public' ? 'private' : 'public'}
+              </Button>
+            )}
 
-          {data.status === 'published' && (
-            <DeprecateButton
-              onDeprecate={() => deprecateMutation.mutate()}
-              entityName={data.name}
-            />
+            {perms.canEdit(ns) && data.status === 'published' && (
+              <DeprecateButton
+                onDeprecate={() => deprecateMutation.mutate()}
+                entityName={data.name}
+              />
+            )}
+
+            {perms.canEdit(ns) && (
+              <RequestDeletionButton
+                kind="agent"
+                namespace={data.namespace}
+                slug={data.slug}
+                entityName={data.name}
+              />
+            )}
+            {perms.isServerAdmin && (
+              <DeleteButton
+                onDelete={() => deleteMutation.mutate()}
+                entityName={data.name}
+                isPending={deleteMutation.isPending}
+              />
+            )}
+          </div>
+          {(visibilityMutation.isError || deprecateMutation.isError || deleteMutation.isError) && (
+            <p className="text-sm text-destructive">Action failed. Please try again.</p>
           )}
-
-          <RequestDeletionButton
-            kind="agent"
-            namespace={data.namespace}
-            slug={data.slug}
-            entityName={data.name}
-          />
-          <DeleteButton
-            onDelete={() => deleteMutation.mutate()}
-            entityName={data.name}
-            isPending={deleteMutation.isPending}
-          />
         </div>
-        {(visibilityMutation.isError || deprecateMutation.isError || deleteMutation.isError) && (
-          <p className="text-sm text-destructive">Action failed. Please try again.</p>
-        )}
-      </div>
+      )}
 
       <Separator />
 

@@ -18,6 +18,15 @@ A new `GET /api/v1/me` returns the caller's resolved identity and effective
 role grants (per-publisher and global, plus `is_server_admin`), so the SPA can
 gate the admin UI by role without trusting any client-side claim.
 
+The **admin UI is now role-aware** (ADR 0006). The MCP/agent list pages default
+to `mine=true`, so authors see only their own resources. Actions and navigation
+are gated by a new `usePermissions` hook: `New` appears only for Editors; edit /
+deprecate / submit need Editor on the resource's publisher; approve / reject
+need Reviewer; visibility flips and the direct-delete escape hatch stay
+Server-Admin-only; and the Server-Admin-only nav (Publishers, Groups, Users,
+Global grants, Reports, Activity) is hidden from non-admins. The server still
+enforces every write.
+
 ### ✍️ Publisher Editors can author resources
 
 Creating an MCP server or agent (`POST /api/v1/mcp/servers`, `POST
