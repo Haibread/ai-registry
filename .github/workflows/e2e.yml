@@ -18,6 +18,12 @@ env:
   # escape hatch used for the docker/* actions.
   # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  # Throwaway bootstrap Server Admin for the local-login e2e (ADR 0006). The
+  # server seeds this account on boot (docker-compose.ci.yml) and the
+  # local-login spec signs in with it. Not a real secret — it only exists for
+  # the lifetime of the CI run's ephemeral stack.
+  E2E_LOCAL_ADMIN_EMAIL: local-admin@example.com
+  E2E_LOCAL_ADMIN_PASSWORD: e2e-local-admin-pass
 
 jobs:
   e2e:
@@ -43,6 +49,19 @@ jobs:
       # defaults, so an empty file is sufficient for CI.
       - name: Create deploy/.env
         run: touch deploy/.env
+
+      # Generate a fresh RSA key per run for the registry's local-token issuer
+      # (ADR 0006) and hand it to docker compose via the env (never committed —
+      # gitleaks would reject a checked-in PEM). docker-compose.ci.yml reads
+      # ${AUTH_LOCAL_SIGNING_KEY} for the server's local login.
+      - name: Generate ephemeral local-auth signing key
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${RUNNER_TEMP}/local-signing-key.pem"
+          {
+            echo 'AUTH_LOCAL_SIGNING_KEY<<__PEM_EOF__'
+            cat "${RUNNER_TEMP}/local-signing-key.pem"
+            echo '__PEM_EOF__'
+          } >> "$GITHUB_ENV"
 
       # Build images and start all four services (postgres, keycloak, server, web).
       # docker-compose.ci.yml overrides depends_on conditions to service_started

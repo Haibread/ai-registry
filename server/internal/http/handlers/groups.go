@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -11,6 +12,19 @@ import (
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
+
+// memberEmailParam reads the {email} path segment and URL-decodes it. chi
+// returns the raw (still percent-encoded) segment, so an email like
+// "a@b.com" arrives as "a%40b.com"; without decoding the server would store
+// and match the mangled form. Returns ("", false) when the segment is missing
+// or malformed, in which case the caller should answer 422.
+func memberEmailParam(r *http.Request) (string, bool) {
+	email, err := url.PathUnescape(chi.URLParam(r, "email"))
+	if err != nil || email == "" {
+		return "", false
+	}
+	return email, true
+}
 
 // GroupHandlers serves the team/group management endpoints (ADR 0006 §7).
 // All routes are Server-Admin gated at the router.
@@ -187,8 +201,8 @@ func (h *GroupHandlers) ListMembers(w http.ResponseWriter, r *http.Request) {
 // when the email is unknown (ADR 0006 §7).
 func (h *GroupHandlers) PutMember(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	email := chi.URLParam(r, "email")
-	if email == "" {
+	email, ok := memberEmailParam(r)
+	if !ok {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "email is required", r.URL.Path)
 		return
 	}
@@ -224,7 +238,11 @@ func (h *GroupHandlers) PutMember(w http.ResponseWriter, r *http.Request) {
 // DeleteMember: DELETE /api/v1/groups/{slug}/members/{email}
 func (h *GroupHandlers) DeleteMember(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	email := chi.URLParam(r, "email")
+	email, ok := memberEmailParam(r)
+	if !ok {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "email is required", r.URL.Path)
+		return
+	}
 	g, err := h.db.GetGroupBySlug(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusNotFound, "not-found", "group does not exist", r.URL.Path)

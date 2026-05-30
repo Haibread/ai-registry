@@ -140,6 +140,31 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /review-ui\.spec\.ts/,
     },
+    // RBAC management UI: drives the Groups / Users / Grants admin pages
+    // through the browser DOM (the phase7-flows project sets grants up via
+    // the API), catching handler/UI contract drift the mocked unit tests
+    // can't. Runs as the admin Server-Admin session.
+    {
+      name: "rbac-ui",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /rbac-ui\.spec\.ts/,
+    },
+    // Local email + password login (ADR 0006). Authenticates through the
+    // /login form itself rather than a stored OIDC session, so it has no
+    // `setup` dependency and no storageState. Requires the stack booted with
+    // AUTH_LOCAL_LOGIN_ENABLED=true + a seeded bootstrap admin (CI wires this
+    // in docker-compose.ci.yml + the e2e workflow).
+    {
+      name: "local-login",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      testMatch: /local-login\.spec\.ts/,
+    },
     // Publisher-scoped authorization: proves that author@ /
     // reviewer@ / user@ fixture tokens actually carry the right
     // `groups[]` claim and that RequirePublisherRole +

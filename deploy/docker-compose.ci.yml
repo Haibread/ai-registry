@@ -14,8 +14,18 @@ services:
     # Playwright's storageState(), which only captures localStorage. Set
     # AUTH_STORAGE=local for CI so the SPA exposes its OIDC tokens where
     # Playwright can see them. Production must keep the 'session' default.
+    #
+    # Also enable the local email+password front door (ADR 0006) so the
+    # local-login e2e can exercise it. The signing key is generated fresh per
+    # run by the e2e workflow and injected via AUTH_LOCAL_SIGNING_KEY — never
+    # committed. The bootstrap admin is a throwaway test account seeded on
+    # boot; the same creds are handed to the local-login spec.
     environment:
       AUTH_STORAGE: local
+      AUTH_LOCAL_LOGIN_ENABLED: "true"
+      AUTH_LOCAL_SIGNING_KEY: ${AUTH_LOCAL_SIGNING_KEY}
+      AUTH_BOOTSTRAP_ADMIN_EMAIL: ${E2E_LOCAL_ADMIN_EMAIL}
+      AUTH_BOOTSTRAP_ADMIN_PASSWORD: ${E2E_LOCAL_ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_started

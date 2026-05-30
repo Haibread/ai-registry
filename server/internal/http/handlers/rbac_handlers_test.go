@@ -129,6 +129,55 @@ func TestGroupHandler_PutMemberAutoCreatesUser(t *testing.T) {
 	}
 }
 
+// TestGroupHandler_PutMemberDecodesPercentEncodedEmail pins the fix for a bug
+// the mocked-client unit tests missed: a real browser client (openapi-fetch)
+// percent-encodes the {email} path segment, so "a@b.com" arrives as
+// "a%40b.com". The handler must URL-decode it before storing/matching, or the
+// member is created under a mangled "a%40b.com" address. Drive the encoded
+// form end-to-end and assert the user is stored — and listed — with the real
+// "@" address.
+func TestGroupHandler_PutMemberDecodesPercentEncodedEmail(t *testing.T) {
+	resetTables(t)
+	router := newGroupRouter()
+	router.ServeHTTP(httptest.NewRecorder(), jsonReq(http.MethodPost, "/api/v1/groups", `{"slug":"team","name":"Team"}`))
+
+	const realEmail = "encoded@example.com"
+	rec := httptest.NewRecorder()
+	// %40 is the percent-encoding of "@" — exactly what the SPA sends.
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/groups/team/members/encoded%40example.com", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put member (encoded): %d; %s", rec.Code, rec.Body.String())
+	}
+
+	// The stored user carries the decoded address, not "encoded%40example.com".
+	if _, err := testDB.GetUserByEmail(context.Background(), realEmail); err != nil {
+		t.Errorf("member should be stored under the decoded email %q: %v", realEmail, err)
+	}
+
+	// The members listing shows the decoded address.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/groups/team/members", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list members: %d", rec.Code)
+	}
+	var body struct {
+		Items []struct {
+			Email string `json:"email"`
+		} `json:"items"`
+	}
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+	if len(body.Items) != 1 || body.Items[0].Email != realEmail {
+		t.Errorf("members = %+v, want exactly one with email %q", body.Items, realEmail)
+	}
+
+	// And the encoded form deletes it (DeleteMember decodes too).
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/groups/team/members/encoded%40example.com", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("delete member (encoded): %d, want 204", rec.Code)
+	}
+}
+
 func TestGroupHandler_ListMembers(t *testing.T) {
 	resetTables(t)
 	router := newGroupRouter()
