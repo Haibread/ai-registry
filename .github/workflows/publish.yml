@@ -4,7 +4,7 @@ name: Publish
 #
 # Triggers:
 #   push to main  → images tagged :latest + :main-<short-sha>
-#                   chart version  0.0.0-main.<short-sha>
+#                   chart version  0.0.0-main.g<short-sha>
 #   push of v* tag → images tagged :<semver> + :<major>.<minor>
 #                   chart version  <semver-without-v>
 
@@ -256,9 +256,15 @@ jobs:
           else
             BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-')
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            # 0.0.0 is a neutral SemVer base for non-release builds.
-            # Helm requires valid SemVer; the pre-release segment carries the identity.
-            CHART_VERSION="0.0.0-${BRANCH}.${SHORT_SHA}"
+            # 0.0.0 is a neutral SemVer base for non-release builds; the
+            # pre-release segment carries the build identity. The short SHA is
+            # prefixed with 'g' (git-describe convention) so the identifier is
+            # never all-numeric: SemVer forbids leading zeros on numeric
+            # pre-release identifiers, so an all-digit SHA such as "0659112"
+            # would otherwise make `helm package` fail validation.
+            CHART_VERSION="0.0.0-${BRANCH}.g${SHORT_SHA}"
+            # appVersion mirrors the image tag (:main-<short-sha>); Helm does
+            # not SemVer-validate it, so it keeps the bare SHA for parity.
             APP_VERSION="${BRANCH}-${SHORT_SHA}"
           fi
 
