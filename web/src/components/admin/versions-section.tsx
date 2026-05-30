@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
+import { usePermissions } from '@/auth/useMe'
 import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
@@ -58,6 +59,10 @@ function friendlyProblem(error: unknown, fallback: string): string {
 
 export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps) {
   const { accessToken } = useAuth()
+  const perms = usePermissions()
+  // Submit/withdraw are publisher Editor actions (ADR 0006). Approve/reject are
+  // Reviewer actions and live on the review queue, not here.
+  const canEdit = perms.canEdit(namespace)
   const api = useAuthClient()
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -248,7 +253,7 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex gap-1">
-                      {isDraftish && !v.published_at && (
+                      {canEdit && isDraftish && !v.published_at && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -261,7 +266,7 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                           </span>
                         </Button>
                       )}
-                      {isPending && (
+                      {canEdit && isPending && (
                         <Button
                           size="sm"
                           variant="outline"

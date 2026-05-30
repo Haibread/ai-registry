@@ -11,11 +11,13 @@ import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
+import { usePermissions } from '@/auth/useMe'
 
 const PAGE_LIMIT = 50
 
 export default function AdminMCPList() {
   const { accessToken } = useAuth()
+  const perms = usePermissions()
   const api = useAuthClient()
   const [searchParams] = useSearchParams()
   const q = searchParams.get('q') ?? undefined
@@ -29,6 +31,10 @@ export default function AdminMCPList() {
       params: {
         query: {
           limit: PAGE_LIMIT,
+          // mine=true scopes the list to the publishers the caller manages
+          // (ADR 0006): Server Admins still see everything, authors see only
+          // their own resources (incl. private drafts).
+          mine: true,
           q,
           namespace,
           cursor,
@@ -103,11 +109,13 @@ export default function AdminMCPList() {
             {servers.length}{data?.total_count && data.total_count > servers.length ? ` of ${data.total_count}` : ''} entr{servers.length !== 1 ? 'ies' : 'y'}
           </p>
         </div>
-        <Button asChild>
-          <Link to="/admin/mcp/new" className="flex items-center gap-1.5">
-            <Plus className="h-4 w-4" /> New Server
-          </Link>
-        </Button>
+        {perms.isEditorAnywhere && (
+          <Button asChild>
+            <Link to="/admin/mcp/new" className="flex items-center gap-1.5">
+              <Plus className="h-4 w-4" /> New Server
+            </Link>
+          </Button>
+        )}
       </div>
 
       <FilterBar
@@ -201,6 +209,11 @@ export default function AdminMCPList() {
             onDeprecate={bulkDeprecate}
             onDelete={bulkDelete}
             isBusy={bulkMutation.isPending}
+            // Visibility flips + deletes are Server-Admin-only; deprecate is an
+            // Editor action (ADR 0006). The backend still enforces per-resource.
+            canSetVisibility={perms.isServerAdmin}
+            canDelete={perms.isServerAdmin}
+            canDeprecate={perms.isEditorAnywhere}
           />
 
           {data?.next_cursor && (

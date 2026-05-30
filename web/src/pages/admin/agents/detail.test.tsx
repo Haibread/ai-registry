@@ -21,6 +21,24 @@ vi.mock('@/lib/api-client', () => ({
   useAuthClient: () => ({ GET: mockGET, POST: mockPOST, PATCH: mockPATCH, DELETE: mockDELETE }),
 }))
 
+// Default the caller to a Server Admin so role-gated actions render.
+vi.mock('@/auth/useMe', () => ({
+  usePermissions: () => ({
+    isLoading: false,
+    isAuthenticated: true,
+    isServerAdmin: true,
+    grants: [],
+    rolesOn: () => new Set(),
+    canEdit: () => true,
+    canReview: () => true,
+    canAdmin: () => true,
+    isEditorAnywhere: true,
+    isReviewerAnywhere: true,
+  }),
+  useMe: () => ({ data: { authenticated: true, is_server_admin: true, grants: [] }, isLoading: false }),
+  satisfiesRole: () => true,
+}))
+
 import AdminAgentDetail from './detail'
 
 function renderPage() {
