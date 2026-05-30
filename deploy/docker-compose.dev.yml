@@ -68,9 +68,12 @@ services:
       # will not boot.
       AUTH_LOCAL_LOGIN_ENABLED: ${AUTH_LOCAL_LOGIN_ENABLED:-false}
       # AUTH_STORAGE=local is required by the Playwright E2E harness
-      # (storageState() persists localStorage but not session). Production
-      # must keep "session"; the .env in this directory flips it for dev.
-      AUTH_STORAGE: ${AUTH_STORAGE:-session}
+      # (storageState() persists localStorage but not sessionStorage, so the
+      # SPA must expose the OIDC token in localStorage). This dev overlay is
+      # also the local e2e target, so it defaults to "local" — overridable to
+      # "session" via .env for interactive dev. The base stack / production
+      # keep the XSS-safer "session" default.
+      AUTH_STORAGE: ${AUTH_STORAGE:-local}
       DATABASE_URL: ${DATABASE_URL:-postgres://registry:registry@postgres:5432/registry?sslmode=disable}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       # Public-facing base URL. The A2A global agent card handler returns

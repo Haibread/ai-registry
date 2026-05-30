@@ -153,6 +153,18 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /rbac-ui\.spec\.ts/,
     },
+    // Local email + password login (ADR 0006). Authenticates through the
+    // /login form itself rather than a stored OIDC session, so it has no
+    // `setup` dependency and no storageState. Requires the stack booted with
+    // AUTH_LOCAL_LOGIN_ENABLED=true + a seeded bootstrap admin (CI wires this
+    // in docker-compose.ci.yml + the e2e workflow).
+    {
+      name: "local-login",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      testMatch: /local-login\.spec\.ts/,
+    },
     // Publisher-scoped authorization: proves that author@ /
     // reviewer@ / user@ fixture tokens actually carry the right
     // `groups[]` claim and that RequirePublisherRole +
