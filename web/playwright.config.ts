@@ -140,6 +140,19 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /review-ui\.spec\.ts/,
     },
+    // RBAC management UI: drives the Groups / Users / Grants admin pages
+    // through the browser DOM (the phase7-flows project sets grants up via
+    // the API), catching handler/UI contract drift the mocked unit tests
+    // can't. Runs as the admin Server-Admin session.
+    {
+      name: "rbac-ui",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /rbac-ui\.spec\.ts/,
+    },
     // Publisher-scoped authorization: proves that author@ /
     // reviewer@ / user@ fixture tokens actually carry the right
     // `groups[]` claim and that RequirePublisherRole +
