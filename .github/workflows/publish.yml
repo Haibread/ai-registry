@@ -296,7 +296,7 @@ jobs:
       - name: Push chart to GHCR
         run: |
           helm push /tmp/chart/*.tgz \
-            oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ai-registry/charts
+            "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ai-registry/charts"
 
   # ── GitHub Release ───────────────────────────────────────────────────────────
   # On a semver tag, cut a GitHub Release whose body is the matching CHANGELOG
