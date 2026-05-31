@@ -6,7 +6,10 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { usePermissions, type Role } from '@/auth/useMe'
+import { useAuth } from '@/auth/AuthContext'
+import { useAuthClient } from '@/lib/api-client'
 
 export interface PublisherOption {
   slug: string
@@ -35,6 +38,19 @@ const PublisherContext = createContext<PublisherContextValue | null>(null)
 
 export function PublisherProvider({ children }: { children: React.ReactNode }) {
   const perms = usePermissions()
+  const { accessToken } = useAuth()
+  const api = useAuthClient()
+
+  // A Server Admin can act on every publisher, so offer the full list — not
+  // just the ones they happen to hold a grant on. Members fall back to their
+  // grants alone. Cached for 5 minutes; the set changes rarely.
+  const { data: allPublishers } = useQuery({
+    queryKey: ['all-publishers-switcher'],
+    queryFn: () =>
+      api.GET('/api/v1/publishers', { params: { query: { limit: 100 } } }).then((r) => r.data),
+    enabled: !!accessToken && perms.isServerAdmin,
+    staleTime: 5 * 60_000,
+  })
 
   const publishers = useMemo<PublisherOption[]>(() => {
     const bySlug = new Map<string, PublisherOption>()
@@ -51,8 +67,15 @@ export function PublisherProvider({ children }: { children: React.ReactNode }) {
         })
       }
     }
+    // Server Admin: fold in every publisher the grants didn't already cover
+    // (roles empty — their access comes from being Server Admin, not a grant).
+    if (perms.isServerAdmin) {
+      for (const p of allPublishers?.items ?? []) {
+        if (!bySlug.has(p.slug)) bySlug.set(p.slug, { slug: p.slug, name: p.name, roles: [] })
+      }
+    }
     return [...bySlug.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [perms.grants])
+  }, [perms.grants, perms.isServerAdmin, allPublishers])
 
   // The user's explicit choice (a slug, the All sentinel, or null = never
   // chosen). Persisted; reconciled against the live publisher set on read.
@@ -65,6 +88,9 @@ export function PublisherProvider({ children }: { children: React.ReactNode }) {
   const currentSlug = useMemo<string | null>(() => {
     if (stored === ALL_SENTINEL) return perms.isServerAdmin ? null : (publishers[0]?.slug ?? null)
     if (stored && publishers.some((p) => p.slug === stored)) return stored
+    // No valid stored selection: a Server Admin lands on the All-publishers
+    // (global) view; a member lands on their first publisher.
+    if (perms.isServerAdmin) return null
     return publishers[0]?.slug ?? null
   }, [stored, publishers, perms.isServerAdmin])
 

@@ -179,5 +179,17 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /phase7-flows\.spec\.ts/,
     },
+    // Publisher-scoped admin home (ADR 0006): the switcher, the scoped
+    // Overview, and the Members + Activity pages. Runs as the Server-Admin
+    // session, which can scope to any publisher, and seeds its own data.
+    {
+      name: "publisher-home",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /publisher-home\.spec\.ts/,
+    },
   ],
 })
