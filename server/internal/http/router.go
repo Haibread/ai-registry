@@ -126,10 +126,6 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	requireMCPServerNS := auth.RequirePublisherRole(deps.DB, domain.RoleEditor, resolvePublisherByNamespace)
 	requireAgentNS := auth.RequirePublisherRole(deps.DB, domain.RoleEditor, resolvePublisherByNamespace)
 	requireReviewerNS := auth.RequirePublisherRole(deps.DB, domain.RoleReviewer, resolvePublisherByNamespace)
-	// The cross-publisher review-queue listing stays a "reviewer anywhere"
-	// check: members of the seeded reviewer group (global Reviewer grant) and
-	// Server Admins. Per-publisher result filtering is a follow-up.
-	requireReviewer := auth.RequireReviewer(deps.AuthConf.ReviewerGroup)
 
 	r := chi.NewRouter()
 
@@ -237,9 +233,11 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(auth.RequireAdmin).Delete("/{id}", grantH.DeleteGlobalGrant)
 		})
 
-		// Review queue (reviewer-gated, lists pending versions and
-		// pending deletions across all publishers).
-		r.With(requireReviewer).Get("/review-queue", revH.ListReviewQueue)
+		// Review queue: authenticated; the handler resolves the caller's reviewer
+		// scope (Server Admin / global Reviewer see every publisher, a
+		// per-publisher Reviewer sees only the publishers they review, anyone
+		// else gets 403) and filters results per-publisher (ADR 0006).
+		r.Get("/review-queue", revH.ListReviewQueue)
 
 		// Publishers
 		r.Route("/publishers", func(r chi.Router) {

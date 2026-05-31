@@ -572,3 +572,142 @@ func TestReviewHandler_ListReviewQueue(t *testing.T) {
 		t.Errorf("expected both mcp_version and agent_version, got %+v", kinds)
 	}
 }
+
+// TestReviewHandler_ListReviewQueue_Unauthenticated verifies the queue rejects
+// an anonymous caller with 401 (the route is authenticated-only; the handler
+// self-gates — ADR 0006).
+func TestReviewHandler_ListReviewQueue_Unauthenticated(t *testing.T) {
+	resetTables(t)
+	rec := httptest.NewRecorder()
+	newReviewRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/review-queue", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+// TestReviewHandler_ListReviewQueue_NonReviewerForbidden verifies an
+// authenticated caller who holds no Reviewer role anywhere (here an Editor) gets
+// 403 — the queue is an approver tool (ADR 0006).
+func TestReviewHandler_ListReviewQueue_NonReviewerForbidden(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	pubID := seedPublisher(t, "acme", "acme")
+	user, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "ed@acme.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: user.ID,
+		PublisherID: pubID, Role: domain.RoleEditor,
+	}); err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+
+	reqCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: user.ID, Email: user.Email})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/review-queue", nil).WithContext(reqCtx)
+	rec := httptest.NewRecorder()
+	newReviewRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestReviewHandler_ListReviewQueue_ScopedToReviewerPublishers verifies a
+// per-publisher Reviewer sees only their own publisher's pending items, not
+// another publisher's (ADR 0006 reviewer scoping).
+func TestReviewHandler_ListReviewQueue_ScopedToReviewerPublishers(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
+	seedDraftAgentForHandler(t, "globex", "planner", "0.1.0")
+
+	r := newReviewRouter()
+	// Submit both (as admin) so the queue has one item per publisher.
+	r.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit", nil))
+	r.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost,
+		"/api/v1/agents/globex/planner/versions/0.1.0/submit", nil))
+
+	// A Reviewer on acme only.
+	acmeID, err := testDB.GetPublisherBySlug(ctx, "acme")
+	if err != nil {
+		t.Fatalf("GetPublisherBySlug: %v", err)
+	}
+	user, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "rev@acme.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: user.ID,
+		PublisherID: acmeID, Role: domain.RoleReviewer,
+	}); err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+
+	reqCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: user.ID, Email: user.Email})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/review-queue", nil).WithContext(reqCtx)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("queue: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			PublisherSlug string `json:"publisher_slug"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("len = %d, want 1 (only acme's item)", len(body.Items))
+	}
+	if body.Items[0].PublisherSlug != "acme" {
+		t.Errorf("publisher_slug = %q, want acme", body.Items[0].PublisherSlug)
+	}
+}
+
+// TestReviewHandler_ListReviewQueue_GlobalReviewerSeesAll verifies a holder of a
+// GLOBAL Reviewer grant (the shape the seeded reviewer group carries) sees every
+// publisher's queue, without being a Server Admin (ADR 0006).
+func TestReviewHandler_ListReviewQueue_GlobalReviewerSeesAll(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
+	seedDraftAgentForHandler(t, "globex", "planner", "0.1.0")
+
+	r := newReviewRouter()
+	r.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit", nil))
+	r.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost,
+		"/api/v1/agents/globex/planner/versions/0.1.0/submit", nil))
+
+	user, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "global-rev@x.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	// PublisherID empty = a global (all-publishers) Reviewer grant.
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: user.ID,
+		Role: domain.RoleReviewer,
+	}); err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+
+	reqCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: user.ID, Email: user.Email})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/review-queue", nil).WithContext(reqCtx)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("queue: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Errorf("len = %d, want 2 (global reviewer sees all publishers)", len(body.Items))
+	}
+}

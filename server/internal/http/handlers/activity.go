@@ -19,7 +19,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
@@ -96,9 +95,10 @@ func (h *MCPHandlers) ListMCPServerActivity(w http.ResponseWriter, r *http.Reque
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
 
-	// 404 if the parent resource is not public (privacy contract: if the
-	// resource itself isn't visible, its activity history isn't either).
-	publicOnly := !auth.IsAdminFromContext(r.Context())
+	// 404 if the parent resource is not visible to the caller (privacy contract:
+	// if the resource itself isn't visible, its activity history isn't either).
+	// A publisher's own members can see their private/draft entries' activity.
+	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusNotFound, "not-found",
@@ -118,7 +118,7 @@ func (h *AgentHandlers) ListAgentActivity(w http.ResponseWriter, r *http.Request
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
 
-	publicOnly := !auth.IsAdminFromContext(r.Context())
+	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
 	ag, err := h.db.GetAgent(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusNotFound, "not-found",

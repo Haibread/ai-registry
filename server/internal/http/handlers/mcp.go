@@ -164,7 +164,7 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 func (h *MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
-	publicOnly := !auth.IsAdminFromContext(r.Context())
+	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
@@ -279,7 +279,7 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 func (h *MCPHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
-	publicOnly := !auth.IsAdminFromContext(r.Context())
+	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
@@ -306,7 +306,7 @@ func (h *MCPHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
 	ver := chi.URLParam(r, "version")
-	publicOnly := !auth.IsAdminFromContext(r.Context())
+	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
 
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {

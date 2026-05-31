@@ -153,7 +153,7 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 func (h *AgentHandlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
-	publicOnly := !auth.IsAdminFromContext(r.Context())
+	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
@@ -259,7 +259,7 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 func (h *AgentHandlers) ListVersions(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
-	publicOnly := !auth.IsAdminFromContext(r.Context())
+	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {
@@ -286,7 +286,7 @@ func (h *AgentHandlers) GetVersion(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
 	ver := chi.URLParam(r, "version")
-	publicOnly := !auth.IsAdminFromContext(r.Context())
+	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
 
 	agent, err := h.db.GetAgent(r.Context(), ns, slug, publicOnly)
 	if errors.Is(err, store.ErrNotFound) {

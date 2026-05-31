@@ -579,6 +579,52 @@ func TestListReviewQueue_UnionsAllFourSources(t *testing.T) {
 	}
 }
 
+// TestListReviewQueue_FiltersByPublisher verifies the PublisherIDs filter
+// restricts the queue to the named owning publishers (the store half of the
+// reviewer-scoping fix, ADR 0006); an empty filter returns everything.
+func TestListReviewQueue_FiltersByPublisher(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	srvA := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.SubmitMCPVersion(ctx, srvA, "1.0.0", actor()); err != nil {
+		t.Fatalf("submit acme: %v", err)
+	}
+	srvB := seedDraftMCPVersion(t, ctx, "globex", "planner", "1.0.0")
+	if err := sharedDB.SubmitMCPVersion(ctx, srvB, "1.0.0", actor()); err != nil {
+		t.Fatalf("submit globex: %v", err)
+	}
+
+	acmeID, err := sharedDB.GetPublisherBySlug(ctx, "acme")
+	if err != nil {
+		t.Fatalf("GetPublisherBySlug: %v", err)
+	}
+
+	// No filter → both publishers' items.
+	all, err := sharedDB.ListReviewQueue(ctx, store.ListReviewQueueParams{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListReviewQueue (unfiltered): %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("unfiltered len = %d, want 2", len(all))
+	}
+
+	// Filtered to acme → only acme's item.
+	scoped, err := sharedDB.ListReviewQueue(ctx, store.ListReviewQueueParams{
+		Limit:        50,
+		PublisherIDs: []string{acmeID},
+	})
+	if err != nil {
+		t.Fatalf("ListReviewQueue (scoped): %v", err)
+	}
+	if len(scoped) != 1 {
+		t.Fatalf("scoped len = %d, want 1", len(scoped))
+	}
+	if scoped[0].PublisherSlug != "acme" {
+		t.Errorf("publisher_slug = %q, want acme", scoped[0].PublisherSlug)
+	}
+}
+
 // Public-read leakage check: after a workflow approve-delete, the entry
 // must not appear in public list endpoints. This guards against the
 // classic "deleted via workflow but still visible" regression — the

@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🔒 Publisher-scoped read visibility for detail reads and the review queue
+
+Closed two gaps where reads weren't scoped to the caller's publisher (ADR 0006).
+
+**Detail / versions / activity reads are now publisher-role-aware.** Previously
+a resource's detail (`GET …/mcp/servers/{ns}/{slug}`, its `/versions[/…]`, and
+`/activity`, plus the agent equivalents) only revealed private/draft entries to
+a **Server Admin** — so a publisher's own Editor/Admin could see their private
+draft in the `mine=true` list but got a **404** opening it. These reads now
+honor the caller's role on the owning publisher: a member (Viewer and up) sees
+their publisher's private/draft entries, while a member of a *different*
+publisher (or an anonymous caller) still gets public-only — one publisher's
+private data is never exposed to another's.
+
+**The review queue (`GET /api/v1/review-queue`) is now per-publisher scoped.**
+It previously required membership in the Keycloak reviewer group (so a
+per-publisher Reviewer granted in-registry got 403) and listed pending items
+across **all** publishers. Now a Server Admin or a holder of a global Reviewer
+grant sees every publisher's items, a per-publisher Reviewer sees only the
+publishers they review, and a caller who holds no Reviewer role anywhere gets
+403. (A local bootstrap Server Admin can now reach the queue too.)
+
 ### 🛂 Reviewer is the sole approver; going public needs approval
 
 Tightened the authorization lattice for separation of duties (ADR 0006). A

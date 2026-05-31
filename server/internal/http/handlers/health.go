@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/haibread/ai-registry/internal/auth"
+	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/problem"
 )
 
@@ -78,4 +79,43 @@ func auditActor(ctx context.Context) (subject, email string) {
 	}
 	slog.WarnContext(ctx, "BUG: admin endpoint reached without auth claims in context")
 	return "unknown", ""
+}
+
+// privateScopeStore is the store slice canViewPrivate needs: resolve a
+// publisher id from its slug, and resolve the caller's effective roles on it.
+// *store.DB satisfies it.
+type privateScopeStore interface {
+	GetPublisherBySlug(ctx context.Context, slug string) (string, error)
+	auth.RoleStore
+}
+
+// canViewPrivate reports whether the caller may see private / draft resources
+// owned by the publisher whose slug is namespace. It is true for a Server Admin
+// or any caller holding a role (Viewer and up) on that publisher, and false for
+// an anonymous caller or a member of a *different* publisher — those get
+// public-only reads (ADR 0006). It widens visibility only for the owning
+// publisher's own members; it never exposes one publisher's private data to
+// another's. A namespace that does not resolve to a publisher yields false, so
+// the read falls back to public-only and the handler's own 404 covers it.
+//
+// Read handlers use it to set publicOnly: a publisher member must be able to
+// open the detail / versions / activity of their own not-yet-public entries,
+// not just see them in the mine-scoped list.
+func canViewPrivate(ctx context.Context, st privateScopeStore, namespace string) bool {
+	if auth.IsServerAdminFromContext(ctx) {
+		return true
+	}
+	// Skip the DB round-trips for anonymous reads (the common public path).
+	if !auth.IsAuthenticated(ctx) {
+		return false
+	}
+	pubID, err := st.GetPublisherBySlug(ctx, namespace)
+	if err != nil {
+		return false
+	}
+	ok, _, err := auth.CheckPublisherRole(ctx, st, pubID, domain.RoleViewer)
+	if err != nil {
+		return false
+	}
+	return ok
 }

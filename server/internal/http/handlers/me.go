@@ -125,16 +125,7 @@ func mineScope(ctx context.Context, st MineScopeStore) (ids []string, all, authe
 	if auth.IsServerAdminFromContext(ctx) {
 		return nil, true, true, nil
 	}
-	var userID string
-	var groups []string
-	if p, ok := auth.PrincipalFromContext(ctx); ok && p != nil {
-		userID = p.UserID
-		groups = p.ClaimGroups
-		authed = true
-	} else if c, ok := auth.ClaimsFromContext(ctx); ok && c != nil {
-		groups = c.Groups
-		authed = true
-	}
+	userID, groups, authed := auth.IdentityFromContext(ctx)
 	if !authed {
 		return nil, false, false, nil
 	}

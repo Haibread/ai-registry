@@ -42,23 +42,9 @@ func RequirePublisherRole(rs RoleStore, required domain.Role, resolve PublisherR
 				return
 			}
 
-			// Identify the caller. Prefer the resolved Principal, but fall back
-			// to the token's claims: a federated group-writer whose access token
-			// carries no email isn't provisioned into a users row, yet still
-			// names its groups in the claim — and the ADR's model authorizes via
-			// the group's grant (claim slug → group → grant), no users row
-			// required. Either source must be present (authenticated).
-			var userID string
-			var groups []string
-			authed := false
-			if p, ok := PrincipalFromContext(r.Context()); ok && p != nil {
-				userID = p.UserID
-				groups = p.ClaimGroups
-				authed = true
-			} else if c, ok := ClaimsFromContext(r.Context()); ok && c != nil {
-				groups = c.Groups
-				authed = true
-			}
+			// Identify the caller (resolved Principal, else token claims — see
+			// IdentityFromContext for why the claim fallback is load-bearing).
+			userID, groups, authed := IdentityFromContext(r.Context())
 			if !authed {
 				problem.Write(w, http.StatusUnauthorized, "unauthorized",
 					"Missing or invalid bearer token", r.URL.Path)
@@ -99,13 +85,28 @@ func RequirePublisherRole(rs RoleStore, required domain.Role, resolve PublisherR
 // parsing) call this first to reject anonymous callers with 401 before doing
 // any work, so the unauthenticated path never reaches the body parser or the DB.
 func IsAuthenticated(ctx context.Context) bool {
+	_, _, authed := IdentityFromContext(ctx)
+	return authed
+}
+
+// IdentityFromContext extracts the caller's identity for publisher-scoped
+// authorization: the resolved Principal's user id + claim groups when a
+// principal was resolved, otherwise the verified token's claim groups. The
+// fallback matters because a federated group-writer whose access token carries
+// no email is not provisioned into a users row, yet still names its groups in
+// the claim — and the ADR 0006 model authorizes via the group's grant
+// (claim slug → group → grant), no users row required. authed is false when the
+// request carries neither source (no usable identity). This is the shared
+// front-half of RequirePublisherRole, CheckPublisherRole, and the mine/review
+// scope resolvers.
+func IdentityFromContext(ctx context.Context) (userID string, groups []string, authed bool) {
 	if p, ok := PrincipalFromContext(ctx); ok && p != nil {
-		return true
+		return p.UserID, p.ClaimGroups, true
 	}
 	if c, ok := ClaimsFromContext(ctx); ok && c != nil {
-		return true
+		return "", c.Groups, true
 	}
-	return false
+	return "", nil, false
 }
 
 // CheckPublisherRole is the function form of RequirePublisherRole, for handlers
@@ -124,16 +125,7 @@ func CheckPublisherRole(ctx context.Context, rs RoleStore, publisherID string, r
 	if IsServerAdminFromContext(ctx) {
 		return true, true, nil
 	}
-	var userID string
-	var groups []string
-	if p, ok := PrincipalFromContext(ctx); ok && p != nil {
-		userID = p.UserID
-		groups = p.ClaimGroups
-		authed = true
-	} else if c, ok := ClaimsFromContext(ctx); ok && c != nil {
-		groups = c.Groups
-		authed = true
-	}
+	userID, groups, authed := IdentityFromContext(ctx)
 	if !authed {
 		return false, false, nil
 	}
