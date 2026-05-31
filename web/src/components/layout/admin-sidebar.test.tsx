@@ -116,9 +116,9 @@ describe('AdminSidebar — active route detection', () => {
     expect(linkClass('API Keys')).toContain(ACTIVE_CLASS)
   })
 
-  it('highlights Activity on /admin/audit', () => {
+  it('highlights Audit log on /admin/audit', () => {
     renderSidebar('/admin/audit')
-    expect(linkClass('Activity')).toContain(ACTIVE_CLASS)
+    expect(linkClass('Audit log')).toContain(ACTIVE_CLASS)
   })
 
   it('only highlights one item at a time', () => {
@@ -134,7 +134,7 @@ describe('AdminSidebar — active route detection', () => {
     expect(screen.getByRole('link', { name: /mcp servers/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /agents/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /activity/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /audit log/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /api keys/i })).toBeInTheDocument()
   })
 })
