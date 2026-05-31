@@ -235,6 +235,74 @@ func TestMCPHandler_GetServer_PrivateHiddenFromPublic(t *testing.T) {
 	}
 }
 
+// TestMCPHandler_GetServer_PublisherMemberSeesOwnPrivate verifies a publisher's
+// own member (here a Viewer, not a Server Admin) can open the detail of their
+// own private/draft entry — not just see it in the mine-scoped list (ADR 0006).
+func TestMCPHandler_GetServer_PublisherMemberSeesOwnPrivate(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	pubID := seedPublisher(t, "own-ns", "Owner NS")
+	if _, err := testDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "secret", Name: "Secret",
+	}); err != nil { // private + draft by default
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	user, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "viewer@own.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: user.ID,
+		PublisherID: pubID, Role: domain.RoleViewer,
+	}); err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+
+	reqCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: user.ID, Email: user.Email})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers/own-ns/secret", nil).WithContext(reqCtx)
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("publisher viewer: status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestMCPHandler_GetServer_OtherPublisherMemberDenied verifies that holding a
+// role on one publisher does NOT reveal another publisher's private entries:
+// the read falls back to public-only and 404s (ADR 0006).
+func TestMCPHandler_GetServer_OtherPublisherMemberDenied(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	ownerID := seedPublisher(t, "owner-ns", "Owner NS")
+	if _, err := testDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: ownerID, Slug: "secret", Name: "Secret",
+	}); err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	// A user who is Editor on a DIFFERENT publisher.
+	otherID := seedPublisher(t, "other-ns", "Other NS")
+	user, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "ed@other.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: user.ID,
+		PublisherID: otherID, Role: domain.RoleEditor,
+	}); err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+
+	reqCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: user.ID, Email: user.Email})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers/owner-ns/secret", nil).WithContext(reqCtx)
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("other-publisher member: status = %d, want 404 (private hidden); body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // ─── CreateServer ───────────────────────────────────────────────────────────
 
 func TestMCPHandler_CreateServer_Valid(t *testing.T) {

@@ -413,8 +413,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List pending review items across the registry (reviewer)
-         * @description Returns versions in `pending_review` and entries with pending deletions, newest first, paginated. The discriminator `kind` identifies the row type so the client can render the right action affordances. Reviewer or admin gated.
+         * List pending review items for the caller's publishers (reviewer)
+         * @description Returns versions in `pending_review` and entries with pending deletions, newest first, paginated. The discriminator `kind` identifies the row type so the client can render the right action affordances. The result is scoped to the caller's reviewer authority: a Server Admin or a holder of a global Reviewer grant sees every publisher's items; a per-publisher Reviewer sees only the publishers they review; a caller who holds no Reviewer role anywhere gets 403.
          */
         get: operations["listReviewQueue"];
         put?: never;

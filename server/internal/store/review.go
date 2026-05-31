@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -436,15 +437,24 @@ type ReviewQueueItem struct {
 type ListReviewQueueParams struct {
 	Limit  int32
 	Cursor string
+	// PublisherIDs, when non-empty, restricts the queue to items owned by these
+	// publishers — the reviewer-scoping filter (ADR 0006): a per-publisher
+	// Reviewer sees only the publishers they review. Empty means no filter; the
+	// handler passes nil for Server Admins and global-Reviewer-grant holders
+	// (see-all) and short-circuits to an empty result for a caller who reviews
+	// no publisher, so an empty slice here never silently widens the queue.
+	PublisherIDs []string
 }
 
-// ListReviewQueue returns pending_review versions and pending deletions
-// across all publishers, newest first. The query unions the four
-// sources (MCP version, agent version, MCP deletion, agent deletion)
-// and sorts by the submission / request timestamp.
+// ListReviewQueue returns pending_review versions and pending deletions,
+// newest first. The query unions the four sources (MCP version, agent version,
+// MCP deletion, agent deletion) and sorts by the submission / request
+// timestamp. When p.PublisherIDs is non-empty the result is restricted to those
+// owning publishers (reviewer scoping, ADR 0006); empty means no filter.
 //
-// Reviewers and admins are the only legitimate callers; the handler
-// gates this endpoint with RequireReviewer.
+// Reviewers and admins are the only legitimate callers; the handler resolves
+// the caller's reviewer scope (Server Admin / global Reviewer → all publishers;
+// a per-publisher Reviewer → their publishers) before calling this.
 func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]ReviewQueueItem, error) {
 	ctx, span := startSpan(ctx, "ListReviewQueue")
 	defer span.End()
@@ -455,20 +465,30 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 
 	args := []any{}
 	argN := 1
-	cursorClause := ""
+	var conds []string
 	if p.Cursor != "" {
 		at, id, err := decodeCursor(p.Cursor)
 		if err == nil {
-			cursorClause = fmt.Sprintf(" WHERE (submitted_at, entry_id) < ($%d, $%d)", argN, argN+1)
+			conds = append(conds, fmt.Sprintf("(submitted_at, entry_id) < ($%d, $%d)", argN, argN+1))
 			args = append(args, at, id)
 			argN += 2
 		}
+	}
+	if len(p.PublisherIDs) > 0 {
+		conds = append(conds, fmt.Sprintf("publisher_id = ANY($%d)", argN))
+		args = append(args, p.PublisherIDs)
+		argN++
+	}
+	whereClause := ""
+	if len(conds) > 0 {
+		whereClause = " WHERE " + strings.Join(conds, " AND ")
 	}
 
 	args = append(args, p.Limit)
 	q := fmt.Sprintf(`
 		WITH q AS (
 		    SELECT 'mcp_version'::text   AS kind,
+		           p.id                  AS publisher_id,
 		           p.slug                AS publisher_slug,
 		           s.slug                AS entry_slug,
 		           s.id                  AS entry_id,
@@ -483,7 +503,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    WHERE v.review_state = 'pending_review' AND v.submitted_at IS NOT NULL
 
 		    UNION ALL
-		    SELECT 'agent_version'::text, p.slug, a.slug, a.id,
+		    SELECT 'agent_version'::text, p.id, p.slug, a.slug, a.id,
 		           av.version, av.revision, av.submitted_at,
 		           coalesce(av.submitted_by, ''), coalesce(av.submitted_by_email, '')
 		    FROM agent_versions av
@@ -492,7 +512,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    WHERE av.review_state = 'pending_review' AND av.submitted_at IS NOT NULL
 
 		    UNION ALL
-		    SELECT 'mcp_deletion'::text, p.slug, s.slug, s.id,
+		    SELECT 'mcp_deletion'::text, p.id, p.slug, s.slug, s.id,
 		           '', 0, s.deletion_requested_at,
 		           coalesce(s.deletion_requested_by, ''), coalesce(s.deletion_requested_by_email, '')
 		    FROM mcp_servers s
@@ -500,7 +520,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    WHERE s.deletion_requested_at IS NOT NULL AND s.deleted_at IS NULL
 
 		    UNION ALL
-		    SELECT 'agent_deletion'::text, p.slug, a.slug, a.id,
+		    SELECT 'agent_deletion'::text, p.id, p.slug, a.slug, a.id,
 		           '', 0, a.deletion_requested_at,
 		           coalesce(a.deletion_requested_by, ''), coalesce(a.deletion_requested_by_email, '')
 		    FROM agents a
@@ -512,7 +532,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		FROM q
 		%s
 		ORDER BY submitted_at DESC, entry_id DESC
-		LIMIT $%d`, cursorClause, argN)
+		LIMIT $%d`, whereClause, argN)
 
 	rows, err := db.Pool.Query(ctx, q, args...)
 	if err != nil {

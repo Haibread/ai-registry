@@ -13,6 +13,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
@@ -77,13 +79,70 @@ func writeReviewProblem(w http.ResponseWriter, r *http.Request, err error) bool 
 
 // ── Review queue ────────────────────────────────────────────────────────
 
+// reviewScopeStore is the store slice reviewerScope needs: the caller's role
+// grants, used to find the publishers they review. *store.DB satisfies it.
+type reviewScopeStore interface {
+	ListGrantsForPrincipal(ctx context.Context, userID string, claimGroupSlugs []string) ([]store.PrincipalGrant, error)
+}
+
+// reviewerScope resolves which publishers' pending items the caller may see in
+// the review queue (ADR 0006). seeAll is true for a Server Admin or a holder of
+// a global Reviewer grant (the seeded reviewer group carries one) — they see
+// every publisher's queue. Otherwise publisherIDs lists the publishers on which
+// the caller holds a Reviewer grant; an empty list means the caller reviews
+// nothing (the handler 403s). authed is false when the request carries no
+// identity (the handler 401s). Only the Reviewer role counts: an Editor or a
+// publisher Admin is not an approver, so neither ever sees the queue.
+func reviewerScope(ctx context.Context, st reviewScopeStore) (publisherIDs []string, seeAll, authed bool, err error) {
+	if auth.IsServerAdminFromContext(ctx) {
+		return nil, true, true, nil
+	}
+	userID, groups, ok := auth.IdentityFromContext(ctx)
+	if !ok {
+		return nil, false, false, nil
+	}
+	grants, err := st.ListGrantsForPrincipal(ctx, userID, groups)
+	if err != nil {
+		return nil, false, true, err
+	}
+	for _, g := range grants {
+		if g.Role != domain.RoleReviewer {
+			continue
+		}
+		if g.PublisherID == "" { // a global Reviewer grant covers every publisher
+			seeAll = true
+		} else {
+			publisherIDs = append(publisherIDs, g.PublisherID)
+		}
+	}
+	return publisherIDs, seeAll, true, nil
+}
+
 // ListReviewQueue: GET /api/v1/review-queue
 //
-// Reviewer-gated endpoint that lists pending_review versions and
-// pending deletions across the entire registry, newest first. Each
-// entry carries a `kind` discriminator so the UI can render the right
-// row type.
+// Lists pending_review versions and pending deletions, newest first; each entry
+// carries a `kind` discriminator so the UI can render the right row type. The
+// route is authenticated-only — authorization and per-publisher scoping happen
+// here (ADR 0006): a Server Admin or global Reviewer sees every publisher's
+// queue, a per-publisher Reviewer sees only the publishers they review, and a
+// caller who reviews nothing gets 403.
 func (h *ReviewHandlers) ListReviewQueue(w http.ResponseWriter, r *http.Request) {
+	publisherIDs, seeAll, authed, err := reviewerScope(r.Context(), h.db)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	if !authed {
+		problem.Write(w, http.StatusUnauthorized, "unauthorized",
+			"Missing or invalid bearer token", r.URL.Path)
+		return
+	}
+	if !seeAll && len(publisherIDs) == 0 {
+		problem.Write(w, http.StatusForbidden, "forbidden",
+			"Reviewing requires the Reviewer role on at least one publisher.", r.URL.Path)
+		return
+	}
+
 	limit := int32(20)
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
@@ -91,10 +150,16 @@ func (h *ReviewHandlers) ListReviewQueue(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	rows, err := h.db.ListReviewQueue(r.Context(), store.ListReviewQueueParams{
+	params := store.ListReviewQueueParams{
 		Limit:  limit + 1,
 		Cursor: r.URL.Query().Get("cursor"),
-	})
+	}
+	// Leave PublisherIDs nil for see-all callers (no filter). A scoped reviewer
+	// passes their publishers; the len==0 case was already rejected above.
+	if !seeAll {
+		params.PublisherIDs = publisherIDs
+	}
+	rows, err := h.db.ListReviewQueue(r.Context(), params)
 	if err != nil {
 		internalError(w, r, err)
 		return
