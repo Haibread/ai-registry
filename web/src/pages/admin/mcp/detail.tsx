@@ -268,16 +268,24 @@ export default function AdminMCPDetail() {
               </Button>
             )}
 
-            {perms.isServerAdmin && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={visibilityMutation.isPending}
-                onClick={() => visibilityMutation.mutate(data.visibility === 'public' ? 'private' : 'public')}
-              >
-                Make {data.visibility === 'public' ? 'private' : 'public'}
-              </Button>
-            )}
+            {perms.canEdit(ns) && (() => {
+              // Going public requires an approved (published) version; going
+              // private is always allowed. Mirrors the server precondition.
+              const wantsPublic = data.visibility !== 'public'
+              const isApproved = data.status === 'published' || data.status === 'deprecated'
+              const blocked = wantsPublic && !isApproved
+              return (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={visibilityMutation.isPending || blocked}
+                  title={blocked ? 'Approve a published version before making this public' : undefined}
+                  onClick={() => visibilityMutation.mutate(data.visibility === 'public' ? 'private' : 'public')}
+                >
+                  Make {data.visibility === 'public' ? 'private' : 'public'}
+                </Button>
+              )
+            })()}
 
             {perms.canEdit(ns) && data.status === 'published' && (
               <DeprecateButton

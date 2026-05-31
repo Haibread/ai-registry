@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🛂 Reviewer is the sole approver; going public needs approval
+
+Tightened the authorization lattice for separation of duties (ADR 0006). A
+publisher **Admin can now do everything on the publisher except approve
+changes** — `domain.Satisfies` no longer treats `admin` as satisfying
+`reviewer`. Approving a submitted version (and publishing a version directly)
+requires the **Reviewer** role; the global **Server Admin** is the one
+break-glass exception. So no single per-publisher principal can both author and
+sign off the same change.
+
+Going public is now a gated, two-step flow: a Reviewer approves (publishes) the
+version, then an **Editor or Admin** switches visibility to `public`. The
+`POST …/visibility` endpoint moved from Server-Admin-only to Editor/Admin, and
+**rejects `public` (409) unless the entry already has an approved (published)
+version** — an unreviewed draft can no longer be exposed. The admin UI reflects
+this: `Make public` is disabled until the entry is approved, and `canReview` no
+longer follows from the admin role.
+
 ### 🔭 Publisher-scoped admin visibility + `GET /api/v1/me`
 
 The admin list endpoints (`GET /api/v1/mcp/servers`, `GET /api/v1/agents`)

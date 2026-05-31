@@ -105,6 +105,20 @@ test.describe('Admin: MCP Server CRUD', () => {
   test('toggle MCP server visibility to public', async ({ page }) => {
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
 
+    // Going public requires an approved (published) version, so publish one
+    // first; otherwise "Make public" is disabled and the API returns 409.
+    expect((await apiPost(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}/versions`, {
+      version: '0.1.0',
+      runtime: 'stdio',
+      protocol_version: '2025-03-26',
+      packages: [{ registryType: 'npm', identifier: '@e2e/test-server', version: '0.1.0', transport: { type: 'stdio' } }],
+    })).ok()).toBeTruthy()
+    expect((await apiPost(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}/versions/0.1.0/publish`, {})).ok()).toBeTruthy()
+
+    // Reload so the detail page refetches status=published and enables the button.
+    await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
+    await expect(page.getByText('published').first()).toBeVisible({ timeout: 10_000 })
+
     await page.click('button:has-text("Make public")')
     await expect(page.getByText('public').first()).toBeVisible()
   })
@@ -209,6 +223,22 @@ test.describe('Admin: Agent CRUD', () => {
 
   test('toggle agent visibility to public', async ({ page }) => {
     await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
+
+    // Public requires an approved (published) version; publish one first.
+    expect((await apiPost(page, `/api/v1/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}/versions`, {
+      version: '0.1.0',
+      endpoint_url: 'https://example.com/agent',
+      protocol_version: '0.3.0',
+      default_input_modes: ['text/plain'],
+      default_output_modes: ['text/plain'],
+      skills: [{ id: 'vis-skill', name: 'Vis Skill', description: 'Skill for the visibility e2e.', tags: ['e2e'] }],
+      authentication: [{ scheme: 'Bearer' }],
+    })).ok()).toBeTruthy()
+    expect((await apiPost(page, `/api/v1/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}/versions/0.1.0/publish`, {})).ok()).toBeTruthy()
+
+    await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
+    await expect(page.getByText('published').first()).toBeVisible({ timeout: 10_000 })
+
     await page.click('button:has-text("Make public")')
     await expect(page.getByText('public').first()).toBeVisible()
   })

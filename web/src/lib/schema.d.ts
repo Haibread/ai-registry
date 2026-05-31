@@ -522,7 +522,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Set MCP server visibility (admin only) */
+        /**
+         * Set MCP server visibility (Editor/Admin)
+         * @description Requires the Editor role on the owning publisher (Admin / Server Admin satisfy it). Switching to `public` requires the entry to already have an approved (published) version — an unreviewed draft cannot be exposed, so a `public` request on a draft returns 409. Switching back to `private` is always allowed.
+         */
         post: operations["setMCPServerVisibility"];
         delete?: never;
         options?: never;
@@ -768,8 +771,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Publish a version (admin only)
-         * @description Transitions the version from draft to published. Published versions are immutable — metadata edits after publish are forbidden.
+         * Publish a version (Reviewer)
+         * @description Transitions the version from draft to published. Publishing takes a version live, so it is an approver action: requires the Reviewer role on the owning publisher (the global Server Admin is the break-glass exception). Editors take a version live by submitting it for a Reviewer to approve. Published versions are immutable — metadata edits after publish are forbidden.
          */
         post: operations["publishMCPServerVersion"];
         delete?: never;
@@ -835,7 +838,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Set agent visibility (admin only) */
+        /**
+         * Set agent visibility (Editor/Admin)
+         * @description Requires the Editor role on the owning publisher (Admin / Server Admin satisfy it). Switching to `public` requires an approved (published) version — a `public` request on a draft returns 409. Switching back to `private` is always allowed.
+         */
         post: operations["setAgentVisibility"];
         delete?: never;
         options?: never;
@@ -1078,8 +1084,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Publish an agent version (admin only)
-         * @description Transitions the version from draft to published. Published versions are immutable — metadata edits after publish are forbidden.
+         * Publish an agent version (Reviewer)
+         * @description Transitions the version from draft to published. Publishing takes a version live, so it is an approver action: requires the Reviewer role (Server Admin is the break-glass exception). Editors publish by submitting for a Reviewer to approve. Published versions are immutable.
          */
         post: operations["publishAgentVersion"];
         delete?: never;
@@ -3234,6 +3240,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Cannot make public — the entry has no approved (published) version yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             422: components["responses"]["ValidationError"];
         };
     };
@@ -3890,6 +3905,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Cannot make public — the entry has no approved (published) version yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             422: components["responses"]["ValidationError"];
         };
     };

@@ -925,7 +925,13 @@ paths:
   /api/v1/mcp/servers/{namespace}/{slug}/visibility:
     post:
       operationId: setMCPServerVisibility
-      summary: Set MCP server visibility (admin only)
+      summary: Set MCP server visibility (Editor/Admin)
+      description: >
+        Requires the Editor role on the owning publisher (Admin / Server Admin
+        satisfy it). Switching to `public` requires the entry to already have an
+        approved (published) version — an unreviewed draft cannot be exposed, so
+        a `public` request on a draft returns 409. Switching back to `private`
+        is always allowed.
       tags: [mcp]
       security:
         - bearerAuth: []
@@ -955,6 +961,11 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Cannot make public — the entry has no approved (published) version yet
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1288,10 +1299,14 @@ paths:
   /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish:
     post:
       operationId: publishMCPServerVersion
-      summary: Publish a version (admin only)
+      summary: Publish a version (Reviewer)
       description: >
-        Transitions the version from draft to published. Published versions are
-        immutable — metadata edits after publish are forbidden.
+        Transitions the version from draft to published. Publishing takes a
+        version live, so it is an approver action: requires the Reviewer role on
+        the owning publisher (the global Server Admin is the break-glass
+        exception). Editors take a version live by submitting it for a Reviewer
+        to approve. Published versions are immutable — metadata edits after
+        publish are forbidden.
       tags: [mcp]
       security:
         - bearerAuth: []
@@ -1505,7 +1520,12 @@ paths:
   /api/v1/agents/{namespace}/{slug}/visibility:
     post:
       operationId: setAgentVisibility
-      summary: Set agent visibility (admin only)
+      summary: Set agent visibility (Editor/Admin)
+      description: >
+        Requires the Editor role on the owning publisher (Admin / Server Admin
+        satisfy it). Switching to `public` requires an approved (published)
+        version — a `public` request on a draft returns 409. Switching back to
+        `private` is always allowed.
       tags: [agents]
       security:
         - bearerAuth: []
@@ -1535,6 +1555,11 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Cannot make public — the entry has no approved (published) version yet
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1858,10 +1883,12 @@ paths:
   /api/v1/agents/{namespace}/{slug}/versions/{version}/publish:
     post:
       operationId: publishAgentVersion
-      summary: Publish an agent version (admin only)
+      summary: Publish an agent version (Reviewer)
       description: >
-        Transitions the version from draft to published. Published versions are
-        immutable — metadata edits after publish are forbidden.
+        Transitions the version from draft to published. Publishing takes a
+        version live, so it is an approver action: requires the Reviewer role
+        (Server Admin is the break-glass exception). Editors publish by
+        submitting for a Reviewer to approve. Published versions are immutable.
       tags: [agents]
       security:
         - bearerAuth: []

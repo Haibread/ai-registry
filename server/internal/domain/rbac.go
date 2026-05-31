@@ -15,8 +15,12 @@ const (
 	// RoleReviewer can approve / reject submitted versions and pending
 	// deletions.
 	RoleReviewer Role = "reviewer"
-	// RoleAdmin can do everything Editor and Reviewer can, plus edit
-	// publisher metadata and assign role grants on the publisher.
+	// RoleAdmin can do everything on the publisher — author/edit/delete, manage
+	// metadata and role grants, toggle visibility — EXCEPT approve changes.
+	// Approval is reserved to RoleReviewer so that no single per-publisher
+	// principal can both author and sign off a change (separation of duties).
+	// (The global Server Admin is the one break-glass exception that can
+	// approve; that is resolved above the role lattice, not here.)
 	RoleAdmin Role = "admin"
 )
 
@@ -33,28 +37,28 @@ func ValidRole(s string) bool {
 // Satisfies reports whether a principal holding the roles in held meets the
 // required capability. The lattice means:
 //
-//   - admin satisfies every requirement;
-//   - a directly-held role satisfies a requirement for that same role;
-//   - viewer is implied by editor, reviewer, and admin (anyone who can write
-//     or review can also read private entries).
+//   - viewer is implied by editor, reviewer, and admin (anyone who can write,
+//     review, or administer can also read private entries);
+//   - admin implies editor (admins author) and admin, but NOT reviewer;
+//   - a directly-held role satisfies a requirement for that same role.
 //
-// Crucially, editor does NOT satisfy a reviewer requirement and reviewer does
-// NOT satisfy an editor requirement — that independence is the separation of
-// duties. Holding both is the only way one principal can author and approve
-// the same change.
+// Crucially, **reviewer is the sole approver**: neither editor nor admin
+// satisfies a reviewer requirement. Admin is the most powerful per-publisher
+// role for everything except approval, but it cannot sign off a change — that
+// must be a principal holding reviewer, so authoring and approving stay
+// separable (separation of duties). Likewise reviewer does not imply editor.
+// The global Server Admin break-glass is handled by a middleware short-circuit
+// above this lattice, not here.
 func Satisfies(held map[Role]bool, required Role) bool {
-	if held[RoleAdmin] {
-		return true
-	}
 	switch required {
 	case RoleViewer:
-		return held[RoleViewer] || held[RoleEditor] || held[RoleReviewer]
+		return held[RoleAdmin] || held[RoleViewer] || held[RoleEditor] || held[RoleReviewer]
 	case RoleEditor:
-		return held[RoleEditor]
+		return held[RoleAdmin] || held[RoleEditor]
 	case RoleReviewer:
 		return held[RoleReviewer]
 	case RoleAdmin:
-		return false // admin already short-circuited above
+		return held[RoleAdmin]
 	default:
 		return false
 	}
