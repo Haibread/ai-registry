@@ -121,6 +121,18 @@ func TestLogin_Disabled(t *testing.T) {
 	}
 }
 
+// A disabled account must be indistinguishable from a wrong password when the
+// caller does NOT know the password — otherwise the distinct 403 is an
+// account-enumeration oracle. A caller who proves the password still gets the
+// explanatory 403 (see TestLogin_Disabled).
+func TestLogin_Disabled_WrongPassword_Uniform(t *testing.T) {
+	st := storeWithUser(t, "dev@example.com", "the-real-password", true)
+	h := handlers.NewAuthHandlers(testLocalIssuer(t), st)
+	if rec := postLogin(h, "dev@example.com", "wrong-password"); rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 for disabled account with a wrong password", rec.Code)
+	}
+}
+
 func TestLogin_NoLocalPassword(t *testing.T) {
 	// OIDC-only / invited user: row exists but has no password hash.
 	st := &fakeLoginStore{creds: map[string]*store.Credentials{

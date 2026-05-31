@@ -723,6 +723,65 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/v1/publishers/{slug}/stats:
+    get:
+      operationId: getPublisherStats
+      summary: Per-publisher stats for the scoped admin home (member)
+      description: >
+        Resource counts + status breakdowns, member counts by role, and the
+        pending-review count, scoped to one publisher. Open to any member of the
+        publisher (Viewer and up) or a Server Admin; others get 403. This is the
+        per-publisher counterpart to the Server-Admin-only global stats.
+      tags: [publishers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: Per-publisher stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublisherStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/publishers/{slug}/activity:
+    get:
+      operationId: getPublisherActivity
+      summary: Per-publisher activity feed (member)
+      description: >
+        The audit feed for a single publisher, newest first, paginated. Covers
+        the lifecycle of every MCP server and agent under the publisher. Open to
+        any member of the publisher (Viewer and up) or a Server Admin; others get
+        403. Unlike the public per-resource feed, this members-only feed names
+        the actor (the publisher's own collaborators).
+      tags: [publishers]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SlugParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Paginated publisher activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublisherActivityList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ── MCP Servers ───────────────────────────────────────────────────────────
 
   /api/v1/mcp/servers:
@@ -2750,6 +2809,47 @@ components:
         agent_status_breakdown:
           $ref: "#/components/schemas/StatusBreakdown"
 
+    MemberRoles:
+      type: object
+      description: >
+        Role-grant counts scoped to one publisher. A principal holding two roles
+        (deliberate Editor + Reviewer dual-hatting) is counted under each, so
+        these can exceed the distinct member total.
+      required: [viewers, editors, reviewers, admins]
+      properties:
+        viewers:
+          type: integer
+        editors:
+          type: integer
+        reviewers:
+          type: integer
+        admins:
+          type: integer
+
+    PublisherStats:
+      type: object
+      description: >
+        Per-publisher rollup for the scoped admin home. Totals exclude
+        soft-deleted entries; breakdowns cover the three live statuses.
+      required: [mcp_servers, agents, members, pending_review]
+      properties:
+        mcp_servers:
+          type: integer
+        agents:
+          type: integer
+        members:
+          type: integer
+          description: Distinct principals holding a grant scoped to this publisher.
+        pending_review:
+          type: integer
+          description: Items awaiting an approver (submitted versions + requested deletions).
+        mcp_status_breakdown:
+          $ref: "#/components/schemas/StatusBreakdown"
+        agent_status_breakdown:
+          $ref: "#/components/schemas/StatusBreakdown"
+        member_roles:
+          $ref: "#/components/schemas/MemberRoles"
+
     PublicStats:
       type: object
       required:
@@ -3583,6 +3683,52 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PublicActivityEvent"
+        next_cursor:
+          type: string
+
+    PublisherActivityEvent:
+      type: object
+      description: >
+        One entry in a publisher's members-only activity feed. Names the actor
+        (the publisher's own collaborators), unlike the public per-resource feed.
+      required: [id, action, resource_type, resource_slug, created_at]
+      properties:
+        id:
+          type: string
+          description: ULID of the underlying audit event
+        action:
+          type: string
+          description: Normalized action key (e.g. mcp_server_version.published)
+        resource_type:
+          type: string
+          description: Either mcp_server or agent
+        resource_slug:
+          type: string
+          description: Slug of the affected entry within the publisher
+        version:
+          type: string
+          description: Semantic version, when the event relates to a specific version
+        actor_email:
+          type: string
+          description: Email of the actor who performed the action, when known
+        metadata:
+          type: object
+          description: >
+            Scrubbed metadata. Only a whitelisted subset of keys is included
+            (e.g. `from`, `to`, `visibility`, `reason`, `version`, `field`).
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    PublisherActivityList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublisherActivityEvent"
         next_cursor:
           type: string
 

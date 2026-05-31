@@ -72,6 +72,9 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	creds, err := h.store.CredentialsByEmail(r.Context(), email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
+		// No such account. Spend the same CPU as a real verification so the
+		// response time can't be used to tell which emails have accounts.
+		auth.VerifyPasswordDummy(body.Password)
 		h.lockout.fail(email)
 		unauthorizedLogin(w, r)
 		return
@@ -80,14 +83,11 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if creds.Disabled {
-		problem.Write(w, http.StatusForbidden, "forbidden",
-			"this account is disabled", r.URL.Path)
-		return
-	}
-	// An OIDC-only or invited account has no local password — treat as a
-	// failed login (uniform with a wrong password).
+	// An OIDC-only or invited account has no local password — run the same
+	// dummy verification and fail uniformly with a wrong password, never
+	// revealing that the account exists but can't log in locally.
 	if creds.PasswordHash == "" {
+		auth.VerifyPasswordDummy(body.Password)
 		h.lockout.fail(email)
 		unauthorizedLogin(w, r)
 		return
@@ -97,6 +97,17 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil || !ok {
 		h.lockout.fail(email)
 		unauthorizedLogin(w, r)
+		return
+	}
+
+	// A disabled account is refused only after the password checks out, so a
+	// caller who does not know the password cannot distinguish "disabled" from
+	// "wrong password" (both 401) — closing the enumeration channel while still
+	// telling the legitimate owner why they can't sign in. The disabled
+	// kill-switch is also enforced at token-validation time (middleware).
+	if creds.Disabled {
+		problem.Write(w, http.StatusForbidden, "forbidden",
+			"this account is disabled", r.URL.Path)
 		return
 	}
 

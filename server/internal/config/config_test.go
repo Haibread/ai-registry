@@ -9,6 +9,15 @@ import (
 	"github.com/haibread/ai-registry/internal/config"
 )
 
+// TestMain sets a baseline OIDC_AUDIENCE for the whole package. Audience
+// binding is now required (fail-closed, OAuth 2.1), so every Load-success test
+// needs one; tests that exercise the requirement itself override it via
+// t.Setenv.
+func TestMain(m *testing.M) {
+	_ = os.Setenv("OIDC_AUDIENCE", "ai-registry-server")
+	os.Exit(m.Run())
+}
+
 // ── existing env-var tests (now pass "" as config file) ─────────────────────
 
 func TestLoad_Defaults(t *testing.T) {
@@ -95,6 +104,31 @@ func TestLoad_MissingOIDCIssuer(t *testing.T) {
 	_, err := config.Load("")
 	if err == nil {
 		t.Error("expected error when OIDC_ISSUER is empty, got nil")
+	}
+}
+
+func TestLoad_MissingOIDCAudience(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	t.Setenv("OIDC_AUDIENCE", "") // fail-closed: audience binding is required
+
+	_, err := config.Load("")
+	if err == nil {
+		t.Error("expected error when OIDC_AUDIENCE is empty, got nil")
+	}
+}
+
+func TestLoad_OIDCAudience_FromEnv(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	t.Setenv("OIDC_AUDIENCE", "my-resource-audience")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Auth.OIDCAudience != "my-resource-audience" {
+		t.Errorf("OIDCAudience = %q, want my-resource-audience", cfg.Auth.OIDCAudience)
 	}
 }
 

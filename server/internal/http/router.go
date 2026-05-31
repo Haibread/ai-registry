@@ -109,6 +109,9 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		return pub.ID, nil
 	}
 	requirePublisherAdmin := auth.RequirePublisherRole(deps.DB, domain.RoleAdmin, resolvePublisherSlug)
+	// Per-publisher dashboard reads are open to any member (Viewer satisfies via
+	// the lattice; Server Admin short-circuits) — a non-member gets 403.
+	requirePublisherViewer := auth.RequirePublisherRole(deps.DB, domain.RoleViewer, resolvePublisherSlug)
 
 	// Publisher-scoped RBAC guards (ADR 0006). A resource's {namespace} path
 	// segment IS its owning publisher's slug, so the publisher is resolved from
@@ -246,6 +249,13 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
 			r.With(auth.RequireAdmin).Patch("/{slug}", pubH.PatchPublisher)
 			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
+
+			// Per-publisher admin home reads (ADR 0006): scoped stats + activity
+			// for any member of the publisher (Viewer+) or a Server Admin. This is
+			// how a publisher Editor/Admin sees their own dashboard without the
+			// Server-Admin-only global /stats and /audit.
+			r.With(requirePublisherViewer).Get("/{slug}/stats", pubH.GetPublisherStats)
+			r.With(requirePublisherViewer).Get("/{slug}/activity", pubH.GetPublisherActivity)
 
 			// Per-publisher role grants (ADR 0006). Publisher Admin or Server
 			// Admin; RequirePublisherRole resolves {slug} → publisher.

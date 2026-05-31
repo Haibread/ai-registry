@@ -348,6 +348,13 @@ func (c *Config) validate() error {
 	if c.Auth.OIDCIssuer == "" {
 		return fmt.Errorf("OIDC_ISSUER is required")
 	}
+	// Audience binding is non-negotiable for the OAuth / MCP surface (OAuth 2.1
+	// resource indicators). With an empty audience the validator skips the `aud`
+	// check and accepts any token the realm signed for any client, so we fail
+	// closed at boot rather than silently allow cross-client token reuse.
+	if c.Auth.OIDCAudience == "" {
+		return fmt.Errorf("OIDC_AUDIENCE is required (OAuth 2.1 audience binding; set it to this resource server's audience, e.g. ai-registry-server)")
+	}
 	// The "AUTH_LOCAL_SIGNING_KEY required when local login is enabled" rule is
 	// enforced where the local-auth subsystem initialises (it is the component
 	// that actually needs the key and can fail closed without a half-built

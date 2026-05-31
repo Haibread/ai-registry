@@ -21,9 +21,10 @@ data:
 
   # ── Auth (OIDC) ───────────────────────────────────────────────────────────
   OIDC_ISSUER: {{ .Values.server.oidcIssuer | quote }}
-  {{- if .Values.server.oidcAudience }}
+  # Emitted unconditionally (like OIDC_ISSUER): audience binding is required, so
+  # an empty value must reach the server and fail its boot validation rather
+  # than silently disabling the `aud` check.
   OIDC_AUDIENCE: {{ .Values.server.oidcAudience | quote }}
-  {{- end }}
   {{- if .Values.server.oidcJwksUrl }}
   OIDC_JWKS_URL: {{ .Values.server.oidcJwksUrl | quote }}
   {{- end }}

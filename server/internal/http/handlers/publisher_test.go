@@ -6,6 +6,7 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/haibread/ai-registry/internal/auth"
+	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/http/handlers"
 	"github.com/haibread/ai-registry/internal/store"
 )
@@ -25,6 +28,8 @@ func newPublisherRouter() *chi.Mux {
 	r.Get("/api/v1/publishers/{slug}", h.GetPublisher)
 	r.Patch("/api/v1/publishers/{slug}", h.PatchPublisher)
 	r.Delete("/api/v1/publishers/{slug}", h.DeletePublisher)
+	r.Get("/api/v1/publishers/{slug}/stats", h.GetPublisherStats)
+	r.Get("/api/v1/publishers/{slug}/activity", h.GetPublisherActivity)
 	return r
 }
 
@@ -350,5 +355,134 @@ func TestPublisherHandler_Delete_ConflictWithActiveEntries(t *testing.T) {
 	newPublisherRouter().ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Errorf("status = %d, want 409", rec.Code)
+	}
+}
+
+// ── Per-publisher admin home (stats + activity) ─────────────────────────────
+
+func TestPublisherHandler_Stats(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	pubID := seedPublisher(t, "ph-stats", "PH Stats")
+	if _, err := testDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "s1", Name: "S1",
+	}); err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/publishers/ph-stats/stats", nil)
+	rec := httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		MCPServers         int `json:"mcp_servers"`
+		MCPStatusBreakdown struct {
+			Draft int `json:"draft"`
+		} `json:"mcp_status_breakdown"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.MCPServers != 1 || body.MCPStatusBreakdown.Draft != 1 {
+		t.Errorf("mcp_servers=%d draft=%d, want 1/1", body.MCPServers, body.MCPStatusBreakdown.Draft)
+	}
+}
+
+func TestPublisherHandler_Activity(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	seedPublisher(t, "ph-act", "PH Act")
+
+	// One event under ph-act (with actor + version metadata) and noise elsewhere.
+	testDB.LogAuditEvent(ctx, domain.AuditEvent{
+		ActorSubject: "u", ActorEmail: "editor@ph.test",
+		Action: domain.ActionMCPVersionPublished, ResourceType: "mcp_server",
+		ResourceID: store.NewULID(), ResourceNS: "ph-act", ResourceSlug: "weather",
+		Metadata: map[string]any{"version": "1.2.0"},
+	})
+	testDB.LogAuditEvent(ctx, domain.AuditEvent{
+		Action: domain.ActionMCPServerCreated, ResourceType: "mcp_server",
+		ResourceID: store.NewULID(), ResourceNS: "elsewhere", ResourceSlug: "x",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/publishers/ph-act/activity", nil)
+	rec := httptest.NewRecorder()
+	newPublisherRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			ResourceSlug string `json:"resource_slug"`
+			Version      string `json:"version"`
+			ActorEmail   string `json:"actor_email"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("items = %d, want 1 (scoped to ph-act)", len(body.Items))
+	}
+	it := body.Items[0]
+	if it.ActorEmail != "editor@ph.test" || it.Version != "1.2.0" || it.ResourceSlug != "weather" {
+		t.Errorf("got %+v, want actor editor@ph.test / version 1.2.0 / slug weather", it)
+	}
+}
+
+// TestPublisherHandler_Stats_Gating verifies the route guard (ADR 0006): a
+// publisher member (Viewer+) reads, an authenticated non-member gets 403, and
+// an anonymous caller gets 401.
+func TestPublisherHandler_Stats_Gating(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	pubID := seedPublisher(t, "ph-gate", "PH Gate")
+
+	resolve := func(r *http.Request) (string, error) {
+		return testDB.GetPublisherBySlug(r.Context(), chi.URLParam(r, "slug"))
+	}
+	h := handlers.NewPublisherHandlers(testDB, testDB)
+	r := chi.NewRouter()
+	r.With(auth.RequirePublisherRole(testDB, domain.RoleViewer, resolve)).
+		Get("/api/v1/publishers/{slug}/stats", h.GetPublisherStats)
+
+	get := func(c context.Context) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/publishers/ph-gate/stats", nil)
+		if c != nil {
+			req = req.WithContext(c)
+		}
+		r.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := get(nil); code != http.StatusUnauthorized {
+		t.Errorf("anonymous: status = %d, want 401", code)
+	}
+
+	member, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "v@ph.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: member.ID,
+		PublisherID: pubID, Role: domain.RoleViewer,
+	}); err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+	memberCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: member.ID, Email: member.Email})
+	if code := get(memberCtx); code != http.StatusOK {
+		t.Errorf("member (viewer): status = %d, want 200", code)
+	}
+
+	outsider, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "x@other.test"})
+	if err != nil {
+		t.Fatalf("CreateUser outsider: %v", err)
+	}
+	outsiderCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: outsider.ID, Email: outsider.Email})
+	if code := get(outsiderCtx); code != http.StatusForbidden {
+		t.Errorf("non-member: status = %d, want 403", code)
 	}
 }

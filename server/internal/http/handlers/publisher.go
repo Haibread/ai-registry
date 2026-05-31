@@ -78,6 +78,102 @@ func (h *PublisherHandlers) GetPublisher(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, r, http.StatusOK, pub)
 }
 
+// ── GET /api/v1/publishers/{slug}/stats ───────────────────────────────────────
+
+// GetPublisherStats returns the per-publisher rollup that powers the scoped
+// admin home: resource counts + status breakdowns, member counts, and the
+// pending-review signal. Gated to a publisher member (Viewer and up) or a
+// Server Admin by RequirePublisherRole in the router — so unlike the global
+// /stats it does not require Server Admin.
+func (h *PublisherHandlers) GetPublisherStats(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	pubID, err := h.db.GetPublisherBySlug(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("publisher '%s' does not exist", slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	stats, err := h.db.GetPublisherStats(r.Context(), pubID)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, stats)
+}
+
+// ── GET /api/v1/publishers/{slug}/activity ────────────────────────────────────
+
+// PublisherActivityEvent is one entry in a publisher's activity feed. Unlike
+// the public per-resource feed (which scrubs actor identity), this members-only
+// feed names the actor: collaborators on a publisher can see who did what.
+type PublisherActivityEvent struct {
+	ID           string         `json:"id"`
+	Action       string         `json:"action"`
+	ResourceType string         `json:"resource_type"`
+	ResourceSlug string         `json:"resource_slug"`
+	Version      string         `json:"version,omitempty"`
+	ActorEmail   string         `json:"actor_email,omitempty"`
+	CreatedAt    string         `json:"created_at"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+}
+
+// GetPublisherActivity returns the publisher-scoped audit feed (newest first,
+// paginated). Gated to a publisher member (Viewer and up) or Server Admin in
+// the router. Filtered by resource_ns = the publisher's slug, so it covers the
+// lifecycle of every MCP server and agent under the publisher. Metadata is run
+// through the same scrub as the public feed; the actor's email is retained
+// because the audience is the publisher's own members.
+func (h *PublisherHandlers) GetPublisherActivity(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+
+	limit := int32(25)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = int32(n)
+		}
+	}
+
+	events, err := h.db.ListAuditEvents(r.Context(), store.ListAuditParams{
+		ResourceNS: slug,
+		Limit:      limit + 1, // fetch one extra to detect the next page
+		Cursor:     r.URL.Query().Get("cursor"),
+	})
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	var nextCursor string
+	if int32(len(events)) > limit {
+		events = events[:limit]
+		last := events[len(events)-1]
+		nextCursor = store.EncodeCursorFromTime(last.CreatedAt, last.ID)
+	}
+
+	items := make([]PublisherActivityEvent, 0, len(events))
+	for _, e := range events {
+		items = append(items, PublisherActivityEvent{
+			ID:           e.ID,
+			Action:       string(e.Action),
+			ResourceType: e.ResourceType,
+			ResourceSlug: e.ResourceSlug,
+			Version:      extractVersion(e),
+			ActorEmail:   e.ActorEmail,
+			CreatedAt:    e.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			Metadata:     scrubMetadata(e.Metadata),
+		})
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"items":       items,
+		"next_cursor": nextCursor,
+	})
+}
+
 // ── POST /api/v1/publishers ───────────────────────────────────────────────────
 
 func (h *PublisherHandlers) CreatePublisher(w http.ResponseWriter, r *http.Request) {
