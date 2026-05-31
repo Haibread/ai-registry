@@ -314,4 +314,4 @@ Pre-1.0. The API is versioned (`/api/v1/`, `/v0/`) and the contract tests keep i
 
 ## License
 
-[MIT](LICENSE) © 2026 Theo Barbou.
+[MIT](LICENSE) © 2026 The AI Registry Authors.

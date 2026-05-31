@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.4.0-rc0 — 2026-05-31
+
 ### 🔑 MIT license + Helm local-login support
 
 The repository now ships a top-level **MIT `LICENSE`** (it was previously
