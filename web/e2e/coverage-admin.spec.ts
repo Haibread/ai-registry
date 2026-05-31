@@ -129,6 +129,15 @@ test.describe('Admin: bulk actions', () => {
         namespace: PUB_SLUG, slug, name: slug,
       })
       expect(res.ok()).toBeTruthy()
+      // Publish a version so the row can be flipped public — going public now
+      // requires an approved (published) version (ADR 0006).
+      expect((await apiPost(page, `/api/v1/mcp/servers/${PUB_SLUG}/${slug}/versions`, {
+        version: '1.0.0',
+        runtime: 'stdio',
+        protocol_version: '2025-03-26',
+        packages: [{ registryType: 'npm', identifier: `@e2e/bulk-${slug}`, version: '1.0.0', transport: { type: 'stdio' } }],
+      })).ok()).toBeTruthy()
+      expect((await apiPost(page, `/api/v1/mcp/servers/${PUB_SLUG}/${slug}/versions/1.0.0/publish`, {})).ok()).toBeTruthy()
     }
     await ctx.close()
   })
