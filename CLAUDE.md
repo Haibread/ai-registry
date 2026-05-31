@@ -145,8 +145,10 @@ Rules for implementors:
 
 ## Security rules
 
-- Admin-only endpoints are enforced by middleware checking the `registry:admin`
-  scope / role claim on the JWT. Do not rely on the UI alone.
+- Write endpoints are enforced by middleware checking the caller's role on the
+  owning publisher (Editor/Reviewer/Admin per the action) or global Server Admin
+  (`realm_access.roles` contains `admin`, or local `is_server_admin`) — ADR 0006.
+  Do not rely on the UI alone.
 - All write endpoints require a valid bearer token; read endpoints are public
   by default (configurable).
 - CORS: admin UI origin and user UI origin allow-listed via env.

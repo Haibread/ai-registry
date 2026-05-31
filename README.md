@@ -225,9 +225,9 @@ The CI pipeline enforces a set of contracts that mechanically prevent drift betw
 - **OpenAPI ↔ router bijection** — every route in the chi router has an operation in `openapi.yaml` and vice versa. Extra or missing either side = build failure.
 - **`/v0/` MCP wire-format conformance** — 40 tests pinning response shapes, cursor semantics, error envelopes, and RFC 3339 timestamps to the MCP registry spec.
 - **A2A Agent Card JSON Schema** — `server/api/a2a-agent-card.schema.json` pins the a2a-project/a2a June 2025 shape; every emission is validated against it.
-- **Admin-guard router contract** — every write endpoint requires `registry:admin`, independent of the UI.
+- **Write-authorization router contract** — every write endpoint requires authorization (a publisher-scoped role — Editor/Reviewer/Admin — or Server Admin), never reachable anonymously; a contract test fails CI if a write route is left ungated (ADR 0006).
 - **OTel span emission contract** — every handler produces a span; drift fails CI.
-- **Migration forward-apply + idempotency** — all 10 forward migrations apply cleanly on a fresh Postgres via testcontainers.
+- **Migration forward-apply + idempotency** — all 13 forward migrations apply cleanly on a fresh Postgres via testcontainers.
 - **Public rate-limit wiring** — unauthenticated read endpoints are rate-limited by middleware, not handler code.
 - **Web test suite** — 580+ Vitest + React Testing Library tests; Playwright e2e on admin flows including the change-approval workflow.
 

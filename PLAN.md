@@ -98,7 +98,7 @@ Mirror the MCP registry API shape
 
 These are a thin compatibility layer over `/api/v1/mcp/*`.
 
-### 3.3 Admin (JWT with `registry:admin` scope)
+### 3.3 Admin (publisher-scoped RBAC or Server Admin — ADR 0006)
 
 - Publishers: `POST/PATCH/DELETE /api/v1/publishers[...]`.
 - MCP: `POST /api/v1/mcp/servers`, `PATCH /{ns}/{slug}`,
