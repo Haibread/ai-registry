@@ -34,7 +34,7 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 
 - **Public UI** — read-only. Browse, search, detail pages, JSON inspect, copy endpoints. No auth required.
 - **Admin UI** (`/admin`) — full CRUD, guarded by OIDC or local login. Publishers (with role grants), groups, users, MCP servers + versions, agents + versions, audit log, reports triage, feature-flag management, and a review queue for the change-approval workflow.
-- **Publisher-scoped admin home** — a publisher switcher scopes the admin area to one publisher (a Server Admin can pick any; a member sees the ones they hold a role on). The selected publisher gets a scoped Overview (attention strip + counts + recent-activity timeline), a Members page (manage that publisher's role grants), and an Activity feed — all backed by `GET /api/v1/publishers/{slug}/stats` and `/activity` (open to any member of the publisher; 403 otherwise).
+- **Publisher-scoped admin home** — a publisher switcher scopes the admin area to one publisher (a Server Admin can pick any; a member sees the ones they hold a role on). The selected publisher gets a scoped Overview (attention strip + counts + recent-activity timeline), a Members page (manage that publisher's role grants), an Activity feed — all backed by `GET /api/v1/publishers/{slug}/stats` and `/activity` (open to any member of the publisher; 403 otherwise) — and a Settings page where a publisher **Admin** edits the publisher's name + contact via `PATCH /api/v1/publishers/{slug}` (publisher Admin or Server Admin; the slug is permanent and deletion stays Server-Admin-only).
 - **Both UIs consume the same versioned HTTP API.** Zero client-only features.
 
 ### AuthN/AuthZ

@@ -461,7 +461,10 @@ export interface paths {
         delete: operations["deletePublisher"];
         options?: never;
         head?: never;
-        /** Update a publisher's metadata (admin only) */
+        /**
+         * Update a publisher's metadata (publisher Admin)
+         * @description Updates the publisher's display name and contact. Requires the Admin role on this publisher, or global Server Admin. Returns 403 for any lesser role, 401 when unauthenticated.
+         */
         patch: operations["patchPublisher"];
         trace?: never;
     };

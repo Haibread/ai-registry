@@ -43,6 +43,7 @@ const AdminAudit = lazy(() => import('@/pages/admin/audit'))
 const AdminReviewQueue = lazy(() => import('@/pages/admin/review'))
 const AdminMembers = lazy(() => import('@/pages/admin/members'))
 const AdminActivity = lazy(() => import('@/pages/admin/activity'))
+const AdminSettings = lazy(() => import('@/pages/admin/settings'))
 
 // Minimal fallback shown while an admin chunk is loading. Intentionally tiny —
 // the admin surface is gated behind auth and the chunks are small, so a full
@@ -90,6 +91,7 @@ export function AppRoutes() {
         <Route path="agents/:ns/:slug" element={<AdminAgentDetail />} />
         <Route path="members" element={<AdminMembers />} />
         <Route path="activity" element={<AdminActivity />} />
+        <Route path="settings" element={<AdminSettings />} />
         <Route path="publishers" element={<AdminPublisherList />} />
         <Route path="publishers/new" element={<AdminPublisherNew />} />
         <Route path="publishers/:slug" element={<AdminPublisherDetail />} />

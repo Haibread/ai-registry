@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, Flag, Activity, ScrollText, ClipboardCheck } from 'lucide-react'
+import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, Flag, Activity, ScrollText, ClipboardCheck, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
@@ -35,6 +35,7 @@ const publisherNav: NavItem[] = [
   { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review', requires: 'reviewer' },
   { to: '/admin/activity', label: 'Activity', icon: Activity, requires: 'publisherMember' },
   { to: '/admin/members', label: 'Members', icon: Users, requires: 'publisherAdmin' },
+  { to: '/admin/settings', label: 'Settings', icon: Settings, requires: 'publisherAdmin' },
 ]
 
 // Server-Admin management surfaces: global, cross-publisher administration,
