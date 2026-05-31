@@ -247,7 +247,11 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(publicRL).Get("/", pubH.ListPublishers)
 			r.With(auth.RequireAdmin).Post("/", pubH.CreatePublisher)
 			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
-			r.With(auth.RequireAdmin).Patch("/{slug}", pubH.PatchPublisher)
+			// Editing a publisher's metadata (name/contact) is a publisher
+			// Admin action (ADR 0006); Server Admin keeps break-glass via the
+			// RequirePublisherRole short-circuit. Deletion removes the whole
+			// tenant, so it stays Server-Admin-only.
+			r.With(requirePublisherAdmin).Patch("/{slug}", pubH.PatchPublisher)
 			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
 
 			// Per-publisher admin home reads (ADR 0006): scoped stats + activity

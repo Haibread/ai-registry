@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### ⚙️ Publisher Admins can edit their publisher's metadata
+
+`PATCH /api/v1/publishers/{slug}` is now a publisher **Admin** action instead of
+Server-Admin-only: the guard moves from `RequireAdmin` to publisher-scoped
+`RequirePublisherRole(Admin)` (Server Admin keeps break-glass access; a publisher
+Editor/Viewer gets 403, an anonymous caller 401). A new scoped **Settings** page
+(`/admin/settings`, in the publisher nav for Admins) lets them edit the name +
+contact without the Server-Admin Publishers page. The slug stays permanent and
+**deleting** a publisher remains Server-Admin-only (it removes the whole tenant).
+
 ### 🛠️ Server Admins can scope the admin home to any publisher (+ e2e)
 
 The publisher switcher now offers a Server Admin **every** publisher, not just
@@ -20,8 +30,8 @@ publisher's role grants — a first-class home for a publisher Admin, who
 previously had no nav path to it; gated to Admins, with a hint otherwise.
 **Activity** (`/admin/activity`) is the full, paginated activity feed for the
 publisher (any member). The global audit nav item is renamed **Audit log** to
-distinguish it from the per-publisher feed. (Editing publisher *metadata* stays
-Server-Admin-only, via the Publishers page.)
+distinguish it from the per-publisher feed. (Editing publisher *metadata* is now
+a publisher-Admin action too — see the Settings entry above.)
 
 ### 🏠 Publisher-scoped admin Overview
 

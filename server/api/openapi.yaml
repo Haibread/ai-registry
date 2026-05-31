@@ -668,7 +668,11 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: patchPublisher
-      summary: Update a publisher's metadata (admin only)
+      summary: Update a publisher's metadata (publisher Admin)
+      description: >
+        Updates the publisher's display name and contact. Requires the Admin
+        role on this publisher, or global Server Admin. Returns 403 for any
+        lesser role, 401 when unauthenticated.
       tags: [publishers]
       security:
         - bearerAuth: []

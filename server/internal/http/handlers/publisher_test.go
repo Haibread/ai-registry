@@ -486,3 +486,78 @@ func TestPublisherHandler_Stats_Gating(t *testing.T) {
 		t.Errorf("non-member: status = %d, want 403", code)
 	}
 }
+
+// TestPublisherHandler_Patch_Gating verifies the route guard for editing
+// publisher metadata (ADR 0006): a publisher Admin may edit, a publisher
+// Editor may not (Editor does not satisfy Admin), a Server Admin keeps
+// break-glass access without a publisher grant, and an anonymous caller is
+// rejected. This pins the router's swap from Server-Admin-only
+// (auth.RequireAdmin) to publisher-scoped requirePublisherAdmin.
+func TestPublisherHandler_Patch_Gating(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	pubID := seedPublisher(t, "ph-patch-gate", "PH Patch Gate")
+
+	resolve := func(r *http.Request) (string, error) {
+		return testDB.GetPublisherBySlug(r.Context(), chi.URLParam(r, "slug"))
+	}
+	h := handlers.NewPublisherHandlers(testDB, testDB)
+	r := chi.NewRouter()
+	r.With(auth.RequirePublisherRole(testDB, domain.RoleAdmin, resolve)).
+		Patch("/api/v1/publishers/{slug}", h.PatchPublisher)
+
+	patch := func(c context.Context) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/publishers/ph-patch-gate",
+			bytes.NewBufferString(`{"name":"Renamed"}`))
+		req.Header.Set("Content-Type", "application/json")
+		if c != nil {
+			req = req.WithContext(c)
+		}
+		r.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := patch(nil); code != http.StatusUnauthorized {
+		t.Errorf("anonymous: status = %d, want 401", code)
+	}
+
+	admin, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "a@ph.test"})
+	if err != nil {
+		t.Fatalf("CreateUser admin: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: admin.ID,
+		PublisherID: pubID, Role: domain.RoleAdmin,
+	}); err != nil {
+		t.Fatalf("CreateGrant admin: %v", err)
+	}
+	adminCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: admin.ID, Email: admin.Email})
+	if code := patch(adminCtx); code != http.StatusOK {
+		t.Errorf("publisher admin: status = %d, want 200", code)
+	}
+
+	editor, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "e@ph.test"})
+	if err != nil {
+		t.Fatalf("CreateUser editor: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: editor.ID,
+		PublisherID: pubID, Role: domain.RoleEditor,
+	}); err != nil {
+		t.Fatalf("CreateGrant editor: %v", err)
+	}
+	editorCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: editor.ID, Email: editor.Email})
+	if code := patch(editorCtx); code != http.StatusForbidden {
+		t.Errorf("publisher editor: status = %d, want 403", code)
+	}
+
+	// Server Admin holds no grant on this publisher but satisfies any
+	// publisher-scoped requirement (break-glass).
+	saCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{
+		UserID: "sa", Email: "sa@root.test", IsServerAdmin: true,
+	})
+	if code := patch(saCtx); code != http.StatusOK {
+		t.Errorf("server admin: status = %d, want 200", code)
+	}
+}
