@@ -23,8 +23,10 @@ server:
   # ── Auth (OIDC) ─────────────────────────────────────────────────────────
   # [REQUIRED] OIDC issuer URL — must match the `iss` claim in issued JWTs.
   oidcIssuer: ""
-  # Optional audience claim check (leave empty to skip).
-  oidcAudience: ""
+  # [REQUIRED] Expected JWT `aud` value (OAuth 2.1 resource indicators / MCP
+  # audience binding). The server refuses to boot when empty. Must match the
+  # audience your IdP emits for this resource server.
+  oidcAudience: "ai-registry-server"
   # Override the JWKS URL for internal network resolution (e.g. when the
   # server pod cannot reach the public issuer URL directly).
   # Example: http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs

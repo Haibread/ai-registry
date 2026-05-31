@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🔒 Auth hardening: required audience binding + login enumeration fixes
+
+**`OIDC_AUDIENCE` is now required (fail-closed).** The server previously skipped
+the JWT `aud` check when no audience was configured, so any token the realm
+signed for *any* client was accepted — contrary to the OAuth 2.1 resource-
+indicator requirement for the MCP surface. The server now refuses to boot when
+`OIDC_AUDIENCE` (YAML `auth.oidc_audience`, Helm `server.oidcAudience`) is empty.
+**Action required:** set it to this resource server's audience (the bundled
+stack uses `ai-registry-server`) and ensure your IdP emits that `aud`. The
+docker-compose stack and the example config / Helm values already default to
+`ai-registry-server`.
+
+> **Breaking config change.** `OIDC_AUDIENCE` (YAML `auth.oidc_audience`, Helm
+> `server.oidcAudience`) is now mandatory — the server aborts startup with a
+> clear error when it is empty. Deployments that previously relied on the
+> empty default (no `aud` check) MUST set it before upgrading, and the IdP must
+> issue tokens carrying that audience or every request will be rejected with
+> 401. The bundled docker-compose stack and the example config / Helm values
+> already default to `ai-registry-server`.
+
+**Local login no longer leaks which accounts exist.** Two side channels were
+closed on `POST /api/v1/auth/login`: (1) unknown emails and password-less
+accounts now run a constant-cost dummy password verification so response timing
+no longer distinguishes "account exists" from "doesn't"; (2) a disabled account
+with a *wrong* password now returns the uniform `401` instead of a distinct
+`403`. A caller who supplies the correct password still gets the explanatory
+`403 "this account is disabled"`.
+
 ### 🔒 Publisher-scoped read visibility for detail reads and the review queue
 
 Closed two gaps where reads weren't scoped to the caller's publisher (ADR 0006).

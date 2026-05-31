@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -74,6 +75,28 @@ func VerifyPassword(password, encoded string) (bool, error) {
 	}
 	got := argon2.IDKey([]byte(password), salt, p.iterations, p.memoryKiB, p.parallelism, uint32(len(want)))
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
+}
+
+// dummyPasswordHash is a valid argon2id hash over a throwaway secret, computed
+// once on first use (the default cost params, so it matches a real hash). It
+// backs VerifyPasswordDummy.
+var dummyPasswordHash = sync.OnceValue(func() string {
+	h, err := HashPassword("constant-time-login-placeholder")
+	if err != nil {
+		// HashPassword only fails if crypto/rand fails — unrecoverable anyway.
+		panic("auth: precomputing dummy password hash: " + err.Error())
+	}
+	return h
+})
+
+// VerifyPasswordDummy performs a full argon2id verification against a throwaway
+// hash and discards the result. Login handlers call it on the paths where no
+// real credential exists (unknown email, password-less account) so those
+// responses cost the same CPU/time as a genuine check — removing the
+// response-time difference that would otherwise let an attacker enumerate which
+// emails have local accounts.
+func VerifyPasswordDummy(password string) {
+	_, _ = VerifyPassword(password, dummyPasswordHash())
 }
 
 func decodeArgon2idHash(encoded string) (argon2idParams, []byte, []byte, error) {
