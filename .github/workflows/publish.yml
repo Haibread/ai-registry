@@ -344,10 +344,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
+          # A pre-release tag carries a hyphenated SemVer identifier
+          # (e.g. v0.4.0-rc0). gh ranks "Latest" by SemVer, and 0.4.0-rc0
+          # outranks 0.3.3 — so without --prerelease an rc would wrongly be
+          # published as the Latest release. Mark hyphenated tags pre-release
+          # so they stay out of "Latest"; stable tags keep the default.
+          args=(--notes-file /tmp/relnotes.md --verify-tag)
+          if [[ "$TAG" == *-* ]]; then
+            args+=(--prerelease)
+          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --notes-file /tmp/relnotes.md --verify-tag
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" "${args[@]}"
           else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "$TAG" --notes-file /tmp/relnotes.md --verify-tag
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" "${args[@]}"
           fi

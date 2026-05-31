@@ -98,7 +98,7 @@ Mirror the MCP registry API shape
 
 These are a thin compatibility layer over `/api/v1/mcp/*`.
 
-### 3.3 Admin (JWT with `registry:admin` scope)
+### 3.3 Admin (publisher-scoped RBAC or Server Admin — ADR 0006)
 
 - Publishers: `POST/PATCH/DELETE /api/v1/publishers[...]`.
 - MCP: `POST /api/v1/mcp/servers`, `PATCH /{ns}/{slug}`,
@@ -216,11 +216,14 @@ stance.)
   route on publishers, MCP servers, and agents has dedicated coverage
   in `internal/http/handlers/*_test.go` (testcontainers Postgres).
 
-**Parked from Phase 5 (now tracked under v0.4.x):**
+**Parked from Phase 5 (deferred beyond 0.4.0):**
 
 These items were originally listed as Phase 5 TODOs but were not
-attempted before Phase 5 closed. They are now part of the v0.4.x
-roadmap (see [README — Roadmap](README.md) and CLAUDE.md Decision B):
+attempted before Phase 5 closed. v0.4.0 ships the ADR 0006
+authorization epic (publisher-scoped RBAC + local accounts + the
+publisher-scoped admin home), so the items below now slip to a later
+minor (post-0.4.0; see [README — Roadmap](README.md) and CLAUDE.md
+Decision B):
 
 - `POST /api/v1/api-keys`, `DELETE /api/v1/api-keys/{id}` — hashed API
   keys (per-publisher, machine-to-machine).

@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.4.0-rc0 — 2026-05-31
+
+### 🔑 MIT license + Helm local-login support
+
+The repository now ships a top-level **MIT `LICENSE`** (it was previously
+unlicensed). The Helm chart gains local email + password login for parity with
+docker-compose: `server.localLogin.enabled` plus
+`server.localLogin.bootstrapAdmin.{email,password,existingSecret}`. The
+bootstrap-admin password is wired through a Kubernetes Secret — an inline value
+is rendered into one, or reference an `existingSecret` you manage
+(external-secrets / sealed-secrets) — and is **never** placed in the ConfigMap.
+
+### 🔖 Release tooling + roadmap aligned for 0.4.0
+
+The publish workflow now marks hyphenated SemVer tags (e.g. `v0.4.0-rc0`) as
+GitHub **pre-releases**, so a release candidate is never ranked "Latest" over
+the previous stable tag. Roadmap docs (README / PLAN / CLAUDE) updated: **0.4.0
+ships the ADR 0006 authorization epic** (publisher-scoped RBAC + local accounts
++ the publisher-scoped admin home; the workspace layer is removed), and API-key
+(M2M) auth plus a production `docker-compose.prod.yml` profile move to a later
+minor.
+
 ### ⚙️ Publisher Admins can edit their publisher's metadata
 
 `PATCH /api/v1/publishers/{slug}` is now a publisher **Admin** action instead of

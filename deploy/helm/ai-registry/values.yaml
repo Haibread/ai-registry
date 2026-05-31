@@ -53,6 +53,26 @@ server:
   # XSS exposure window — typically only for E2E test harnesses.
   authStorage: ""
 
+  # ── Auth (local accounts, ADR 0006) ────────────────────────────────────────
+  # Local email + password login alongside OIDC. The registry signs its own
+  # tokens for these accounts and walls them off the MCP surface (OAuth-only).
+  # Leave disabled to run OIDC-only; enable to run without an external IdP or to
+  # seed a break-glass Server Admin.
+  localLogin:
+    enabled: false
+    # Bootstrap Server Admin seeded on startup when local login is enabled.
+    # Idempotent: the account is upserted on each boot, never duplicated.
+    bootstrapAdmin:
+      # Login email for the bootstrap admin. Empty = no admin seeded.
+      email: ""
+      # Inline password (DEV/quickstart only) — rendered into a Kubernetes
+      # Secret (base64, NOT encrypted). Ignored when existingSecret is set.
+      # In production prefer existingSecret with external-secrets / sealed-secrets.
+      password: ""
+      # Name of a pre-existing Secret holding key AUTH_BOOTSTRAP_ADMIN_PASSWORD.
+      # Takes precedence over the inline password above.
+      existingSecret: ""
+
   # ── Database ─────────────────────────────────────────────────────────────
   # DATABASE_URL — provide exactly one of the following (highest wins):
   #   databaseUrlSecret : name of a pre-existing Kubernetes Secret whose key

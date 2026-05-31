@@ -225,9 +225,9 @@ The CI pipeline enforces a set of contracts that mechanically prevent drift betw
 - **OpenAPI ↔ router bijection** — every route in the chi router has an operation in `openapi.yaml` and vice versa. Extra or missing either side = build failure.
 - **`/v0/` MCP wire-format conformance** — 40 tests pinning response shapes, cursor semantics, error envelopes, and RFC 3339 timestamps to the MCP registry spec.
 - **A2A Agent Card JSON Schema** — `server/api/a2a-agent-card.schema.json` pins the a2a-project/a2a June 2025 shape; every emission is validated against it.
-- **Admin-guard router contract** — every write endpoint requires `registry:admin`, independent of the UI.
+- **Write-authorization router contract** — every write endpoint requires authorization (a publisher-scoped role — Editor/Reviewer/Admin — or Server Admin), never reachable anonymously; a contract test fails CI if a write route is left ungated (ADR 0006).
 - **OTel span emission contract** — every handler produces a span; drift fails CI.
-- **Migration forward-apply + idempotency** — all 10 forward migrations apply cleanly on a fresh Postgres via testcontainers.
+- **Migration forward-apply + idempotency** — all 13 forward migrations apply cleanly on a fresh Postgres via testcontainers.
 - **Public rate-limit wiring** — unauthenticated read endpoints are rate-limited by middleware, not handler code.
 - **Web test suite** — 580+ Vitest + React Testing Library tests; Playwright e2e on admin flows including the change-approval workflow.
 
@@ -293,7 +293,8 @@ The phased roadmap lives in [`PLAN.md`](./PLAN.md). High-level status:
 - **v0.1.x** — Foundation: Postgres schema, chi router, OIDC, MCP + agent CRUD, public browse UI, admin UI, bootstrap seeding. ✅
 - **v0.2.x** — Observability + coverage depth. OTel traces/metrics/logs wired everywhere; contract tests for every CLAUDE.md non-negotiable; `/v0/` wire-format conformance; A2A schema conformance. ✅
 - **v0.3.x** — Browse polish (real MCP `tools[]` field end-to-end, card redesign, namespace landing pages, per-entry activity feed) and access control: workspaces under publishers, Keycloak group bindings, change-approval workflow with revision-tracked PR-style edits. ✅
-- **v0.4.x and beyond** — Skills/prompts registry, federation, API-key auth (M2M), webhooks.
+- **v0.4.x** — Publisher-scoped RBAC + local accounts ([ADR 0006](docs/adr/0006-publisher-scoped-rbac.md)): the workspace layer is **removed**, resources are publisher-scoped again, and authorization is roles (Viewer/Editor/Reviewer/Admin) granted to users or groups in the registry — Editor authors, Reviewer is the sole approver, Admin manages, Server Admin is break-glass. Adds local email + password login alongside OIDC (registry-signed tokens walled off the MCP surface), `GET /api/v1/me`, `mine=`-scoped admin lists, and the publisher-scoped admin home (switcher + Overview + Members / Activity / Settings). 🚧 (0.4.0-rc)
+- **Beyond 0.4.x** — Skills / prompts registry, federation, API-key auth (M2M), webhooks, and a dedicated production `docker-compose.prod.yml` profile.
 
 ---
 
@@ -313,4 +314,4 @@ Pre-1.0. The API is versioned (`/api/v1/`, `/v0/`) and the contract tests keep i
 
 ## License
 
-License TBD — this repository does not yet ship a `LICENSE` file. Please open an issue if you'd like to use the code before one lands.
+[MIT](LICENSE) © 2026 The AI Registry Authors.

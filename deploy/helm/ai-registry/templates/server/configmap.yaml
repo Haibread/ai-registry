@@ -46,6 +46,18 @@ data:
   AUTH_STORAGE: {{ .Values.server.authStorage | quote }}
   {{- end }}
 
+  # ── Auth (local accounts, ADR 0006) ─────────────────────────────────────────
+  {{- /*
+    The bootstrap admin PASSWORD is a secret and is wired via secretKeyRef in
+    the Deployment (see local-login-secret.yaml) — never emitted here.
+  */}}
+  {{- if .Values.server.localLogin.enabled }}
+  AUTH_LOCAL_LOGIN_ENABLED: "true"
+  {{- with .Values.server.localLogin.bootstrapAdmin.email }}
+  AUTH_BOOTSTRAP_ADMIN_EMAIL: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+
   # ── Database ──────────────────────────────────────────────────────────────
   {{- /* Plain-text DATABASE_URL as a last resort (overridden by secret if set) */}}
   {{- if and .Values.server.databaseUrl (not .Values.server.databaseUrlSecret) (not .Values.cnpg.enabled) }}
