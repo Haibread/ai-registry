@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🏠 Publisher-scoped admin Overview
+
+The `/admin` landing page is now a publisher-scoped Overview when a publisher is
+selected (Server Admins viewing "All publishers" keep the global dashboard; a
+caller with no publishers gets a short empty state). The Overview answers, in
+order: what needs you (an attention strip of role-gated tiles — items awaiting
+your review, drafts in progress — shown only when non-zero), the state of the
+publisher (MCP/agent/member counts with status bars, from
+`/publishers/{slug}/stats`), and what happened (a recent-activity timeline from
+`/publishers/{slug}/activity`). Includes onboarding and empty states, and a
+staggered timeline reveal that collapses under `prefers-reduced-motion`.
+
 ### 🧭 Publisher switcher + grouped admin nav (scoped admin home, frontend)
 
 The admin shell now centers on a **publisher context**. A switcher in the

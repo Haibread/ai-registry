@@ -8,8 +8,35 @@ import { Separator } from '@/components/ui/separator'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
+import { usePublisher } from '@/auth/PublisherContext'
+import { PublisherOverview } from '@/components/admin/publisher-overview'
 
+// AdminDashboard routes the /admin landing page by the selected scope: a
+// publisher member sees the scoped PublisherOverview; a Server Admin viewing
+// "All publishers" sees the global registry dashboard; a caller with no
+// publishers sees a short empty state.
 export default function AdminDashboard() {
+  const { currentSlug, current, isServerAdmin, isLoading } = usePublisher()
+  if (isLoading) {
+    return <p className="text-muted-foreground">Loading…</p>
+  }
+  if (currentSlug) {
+    return <PublisherOverview slug={currentSlug} option={current} />
+  }
+  if (isServerAdmin) {
+    return <GlobalDashboard />
+  }
+  return (
+    <div className="mx-auto max-w-md space-y-2 py-16 text-center">
+      <h1 className="text-xl font-semibold">No publishers yet</h1>
+      <p className="text-sm text-muted-foreground">
+        You do not have a role on any publisher. Ask a publisher admin for an Editor or Viewer grant.
+      </p>
+    </div>
+  )
+}
+
+function GlobalDashboard() {
   const { accessToken } = useAuth()
   const api = useAuthClient()
 
