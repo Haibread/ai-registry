@@ -46,7 +46,9 @@ test.describe('Publisher-scoped admin home', () => {
     // Overview header is the publisher name; the MCP metric reflects the one
     // server we seeded; the activity timeline shows its creation.
     await expect(page.getByRole('heading', { name: PUB_NAME })).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText('MCP servers')).toBeVisible()
+    // Case-sensitive, whole-string match targets the overview metric label
+    // ("MCP servers") and excludes the sidebar nav link ("MCP Servers").
+    await expect(page.getByText('MCP servers', { exact: true })).toBeVisible()
     await expect(page.getByText(MCP).first()).toBeVisible()
   })
 
