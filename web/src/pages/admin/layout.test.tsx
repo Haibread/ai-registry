@@ -24,6 +24,25 @@ vi.mock('@/lib/api-client', () => ({
   useAuthClient: () => ({ GET: vi.fn().mockResolvedValue({ data: { items: [] } }) }),
 }))
 
+// Default the caller to a Server Admin so every nav item renders (the sidebar
+// role-gates Server-Admin-only entries); nav gating is covered in useMe.test.ts.
+vi.mock('@/auth/useMe', () => ({
+  usePermissions: () => ({
+    isLoading: false,
+    isAuthenticated: true,
+    isServerAdmin: true,
+    grants: [],
+    rolesOn: () => new Set(),
+    canEdit: () => true,
+    canReview: () => true,
+    canAdmin: () => true,
+    isEditorAnywhere: true,
+    isReviewerAnywhere: true,
+  }),
+  useMe: () => ({ data: { authenticated: true, is_server_admin: true, grants: [] }, isLoading: false }),
+  satisfiesRole: () => true,
+}))
+
 import AdminLayout from './layout'
 
 function renderLayout(initialPath = '/admin') {

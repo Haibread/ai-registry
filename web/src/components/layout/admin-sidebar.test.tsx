@@ -23,6 +23,25 @@ vi.mock('@/lib/api-client', () => ({
   useAuthClient: () => ({ GET: mockGET }),
 }))
 
+// Default the caller to a Server Admin so every nav item (incl. the
+// Server-Admin-only ones) renders; nav role-gating is covered in useMe.test.ts.
+vi.mock('@/auth/useMe', () => ({
+  usePermissions: () => ({
+    isLoading: false,
+    isAuthenticated: true,
+    isServerAdmin: true,
+    grants: [],
+    rolesOn: () => new Set(),
+    canEdit: () => true,
+    canReview: () => true,
+    canAdmin: () => true,
+    isEditorAnywhere: true,
+    isReviewerAnywhere: true,
+  }),
+  useMe: () => ({ data: { authenticated: true, is_server_admin: true, grants: [] }, isLoading: false }),
+  satisfiesRole: () => true,
+}))
+
 beforeEach(() => {
   vi.clearAllMocks()
   // Default: empty queue → no badge.

@@ -12,6 +12,25 @@ vi.mock('@/lib/api-client', () => ({
   useAuthClient: () => ({ GET: mockGET, POST: mockPOST }),
 }))
 
+// Default the caller to a Server Admin so the submit/withdraw actions render
+// (they are gated on canEdit for the resource's publisher).
+vi.mock('@/auth/useMe', () => ({
+  usePermissions: () => ({
+    isLoading: false,
+    isAuthenticated: true,
+    isServerAdmin: true,
+    grants: [],
+    rolesOn: () => new Set(),
+    canEdit: () => true,
+    canReview: () => true,
+    canAdmin: () => true,
+    isEditorAnywhere: true,
+    isReviewerAnywhere: true,
+  }),
+  useMe: () => ({ data: { authenticated: true, is_server_admin: true, grants: [] }, isLoading: false }),
+  satisfiesRole: () => true,
+}))
+
 import { VersionsSection } from './versions-section'
 
 function renderSection(kind: 'mcp' | 'agent' = 'mcp') {

@@ -13,6 +13,12 @@ interface BulkActionBarProps {
   onDeprecate: () => void
   onDelete: () => void
   isBusy?: boolean
+  // Role-gating (ADR 0006): the bar only renders the actions the caller can
+  // perform. Visibility flips and deletes are Server-Admin-only; deprecate is a
+  // publisher Editor action. All default to true for backwards compatibility.
+  canSetVisibility?: boolean
+  canDeprecate?: boolean
+  canDelete?: boolean
 }
 
 export function BulkActionBar({
@@ -22,6 +28,9 @@ export function BulkActionBar({
   onDeprecate,
   onDelete,
   isBusy,
+  canSetVisibility = true,
+  canDeprecate = true,
+  canDelete = true,
 }: BulkActionBarProps) {
   if (selectedCount === 0) return null
 
@@ -37,44 +46,54 @@ export function BulkActionBar({
       <span className="text-sm font-medium px-1">
         {selectedCount} selected
       </span>
-      <div className="h-4 w-px bg-border" />
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onSetVisibility('public')}
-        disabled={isBusy}
-        className="gap-1.5"
-      >
-        <Eye className="h-3.5 w-3.5" /> Public
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onSetVisibility('private')}
-        disabled={isBusy}
-        className="gap-1.5"
-      >
-        <EyeOff className="h-3.5 w-3.5" /> Private
-      </Button>
-      <div className="h-4 w-px bg-border" />
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onDeprecate}
-        disabled={isBusy}
-        className="gap-1.5 text-yellow-700 dark:text-yellow-500"
-      >
-        <AlertTriangle className="h-3.5 w-3.5" /> Deprecate
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onDelete}
-        disabled={isBusy}
-        className="gap-1.5 text-destructive"
-      >
-        <Trash2 className="h-3.5 w-3.5" /> Delete
-      </Button>
+      {canSetVisibility && (
+        <>
+          <div className="h-4 w-px bg-border" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onSetVisibility('public')}
+            disabled={isBusy}
+            className="gap-1.5"
+          >
+            <Eye className="h-3.5 w-3.5" /> Public
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onSetVisibility('private')}
+            disabled={isBusy}
+            className="gap-1.5"
+          >
+            <EyeOff className="h-3.5 w-3.5" /> Private
+          </Button>
+        </>
+      )}
+      {canDeprecate && (
+        <>
+          <div className="h-4 w-px bg-border" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDeprecate}
+            disabled={isBusy}
+            className="gap-1.5 text-yellow-700 dark:text-yellow-500"
+          >
+            <AlertTriangle className="h-3.5 w-3.5" /> Deprecate
+          </Button>
+        </>
+      )}
+      {canDelete && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDelete}
+          disabled={isBusy}
+          className="gap-1.5 text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" /> Delete
+        </Button>
+      )}
     </div>
   )
 }
