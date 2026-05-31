@@ -5,6 +5,7 @@ import { AdminSidebar } from '@/components/layout/admin-sidebar'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
+import { PublisherProvider } from '@/auth/PublisherContext'
 
 export default function AdminLayout() {
   const { logout, email } = useAuth()
@@ -42,6 +43,7 @@ export default function AdminLayout() {
   }, [mobileOpen])
 
   return (
+    <PublisherProvider>
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-50 border-b bg-background h-14 flex items-center px-4 md:px-6 gap-2 md:gap-4">
         <Button
@@ -101,5 +103,6 @@ export default function AdminLayout() {
         <main className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0"><Outlet /></main>
       </div>
     </div>
+    </PublisherProvider>
   )
 }
