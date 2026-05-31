@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AdminSidebar } from './admin-sidebar'
+import { PublisherProvider } from '@/auth/PublisherContext'
 
 vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token' }),
@@ -53,7 +54,9 @@ function renderSidebar(pathname: string) {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[pathname]}>
-        <AdminSidebar pathname={pathname} />
+        <PublisherProvider>
+          <AdminSidebar pathname={pathname} />
+        </PublisherProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   )

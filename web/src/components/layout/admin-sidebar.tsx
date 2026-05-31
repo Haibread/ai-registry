@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
 import { usePermissions, type Permissions } from '@/auth/useMe'
+import { PublisherSwitcher } from '@/components/admin/publisher-switcher'
 
 // `requires` gates each nav entry by role (ADR 0006):
 //   - 'always'      → any authenticated admin-area user (the resource lists are
@@ -13,22 +14,31 @@ import { usePermissions, type Permissions } from '@/auth/useMe'
 //   - 'serverAdmin' → Server-Admin-only management surfaces.
 type NavRequirement = 'always' | 'reviewer' | 'serverAdmin'
 
-const navItems: {
+interface NavItem {
   to: string
   label: string
   icon: typeof LayoutDashboard
   exact?: boolean
   badge?: 'review'
   requires: NavRequirement
-}[] = [
+}
+
+// Publisher-scoped surfaces: the day-to-day work in the publisher the switcher
+// has selected. Resource lists are mine-scoped, so an author sees only theirs.
+const publisherNav: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, requires: 'always' },
+  { to: '/admin/mcp', label: 'MCP Servers', icon: Server, requires: 'always' },
+  { to: '/admin/agents', label: 'Agents', icon: Bot, requires: 'always' },
   { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review', requires: 'reviewer' },
+]
+
+// Server-Admin management surfaces: global, cross-publisher administration,
+// hidden from non-admins.
+const serverAdminNav: NavItem[] = [
   { to: '/admin/publishers', label: 'Publishers', icon: Users, requires: 'serverAdmin' },
   { to: '/admin/groups', label: 'Groups', icon: UsersRound, requires: 'serverAdmin' },
   { to: '/admin/users', label: 'Users', icon: UserCog, requires: 'serverAdmin' },
   { to: '/admin/grants', label: 'Global grants', icon: Shield, requires: 'serverAdmin' },
-  { to: '/admin/mcp', label: 'MCP Servers', icon: Server, requires: 'always' },
-  { to: '/admin/agents', label: 'Agents', icon: Bot, requires: 'always' },
   { to: '/admin/reports', label: 'Reports', icon: Flag, requires: 'serverAdmin' },
   { to: '/admin/audit', label: 'Activity', icon: Activity, requires: 'serverAdmin' },
   { to: '/admin/api-keys', label: 'API Keys', icon: Key, requires: 'serverAdmin' },
@@ -100,7 +110,29 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
   const location = useLocation()
   const pathname = pathnameProp ?? location.pathname
   const perms = usePermissions()
-  const visibleItems = navItems.filter((item) => navItemVisible(item.requires, perms))
+  const publisherItems = publisherNav.filter((item) => navItemVisible(item.requires, perms))
+  const serverAdminItems = serverAdminNav.filter((item) => navItemVisible(item.requires, perms))
+
+  const renderItem = ({ to, label, icon: Icon, exact, badge }: NavItem) => {
+    const active = exact ? pathname === to : pathname.startsWith(to)
+    return (
+      <Link
+        key={to}
+        to={to}
+        onClick={onNavigate}
+        className={cn(
+          'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+          active
+            ? 'bg-accent text-accent-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+        )}
+      >
+        <Icon className="h-4 w-4" />
+        <span className="truncate">{label}</span>
+        {badge === 'review' && <ReviewQueueBadge />}
+      </Link>
+    )
+  }
 
   return (
     <aside
@@ -111,27 +143,19 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
           : 'hidden md:block w-56 min-h-[calc(100vh-3.5rem)]',
       )}
     >
-      <nav className="flex flex-col gap-1 p-3">
-        {visibleItems.map(({ to, label, icon: Icon, exact, badge }) => {
-          const active = exact ? pathname === to : pathname.startsWith(to)
-          return (
-            <Link
-              key={to}
-              to={to}
-              onClick={onNavigate}
-              className={cn(
-                'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                active
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              <span className="truncate">{label}</span>
-              {badge === 'review' && <ReviewQueueBadge />}
-            </Link>
-          )
-        })}
+      <div className="p-3 pb-1">
+        <PublisherSwitcher />
+      </div>
+      <nav className="flex flex-col gap-1 px-3 pb-3">
+        {publisherItems.map(renderItem)}
+        {serverAdminItems.length > 0 && (
+          <>
+            <p className="mt-4 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Server admin
+            </p>
+            {serverAdminItems.map(renderItem)}
+          </>
+        )}
       </nav>
     </aside>
   )

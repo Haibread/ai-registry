@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🧭 Publisher switcher + grouped admin nav (scoped admin home, frontend)
+
+The admin shell now centers on a **publisher context**. A switcher in the
+sidebar lists the publishers you hold a role on (derived from `GET /api/v1/me`,
+so it matches the server's authorization); a Server Admin also gets an "All
+publishers" scope. The selection persists across reloads. The sidebar nav is
+split into a publisher-scoped group (Dashboard, MCP Servers, Agents, Review
+queue) and a visually separated **Server admin** group (Publishers, Groups,
+Users, Global grants, Reports, Activity, API Keys) shown only to Server Admins.
+
+This is the foundation for the publisher-scoped dashboard; the Overview and the
+per-publisher pages consume `currentSlug` in follow-up changes.
+
 ### 📊 Per-publisher stats + activity endpoints (scoped admin home, backend)
 
 Two read endpoints that let a publisher member see their own publisher without
