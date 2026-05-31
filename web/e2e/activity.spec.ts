@@ -53,14 +53,6 @@ test.describe('Activity feed + admin audit', () => {
     })
     expect(mcp.ok()).toBeTruthy()
 
-    // Make it public so the public detail page renders it.
-    const vis = await apiPost(
-      page,
-      `/api/v1/mcp/servers/${PUB_SLUG}/${MCP_SLUG}/visibility`,
-      { visibility: 'public' },
-    )
-    expect(vis.ok()).toBeTruthy()
-
     // Create + publish a version to produce a version.published audit event.
     const verRes = await apiPost(
       page,
@@ -87,6 +79,15 @@ test.describe('Activity feed + admin audit', () => {
       {},
     )
     expect(pubRes.ok()).toBeTruthy()
+
+    // Now that an approved (published) version exists, the entry may go public
+    // so the public detail page renders it.
+    const vis = await apiPost(
+      page,
+      `/api/v1/mcp/servers/${PUB_SLUG}/${MCP_SLUG}/visibility`,
+      { visibility: 'public' },
+    )
+    expect(vis.ok()).toBeTruthy()
 
     await ctx.close()
   })

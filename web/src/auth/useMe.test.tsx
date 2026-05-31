@@ -24,10 +24,13 @@ function makeWrapper() {
 describe('satisfiesRole (mirrors the server lattice, ADR 0006)', () => {
   const set = (...r: Role[]) => new Set<Role>(r)
 
-  it('admin satisfies every requirement', () => {
+  it('admin satisfies editor, viewer, and admin — but NOT reviewer', () => {
     expect(satisfiesRole(set('admin'), 'editor')).toBe(true)
-    expect(satisfiesRole(set('admin'), 'reviewer')).toBe(true)
     expect(satisfiesRole(set('admin'), 'viewer')).toBe(true)
+    expect(satisfiesRole(set('admin'), 'admin')).toBe(true)
+    // Reviewer is the sole approver — admin cannot approve.
+    expect(satisfiesRole(set('admin'), 'reviewer')).toBe(false)
+    expect(satisfiesRole(set('admin', 'reviewer'), 'reviewer')).toBe(true)
   })
 
   it('keeps editor and reviewer independent (separation of duties)', () => {
@@ -74,6 +77,25 @@ describe('usePermissions', () => {
     expect(result.current.canReview('anything')).toBe(true)
     expect(result.current.canEdit('anything')).toBe(false)
     expect(result.current.isReviewerAnywhere).toBe(true)
+  })
+
+  it('lets a publisher admin edit and admin, but not review', async () => {
+    mockGET.mockResolvedValue({
+      data: {
+        authenticated: true,
+        is_server_admin: false,
+        grants: [{ role: 'admin', publisher_id: 'p1', publisher_slug: 'acme', publisher_name: 'Acme' }],
+      },
+    })
+    const { result } = renderHook(() => usePermissions(), { wrapper: makeWrapper() })
+    await waitFor(() => expect(result.current.grants.length).toBe(1))
+
+    expect(result.current.canEdit('acme')).toBe(true)
+    expect(result.current.canAdmin('acme')).toBe(true)
+    expect(result.current.isEditorAnywhere).toBe(true)
+    // Admin is not an approver — only a Reviewer grant (or Server Admin) is.
+    expect(result.current.canReview('acme')).toBe(false)
+    expect(result.current.isReviewerAnywhere).toBe(false)
   })
 
   it('lets a server admin do everything', async () => {

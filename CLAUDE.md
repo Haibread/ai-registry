@@ -183,7 +183,7 @@ Rules for implementors:
 | I | Agent version lifecycle | Same draft→published→deprecated state machine as MCP servers | Consumers cache agent cards; silent mutation breaks them |
 | J | `skills[]` validation | Structural: `id`, `name`, `description` required strings; `tags` required string array | Skills has a defined A2A schema; enforce at write time |
 | K | `authentication` schemes allowlist | `Bearer`, `ApiKey`, `OAuth2`, `OpenIdConnect` | Arbitrary schemes can't be reliably introspected; add to allowlist explicitly |
-| L | Authorization model | Publisher-scoped RBAC — roles (Viewer/Editor/Reviewer/Admin) granted to users or groups; Editor and Reviewer are independent (lattice) (ADR 0006) | Self-managed in-registry; separation of duties by default |
+| L | Authorization model | Publisher-scoped RBAC — roles (Viewer/Editor/Reviewer/Admin) granted to users or groups; **Reviewer is the sole approver** — a publisher Admin can do everything *except* approve (Server Admin is the break-glass exception); making an entry public requires an approved (published) version (ADR 0006) | Self-managed in-registry; separation of duties by default |
 | M | Workspaces | **Removed** (ADR 0006) — resources are publisher-scoped again; `/v0/` drops the workspace segment | Workspace layer (ADR 0001/0002) didn't earn its keep; closer to the MCP spec |
 | N | Local accounts | Local email+password login alongside OIDC; registry issues its own tokens, walled off the MCP surface (ADR 0006) | Run without an external IdP; bootstrap admin seeded from config |
 | O | Claim → authorization | Claims carry **group membership only**; roles are grants on users/groups (ADR 0006) | Only two principal types (user, group); no claim-to-role side channel |

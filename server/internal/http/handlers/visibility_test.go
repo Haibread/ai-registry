@@ -2,10 +2,13 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/haibread/ai-registry/internal/domain"
 )
 
 // ─── MCP Server Visibility ───────────────────────────────────────────────────
@@ -13,6 +16,15 @@ import (
 func TestMCPHandler_SetVisibility_Valid(t *testing.T) {
 	resetTables(t)
 	seedMCPServer(t, "vis-ns", "vis-srv")
+	// Going public requires an approved (published) version, so promote the
+	// server first; otherwise the public flip is rejected with 409.
+	srv, err := testDB.GetMCPServer(context.Background(), "vis-ns", "vis-srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer: %v", err)
+	}
+	if err := testDB.SetMCPServerStatus(context.Background(), srv.ID, domain.StatusPublished); err != nil {
+		t.Fatalf("SetMCPServerStatus: %v", err)
+	}
 
 	r := newMCPRouter()
 
@@ -43,6 +55,31 @@ func TestMCPHandler_SetVisibility_Valid(t *testing.T) {
 				t.Errorf("visibility = %q, want %q", body["visibility"], tt.visibility)
 			}
 		})
+	}
+}
+
+// TestMCPHandler_SetVisibility_PublicRequiresApproval verifies an unapproved
+// draft cannot be exposed publicly (409), while going private is always allowed.
+func TestMCPHandler_SetVisibility_PublicRequiresApproval(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "vis-draft-ns", "vis-draft-srv") // draft, never published
+
+	post := func(vis string) int {
+		req := httptest.NewRequest(http.MethodPost,
+			"/api/v1/mcp/servers/vis-draft-ns/vis-draft-srv/visibility",
+			bytes.NewBufferString(`{"visibility":"`+vis+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(adminCtx())
+		rec := httptest.NewRecorder()
+		newMCPRouter().ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := post("public"); code != http.StatusConflict {
+		t.Errorf("public on an unapproved draft: status = %d, want 409", code)
+	}
+	if code := post("private"); code != http.StatusOK {
+		t.Errorf("private on a draft: status = %d, want 200", code)
 	}
 }
 
@@ -105,6 +142,15 @@ func TestMCPHandler_SetVisibility_UnknownServer(t *testing.T) {
 func TestAgentHandler_SetVisibility_Valid(t *testing.T) {
 	resetTables(t)
 	seedAgent(t, "agvis-ns", "agvis-ag")
+	// Promote to published (an approved version) so the public flip is allowed.
+	createAgentVersion(t, "agvis-ns", "agvis-ag", "1.0.0")
+	ag, err := testDB.GetAgent(context.Background(), "agvis-ns", "agvis-ag", false)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if err := testDB.PublishAgentVersion(context.Background(), ag.ID, "1.0.0"); err != nil {
+		t.Fatalf("PublishAgentVersion: %v", err)
+	}
 
 	r := newAgentRouter()
 
@@ -135,6 +181,31 @@ func TestAgentHandler_SetVisibility_Valid(t *testing.T) {
 				t.Errorf("visibility = %q, want %q", body["visibility"], tt.visibility)
 			}
 		})
+	}
+}
+
+// TestAgentHandler_SetVisibility_PublicRequiresApproval verifies an unapproved
+// draft agent cannot be made public (409); private stays allowed.
+func TestAgentHandler_SetVisibility_PublicRequiresApproval(t *testing.T) {
+	resetTables(t)
+	seedAgent(t, "agvis-draft-ns", "agvis-draft-ag") // draft, never published
+
+	post := func(vis string) int {
+		req := httptest.NewRequest(http.MethodPost,
+			"/api/v1/agents/agvis-draft-ns/agvis-draft-ag/visibility",
+			bytes.NewBufferString(`{"visibility":"`+vis+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(adminAgentCtx())
+		rec := httptest.NewRecorder()
+		newAgentRouter().ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := post("public"); code != http.StatusConflict {
+		t.Errorf("public on an unapproved draft: status = %d, want 409", code)
+	}
+	if code := post("private"); code != http.StatusOK {
+		t.Errorf("private on a draft: status = %d, want 200", code)
 	}
 }
 

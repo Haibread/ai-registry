@@ -279,9 +279,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				// force-delete escape hatch.
 				r.With(auth.RequireAdmin).Delete("/", mcpH.DeleteServer)
 				r.With(requireMCPServerNS).Post("/deprecate", mcpH.DeprecateServer)
-				// Visibility flips are admin-only by policy: they affect
-				// public exposure, not just authoring.
-				r.With(auth.RequireAdmin).Post("/visibility", mcpH.SetVisibility)
+				// Visibility is an Editor/Admin action, but SetVisibility only
+				// allows flipping to public once the entry has an approved
+				// (published) version — an unreviewed draft cannot be exposed.
+				r.With(requireMCPServerNS).Post("/visibility", mcpH.SetVisibility)
 				r.With(publicRL).Post("/view", mcpH.RecordView)
 				r.With(publicRL).Post("/copy", mcpH.RecordCopy)
 				r.With(publicRL).Get("/activity", mcpH.ListMCPServerActivity)
@@ -290,7 +291,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 					r.With(publicRL).Get("/", mcpH.ListVersions)
 					r.With(requireMCPServerNS).Post("/", mcpH.CreateVersion)
 					r.With(publicRL).Get("/{version}", mcpH.GetVersion)
-					r.With(requireMCPServerNS).Post("/{version}/publish", mcpH.PublishVersion)
+					// Publishing a version takes it live, so it is an approver
+					// action: Reviewer (or break-glass Server Admin) only.
+					// Editors/Admins reach "published" by submitting for review.
+					r.With(requireReviewerNS).Post("/{version}/publish", mcpH.PublishVersion)
 					// Change-approval workflow.
 					r.With(requireMCPServerNS).Post("/{version}/submit", revH.SubmitMCPVersion)
 					r.With(requireMCPServerNS).Post("/{version}/withdraw", revH.WithdrawMCPVersion)
@@ -317,7 +321,8 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				// stays admin-only.
 				r.With(auth.RequireAdmin).Delete("/", agentH.DeleteAgent)
 				r.With(requireAgentNS).Post("/deprecate", agentH.DeprecateAgent)
-				r.With(auth.RequireAdmin).Post("/visibility", agentH.SetVisibility)
+				// Editor/Admin; public requires an approved version (see MCP note).
+				r.With(requireAgentNS).Post("/visibility", agentH.SetVisibility)
 				r.With(publicRL).Post("/view", agentH.RecordView)
 				r.With(publicRL).Post("/copy", agentH.RecordCopy)
 				r.With(publicRL).Get("/activity", agentH.ListAgentActivity)
@@ -326,7 +331,8 @@ func buildMux(deps RouterDeps) *chi.Mux {
 					r.With(publicRL).Get("/", agentH.ListVersions)
 					r.With(requireAgentNS).Post("/", agentH.CreateVersion)
 					r.With(publicRL).Get("/{version}", agentH.GetVersion)
-					r.With(requireAgentNS).Post("/{version}/publish", agentH.PublishVersion)
+					// Approver action (see the MCP publish note): Reviewer / Server Admin.
+					r.With(requireReviewerNS).Post("/{version}/publish", agentH.PublishVersion)
 					r.With(requireAgentNS).Patch("/{version}/status", agentH.PatchVersionStatus)
 					// Change-approval workflow.
 					r.With(requireAgentNS).Post("/{version}/submit", revH.SubmitAgentVersion)

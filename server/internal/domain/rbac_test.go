@@ -14,11 +14,12 @@ func roleSet(roles ...domain.Role) map[domain.Role]bool {
 	return m
 }
 
-// TestSatisfies pins the authorization lattice (ADR 0006 §4): Viewer is implied
-// by any higher role, Editor and Reviewer are INDEPENDENT (neither implies the
-// other — the separation of duties), and Admin satisfies everything. The two
-// negative cases that matter most are "Reviewer alone cannot write" and "Editor
-// alone cannot approve".
+// TestSatisfies pins the authorization lattice: Viewer is implied by any higher
+// role; Editor and Reviewer are INDEPENDENT (neither implies the other — the
+// separation of duties); Admin implies Editor and Viewer but NOT Reviewer
+// (Reviewer is the sole approver). The negative cases that matter most are
+// "Reviewer alone cannot write", "Editor alone cannot approve", and "Admin
+// cannot approve".
 func TestSatisfies(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -39,7 +40,8 @@ func TestSatisfies(t *testing.T) {
 
 		{"reviewer can review", roleSet(domain.RoleReviewer), domain.RoleReviewer, true},
 		{"editor alone cannot review", roleSet(domain.RoleEditor), domain.RoleReviewer, false},
-		{"admin can review", roleSet(domain.RoleAdmin), domain.RoleReviewer, true},
+		{"admin cannot review (reviewer is the sole approver)", roleSet(domain.RoleAdmin), domain.RoleReviewer, false},
+		{"admin+reviewer can review", roleSet(domain.RoleAdmin, domain.RoleReviewer), domain.RoleReviewer, true},
 
 		{"editor cannot admin", roleSet(domain.RoleEditor), domain.RoleAdmin, false},
 		{"reviewer cannot admin", roleSet(domain.RoleReviewer), domain.RoleAdmin, false},

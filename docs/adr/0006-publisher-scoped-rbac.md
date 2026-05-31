@@ -224,16 +224,25 @@ principal's grants when its user or group is removed.
 | Viewer      | publisher | Read **private** entries of the publisher (public reads need no role).    |
 | Editor      | publisher | Viewer + create / edit / submit resources and versions.                   |
 | Reviewer    | publisher | Viewer + approve / reject submitted versions and pending deletions.       |
-| Admin       | publisher | Editor + Reviewer + edit publisher metadata + assign role grants.         |
+| Admin       | publisher | Editor + edit publisher metadata + assign role grants + toggle visibility. **Cannot approve** — that is the Reviewer's job. |
 | Server Admin| global    | Everything, all publishers; create/delete publishers; grant Server Admin. |
 
-**Editor and Reviewer are independent** — neither implies the other. The
-roles form a lattice (Viewer ⊂ {Editor, Reviewer} ⊂ Admin), so by default
-editors and reviewers are *different people* (separation of duties). A user
-gains both only by being granted both — a deliberate act — and may then
-approve their own change; we accept that as an explicit trust decision
-rather than forcing a `submitted_by != reviewed_by` guard (that stays an
-optional policy, F3).
+**Reviewer is the sole approver.** Editor and Reviewer are independent
+(neither implies the other), and crucially **Admin does not imply Reviewer**:
+Admin is the most powerful per-publisher role for everything *except* approval
+(Viewer ⊂ Editor ⊂ Admin on the authoring/management axis; Reviewer sits
+apart). This guarantees no single per-publisher principal can both author and
+sign off the same change — going live always needs a separate Reviewer
+(separation of duties). A caller can author *and* approve the same change only
+by holding **both** an authoring role (Editor/Admin) and Reviewer — a
+deliberate grant. The global **Server Admin** is the one break-glass exception
+that may approve with no Reviewer grant. Forbidding self-approval even for
+someone who holds both roles stays an optional further policy (F3).
+
+A change reaches the public catalog in two gated steps: a **Reviewer** approves
+(publishes) the version, then an **Editor or Admin** flips the entry's
+visibility to `public`. Visibility can only be set to `public` once an approved
+(published) version exists — an unreviewed draft cannot be exposed.
 
 **Server Admin** comes from either source: the OIDC claim
 (`realm_access.roles[]` contains `admin`, Decision A) **or** a local
@@ -258,9 +267,11 @@ across every grant that applies (grants match when `publisher_id` is `Q`
 3. Server Admin — claim `admin` **or** `users.is_server_admin` → all
    capabilities.
 
-Because Editor and Reviewer are independent, a caller can hold one, the
-other, or both; holding **both** is the only way to author *and* approve
-the same change.
+Because Reviewer is independent of both Editor and Admin, a caller can author
+(Editor/Admin) without being able to approve; holding **both** an authoring
+role and Reviewer is the only way one principal can author *and* approve the
+same change. Server Admin aside (break-glass), approval always requires a
+Reviewer grant.
 
 ### 5. Claim → authorization mapping
 

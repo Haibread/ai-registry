@@ -10,27 +10,31 @@ export type Me = components['schemas']['Me']
 export type MeGrant = components['schemas']['MeGrant']
 export type Role = MeGrant['role']
 
+// admin implies editor (admins author) but NOT reviewer — reviewer is the sole
+// approver, so only a reviewer grant (or the Server Admin break-glass) reviews.
 const WRITE_ROLES: ReadonlySet<Role> = new Set<Role>(['editor', 'admin'])
-const REVIEW_ROLES: ReadonlySet<Role> = new Set<Role>(['reviewer', 'admin'])
+const REVIEW_ROLES: ReadonlySet<Role> = new Set<Role>(['reviewer'])
 
 /**
- * satisfiesRole mirrors the server's `domain.Satisfies` lattice (ADR 0006):
- * admin satisfies every requirement; viewer is implied by editor/reviewer/admin
- * (anyone who can write or review can read); editor and reviewer are
- * independent — neither implies the other (separation of duties). The UI uses
- * this only to decide what to render; the server is always the real gate.
+ * satisfiesRole mirrors the server's `domain.Satisfies` lattice: viewer is
+ * implied by editor/reviewer/admin; admin implies editor (and admin) but NOT
+ * reviewer — reviewer is the sole approver, so an Admin cannot approve. Editor
+ * and reviewer stay independent (separation of duties). The UI uses this only
+ * to decide what to render; the server is always the real gate (and the global
+ * Server Admin break-glass is surfaced separately via `isServerAdmin`).
  */
 export function satisfiesRole(held: ReadonlySet<Role>, required: Role): boolean {
-  if (held.has('admin')) return true
   switch (required) {
     case 'viewer':
-      return held.has('viewer') || held.has('editor') || held.has('reviewer')
+      return held.has('admin') || held.has('viewer') || held.has('editor') || held.has('reviewer')
     case 'editor':
-      return held.has('editor')
+      return held.has('admin') || held.has('editor')
     case 'reviewer':
-      return held.has('reviewer')
+      return held.has('reviewer') // admin does NOT satisfy reviewer
+    case 'admin':
+      return held.has('admin')
     default:
-      return false // admin handled by the short-circuit above
+      return false
   }
 }
 

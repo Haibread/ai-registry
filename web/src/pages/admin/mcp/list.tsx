@@ -209,9 +209,10 @@ export default function AdminMCPList() {
             onDeprecate={bulkDeprecate}
             onDelete={bulkDelete}
             isBusy={bulkMutation.isPending}
-            // Visibility flips + deletes are Server-Admin-only; deprecate is an
-            // Editor action (ADR 0006). The backend still enforces per-resource.
-            canSetVisibility={perms.isServerAdmin}
+            // Visibility + deprecate are Editor/Admin actions; the direct
+            // delete escape hatch stays Server-Admin-only. The backend still
+            // enforces per-resource (incl. "public requires an approved version").
+            canSetVisibility={perms.isEditorAnywhere}
             canDelete={perms.isServerAdmin}
             canDeprecate={perms.isEditorAnywhere}
           />

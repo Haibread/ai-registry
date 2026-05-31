@@ -40,6 +40,15 @@ func (h *MCPHandlers) SetVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// An entry can only be exposed publicly once it has an approved (published)
+	// version — you cannot publish an unreviewed draft to the public catalog.
+	// Going back to private is always allowed.
+	if body.Visibility == "public" && srv.Status != domain.StatusPublished && srv.Status != domain.StatusDeprecated {
+		problem.Write(w, http.StatusConflict, "visibility-requires-approval",
+			"This entry has no approved version yet; submit it and have a Reviewer approve it before making it public.", r.URL.Path)
+		return
+	}
+
 	if err := h.db.SetMCPServerVisibility(r.Context(), srv.ID, domain.Visibility(body.Visibility)); err != nil {
 		internalError(w, r, err)
 		return
@@ -85,6 +94,14 @@ func (h *AgentHandlers) SetVisibility(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		internalError(w, r, err)
+		return
+	}
+
+	// Public exposure requires an approved (published) version (see the MCP
+	// handler note). Going back to private is always allowed.
+	if body.Visibility == "public" && agent.Status != domain.StatusPublished && agent.Status != domain.StatusDeprecated {
+		problem.Write(w, http.StatusConflict, "visibility-requires-approval",
+			"This entry has no approved version yet; submit it and have a Reviewer approve it before making it public.", r.URL.Path)
 		return
 	}
 
