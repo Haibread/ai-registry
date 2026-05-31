@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { PublisherProvider, usePublisher } from './PublisherContext'
 import type { Role } from './useMe'
 
@@ -19,6 +21,11 @@ vi.mock('@/auth/useMe', () => ({
   usePermissions: () => mockPerms,
 }))
 
+vi.mock('@/auth/AuthContext', () => ({ useAuth: () => ({ accessToken: 't' }) }))
+
+const mockGET = vi.fn()
+vi.mock('@/lib/api-client', () => ({ useAuthClient: () => ({ GET: mockGET }) }))
+
 function Probe() {
   const { publishers, currentSlug, current, setCurrent } = usePublisher()
   return (
@@ -36,16 +43,20 @@ function Probe() {
 }
 
 function renderProbe() {
-  return render(
-    <PublisherProvider>
-      <Probe />
-    </PublisherProvider>,
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>
+      <PublisherProvider>{children}</PublisherProvider>
+    </QueryClientProvider>
   )
+  return render(<Probe />, { wrapper })
 }
 
 beforeEach(() => {
   localStorage.clear()
+  vi.clearAllMocks()
   mockPerms = { grants: [], isServerAdmin: false, isLoading: false }
+  mockGET.mockResolvedValue({ data: { items: [] } })
 })
 
 describe('PublisherProvider', () => {
@@ -63,7 +74,6 @@ describe('PublisherProvider', () => {
     renderProbe()
     expect(screen.getByTestId('count').textContent).toBe('2')
     expect(screen.getByTestId('roles').textContent).toBe('acme:editor+reviewer,globex:viewer')
-    // Default selection is the first publisher (alphabetical: Acme).
     expect(screen.getByTestId('current').textContent).toBe('acme')
     expect(screen.getByTestId('current-name').textContent).toBe('Acme')
   })
@@ -83,14 +93,30 @@ describe('PublisherProvider', () => {
     expect(localStorage.getItem('ai-registry.current_publisher')).toBe('globex')
   })
 
-  it('lets a Server Admin pick All publishers and keeps it (no snap-back to first)', () => {
+  it('defaults a Server Admin to the All-publishers (global) view', () => {
     mockPerms = {
       isServerAdmin: true,
       isLoading: false,
       grants: [{ role: 'editor', publisher_slug: 'acme', publisher_name: 'Acme' }],
     }
     renderProbe()
-    expect(screen.getByTestId('current').textContent).toBe('acme') // default
+    // A Server Admin lands on All (global dashboard), not snapped to a publisher.
+    expect(screen.getByTestId('current').textContent).toBe('ALL')
+  })
+
+  it('persists a Server Admin pick of a specific publisher and the All choice', () => {
+    localStorage.setItem('ai-registry.current_publisher', 'globex')
+    mockPerms = {
+      isServerAdmin: true,
+      isLoading: false,
+      grants: [
+        { role: 'editor', publisher_slug: 'acme', publisher_name: 'Acme' },
+        { role: 'editor', publisher_slug: 'globex', publisher_name: 'Globex' },
+      ],
+    }
+    renderProbe()
+    // A stored, still-valid publisher selection is honored over the All default.
+    expect(screen.getByTestId('current').textContent).toBe('globex')
     fireEvent.click(screen.getByText('pick-all'))
     expect(screen.getByTestId('current').textContent).toBe('ALL')
     expect(localStorage.getItem('ai-registry.current_publisher')).toBe('__all__')
@@ -108,5 +134,21 @@ describe('PublisherProvider', () => {
     }
     renderProbe()
     expect(screen.getByTestId('current').textContent).toBe('globex')
+  })
+
+  it('offers a Server Admin every publisher, not just the granted ones', async () => {
+    mockPerms = {
+      isServerAdmin: true,
+      isLoading: false,
+      grants: [{ role: 'editor', publisher_slug: 'acme', publisher_name: 'Acme' }],
+    }
+    mockGET.mockResolvedValue({
+      data: { items: [{ slug: 'globex', name: 'Globex' }, { slug: 'acme', name: 'Acme' }] },
+    })
+    renderProbe()
+    // Once the publisher list resolves, the ungranted publisher (globex) is
+    // folded in with no roles, alongside the granted one.
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2'))
+    expect(screen.getByTestId('roles').textContent).toBe('acme:editor,globex:')
   })
 })

@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🛠️ Server Admins can scope the admin home to any publisher (+ e2e)
+
+The publisher switcher now offers a Server Admin **every** publisher, not just
+the ones they happen to hold a grant on, so they can open any publisher's scoped
+Overview / Members / Activity. Server Admins still default to the global "All
+publishers" dashboard. Adds Playwright e2e covering the switcher and the scoped
+home (Overview, Members, Activity), and documents the feature in the README.
+
 ### 👥 Per-publisher Members + Activity pages
 
 Two publisher-scoped admin pages, reachable from the sidebar when a publisher is

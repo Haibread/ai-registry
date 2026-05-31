@@ -52,8 +52,12 @@ export function PublisherSwitcher() {
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {isServerAdmin && <SelectItem value={ALL}>All publishers</SelectItem>}
-        {isServerAdmin && publishers.length > 0 && <SelectSeparator />}
+        {isServerAdmin && (
+          <SelectItem key="__all__" value={ALL}>
+            All publishers
+          </SelectItem>
+        )}
+        {isServerAdmin && publishers.length > 0 && <SelectSeparator key="__sep__" />}
         {publishers.map((p) => (
           <SelectItem key={p.slug} value={p.slug}>
             {p.name}
