@@ -12,6 +12,21 @@ vi.mock('@/lib/api-client', () => ({
   useAuthClient: () => ({ GET: mockGET }),
 }))
 
+// The dashboard routes by publisher scope. Default to the Server-Admin "All
+// publishers" scope so these tests exercise the global dashboard; individual
+// tests override mockPub to hit the other branches.
+let mockPub = {
+  publishers: [] as unknown[],
+  isServerAdmin: true,
+  currentSlug: null as string | null,
+  current: null as unknown,
+  setCurrent: vi.fn(),
+  isLoading: false,
+}
+vi.mock('@/auth/PublisherContext', () => ({
+  usePublisher: () => mockPub,
+}))
+
 import AdminDashboard from './dashboard'
 
 function renderPage() {
@@ -58,6 +73,14 @@ const sampleAgents = [
 describe('AdminDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPub = {
+      publishers: [],
+      isServerAdmin: true,
+      currentSlug: null,
+      current: null,
+      setCurrent: vi.fn(),
+      isLoading: false,
+    }
     mockGET.mockImplementation((path: string) => {
       if (path === '/api/v1/stats') return Promise.resolve({ data: sampleStats })
       if (path === '/api/v1/mcp/servers') return Promise.resolve({ data: { items: sampleMcp } })
@@ -128,5 +151,20 @@ describe('AdminDashboard', () => {
     })
     renderPage()
     expect(await screen.findByTestId('stats-error')).toBeInTheDocument()
+  })
+
+  it('shows a no-publishers empty state for a member with no grants', () => {
+    mockPub = {
+      publishers: [],
+      isServerAdmin: false,
+      currentSlug: null,
+      current: null,
+      setCurrent: vi.fn(),
+      isLoading: false,
+    }
+    renderPage()
+    expect(screen.getByRole('heading', { name: /no publishers yet/i })).toBeInTheDocument()
+    // The global dashboard's quick actions must not render in this scope.
+    expect(screen.queryByText(/quick actions/i)).not.toBeInTheDocument()
   })
 })
