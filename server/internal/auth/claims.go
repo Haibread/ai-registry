@@ -35,8 +35,8 @@ func (c *KeycloakClaims) IsAdmin() bool {
 }
 
 // HasGroup reports whether the token carries membership in the named
-// Keycloak group. Used by RequireReviewer to authorize non-admin access
-// to the cross-publisher review queue.
+// Keycloak group. Authorization is grant-based (ADR 0006) — claims carry
+// group membership only — so this is a claim-parsing accessor.
 func (c *KeycloakClaims) HasGroup(name string) bool {
 	if name == "" {
 		return false

@@ -78,7 +78,7 @@ func TestDevRealm_Phase7Bindings(t *testing.T) {
 	}
 
 	// Both browser-facing clients must emit `groups` on the access
-	// token. RequirePublisherRole and RequireReviewer read this claim;
+	// token. RequirePublisherRole resolves grants from this claim;
 	// drop the mapper and every non-admin write returns 403.
 	wantMapperOn := []string{"ai-registry-web", "ai-registry-cli"}
 	for _, clientID := range wantMapperOn {

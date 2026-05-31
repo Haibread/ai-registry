@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -283,43 +282,6 @@ func extractGroupsClaim(tokenString, claimName string) []string {
 		}
 	}
 	return out
-}
-
-// RequireReviewer returns chi middleware that gates a route to admins
-// or members of the configured reviewer group. Group name is passed as
-// an argument because it is configured per-deployment via
-// AUTH_REVIEWER_GROUP / auth.reviewer_group (default "registry-reviewers").
-// When the group is empty or the JWT carries no matching membership, only
-// admins pass.
-//
-// Wired onto the cross-publisher review queue. Per-resource write and
-// approve routes use RequirePublisherRole (ADR 0006).
-func RequireReviewer(group string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			claims, ok := ClaimsFromContext(r.Context())
-			if !ok || claims == nil {
-				problem.Write(w, http.StatusUnauthorized, "unauthorized",
-					"Missing or invalid bearer token", r.URL.Path)
-				return
-			}
-			if claims.IsAdmin() {
-				next.ServeHTTP(w, r)
-				return
-			}
-			if group == "" {
-				problem.Write(w, http.StatusForbidden, "forbidden",
-					"The change-approval workflow is admin-only on this deployment (AUTH_REVIEWER_GROUP is unset).", r.URL.Path)
-				return
-			}
-			if !claims.HasGroup(group) {
-				problem.Write(w, http.StatusForbidden, "forbidden",
-					fmt.Sprintf("Reviewing requires membership in Keycloak group %q.", group), r.URL.Path)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
 }
 
 // RequireAdmin is chi middleware that gates a route to Server Admins. It must
