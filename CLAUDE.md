@@ -67,7 +67,7 @@ A centralized registry for AI ecosystem artifacts:
   local development; `docker-compose.ci.yml` is CI-only).
 - **Deployment**: docker-compose for self-hosted single-host installs +
   a Helm chart for k8s with optional CNPG-managed Postgres. A dedicated
-  `docker-compose.prod.yml` profile is parked under v0.4.x.
+  `docker-compose.prod.yml` profile is parked post-0.4.0.
 - **Observability**: OpenTelemetry (OTel) for all signals — traces, metrics,
   and logs. Use the Go `go.opentelemetry.io/otel` SDK in the server; export
   via OTLP (gRPC or HTTP). Every HTTP handler must be traced; DB calls must
@@ -173,7 +173,7 @@ Rules for implementors:
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
 | A | Server Admin source | `realm_access.roles[]` contains `"admin"` **or** local `users.is_server_admin` (ADR 0006) | Keycloak default shape; local flag lets the bootstrap admin run with no IdP |
-| B | API-key auth | Deferred to v0.4.x | Phase 2-5 ship JWT-only; hashed per-publisher API keys parked under v0.4.x roadmap (see PLAN.md and README) |
+| B | API-key auth | Deferred post-0.4.0 | Phase 2-5 ship JWT-only; v0.4.0 ships ADR 0006 RBAC; hashed per-publisher API keys parked for a later minor (see PLAN.md and README) |
 | C | `/v0/` wire format | Strict MCP registry spec shape | `{ servers: [{id, name, description, version, packages, repository, _meta}], metadata: {count, nextCursor} }` for list; single object for detail |
 | D | Integration test infra | testcontainers-go (postgres module) with snapshot isolation | No external dependency needed to run `go test` |
 | E | `packages` JSONB validation | Structural: each entry must have `registryType`, `identifier`, `version`, `transport.type` | Matches MCP server.json spec; strict schema deferred |

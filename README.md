@@ -293,7 +293,8 @@ The phased roadmap lives in [`PLAN.md`](./PLAN.md). High-level status:
 - **v0.1.x** — Foundation: Postgres schema, chi router, OIDC, MCP + agent CRUD, public browse UI, admin UI, bootstrap seeding. ✅
 - **v0.2.x** — Observability + coverage depth. OTel traces/metrics/logs wired everywhere; contract tests for every CLAUDE.md non-negotiable; `/v0/` wire-format conformance; A2A schema conformance. ✅
 - **v0.3.x** — Browse polish (real MCP `tools[]` field end-to-end, card redesign, namespace landing pages, per-entry activity feed) and access control: workspaces under publishers, Keycloak group bindings, change-approval workflow with revision-tracked PR-style edits. ✅
-- **v0.4.x and beyond** — Skills/prompts registry, federation, API-key auth (M2M), webhooks.
+- **v0.4.x** — Publisher-scoped RBAC + local accounts ([ADR 0006](docs/adr/0006-publisher-scoped-rbac.md)): the workspace layer is **removed**, resources are publisher-scoped again, and authorization is roles (Viewer/Editor/Reviewer/Admin) granted to users or groups in the registry — Editor authors, Reviewer is the sole approver, Admin manages, Server Admin is break-glass. Adds local email + password login alongside OIDC (registry-signed tokens walled off the MCP surface), `GET /api/v1/me`, `mine=`-scoped admin lists, and the publisher-scoped admin home (switcher + Overview + Members / Activity / Settings). 🚧 (0.4.0-rc)
+- **Beyond 0.4.x** — Skills / prompts registry, federation, API-key auth (M2M), webhooks, and a dedicated production `docker-compose.prod.yml` profile.
 
 ---
 
