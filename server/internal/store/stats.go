@@ -54,6 +54,82 @@ func (db *DB) GetRegistryCounts(ctx context.Context) (*RegistryCounts, error) {
 	return &c, nil
 }
 
+// MemberRoles counts the role grants scoped to a single publisher, by role.
+// A principal that holds two roles (e.g. Editor + Reviewer for deliberate
+// dual-hatting) is counted under each, so these can exceed the distinct
+// Members total.
+type MemberRoles struct {
+	Viewers   int `json:"viewers"`
+	Editors   int `json:"editors"`
+	Reviewers int `json:"reviewers"`
+	Admins    int `json:"admins"`
+}
+
+// PublisherStats is the per-publisher rollup powering the scoped admin home.
+// Totals exclude soft-deleted entries; the breakdowns cover the three live
+// statuses. PendingReview is the count of items awaiting an approver on this
+// publisher (submitted versions + requested deletions) — the "needs review"
+// signal. Members counts distinct principals holding a grant scoped to this
+// publisher (global-grant holders are not counted as members of one publisher).
+type PublisherStats struct {
+	MCPServers           int              `json:"mcp_servers"`
+	Agents               int              `json:"agents"`
+	Members              int              `json:"members"`
+	PendingReview        int              `json:"pending_review"`
+	MCPStatusBreakdown   *StatusBreakdown `json:"mcp_status_breakdown"`
+	AgentStatusBreakdown *StatusBreakdown `json:"agent_status_breakdown"`
+	MemberRoles          *MemberRoles     `json:"member_roles"`
+}
+
+// GetPublisherStats returns the per-publisher rollup for the given publisher id.
+// All subqueries are scoped to publisher_id = $1.
+func (db *DB) GetPublisherStats(ctx context.Context, publisherID string) (*PublisherStats, error) {
+	ctx, span := startSpan(ctx, "GetPublisherStats")
+	defer span.End()
+
+	row := db.Pool.QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1 AND status!='deleted')::int,
+			(SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1 AND status='draft')::int,
+			(SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1 AND status='published')::int,
+			(SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1 AND status='deprecated')::int,
+			(SELECT COUNT(*) FROM agents WHERE publisher_id=$1 AND status!='deleted')::int,
+			(SELECT COUNT(*) FROM agents WHERE publisher_id=$1 AND status='draft')::int,
+			(SELECT COUNT(*) FROM agents WHERE publisher_id=$1 AND status='published')::int,
+			(SELECT COUNT(*) FROM agents WHERE publisher_id=$1 AND status='deprecated')::int,
+			(SELECT COUNT(DISTINCT principal_id) FROM role_grants WHERE publisher_id=$1)::int,
+			(SELECT COUNT(*) FROM role_grants WHERE publisher_id=$1 AND role='viewer')::int,
+			(SELECT COUNT(*) FROM role_grants WHERE publisher_id=$1 AND role='editor')::int,
+			(SELECT COUNT(*) FROM role_grants WHERE publisher_id=$1 AND role='reviewer')::int,
+			(SELECT COUNT(*) FROM role_grants WHERE publisher_id=$1 AND role='admin')::int,
+			(
+				(SELECT COUNT(*) FROM mcp_server_versions v JOIN mcp_servers s ON s.id=v.server_id
+					WHERE s.publisher_id=$1 AND v.review_state='pending_review' AND v.submitted_at IS NOT NULL)
+				+ (SELECT COUNT(*) FROM agent_versions av JOIN agents a ON a.id=av.agent_id
+					WHERE a.publisher_id=$1 AND av.review_state='pending_review' AND av.submitted_at IS NOT NULL)
+				+ (SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1 AND deletion_requested_at IS NOT NULL AND deleted_at IS NULL)
+				+ (SELECT COUNT(*) FROM agents WHERE publisher_id=$1 AND deletion_requested_at IS NOT NULL AND deleted_at IS NULL)
+			)::int
+	`, publisherID)
+
+	var s PublisherStats
+	var mcpBd, agentBd StatusBreakdown
+	var roles MemberRoles
+	if err := row.Scan(
+		&s.MCPServers, &mcpBd.Draft, &mcpBd.Published, &mcpBd.Deprecated,
+		&s.Agents, &agentBd.Draft, &agentBd.Published, &agentBd.Deprecated,
+		&s.Members, &roles.Viewers, &roles.Editors, &roles.Reviewers, &roles.Admins,
+		&s.PendingReview,
+	); err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("getting publisher stats: %w", err)
+	}
+	s.MCPStatusBreakdown = &mcpBd
+	s.AgentStatusBreakdown = &agentBd
+	s.MemberRoles = &roles
+	return &s, nil
+}
+
 // PublicStats holds counts visible to unauthenticated users (published + public only).
 type PublicStats struct {
 	MCPServers        int `json:"mcp_servers"`

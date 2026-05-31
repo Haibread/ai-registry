@@ -465,6 +465,46 @@ export interface paths {
         patch: operations["patchPublisher"];
         trace?: never;
     };
+    "/api/v1/publishers/{slug}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-publisher stats for the scoped admin home (member)
+         * @description Resource counts + status breakdowns, member counts by role, and the pending-review count, scoped to one publisher. Open to any member of the publisher (Viewer and up) or a Server Admin; others get 403. This is the per-publisher counterpart to the Server-Admin-only global stats.
+         */
+        get: operations["getPublisherStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/publishers/{slug}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-publisher activity feed (member)
+         * @description The audit feed for a single publisher, newest first, paginated. Covers the lifecycle of every MCP server and agent under the publisher. Open to any member of the publisher (Viewer and up) or a Server Admin; others get 403. Unlike the public per-resource feed, this members-only feed names the actor (the publisher's own collaborators).
+         */
+        get: operations["getPublisherActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcp/servers": {
         parameters: {
             query?: never;
@@ -1538,6 +1578,25 @@ export interface components {
             mcp_status_breakdown?: components["schemas"]["StatusBreakdown"];
             agent_status_breakdown?: components["schemas"]["StatusBreakdown"];
         };
+        /** @description Role-grant counts scoped to one publisher. A principal holding two roles (deliberate Editor + Reviewer dual-hatting) is counted under each, so these can exceed the distinct member total. */
+        MemberRoles: {
+            viewers: number;
+            editors: number;
+            reviewers: number;
+            admins: number;
+        };
+        /** @description Per-publisher rollup for the scoped admin home. Totals exclude soft-deleted entries; breakdowns cover the three live statuses. */
+        PublisherStats: {
+            mcp_servers: number;
+            agents: number;
+            /** @description Distinct principals holding a grant scoped to this publisher. */
+            members: number;
+            /** @description Items awaiting an approver (submitted versions + requested deletions). */
+            pending_review: number;
+            mcp_status_breakdown?: components["schemas"]["StatusBreakdown"];
+            agent_status_breakdown?: components["schemas"]["StatusBreakdown"];
+            member_roles?: components["schemas"]["MemberRoles"];
+        };
         PublicStats: {
             /** @description Total public published MCP servers */
             mcp_servers: number;
@@ -1961,6 +2020,31 @@ export interface components {
         };
         PublicActivityEventList: {
             items: components["schemas"]["PublicActivityEvent"][];
+            next_cursor?: string;
+        };
+        /** @description One entry in a publisher's members-only activity feed. Names the actor (the publisher's own collaborators), unlike the public per-resource feed. */
+        PublisherActivityEvent: {
+            /** @description ULID of the underlying audit event */
+            id: string;
+            /** @description Normalized action key (e.g. mcp_server_version.published) */
+            action: string;
+            /** @description Either mcp_server or agent */
+            resource_type: string;
+            /** @description Slug of the affected entry within the publisher */
+            resource_slug: string;
+            /** @description Semantic version, when the event relates to a specific version */
+            version?: string;
+            /** @description Email of the actor who performed the action, when known */
+            actor_email?: string;
+            /** @description Scrubbed metadata. Only a whitelisted subset of keys is included (e.g. `from`, `to`, `visibility`, `reason`, `version`, `field`). */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+        };
+        PublisherActivityList: {
+            items: components["schemas"]["PublisherActivityEvent"][];
             next_cursor?: string;
         };
         ChangelogEntry: {
@@ -3049,6 +3133,59 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationError"];
+        };
+    };
+    getPublisherStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-publisher stats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublisherStats"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPublisherActivity: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["LimitParam"];
+                cursor?: components["parameters"]["CursorParam"];
+            };
+            header?: never;
+            path: {
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated publisher activity */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublisherActivityList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listMCPServers: {

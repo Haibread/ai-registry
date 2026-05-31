@@ -21,6 +21,7 @@ type AuditLogger interface {
 type ListAuditParams struct {
 	ResourceType string // optional filter
 	ResourceID   string // optional filter
+	ResourceNS   string // optional filter: the owning publisher's slug (namespace)
 	ActorSubject string // optional filter
 	Limit        int32
 	Cursor       string // created_at cursor (DESC ordering)
@@ -104,6 +105,11 @@ func (db *DB) ListAuditEvents(ctx context.Context, p ListAuditParams) ([]domain.
 	if p.ResourceID != "" {
 		where += fmt.Sprintf(" AND resource_id = $%d", argN)
 		args = append(args, p.ResourceID)
+		argN++
+	}
+	if p.ResourceNS != "" {
+		where += fmt.Sprintf(" AND resource_ns = $%d", argN)
+		args = append(args, p.ResourceNS)
 		argN++
 	}
 	if p.ActorSubject != "" {

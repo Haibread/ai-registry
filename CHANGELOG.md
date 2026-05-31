@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 📊 Per-publisher stats + activity endpoints (scoped admin home, backend)
+
+Two read endpoints that let a publisher member see their own publisher without
+the Server-Admin-only global `/stats` and `/audit` (ADR 0006):
+
+- `GET /api/v1/publishers/{slug}/stats` — MCP/agent counts + status breakdowns,
+  member counts by role, and a pending-review count, all scoped to one
+  publisher.
+- `GET /api/v1/publishers/{slug}/activity` — the publisher's audit feed (newest
+  first, paginated), covering the lifecycle of every MCP server and agent under
+  it. Unlike the public per-resource feed, this members-only feed names the
+  actor.
+
+Both are gated to any member of the publisher (Viewer and up) or a Server Admin;
+a non-member gets 403. This is the backend for an upcoming publisher-scoped
+admin dashboard.
+
 ### 🔒 Auth hardening: required audience binding + login enumeration fixes
 
 **`OIDC_AUDIENCE` is now required (fail-closed).** The server previously skipped
