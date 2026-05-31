@@ -41,7 +41,7 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 - OAuth 2.1 / OIDC with PKCE (public client via [`oidc-client-ts`](https://github.com/authts/oidc-client-ts) — no client secret, no NextAuth/Auth.js).
 - Keycloak in local dev via docker-compose with a pre-seeded realm.
 - Two login front doors: OIDC (Keycloak in dev) **and** local email + password accounts — the registry signs its own RS256 tokens for the latter and walls them off the MCP surface. Server Admin comes from `realm_access.roles[]` containing `"admin"` **or** a local `is_server_admin` flag.
-- **Publisher-scoped RBAC** — roles (Viewer/Editor/Reviewer/Admin) are granted to users or groups on a publisher; Editor authors, Reviewer approves, Admin manages, or global Server Admin. Write endpoints 403 without the role, independent of the UI. Claims carry **group membership only** — the JWT claim path is configurable via `AUTH_GROUPS_CLAIM` (default `groups`). See [ADR 0006](docs/adr/0006-publisher-scoped-rbac.md).
+- **Publisher-scoped RBAC** — roles (Viewer/Editor/Reviewer/Admin) are granted to users or groups on a publisher; Editor authors, Reviewer approves, Admin manages, or global Server Admin. Write endpoints 403 without the role, independent of the UI. Claims carry **group membership only** — the JWT claim path is configurable via `AUTH_GROUPS_CLAIM` (default `groups`). The admin list endpoints take `mine=true` to scope results to the publishers the caller holds a role on (authors don't see each other's resources); `GET /api/v1/me` returns the caller's identity + effective grants for role-gating the UI. See [ADR 0006](docs/adr/0006-publisher-scoped-rbac.md).
 - **Change-approval workflow** — publisher Editors submit version edits or deletion requests that a Reviewer approves before they go live. The cross-publisher review queue is gated by the reviewer group (`AUTH_REVIEWER_GROUP`, default `registry-reviewers`). Discriminated 409 errors prevent stale-edit clobbering. See [ADR 0003](docs/adr/0003-change-approval-workflow.md).
 - MCP-authorization-spec compatible (resource indicators, protected resource metadata).
 
@@ -198,12 +198,12 @@ See `deploy/config.example.yaml` and `deploy/.env.example` for the full list. Se
 
 ## API surface
 
-95 operations across these tags:
+96 operations across these tags:
 
 | Tag          | Purpose                                                        |
 | ---          | ---                                                            |
 | `system`     | `/healthz`, `/readyz`, OpenAPI spec, global `.well-known/*`    |
-| `auth`       | Local email + password login (`POST /api/v1/auth/login`)      |
+| `auth`       | Local email + password login (`POST /api/v1/auth/login`); caller identity + effective grants (`GET /api/v1/me`) |
 | `publishers` | Namespace/publisher CRUD                                       |
 | `rbac`       | Groups, users, and publisher-scoped role grants (ADR 0006)    |
 | `mcp`        | MCP server + version CRUD, search, detail, view/copy, reports, change-approval (submit / withdraw / approve / reject / deletion-request) |

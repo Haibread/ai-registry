@@ -1059,3 +1059,49 @@ func TestMCPServerVersion_ToolsDefaultEmptyArray(t *testing.T) {
 		t.Errorf("expected empty tools array on read-back, got %v", arr)
 	}
 }
+
+// TestListMCPServers_PublisherIDsFilter verifies the mine-scope filter: when
+// PublisherIDs is set, only servers owned by those publishers are returned
+// (private entries included), and the total count reflects the filter.
+func TestListMCPServers_PublisherIDsFilter(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pubA := insertPublisher(t, "scope-a", "Scope A")
+	pubB := insertPublisher(t, "scope-b", "Scope B")
+
+	// Two (private, draft) servers under A, one under B.
+	for _, slug := range []string{"a-one", "a-two"} {
+		if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubA, Slug: slug, Name: slug}); err != nil {
+			t.Fatalf("CreateMCPServer(%s): %v", slug, err)
+		}
+	}
+	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{PublisherID: pubB, Slug: "b-one", Name: "b-one"}); err != nil {
+		t.Fatalf("CreateMCPServer(b-one): %v", err)
+	}
+
+	rows, total, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{
+		PublisherIDs: []string{pubA},
+		Limit:        20,
+	})
+	if err != nil {
+		t.Fatalf("ListMCPServers: %v", err)
+	}
+	if total != 2 {
+		t.Errorf("total = %d, want 2", total)
+	}
+	for _, r := range rows {
+		if r.Namespace != "scope-a" {
+			t.Errorf("got server in namespace %q, want only scope-a", r.Namespace)
+		}
+	}
+
+	// Empty PublisherIDs applies no filter (all three non-deleted servers).
+	_, totalAll, err := sharedDB.ListMCPServers(ctx, store.ListMCPServersParams{Limit: 20})
+	if err != nil {
+		t.Fatalf("ListMCPServers(all): %v", err)
+	}
+	if totalAll != 3 {
+		t.Errorf("unfiltered total = %d, want 3", totalAll)
+	}
+}

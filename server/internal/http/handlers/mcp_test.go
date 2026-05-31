@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/haibread/ai-registry/internal/auth"
+	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/http/handlers"
 	"github.com/haibread/ai-registry/internal/store"
 )
@@ -242,7 +243,7 @@ func TestMCPHandler_CreateServer_Valid(t *testing.T) {
 
 	payload := `{"namespace":"create-ns","slug":"new-srv","name":"New Server"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
-		bytes.NewBufferString(payload))
+		bytes.NewBufferString(payload)).WithContext(adminCtx())
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	newMCPRouter().ServeHTTP(rec, req)
@@ -280,7 +281,7 @@ func TestMCPHandler_CreateServer_MissingFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
-				bytes.NewBufferString(tt.payload))
+				bytes.NewBufferString(tt.payload)).WithContext(adminCtx())
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
@@ -291,6 +292,69 @@ func TestMCPHandler_CreateServer_MissingFields(t *testing.T) {
 	}
 }
 
+// TestMCPHandler_CreateServer_Unauthenticated401 verifies the in-handler auth
+// guard rejects anonymous create attempts before parsing or DB work (ADR 0006).
+func TestMCPHandler_CreateServer_Unauthenticated401(t *testing.T) {
+	resetTables(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
+		bytes.NewBufferString(`{"namespace":"x","slug":"y","name":"Z"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+// TestMCPHandler_CreateServer_ForbiddenWithoutEditor verifies an authenticated
+// caller with no Editor role on the target publisher gets 403 (ADR 0006).
+func TestMCPHandler_CreateServer_ForbiddenWithoutEditor(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "locked-ns", "Locked NS")
+
+	// Authenticated (non-admin) claims carrying a group with no grant anywhere.
+	ctx := auth.ContextWithClaims(context.Background(), &auth.KeycloakClaims{
+		Groups: []string{"randos"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
+		bytes.NewBufferString(`{"namespace":"locked-ns","slug":"nope","name":"Nope"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestMCPHandler_CreateServer_EditorAllowed verifies a publisher Editor (not a
+// Server Admin) can author a new server (ADR 0006).
+func TestMCPHandler_CreateServer_EditorAllowed(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	pubID := seedPublisher(t, "ed-ns", "Editor NS")
+
+	user, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "editor@ed.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: user.ID,
+		PublisherID: pubID, Role: domain.RoleEditor,
+	}); err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+
+	reqCtx := auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: user.ID, Email: user.Email})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
+		bytes.NewBufferString(`{"namespace":"ed-ns","slug":"by-editor","name":"By Editor"}`)).WithContext(reqCtx)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMCPHandler_CreateServer_DuplicateSlug(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "dup-ns", "Dup NS")
@@ -298,7 +362,7 @@ func TestMCPHandler_CreateServer_DuplicateSlug(t *testing.T) {
 	payload := `{"namespace":"dup-ns","slug":"dup-srv","name":"Dup"}`
 	post := func() int {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
-			bytes.NewBufferString(payload))
+			bytes.NewBufferString(payload)).WithContext(adminCtx())
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		newMCPRouter().ServeHTTP(rec, req)

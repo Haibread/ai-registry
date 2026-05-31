@@ -70,8 +70,36 @@ func (h *AgentHandlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// mine=true scopes the listing to resources the caller can manage
+	// (ADR 0006); see ListServers for the full rationale.
+	publicOnly := !auth.IsAdminFromContext(r.Context())
+	var publisherIDs []string
+	if r.URL.Query().Get("mine") == "true" {
+		ids, all, authed, err := mineScope(r.Context(), h.db)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		if !authed {
+			problem.Write(w, http.StatusUnauthorized, "unauthorized",
+				"Authentication is required for mine=true.", r.URL.Path)
+			return
+		}
+		publicOnly = false
+		if !all {
+			if len(ids) == 0 {
+				writeJSON(w, r, http.StatusOK, map[string]any{
+					"items": []map[string]any{}, "next_cursor": "", "total_count": 0,
+				})
+				return
+			}
+			publisherIDs = ids
+		}
+	}
+
 	rows, total, err := h.db.ListAgents(r.Context(), store.ListAgentsParams{
-		PublicOnly:     !auth.IsAdminFromContext(r.Context()),
+		PublicOnly:     publicOnly,
+		PublisherIDs:   publisherIDs,
 		Namespace:      r.URL.Query().Get("namespace"),
 		Status:         status,
 		Visibility:     visibility,
@@ -143,6 +171,13 @@ func (h *AgentHandlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 // ── POST /api/v1/agents ───────────────────────────────────────────────────
 
 func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
+	// Publisher-scoped authorization (ADR 0006); the target publisher is in the
+	// body, so the role check is in-handler. Reject anonymous callers up front.
+	if !auth.IsAuthenticated(r.Context()) {
+		problem.Write(w, http.StatusUnauthorized, "unauthorized",
+			"Missing or invalid bearer token", r.URL.Path)
+		return
+	}
 	var body struct {
 		Namespace   string `json:"namespace"`
 		Slug        string `json:"slug"`
@@ -175,6 +210,20 @@ func (h *AgentHandlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		internalError(w, r, err)
+		return
+	}
+
+	// Authoring requires Editor on the owning publisher (Admin / Server Admin
+	// satisfy it). New agents are created private + draft, so the approval gate
+	// (publish + admin visibility flip) stays intact (ADR 0006).
+	ok, _, err := auth.CheckPublisherRole(r.Context(), h.db, publisherID, domain.RoleEditor)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	if !ok {
+		problem.Write(w, http.StatusForbidden, "forbidden",
+			"Insufficient role on this publisher: editor required to author resources.", r.URL.Path)
 		return
 	}
 

@@ -28,19 +28,23 @@ func hasRequireAdmin(middlewares []func(http.Handler) http.Handler) bool {
 	return false
 }
 
-// TestAllWriteRoutesRequireAdmin enforces CLAUDE.md's non-negotiable rule
+// TestAllWriteRoutesRequireAdmin enforces CLAUDE.md's non-negotiable rule that
+// every write requires authorization (ADR 0006): creation, update, publishing,
+// and deletion of any registry entry are gated — by Server Admin, by a
+// publisher-scoped role (Editor authors, Reviewer approves), or by an
+// in-handler role check (resource create, whose publisher is in the body).
 //
-//	"All writes go through admins. Creation, update, publishing, and deletion
-//	 of any registry entry is restricted to admin principals (via UI or API).
-//	 Non-admins get 403 on any write endpoint."
-//
-// into a mechanical contract. It walks every registered chi route, filters
-// down to mutating HTTP verbs (POST / PUT / PATCH / DELETE), subtracts the
-// explicit allow-list of writes that are intentionally public, and fires an
-// unauthenticated request at each remaining route. Every one of them must
-// return 401 (no claims in context) — if any returns 200/2xx/3xx/404/500
-// it means somebody added a write route without `.With(auth.RequireAdmin)`
-// and the audit-guard bypass is invisible at unit-test granularity.
+// The mechanical invariant this test pins is the floor common to all of those:
+// a mutating request with **no token** must be rejected with 401. It walks
+// every registered chi route, filters down to mutating HTTP verbs
+// (POST / PUT / PATCH / DELETE), subtracts the explicit allow-list of writes
+// that are intentionally public, and fires an unauthenticated request at each
+// remaining route. Every one of them must return 401 (no identity in context) —
+// whether the gate is `auth.RequireAdmin`, `auth.RequirePublisherRole`, or the
+// handler's own `auth.IsAuthenticated` guard. If any returns 200/2xx/3xx/404/500
+// it means somebody added a write route with no authorization gate at all, and
+// that bypass would otherwise be invisible at unit-test granularity. Which
+// specific role each route demands is covered by the per-handler tests.
 //
 // The middleware itself already has direct unit tests in
 // internal/auth/middleware_test.go (TestRequireAdmin_NoToken,
