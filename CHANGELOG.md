@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 👥 Per-publisher Members + Activity pages
+
+Two publisher-scoped admin pages, reachable from the sidebar when a publisher is
+selected (ADR 0006). **Members** (`/admin/members`) manages the selected
+publisher's role grants — a first-class home for a publisher Admin, who
+previously had no nav path to it; gated to Admins, with a hint otherwise.
+**Activity** (`/admin/activity`) is the full, paginated activity feed for the
+publisher (any member). The global audit nav item is renamed **Audit log** to
+distinguish it from the per-publisher feed. (Editing publisher *metadata* stays
+Server-Admin-only, via the Publishers page.)
+
 ### 🏠 Publisher-scoped admin Overview
 
 The `/admin` landing page is now a publisher-scoped Overview when a publisher is

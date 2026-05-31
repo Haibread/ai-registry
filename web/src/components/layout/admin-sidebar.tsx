@@ -1,18 +1,21 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, Flag, Activity, ClipboardCheck } from 'lucide-react'
+import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, Flag, Activity, ScrollText, ClipboardCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
 import { usePermissions, type Permissions } from '@/auth/useMe'
+import { usePublisher } from '@/auth/PublisherContext'
 import { PublisherSwitcher } from '@/components/admin/publisher-switcher'
 
-// `requires` gates each nav entry by role (ADR 0006):
-//   - 'always'      → any authenticated admin-area user (the resource lists are
-//                     themselves mine-scoped, so an author sees only their own).
-//   - 'reviewer'    → can review on at least one publisher (or Server Admin).
-//   - 'serverAdmin' → Server-Admin-only management surfaces.
-type NavRequirement = 'always' | 'reviewer' | 'serverAdmin'
+// `requires` gates each nav entry (ADR 0006):
+//   - 'always'          → any authenticated admin-area user (resource lists are
+//                         mine-scoped, so an author sees only their own).
+//   - 'reviewer'        → can review on at least one publisher (or Server Admin).
+//   - 'serverAdmin'     → Server-Admin-only management surfaces.
+//   - 'publisherMember' → a publisher is selected (per-publisher pages).
+//   - 'publisherAdmin'  → Admin on the selected publisher (or Server Admin).
+type NavRequirement = 'always' | 'reviewer' | 'serverAdmin' | 'publisherMember' | 'publisherAdmin'
 
 interface NavItem {
   to: string
@@ -30,6 +33,8 @@ const publisherNav: NavItem[] = [
   { to: '/admin/mcp', label: 'MCP Servers', icon: Server, requires: 'always' },
   { to: '/admin/agents', label: 'Agents', icon: Bot, requires: 'always' },
   { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review', requires: 'reviewer' },
+  { to: '/admin/activity', label: 'Activity', icon: Activity, requires: 'publisherMember' },
+  { to: '/admin/members', label: 'Members', icon: Users, requires: 'publisherAdmin' },
 ]
 
 // Server-Admin management surfaces: global, cross-publisher administration,
@@ -40,11 +45,11 @@ const serverAdminNav: NavItem[] = [
   { to: '/admin/users', label: 'Users', icon: UserCog, requires: 'serverAdmin' },
   { to: '/admin/grants', label: 'Global grants', icon: Shield, requires: 'serverAdmin' },
   { to: '/admin/reports', label: 'Reports', icon: Flag, requires: 'serverAdmin' },
-  { to: '/admin/audit', label: 'Activity', icon: Activity, requires: 'serverAdmin' },
+  { to: '/admin/audit', label: 'Audit log', icon: ScrollText, requires: 'serverAdmin' },
   { to: '/admin/api-keys', label: 'API Keys', icon: Key, requires: 'serverAdmin' },
 ]
 
-function navItemVisible(requires: NavRequirement, perms: Permissions): boolean {
+function navItemVisible(requires: NavRequirement, perms: Permissions, currentSlug: string | null): boolean {
   switch (requires) {
     case 'always':
       return true
@@ -52,6 +57,10 @@ function navItemVisible(requires: NavRequirement, perms: Permissions): boolean {
       return perms.isReviewerAnywhere
     case 'serverAdmin':
       return perms.isServerAdmin
+    case 'publisherMember':
+      return currentSlug !== null
+    case 'publisherAdmin':
+      return currentSlug !== null && perms.canAdmin(currentSlug)
   }
 }
 
@@ -110,8 +119,9 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
   const location = useLocation()
   const pathname = pathnameProp ?? location.pathname
   const perms = usePermissions()
-  const publisherItems = publisherNav.filter((item) => navItemVisible(item.requires, perms))
-  const serverAdminItems = serverAdminNav.filter((item) => navItemVisible(item.requires, perms))
+  const { currentSlug } = usePublisher()
+  const publisherItems = publisherNav.filter((item) => navItemVisible(item.requires, perms, currentSlug))
+  const serverAdminItems = serverAdminNav.filter((item) => navItemVisible(item.requires, perms, currentSlug))
 
   const renderItem = ({ to, label, icon: Icon, exact, badge }: NavItem) => {
     const active = exact ? pathname === to : pathname.startsWith(to)
