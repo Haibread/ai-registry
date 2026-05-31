@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🔑 MIT license + Helm local-login support
+
+The repository now ships a top-level **MIT `LICENSE`** (it was previously
+unlicensed). The Helm chart gains local email + password login for parity with
+docker-compose: `server.localLogin.enabled` plus
+`server.localLogin.bootstrapAdmin.{email,password,existingSecret}`. The
+bootstrap-admin password is wired through a Kubernetes Secret — an inline value
+is rendered into one, or reference an `existingSecret` you manage
+(external-secrets / sealed-secrets) — and is **never** placed in the ConfigMap.
+
 ### 🔖 Release tooling + roadmap aligned for 0.4.0
 
 The publish workflow now marks hyphenated SemVer tags (e.g. `v0.4.0-rc0`) as

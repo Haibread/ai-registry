@@ -314,4 +314,4 @@ Pre-1.0. The API is versioned (`/api/v1/`, `/v0/`) and the contract tests keep i
 
 ## License
 
-License TBD — this repository does not yet ship a `LICENSE` file. Please open an issue if you'd like to use the code before one lands.
+[MIT](LICENSE) © 2026 Theo Barbou.

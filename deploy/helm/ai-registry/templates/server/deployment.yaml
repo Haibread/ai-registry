@@ -23,6 +23,9 @@ spec:
         {{- if .Values.server.bootstrap.enabled }}
         checksum/bootstrap: {{ include (print $.Template.BasePath "/server/bootstrap-configmap.yaml") . | sha256sum }}
         {{- end }}
+        {{- if and .Values.server.localLogin.enabled .Values.server.localLogin.bootstrapAdmin.password (not .Values.server.localLogin.bootstrapAdmin.existingSecret) }}
+        checksum/local-login-secret: {{ include (print $.Template.BasePath "/server/local-login-secret.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.server.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -86,6 +89,18 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-registry.server.fullname" . }}
                   key: DATABASE_URL
+            {{- end }}
+            {{- /*
+              Local bootstrap-admin password (ADR 0006): from the operator's
+              existingSecret when set, else the chart-rendered Secret. Omitted
+              entirely when local login is off or no password source is given.
+            */}}
+            {{- if and .Values.server.localLogin.enabled (or .Values.server.localLogin.bootstrapAdmin.password .Values.server.localLogin.bootstrapAdmin.existingSecret) }}
+            - name: AUTH_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.localLogin.bootstrapAdmin.existingSecret | default (printf "%s-bootstrap-admin" (include "ai-registry.server.fullname" .)) }}
+                  key: AUTH_BOOTSTRAP_ADMIN_PASSWORD
             {{- end }}
             {{- with .Values.server.extraEnv }}
             {{- toYaml . | nindent 12 }}
