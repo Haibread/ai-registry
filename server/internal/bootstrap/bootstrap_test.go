@@ -444,10 +444,10 @@ agents:
 
 func TestLoadSpec_GrantValidation(t *testing.T) {
 	cases := map[string]string{
-		"both group and user": "grants:\n  - group: \"g\"\n    user: \"u@example.com\"\n    role: \"editor\"\n",
+		"both group and user":    "grants:\n  - group: \"g\"\n    user: \"u@example.com\"\n    role: \"editor\"\n",
 		"neither group nor user": "grants:\n  - role: \"editor\"\n",
-		"invalid role": "groups:\n  - slug: \"g\"\n    name: \"G\"\ngrants:\n  - group: \"g\"\n    role: \"superuser\"\n",
-		"group missing name": "groups:\n  - slug: \"g\"\n",
+		"invalid role":           "groups:\n  - slug: \"g\"\n    name: \"G\"\ngrants:\n  - group: \"g\"\n    role: \"superuser\"\n",
+		"group missing name":     "groups:\n  - slug: \"g\"\n",
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

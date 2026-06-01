@@ -298,6 +298,58 @@ func TestOIDCLogout_LocalSession_NoIdPBounce(t *testing.T) {
 	}
 }
 
+func TestOIDCLogin_RedirectsToIdPWithTxnCookie(t *testing.T) {
+	broker, idpURL := newLogoutBroker(t)
+	sm, _ := testSessions()
+	h := handlers.NewOIDCAuthHandlers(broker, sm, fakeOIDCStore{}, false, "/", "http://app.example/")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	loc := rec.Header().Get("Location")
+	if !strings.HasPrefix(loc, idpURL+"/auth") {
+		t.Fatalf("Location = %q, want the IdP authorize endpoint", loc)
+	}
+	for _, want := range []string{"response_type=code", "code_challenge=", "code_challenge_method=S256", "state=", "nonce="} {
+		if !strings.Contains(loc, want) {
+			t.Errorf("authorize URL missing %q: %s", want, loc)
+		}
+	}
+	// The short-lived login-transaction cookie must be set so the callback can
+	// validate state/nonce and complete PKCE.
+	if c := sessionCookie(rec, "ai_registry_oidc_txn"); c == nil || c.Value == "" {
+		t.Fatalf("expected the OIDC txn cookie to be set, got %+v", c)
+	}
+}
+
+func TestOIDCLogin_NoBrokerReturns404(t *testing.T) {
+	sm, _ := testSessions()
+	h := handlers.NewOIDCAuthHandlers(nil, sm, fakeOIDCStore{}, false, "/", "http://app.example/")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	rec := httptest.NewRecorder()
+	h.Login(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 when OIDC is not configured", rec.Code)
+	}
+}
+
+func TestOIDCCallback_NoBrokerReturns404(t *testing.T) {
+	sm, _ := testSessions()
+	h := handlers.NewOIDCAuthHandlers(nil, sm, fakeOIDCStore{}, false, "/", "http://app.example/")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=x&state=y", nil)
+	rec := httptest.NewRecorder()
+	h.Callback(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 when OIDC is not configured", rec.Code)
+	}
+}
+
 func TestLogout_RevokesAndClears(t *testing.T) {
 	st := storeWithUser(t, "dev@example.com", "hunter2hunter2", false)
 	h, fs := newAuthHandlers(t, st, true)

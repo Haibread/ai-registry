@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -64,15 +65,43 @@ func testManager() (*SessionManager, *fakeSessionStore) {
 	}), fs
 }
 
+func TestSessionManager_CookieAccessors(t *testing.T) {
+	sm, _ := testManager()
+	if sm.CookieName() != "sess" {
+		t.Fatalf("CookieName = %q, want sess", sm.CookieName())
+	}
+	if !sm.CookieSecure() {
+		t.Fatal("CookieSecure should be true")
+	}
+	c := sm.Cookie("tok-123")
+	if c.Name != "sess" || c.Value != "tok-123" || !c.HttpOnly || !c.Secure || c.MaxAge <= 0 {
+		t.Fatalf("unexpected session cookie: %+v", c)
+	}
+	cleared := sm.ClearCookie()
+	if cleared.Name != "sess" || cleared.Value != "" || cleared.MaxAge >= 0 {
+		t.Fatalf("ClearCookie should expire the cookie: %+v", cleared)
+	}
+
+	withCookie := httptest.NewRequest(http.MethodGet, "/", nil)
+	withCookie.AddCookie(&http.Cookie{Name: "sess", Value: "abc"})
+	if got := sm.TokenFromRequest(withCookie); got != "abc" {
+		t.Fatalf("TokenFromRequest = %q, want abc", got)
+	}
+	if got := sm.TokenFromRequest(httptest.NewRequest(http.MethodGet, "/", nil)); got != "" {
+		t.Fatalf("TokenFromRequest with no cookie = %q, want empty", got)
+	}
+}
+
 func TestHashToken_DeterministicAndDistinct(t *testing.T) {
-	if hashToken("abc") != hashToken("abc") {
+	a, b := hashToken("abc"), hashToken("abc")
+	if a != b {
 		t.Fatal("hashToken must be deterministic")
 	}
-	if hashToken("abc") == hashToken("abd") {
+	if a == hashToken("abd") {
 		t.Fatal("different tokens must hash differently")
 	}
-	if len(hashToken("abc")) != 64 {
-		t.Fatalf("expected 64 hex chars, got %d", len(hashToken("abc")))
+	if len(a) != 64 {
+		t.Fatalf("expected 64 hex chars, got %d", len(a))
 	}
 }
 
