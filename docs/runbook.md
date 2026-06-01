@@ -1,10 +1,8 @@
 # AI Registry — operations runbook
 
 Audience: on-call engineer for an ai-registry deployment. Each section lists
-symptoms, quick triage commands, and a remediation path.
-
-Keep this file in sync with the production topology — a runbook that lies is
-worse than no runbook.
+symptoms, triage commands, and remediation. Keep this file in sync with the
+production topology — a runbook that lies is worse than no runbook.
 
 ---
 
@@ -25,9 +23,8 @@ worse than no runbook.
 | `/readyz`  | Readiness — can this pod serve traffic right now?        | 200 (or 503 during startup / DB outage) |
 | `/metrics` | Prometheus scrape endpoint.                              | 200             |
 
-`/readyz` returning 503 is the first signal for most outages. It blocks
-traffic (kube-proxy / ingress remove the pod from rotation) before users
-notice.
+`/readyz` returning 503 is the first signal for most outages: it removes the pod
+from rotation (kube-proxy / ingress) before users notice.
 
 ---
 
@@ -75,14 +72,14 @@ Common root causes:
    WHERE application_name LIKE 'ai-registry%';
    ```
 
-3. If saturated, either raise `dbMaxConns` on the server or lower the load
-   (rate limit / scale horizontally).
+3. If saturated, raise `dbMaxConns` on the server or lower the load (rate limit /
+   scale horizontally).
 
 **Remediation**
 
 - Short-term: `kubectl rollout restart deploy/<release>-server`.
-- Long-term: enable `server.autoscaling.enabled=true` with a sensible CPU
-  target, and raise `dbMaxConns` alongside Postgres `max_connections`.
+- Long-term: enable `server.autoscaling.enabled=true` with a sensible CPU target,
+  and raise `dbMaxConns` alongside Postgres `max_connections`.
 
 ---
 
@@ -143,22 +140,20 @@ mid-transaction.
    `migrate force <prev_version>` via a one-shot pod).
 3. Ship a fixed migration and redeploy.
 
-**Never** edit a migration file that has already been applied in any
-environment. Roll forward with a new migration.
+**Never** edit a migration file already applied in any environment. Roll forward
+with a new migration.
 
 ---
 
 ## 6. Database backup & restore
 
-Backups are handled by CloudNativePG's Barman integration. They are **not**
-configured in the default chart — see `docs/db-backup.md` for the full
-playbook. Operational summary:
+Backups use CloudNativePG's Barman integration. They are **not** configured in the
+default chart — see `docs/db-backup.md` for the full playbook. Summary:
 
 - Continuous WAL archiving + scheduled base backups land in object storage.
-- Point-in-time recovery (PITR) is the recovery mode we target; RPO ≤ 5 min,
-  RTO ~15 min for a single-region restore.
-- **Test your restore quarterly.** A backup you've never restored is not a
-  backup.
+- Point-in-time recovery (PITR) is the target recovery mode; RPO ≤ 5 min, RTO
+  ~15 min for a single-region restore.
+- **Test your restore quarterly.** A backup you've never restored is not a backup.
 
 ---
 
@@ -179,10 +174,9 @@ kubectl describe certificate <cert-name>
 **Common causes**
 
 - cert-manager is missing or the issuer is not `Ready`.
-- Let's Encrypt rate-limited the issuer — check
-  `certificaterequest` conditions.
-- DNS doesn't resolve the hostname to the ingress IP (HTTP-01 challenge
-  failed). Check with `dig +short ai-registry.example.com`.
+- Let's Encrypt rate-limited the issuer — check `certificaterequest` conditions.
+- DNS doesn't resolve the hostname to the ingress IP (HTTP-01 challenge failed).
+  Check with `dig +short ai-registry.example.com`.
 
 ---
 
@@ -191,8 +185,8 @@ kubectl describe certificate <cert-name>
 **Symptoms**
 
 - Admin UI login loops or never establishes a session cookie.
-- Server logs: `jwks fetch failed` or `id_token validation failed` during the
-  OIDC callback.
+- Server logs: `jwks fetch failed` or `id_token validation failed` during the OIDC
+  callback.
 
 Note: OIDC is brokered server-side and auth is a registry session cookie, so a
 broker/callback outage blocks *new* logins while existing sessions keep working
@@ -200,19 +194,19 @@ until they expire (`AUTH_SESSION_TTL`).
 
 **Triage**
 
-1. Is the issuer reachable from the cluster? `kubectl exec` into a server
-   pod (distroless — use `kubectl debug` with an ephemeral ubuntu container)
-   and `curl -v $OIDC_JWKS_URL`. The broker validates the `id_token` against
-   the JWKS at `/api/v1/auth/oidc/callback`.
-2. Did the issuer rotate its signing key? JWKS is cached briefly; a rotation
-   followed by a restart fixes it.
+1. Is the issuer reachable from the cluster? `kubectl exec` into a server pod
+   (distroless — use `kubectl debug` with an ephemeral ubuntu container) and
+   `curl -v $OIDC_JWKS_URL`. The broker validates the `id_token` against the JWKS at
+   `/api/v1/auth/oidc/callback`.
+2. Did the issuer rotate its signing key? JWKS is cached briefly; a rotation then a
+   restart fixes it.
 3. Was the admin role renamed in Keycloak? The server expects
    `realm_access.roles[]` to contain `"admin"` (per CLAUDE.md decision A).
 
 **Remediation**
 
-- Temporarily relax admin access only via a maintenance window. Do not
-  disable auth in production to debug.
+- Relax admin access only via a maintenance window. Do not disable auth in
+  production to debug.
 
 ---
 
@@ -226,14 +220,14 @@ until they expire (`AUTH_SESSION_TTL`).
 **Triage**
 
 - `PUBLIC_RATE_LIMIT_RPM` defaults to 1000 rpm per client IP. Confirm
-  `trustedProxyCIDR` is set so the limit keys on the real client IP, not
-  the ingress controller IP.
+  `trustedProxyCIDR` is set so the limit keys on the real client IP, not the ingress
+  controller IP.
 
 **Remediation**
 
 - Short-term: raise `publicRateLimitRPM` temporarily.
-- Long-term: diagnose abusive client (check top source IPs in access logs)
-  and block via ingress WAF / firewall instead of raising the limit.
+- Long-term: diagnose the abusive client (check top source IPs in access logs) and
+  block via ingress WAF / firewall instead of raising the limit.
 
 ---
 
@@ -254,9 +248,8 @@ kubectl describe pod <pod> | grep -A5 'Last State'
 **Remediation**
 
 1. Raise `server.resources.limits.memory` and redeploy.
-2. If memory keeps growing, suspect a leak — pull a heap profile via the
-   OTel pipeline or `pprof` (requires temporarily enabling the debug
-   endpoint).
+2. If memory keeps growing, suspect a leak — pull a heap profile via the OTel
+   pipeline or `pprof` (requires temporarily enabling the debug endpoint).
 3. File an issue with the time window, pod name, and `/metrics` snapshot.
 
 ---
@@ -278,15 +271,15 @@ kubectl describe pod <pod> | grep -A5 'Last State'
 
 3. Verify: `/readyz` → 200, smoke test passes (`test/load/smoke.js`).
 
-`helm rollback` reverts ConfigMaps/Secrets/Deployments to the previous
-revision. It does **not** reverse database migrations — if the bad release
-shipped a schema change, follow §5 to roll it forward instead.
+`helm rollback` reverts ConfigMaps/Secrets/Deployments to the previous revision. It
+does **not** reverse database migrations — if the bad release shipped a schema
+change, follow §5 to roll it forward instead.
 
 ---
 
 ## 12. Declaring an incident
 
-- Page severity: use SEV2 for user-visible outage, SEV3 for degraded.
+- Page severity: SEV2 for user-visible outage, SEV3 for degraded.
 - Open an incident channel; post every action you take (timestamped).
-- Once resolved, write a postmortem within 48 hours. Store it under
+- Once resolved, write a postmortem within 48 hours under
   `docs/postmortems/<date>-<slug>.md`.

@@ -25,23 +25,22 @@ user UI and an admin UI. See `CLAUDE.md` for conventions and constraints.
 
 - `Publisher` — org/team owning an entry. `{id, slug, name, contact, verified}`.
 - `User` — principal (OIDC-provisioned or local password).
-- `Group` / `RoleGrant` — authorization is publisher-scoped RBAC; roles
-  (Viewer/Editor/Reviewer/Admin) are granted to users or groups per publisher.
-  Server Admin comes from the `realm_access.roles` claim or a local
-  `is_server_admin` flag.
+- `Group` / `RoleGrant` — publisher-scoped RBAC; roles (Viewer/Editor/Reviewer/Admin)
+  granted to users or groups per publisher. Server Admin comes from the
+  `realm_access.roles` claim or a local `is_server_admin` flag.
 
 ### 2.2 MCP Registry
 
 - `MCPServer` — `{id (ULID), namespace (publisher slug), name, slug,
   description, homepage_url, repository_url, license, visibility, status,
   timestamps}`. New entries default to `private`; an Editor/Admin flips to
-  `public` only after the entry has an approved (published) version.
+  `public` only after an approved (published) version exists.
   `status`: `draft | published | deprecated | deleted`.
 - `MCPServerVersion` — `{id, server_id, version (semver), released_at, runtime
   (stdio|http|sse|streamable_http), install, capabilities, tools[],
-  protocol_version, checksum, signature}`. `tools[]` is a typed field (distinct
-  from the MCP spec's `capabilities.tools` negotiation flag). Immutable once
-  published; new publishes create new versions.
+  protocol_version, checksum, signature}`. `tools[]` is a typed field (distinct from
+  the MCP spec's `capabilities.tools` negotiation flag). Immutable once published;
+  new publishes create new versions.
 
 ### 2.3 Agent Registry
 
@@ -51,16 +50,16 @@ user UI and an admin UI. See `CLAUDE.md` for conventions and constraints.
   skills[], capabilities, authentication, default_input_modes,
   default_output_modes, provider, documentation_url, icon_url,
   protocol_version}`.
-- Agent Card = projection of `Agent` + latest published `AgentVersion` into the
-  A2A `AgentCard` schema (a2aproject/a2a June 2025 shape), served at
+- Agent Card = projection of `Agent` + latest published `AgentVersion` into the A2A
+  `AgentCard` schema (a2aproject/a2a June 2025 shape), served at
   `/agents/{namespace}/{slug}/.well-known/agent-card.json` plus a global card at
   `/.well-known/agent-card.json`.
 
 ## 3. API surface (OpenAPI 3.1)
 
 All endpoints under `/api/v1` unless noted. Responses use `application/json`;
-errors use `application/problem+json`. The spec is the source of truth and is
-served live at `/openapi.yaml`.
+errors use `application/problem+json`. The spec is the source of truth, served
+live at `/openapi.yaml`.
 
 ### 3.1 Public (read-only, `visibility=public` entries only)
 
@@ -69,8 +68,8 @@ served live at `/openapi.yaml`.
 - `GET /api/v1/agents` and the symmetric agent paths.
 - `GET /agents/{ns}/{slug}/.well-known/agent-card.json` — A2A Agent Card.
 
-Private/draft entries are hidden from public GETs; members of the owning
-publisher (Viewer and up) and Server Admins see them via the admin endpoints.
+Private/draft entries are hidden from public GETs; members of the owning publisher
+(Viewer and up) and Server Admins see them via the admin endpoints.
 
 ### 3.2 Admin (publisher-scoped RBAC or Server Admin)
 
@@ -78,9 +77,9 @@ publisher (Viewer and up) and Server Admins see them via the admin endpoints.
   publisher-Admin action; `DELETE` is Server-Admin-only). Per-publisher
   `GET /publishers/{slug}/stats` and `…/activity`.
 - MCP: `POST /mcp/servers`, `PATCH /{ns}/{slug}`, `POST /{ns}/{slug}/versions`,
-  `…/versions/{v}:publish`, `…:deprecate`, `…:set-visibility`, plus the
-  change-approval verbs (`submit`/`withdraw`/`approve`/`reject`,
-  `deletion-request`). Agents: symmetric endpoints.
+  `…/versions/{v}:publish`, `…:deprecate`, `…:set-visibility`, plus the change-approval
+  verbs (`submit`/`withdraw`/`approve`/`reject`, `deletion-request`). Agents:
+  symmetric endpoints.
 - Review queue: `GET /api/v1/review-queue` (per-publisher scoped).
 - Users, groups & grants: `GET/POST /api/v1/users`, `/api/v1/groups[...]`,
   per-publisher `/api/v1/publishers/{slug}/grants`, global `/api/v1/grants`.
@@ -93,79 +92,75 @@ publisher (Viewer and up) and Server Admins see them via the admin endpoints.
 
 ## 4. Authentication & authorization
 
-- **Single token authority.** The registry issues a session behind a
-  `Secure; HttpOnly` cookie (BFF model). The SPA holds no token.
+- **Single token authority.** The registry issues a session behind a `Secure;
+  HttpOnly` cookie (BFF model); the SPA holds no token.
 - **OIDC brokered server-side**: the registry is one confidential client.
-  `GET /api/v1/auth/oidc/login` runs Authorization Code + PKCE, `…/callback`
-  exchanges the code with the `client_secret`, validates the `id_token`, maps
-  the identity to a `users` row, and snapshots claim group membership + the
-  claim Server-Admin flag into the session. Sign-out also ends the IdP session
+  `GET /api/v1/auth/oidc/login` runs Authorization Code + PKCE; `…/callback`
+  exchanges the code with the `client_secret`, validates the `id_token` against the
+  JWKS, maps the identity to a `users` row, and snapshots claim group membership +
+  the claim Server-Admin flag into the session. Sign-out also ends the IdP session
   (RP-initiated logout). The IdP token never reaches the browser.
-- **Local accounts**: email + password login (`POST /api/v1/auth/login`) sets
-  the same session cookie. Bootstrap admin seeded from config.
-- **Authorization** is publisher-scoped RBAC: writes require
-  Editor/Reviewer/Admin on the owning publisher, or Server Admin. Reviewer is
-  the sole approver (Admin can do everything except approve; Server Admin is the
-  break-glass exception). Claims carry group membership only.
-- Public GETs are unauthenticated by default (feature flag to require auth);
-  unauthenticated reads are rate-limited. CSRF via SameSite + double-submit
-  token.
+- **Local accounts**: email + password login (`POST /api/v1/auth/login`) sets the
+  same session cookie. Bootstrap admin seeded from config.
+- **Authorization** is publisher-scoped RBAC: writes require Editor/Reviewer/Admin
+  on the owning publisher, or Server Admin. Reviewer is the sole approver (Admin can
+  do everything except approve; Server Admin is the break-glass exception). Claims
+  carry group membership only.
+- Public GETs are unauthenticated by default (feature flag to require auth) and
+  rate-limited. CSRF via SameSite + double-submit token.
 
 ## 5. Shipped so far
 
-All phases through the brokered-OIDC/session rework are shipped. Summary of what
-is built:
+All phases through the brokered-OIDC/session rework are shipped:
 
-- **Backend skeleton** — Go + chi, config (env/YAML/default), structured
-  logging, OTel; `/healthz`/`/readyz`/`/metrics`/`/openapi.yaml`; Postgres +
-  `golang-migrate`; Docker + docker-compose.
-- **MCP registry** — `mcp_servers` / `mcp_server_versions`, CRUD + public
-  reads, typed `tools[]` field, structural JSONB validation, testcontainers
-  integration tests.
-- **Agent registry + A2A cards** — `agents` / `agent_versions`, per-agent and
-  global Agent Cards (a2a June 2025 shape), skills/auth-scheme validation.
-- **Web app** — Vite + React Router v7 + TanStack Query v5 + shadcn/ui +
-  Tailwind SPA served by nginx; public browse (search, filters, cursor
-  pagination, namespace landing pages, per-entry activity feed) + role-aware
-  admin CRUD with a publisher-scoped admin home (Overview, Members, Activity,
-  Settings, switcher).
-- **Hardening** — rate limiting, CORS, audit log, full-text search, Helm chart,
-  E2E (Playwright), handler-level write-path coverage, OpenAPI↔router contract
-  test, OTel span-emission tests, CI lint gate + pre-commit hooks.
+- **Backend skeleton** — Go + chi, config (env/YAML/default), structured logging,
+  OTel; `/healthz`/`/readyz`/`/metrics`/`/openapi.yaml`; Postgres + `golang-migrate`;
+  Docker + docker-compose.
+- **MCP registry** — `mcp_servers` / `mcp_server_versions`, CRUD + public reads,
+  typed `tools[]` field, structural JSONB validation, testcontainers integration
+  tests.
+- **Agent registry + A2A cards** — `agents` / `agent_versions`, per-agent and global
+  Agent Cards (a2a June 2025 shape), skills/auth-scheme validation.
+- **Web app** — Vite + React Router v7 + TanStack Query v5 + shadcn/ui + Tailwind SPA
+  served by nginx; public browse (search, filters, cursor pagination, namespace
+  landing pages, per-entry activity feed) + role-aware admin CRUD with a
+  publisher-scoped admin home (Overview, Members, Activity, Settings, switcher).
+- **Hardening** — rate limiting, CORS, audit log, full-text search, Helm chart, E2E
+  (Playwright), handler-level write-path coverage, OpenAPI↔router contract test, OTel
+  span-emission tests, CI lint gate + pre-commit hooks.
 - **Access control & change-approval** — `review_state` + `revision` workflow
-  (submit → pending → approve/reject), discriminated 409 error model, review
-  queue, pending-deletion flow.
+  (submit → pending → approve/reject), discriminated 409 error model, review queue,
+  pending-deletion flow.
 - **Publisher-scoped RBAC + local accounts** — `users`/`groups`/`group_members`/
-  `role_grants`; Editor authors, Reviewer is sole approver, going public needs
-  an approved version; OIDC JIT-provisioning alongside local password accounts;
+  `role_grants`; Editor authors, Reviewer is sole approver, going public needs an
+  approved version; OIDC JIT-provisioning alongside local password accounts;
   bootstrap can seed groups + grants. (The earlier workspace layer was removed.)
-- **Brokered OIDC + registry cookie sessions** — confidential-client OIDC
-  broker, `sessions` table + HttpOnly cookie, single-issuer auth; the SPA
-  dropped `oidc-client-ts`. The MCP-registry-spec `/v0` surface and the OAuth
-  resource-server role were removed; MCP servers are exposed only via
-  `/api/v1`.
+- **Brokered OIDC + registry cookie sessions** — confidential-client OIDC broker,
+  `sessions` table + HttpOnly cookie, single-issuer auth; the SPA dropped
+  `oidc-client-ts`. The MCP-registry-spec `/v0` surface and the OAuth resource-server
+  role were removed; MCP servers are exposed only via `/api/v1`.
 
-See `CHANGELOG.md` for the per-release detail.
+See `CHANGELOG.md` for per-release detail.
 
 ## 6. Later
 
 Not-yet-done future work, in no committed order:
 
-- **API-key (M2M) auth** — hashed per-publisher API keys for machine-to-machine
-  admin ops (CI/CD publish pipelines), checked via `Authorization: Bearer
-  apikey_…`. Includes the real `/admin/api-keys` management page (currently a
-  placeholder) and the `POST/DELETE /api/v1/api-keys` endpoints.
-- **Production docker-compose profile** — a dedicated `docker-compose.prod.yml`
-  for self-hosted single-host installs.
+- **API-key (M2M) auth** — hashed per-publisher API keys for machine-to-machine admin
+  ops (CI/CD publish pipelines), checked via `Authorization: Bearer apikey_…`.
+  Includes the real `/admin/api-keys` management page (currently a placeholder) and
+  the `POST/DELETE /api/v1/api-keys` endpoints.
+- **Production docker-compose profile** — a dedicated `docker-compose.prod.yml` for
+  self-hosted single-host installs.
 - **Skills & Prompts registry** — same pattern as MCP servers.
 - **Signed publishes** — sigstore/cosign.
 - **Webhooks** on publish events.
 - **Federation** with the public MCP registry.
 - **Multi-environment entries** — dev/staging/prod per entry, each with its own
-  URL/transport/auth/version pin. Design note in
-  `docs/future-multi-environment.md`; do not implement until revisited.
-- **Review-workflow extensions** — forbid self-approval, notifications, SLA
-  timers, bulk approval, reviewer comments, revision diff view in the admin UI.
+  URL/transport/auth/version pin. Design note in `docs/future-multi-environment.md`;
+  do not implement until revisited.
+- **Review-workflow extensions** — forbid self-approval, notifications, SLA timers,
+  bulk approval, reviewer comments, revision diff view in the admin UI.
 
 ## 7. Resolved decisions
 

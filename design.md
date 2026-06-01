@@ -1,7 +1,7 @@
 # AI Registry — Design Document
 
-This document covers the full design of the AI Registry: system architecture,
-observability strategy, data and API design, and UI/UX specification.
+Full design of the AI Registry: system architecture, observability, data & API
+design, and UI/UX.
 
 ---
 
@@ -21,7 +21,6 @@ observability strategy, data and API design, and UI/UX specification.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          Clients                                │
-│                                                                 │
 │      Browser (Public UI)            Browser (Admin UI)         │
 └────────────────────┬──────────────────────┬────────────────────┘
                      │                      │
@@ -40,7 +39,6 @@ observability strategy, data and API design, and UI/UX specification.
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Go Backend (chi)                         │
-│                                                                 │
 │  Middleware chain:                                             │
 │  OTel trace → request-id → CORS → rate-limit → session auth     │
 │  → publisher-role / reviewer guards (per route)                 │
@@ -55,7 +53,6 @@ observability strategy, data and API design, and UI/UX specification.
 │  │  review-queue            │                                  │
 │  │  reports  audit  stats   │                                  │
 │  └──────────────────────────┘                                  │
-│                                                                 │
 │  Internal packages:                                             │
 │  domain │ store │ auth │ mcp │ agents │ bootstrap │ observ.    │
 └──────────────────────┬──────────────────────────────────────────┘
@@ -64,7 +61,6 @@ observability strategy, data and API design, and UI/UX specification.
           ▼                         ▼
 ┌──────────────────────┐  ┌──────────────────────┐
 │     PostgreSQL       │  │   Keycloak (IdP)     │
-│                      │  │                      │
 │  publishers          │  │  OIDC (brokered;     │
 │  users / groups      │  │  registry is a       │
 │  role_grants         │  │  single confidential │
@@ -76,8 +72,7 @@ observability strategy, data and API design, and UI/UX specification.
 │  audit_log           │
 │  reports             │  ┌──────────────────────┐
 │                      │  │   OTel Collector     │
-└──────────────────────┘  │                      │
-                          │  OTLP gRPC :4317     │
+└──────────────────────┘  │  OTLP gRPC :4317     │
                           │  → Jaeger (traces)   │
                           │  → Prometheus (metr) │
                           │  → Loki (logs)       │
@@ -188,15 +183,17 @@ ServiceMonitor → Prometheus scrape
 
 ### 2.1 Principles
 
-- A single OTel SDK setup in `/internal/observability/` provides a `TracerProvider`,
-  `MeterProvider`, and `LoggerProvider`. These are wired into `context.Context`
-  at startup and never created ad-hoc.
-- Every exported function that touches the network or DB receives a `context.Context`
-  and propagates the span.
-- Structured logs always carry `trace_id` and `span_id` to enable log-to-trace
+- A single OTel SDK setup in `/internal/observability/` provides a
+  `TracerProvider`, `MeterProvider`, and `LoggerProvider`, wired into
+  `context.Context` at startup and never created ad-hoc.
+- Every exported function that touches the network or DB receives a
+  `context.Context` and propagates the span.
+- Structured logs always carry `trace_id` and `span_id` for log-to-trace
   correlation in the collector pipeline.
 
 ### 2.2 Tracing
+
+Propagation: W3C TraceContext (`traceparent` / `tracestate` headers).
 
 | Span name | Kind | Attributes |
 |-----------|------|------------|
@@ -206,11 +203,9 @@ ServiceMonitor → Prometheus scrape
 | `agent.card_generate` | INTERNAL | `agent.id`, `agent.version` |
 | `auth.session_resolve` | INTERNAL | `auth.method=oidc\|local`, result |
 
-Propagation format: W3C TraceContext (`traceparent` / `tracestate` headers).
-
 ### 2.3 Metrics
 
-All metrics are registered once in `/internal/observability/metrics.go`.
+Registered once in `/internal/observability/metrics.go`.
 
 | Metric name | Type | Labels | Description |
 |-------------|------|--------|-------------|
@@ -224,10 +219,8 @@ All metrics are registered once in `/internal/observability/metrics.go`.
 
 ### 2.4 Structured Logging
 
-Log format: JSON, emitted via `slog` with an OTel bridge so records flow
-through the `LoggerProvider` to the collector.
-
-Required fields on every log line:
+JSON via `slog` with an OTel bridge, so records flow through the
+`LoggerProvider` to the collector. Required fields on every line:
 
 ```json
 {
@@ -279,8 +272,8 @@ reports (polymorphic: target_type + target_id; admin triages)
 ```
 
 Every MCP server / agent belongs to exactly one publisher; resources are
-publisher-scoped. Authorization is publisher-scoped RBAC — `role_grants` ties
-a role (Viewer/Editor/Reviewer/Admin) to a user or group on a publisher (or
+publisher-scoped. Authorization is publisher-scoped RBAC — `role_grants` ties a
+role (Viewer/Editor/Reviewer/Admin) to a user or group on a publisher (or
 globally when `publisher_id` is NULL).
 
 ### 3.2 Key Table Schemas
@@ -382,18 +375,17 @@ created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 ```
 
 Indexes: `(publisher_id, slug)` on entry tables, `(server_id, version)` on
-versions, `(publisher_id, principal_type, principal_id, role)` on
-`role_grants`, `(user_id)` and `(expires_at)` on `sessions`, `status`,
-`visibility`, `review_state` (partial index `WHERE review_state =
-'pending_review'`) to make the review queue scan cheap. Full-text index on
-`name || ' ' || description` via `tsvector`.
+versions, `(publisher_id, principal_type, principal_id, role)` on `role_grants`,
+`(user_id)` and `(expires_at)` on `sessions`, `status`, `visibility`,
+`review_state` (partial index `WHERE review_state = 'pending_review'`) to make
+the review queue scan cheap. Full-text index on `name || ' ' || description`
+via `tsvector`.
 
 ### 3.3 Version Lifecycle State Machine
 
-Two orthogonal axes: the publish-status axis (`status` / `published_at`)
-and the review-state axis (`review_state`). The publish axis drives what's
-visible to public readers; the review axis decides who is allowed to make the
-next publish-axis transition.
+Two orthogonal axes: the publish-status axis (`status` / `published_at`) drives
+what public readers see; the review-state axis (`review_state`) decides who may
+make the next publish-axis transition.
 
 **Publish axis**
 
@@ -413,8 +405,8 @@ next publish-axis transition.
       └────────────┘
 ```
 
-Published versions are immutable: no `PATCH` on a `mcp_server_versions`
-row after `published_at` is set.
+Published versions are immutable: no `PATCH` on a `mcp_server_versions` row
+after `published_at` is set.
 
 **Review axis** (change-approval workflow)
 
@@ -445,21 +437,20 @@ row after `published_at` is set.
         └──────────┘    moves them back to pending_review.
 ```
 
-Publisher Editors can drive `none → pending_review` and
-`pending_review → none` (withdraw). Only Reviewers can drive
-`pending_review → none` via approve (which also runs the publish-axis
-transition) or `pending_review → rejected`. Every transition increments
-the row's `revision` counter, so concurrent edits surface a discriminated
-409 (`review-revision-mismatch`) instead of clobbering each other.
+Publisher Editors can drive `none → pending_review` and `pending_review → none`
+(withdraw). Only Reviewers can drive `pending_review → none` via approve (which
+also runs the publish-axis transition) or `pending_review → rejected`. Every
+transition increments the row's `revision` counter, so concurrent edits surface
+a discriminated 409 (`review-revision-mismatch`) instead of clobbering each
+other.
 
-Entries themselves can also have a pending-deletion review attached;
-this is implemented as a row in the same review queue scoped to the
-entry rather than a single version.
+Entries themselves can also carry a pending-deletion review, implemented as a
+row in the same review queue scoped to the entry rather than a single version.
 
 ### 3.4 Pagination & Filtering
 
-All list endpoints use **cursor-based pagination** (opaque base64 cursor encoding
-`(created_at, id)` for stable ordering):
+All list endpoints use **cursor-based pagination** (opaque base64 cursor
+encoding `(created_at, id)` for stable ordering):
 
 ```
 GET /api/v1/mcp/servers?q=search&namespace=acme&limit=20&cursor=<opaque>
@@ -499,11 +490,10 @@ Response:
 | `rate-limited` | 429 | Too many requests; `Retry-After` header set |
 | `internal` | 500 | Unexpected server error |
 
-The `review-*` and `already-published` types are **discriminated** — the
-admin UI maps each `type` to a friendly inline message ("the version
-was edited since this page loaded — refresh"; "another version on this
-entry is already pending review"; etc.). Don't fold them into a generic
-`conflict`.
+The `review-*` and `already-published` types are **discriminated** — the admin
+UI maps each `type` to a friendly inline message ("the version was edited since
+this page loaded — refresh"; "another version on this entry is already pending
+review"; etc.). Don't fold them into a generic `conflict`.
 
 ---
 
@@ -511,7 +501,9 @@ entry is already pending review"; etc.). Don't fold them into a generic
 
 ### 4.1 Design System
 
-**Framework**: Vite + React 19 + React Router v7 + shadcn/ui + Tailwind CSS v4. The whole application ships as a static SPA; nginx serves the bundle and proxies API paths to the Go backend.
+**Framework**: Vite + React 19 + React Router v7 + shadcn/ui + Tailwind CSS v4.
+The whole app ships as a static SPA; nginx serves the bundle and proxies API
+paths to the Go backend.
 
 #### Color Palette
 
@@ -532,9 +524,8 @@ entry is already pending review"; etc.). Don't fold them into a generic
 | `card` | `white` | Card background |
 
 Dark mode mirrors the same tokens with `slate-950` background and `slate-100`
-foreground, toggled via a `class="dark"` on `<html>` by a local
-`ThemeProvider`. shadcn/ui's CSS variable system handles the swap
-automatically.
+foreground, toggled via `class="dark"` on `<html>` by a local `ThemeProvider`;
+shadcn/ui's CSS variable system handles the swap automatically.
 
 #### Typography
 
@@ -546,17 +537,15 @@ automatically.
 | Label / caption | `font-sans` | 500 | `text-xs` – `text-sm` |
 | Code / version | `font-mono` (system monospace stack) | 400 | `text-xs` – `text-sm` |
 
-The web app does not bundle a webfont — Tailwind's default system stacks
-(`font-sans` → `ui-sans-serif, system-ui, …`; `font-mono` →
-`ui-monospace, SFMono-Regular, …`) keep first-paint fast and the bundle
-small.
+No bundled webfont — Tailwind's default system stacks (`font-sans` →
+`ui-sans-serif, system-ui, …`; `font-mono` → `ui-monospace, SFMono-Regular, …`)
+keep first-paint fast and the bundle small.
 
 #### Spacing & Radius
 
 - Base unit: `4px` (Tailwind default).
-- Card radius: `rounded-xl` (12px).
-- Button radius: `rounded-lg` (8px).
-- Input radius: `rounded-md` (6px).
+- Card radius: `rounded-xl` (12px); button radius: `rounded-lg` (8px); input
+  radius: `rounded-md` (6px).
 - Page max-width: `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`.
 
 ---
@@ -568,9 +557,7 @@ small.
 │  TOPBAR (sticky, white, border-b)                   │
 │  [Logo]  MCP Servers  Agents  Docs     [Search ⌘K]  │
 └─────────────────────────────────────────────────────┘
-│                                                     │
 │  PAGE CONTENT (max-w-7xl)                           │
-│                                                     │
 └─────────────────────────────────────────────────────┘
 │  FOOTER (slate-900 bg)                              │
 │  Links · Status · GitHub · Docs                     │
@@ -584,7 +571,7 @@ small.
   if a session exists).
 
 **Homepage** (`/`):
-- Hero section: headline + sub-headline + search bar (prominent, centered).
+- Hero: headline + sub-headline + prominent centered search bar.
 - Two stat tiles: "N MCP Servers" / "N Agents" (from `/api/v1/public-stats`).
 - Featured entries grid (6 cards, pinned by admin).
 
@@ -610,25 +597,23 @@ small.
 **Detail pages** (`/mcp/{ns}/{slug}`, `/agents/{ns}/{slug}`):
 - Two-column: main (content) 2/3 + aside (metadata) 1/3.
 - Tabs: Overview · Versions · Install.
-- Install tab shows copy-ready shell snippets per runtime/package manager.
+- Install tab: copy-ready shell snippets per runtime/package manager.
 - Versions tab: table with semver, release date, protocol version, status badge.
 
 ---
 
 ### 4.3 Admin UI Layout
 
-Guarded by `<RequireAuth>` wrapping every `/admin/*` route. Authentication is
-a registry session behind an HttpOnly cookie: `login()` redirects to the
-server's `/api/v1/auth/oidc/login` (brokered, server-side) or the local form
-POSTs `/api/v1/auth/login`. The SPA learns its identity and grants from
-`GET /api/v1/me`. Unauthenticated visits to a guarded route redirect to the
-login page.
+Guarded by `<RequireAuth>` wrapping every `/admin/*` route. Auth is a registry
+session behind an HttpOnly cookie: `login()` redirects to the server's
+`/api/v1/auth/oidc/login` (brokered, server-side) or the local form POSTs
+`/api/v1/auth/login`. The SPA learns identity and grants from `GET /api/v1/me`.
+Unauthenticated visits to a guarded route redirect to the login page.
 
 ```
 ┌──────────┬──────────────────────────────────────────┐
 │ SIDEBAR  │  TOPBAR (breadcrumb + theme + user menu)  │
 │ md+ only │──────────────────────────────────────────│
-│          │                                           │
 │ Dashboard│  PAGE CONTENT                             │
 │ Review   │                                           │
 │   queue  │  ⓘ                                        │
@@ -641,39 +626,35 @@ login page.
 │ Reports  │                                           │
 │ Audit    │                                           │
 │ API Keys │ (placeholder — see PLAN.md v0.4.x)        │
-│          │                                           │
 └──────────┴──────────────────────────────────────────┘
 ```
 
 **Sidebar** (`w-56`, `border-r bg-muted/30`, `hidden md:block`):
 - Each nav item: icon (lucide-react) + label, active style via `cn()`.
-- The Review queue item carries a live count badge fed by a TanStack
-  Query hook against `/api/v1/review-queue?limit=99` with a 30-second
-  refetch interval (reads "99+" past 99). The cache is invalidated on
-  every change-approval mutation toast so the count stays current.
-- Mobile (`<md`): the static sidebar is hidden. A hamburger button in
-  the header opens a fixed-position drawer that reuses the same
-  `AdminSidebar` component with `mobile={true}`. The drawer dismisses
-  on Escape, on backdrop click, on a nav-link tap, and on
-  `location.pathname` change. Body scroll is locked while open.
+- The Review queue item carries a live count badge fed by a TanStack Query hook
+  against `/api/v1/review-queue?limit=99` with a 30-second refetch interval
+  (reads "99+" past 99); the cache is invalidated on every change-approval
+  mutation toast so the count stays current.
+- Mobile (`<md`): the static sidebar is hidden; a hamburger button in the header
+  opens a fixed-position drawer reusing the same `AdminSidebar` component with
+  `mobile={true}`. The drawer dismisses on Escape, backdrop click, nav-link tap,
+  and `location.pathname` change. Body scroll is locked while open.
 
 **Grants section** (publisher detail page):
-- Renders below the publisher Edit / Delete actions, before the MCP
-  servers and agents tables.
-- Lists the publisher's role grants — principal (user/group) · role ·
-  source — with a "Grant role" form to add a Viewer/Editor/Reviewer/Admin
-  grant to a user or group and a per-row Revoke action. Backed by the
+- Renders below the publisher Edit / Delete actions, before the MCP servers and
+  agents tables.
+- Lists the publisher's role grants — principal (user/group) · role · source —
+  with a "Grant role" form to add a Viewer/Editor/Reviewer/Admin grant to a user
+  or group and a per-row Revoke action. Backed by the
   `/api/v1/publishers/{slug}/grants` endpoints.
 
 **Review queue page** (`/admin/review`):
-- Reviewer-only (gated by `RequireReviewer`; non-reviewers see a 403
-  page).
-- One list of pending items, each rendered as either a "version
-  pending review" card (entry slug, version, revision, submitter
-  email + timestamp) or a "deletion request" card.
-- Actions: Approve · Reject (which opens an inline reason form;
-  reason is required and stored on the version's
-  `rejection_reason`).
+- Reviewer-only (gated by `RequireReviewer`; non-reviewers see a 403 page).
+- One list of pending items, each rendered as either a "version pending review"
+  card (entry slug, version, revision, submitter email + timestamp) or a
+  "deletion request" card.
+- Actions: Approve · Reject (Reject opens an inline reason form; reason is
+  required and stored on the version's `rejection_reason`).
 - Per-version cards on entry detail pages mirror the same data with
   Submit / Withdraw / Resubmit buttons gated by `review_state`.
 
@@ -683,27 +664,26 @@ login page.
 - Status and visibility shown as colored badges.
 - Search/filter bar above the table.
 
-**Forms**: native HTML forms + shadcn/ui `<Input>` / `<Label>` / `<Button>`.
-No react-hook-form / zod dependency in the admin tree — forms are simple
-enough that `FormData` parsing inside the submit handler suffices.
-- Inline validation errors below each form, scoped to the action that
-  produced them (`createError` / `editError` / `deleteError` rather
-  than a single section banner). Every error region carries
-  `role="alert"` so screen readers announce it.
-- "Save changes" (primary, right) + "Cancel" (outline, left) on edit
-  forms; reordering matches dialog conventions.
-- Destructive actions use a `window.confirm` gate. The DeleteButton
-  itself is rendered with quiet styling (outline + destructive text +
-  faded border, fills red on hover) so it doesn't drown out the
-  row's primary actions; the `confirm` dialog is the real safety
-  net.
+**Forms**: native HTML forms + shadcn/ui `<Input>` / `<Label>` / `<Button>`. No
+react-hook-form / zod in the admin tree — `FormData` parsing inside the submit
+handler suffices.
+- Inline validation errors below each form, scoped to the action that produced
+  them (`createError` / `editError` / `deleteError` rather than a single section
+  banner). Every error region carries `role="alert"` so screen readers announce
+  it.
+- "Save changes" (primary, right) + "Cancel" (outline, left) on edit forms,
+  matching dialog conventions.
+- Destructive actions use a `window.confirm` gate. The DeleteButton is rendered
+  with quiet styling (outline + destructive text + faded border, fills red on
+  hover) so it doesn't drown out the row's primary actions; the `confirm` dialog
+  is the real safety net.
 
 **Toast notifications** (`sonner`, mounted at the app root):
-- Triggered on every change-approval mutation (submit, withdraw,
-  approve, reject, request deletion) and on grant/group/user CRUD.
+- Triggered on every change-approval mutation (submit, withdraw, approve,
+  reject, request deletion) and on grant/group/user CRUD.
 - Position: top-right; rich colors; close button.
-- The cache for the sidebar's review-queue badge is invalidated
-  alongside change-approval toasts so the count stays in sync.
+- The sidebar review-queue badge cache is invalidated alongside change-approval
+  toasts so the count stays in sync.
 
 ---
 
@@ -728,14 +708,14 @@ enough that `FormData` parsing inside the submit handler suffices.
 
 ### 4.5 Responsive Breakpoints
 
+Mobile-first: all layouts start single-column and expand at breakpoints.
+
 | Breakpoint | Width | Layout changes |
 |------------|-------|----------------|
 | `sm` | 640px | Search bar expands |
 | `md` | 768px | 2-col card grid |
 | `lg` | 1024px | 3-col grid; filter sidebar visible; admin sidebar visible |
 | `xl` | 1280px | Detail page 2-col layout |
-
-Mobile-first: all layouts start single-column and expand at breakpoints.
 
 ---
 

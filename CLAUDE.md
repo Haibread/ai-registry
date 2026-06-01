@@ -43,22 +43,19 @@ A centralized registry for AI ecosystem artifacts:
 - **Server**: Go, `chi` router, PostgreSQL, `pgx` for DB access (no ORM,
   hand-written SQL), `golang-migrate` for schema migrations.
 - **Auth**: two login front doors, both ending in a **registry-issued session
-  behind a `Secure; HttpOnly` cookie** (BFF). OIDC is **brokered server-side**:
-  the registry is a single **confidential** OIDC client (Keycloak in dev) — the
-  browser hits `/api/v1/auth/oidc/login`, the server runs the Authorization
-  Code + PKCE flow, exchanges the code with its `client_secret`, maps the
-  external identity to an internal `users` row, and the IdP token never reaches
-  the browser. Local email + password login sets the same session cookie. The
-  registry is the **single token authority** — no multi-issuer validation and
-  no MCP wall. Claim group membership and the
-  claim-based Server-Admin flag are **snapshotted into the session at login**.
-  **Authorization** is publisher-scoped RBAC: users, groups, and role grants
-  live in the registry; claims carry group membership only. Server
-  Admin comes from the `realm_access.roles` claim **or** a local
-  `is_server_admin` flag (bootstrap admin). Hashed per-publisher API keys for
-  machine-to-machine ops remain planned (Decision B). The SPA is **not** an
-  OIDC client — no `oidc-client-ts`, no client secret in the browser, no
-  NextAuth/Auth.js.
+  behind a `Secure; HttpOnly` cookie** (BFF). OIDC is **brokered server-side** —
+  the registry is a single **confidential** client (Keycloak in dev): the
+  browser hits `/api/v1/auth/oidc/login`, the server runs Authorization Code +
+  PKCE, exchanges the code with its `client_secret`, and maps the identity to a
+  `users` row; the IdP token never reaches the browser. Local email+password
+  login sets the same cookie. The registry is the **single token authority** (no
+  multi-issuer validation, no MCP wall). Claim group membership + the claim
+  Server-Admin flag are **snapshotted into the session at login**.
+  **Authorization** is publisher-scoped RBAC: users, groups, and grants live in
+  the registry; claims carry group membership only. Server Admin comes from
+  `realm_access.roles` **or** local `is_server_admin` (bootstrap admin).
+  Per-publisher API keys (M2M) remain planned (Decision B). The SPA is **not** an
+  OIDC client — no `oidc-client-ts`, no browser client secret, no NextAuth/Auth.js.
 - **Frontend**: Vite + React Router v7 + TanStack Query v5 + TypeScript +
   shadcn/ui + Tailwind. A pure SPA served as static files from nginx. Public
   section for browsing; `/admin` section guarded by a `<RequireAuth>` wrapper.
@@ -137,16 +134,14 @@ ways, with the listed precedence (highest wins):
 
 Rules for implementors:
 
-- Adding a new config value means adding it in all three places: the env-var
-  reader, the YAML key reader, and the default. Never add an env-only or
-  file-only knob.
-- Env var always overrides the config file; the config file always overrides
-  the default. This lets operators use a base config file and override specific
-  values per-environment via env vars without touching the file.
-- Config file format is **YAML**. The file is optional — if absent the server
-  runs on env vars and defaults alone.
-- Sensitive values (passwords, tokens, DSNs) SHOULD be supplied via env var
-  or a secrets manager, not committed in a config file.
+- A new config value goes in all three places (env-var reader, YAML key reader,
+  default). Never add an env-only or file-only knob.
+- Precedence: env var > config file > default — so operators can keep a base
+  config file and override per-environment via env vars without editing it.
+- Config file format is **YAML**, and optional — absent, the server runs on env
+  vars and defaults alone.
+- Sensitive values (passwords, tokens, DSNs) SHOULD come from env or a secrets
+  manager, not a committed config file.
 - All config keys (env and file) MUST be documented in `deploy/.env.example`
   with a comment explaining the value and its default.
 
