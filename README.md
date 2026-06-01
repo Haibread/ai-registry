@@ -9,7 +9,7 @@
 AI Registry gives teams a single place to publish, discover, and evaluate the building blocks of the AI ecosystem. Every entry is:
 
 - **Versioned** — immutable published versions, draft/deprecated lifecycle.
-- **Spec-compatible** — MCP endpoints conform to the [Model Context Protocol](https://modelcontextprotocol.io/) registry shape; every agent emits a [Google A2A](https://a2a-protocol.org/) Agent Card at `/.well-known/agent-card.json`.
+- **Spec-aware** — MCP server metadata follows the [Model Context Protocol](https://modelcontextprotocol.io/) `server.json` field shapes; every agent emits a [Google A2A](https://a2a-protocol.org/) Agent Card at `/.well-known/agent-card.json`.
 - **API-first** — the UIs are thin clients. Nothing lives in the UI that isn't in the API.
 - **Observable** — every handler is traced, every DB call is a child span, every business metric is an OTel counter or histogram.
 
@@ -21,7 +21,6 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 
 - Browse, search, filter, and inspect MCP servers by namespace, runtime (stdio / http / sse), ecosystem (npm / pypi / oci / …), verification status, and tags.
 - First-class `tools[]` field on each version — the publisher-declared tool list, distinct from the MCP spec's `capabilities.tools` capability-negotiation flag. Tool cards render name, description, input schema, and annotations on the detail page.
-- Strict `/v0/` endpoints pinned to the MCP registry wire format (top-level `servers`, `metadata.count`/`nextCursor`, RFC 7807 errors, RFC 3339 timestamps) and validated by a 40-test conformance suite.
 - View/copy counters, freshness indicators, report-entry workflow.
 
 ### Agent Registry
@@ -39,12 +38,10 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 
 ### AuthN/AuthZ
 
-- OAuth 2.1 / OIDC with PKCE (public client via [`oidc-client-ts`](https://github.com/authts/oidc-client-ts) — no client secret, no NextAuth/Auth.js).
+- **Registry-issued sessions (BFF).** Both login front doors end in a `Secure; HttpOnly` cookie session — the browser never holds a token. OIDC is brokered server-side: the registry is a single confidential client that runs Authorization Code + PKCE at `/api/v1/auth/oidc/login`, exchanges the code with its `client_secret`, validates the `id_token`, and maps the identity to a `users` row; sign-out triggers RP-initiated logout so the IdP session ends too. Local email + password login (`POST /api/v1/auth/login`) sets the same cookie. Server Admin comes from `realm_access.roles[]` containing `"admin"` **or** a local `is_server_admin` flag (bootstrap admin).
 - Keycloak in local dev via docker-compose with a pre-seeded realm.
-- Two login front doors: OIDC (Keycloak in dev) **and** local email + password accounts — the registry signs its own RS256 tokens for the latter and walls them off the MCP surface. Server Admin comes from `realm_access.roles[]` containing `"admin"` **or** a local `is_server_admin` flag.
 - **Publisher-scoped RBAC** — roles (Viewer/Editor/Reviewer/Admin) are granted to users or groups on a publisher; Editor authors, Reviewer approves, Admin manages, or global Server Admin. Write endpoints 403 without the role, independent of the UI. Claims carry **group membership only** — the JWT claim path is configurable via `AUTH_GROUPS_CLAIM` (default `groups`). The admin list endpoints take `mine=true` to scope results to the publishers the caller holds a role on (authors don't see each other's resources); `GET /api/v1/me` returns the caller's identity + effective grants for role-gating the UI.
 - **Change-approval workflow** — publisher Editors submit version edits or deletion requests that a Reviewer approves before they go live. The cross-publisher review queue is gated by the reviewer group (`AUTH_REVIEWER_GROUP`, default `registry-reviewers`). Discriminated 409 errors prevent stale-edit clobbering.
-- MCP-authorization-spec compatible (resource indicators, protected resource metadata).
 
 ### Observability
 
@@ -59,11 +56,11 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 
 **Server** — Go 1.25 · [chi](https://github.com/go-chi/chi) v5 · [pgx/v5](https://github.com/jackc/pgx) · PostgreSQL 18 · [golang-migrate](https://github.com/golang-migrate/migrate) · [jwt/v5](https://github.com/golang-jwt/jwt) · [oklog/ulid](https://github.com/oklog/ulid) · [testcontainers-go](https://github.com/testcontainers/testcontainers-go) · OpenTelemetry SDK + OTLP exporter
 
-**Frontend** — [Vite](https://vitejs.dev/) · React 19 · [React Router v7](https://reactrouter.com/) · [TanStack Query v5](https://tanstack.com/query/v5) · TypeScript · [shadcn/ui](https://ui.shadcn.com/) + Radix · Tailwind v4 · [oidc-client-ts](https://github.com/authts/oidc-client-ts) · Vitest + React Testing Library · Playwright (e2e)
+**Frontend** — [Vite](https://vitejs.dev/) · React 19 · [React Router v7](https://reactrouter.com/) · [TanStack Query v5](https://tanstack.com/query/v5) · TypeScript · [shadcn/ui](https://ui.shadcn.com/) + Radix · Tailwind v4 · Vitest + React Testing Library · Playwright (e2e)
 
 **Infra** — docker-compose (`docker-compose.yml` baseline + `dev` overlay; `ci` overlay for CI only) · Helm chart with optional CNPG-managed PostgreSQL 18 cluster, HTTPRoute, and Ingress · Keycloak for local OIDC · OTel Collector. (A dedicated `docker-compose.prod.yml` profile is parked under v0.4.x.)
 
-**API spec** — Hand-written OpenAPI 3.1 at `server/api/openapi.yaml` (**81 operations**), embedded into the binary and served live at `/openapi.yaml`. Server types and the TypeScript client are generated from the spec. A bijection test ensures the router and spec never drift.
+**API spec** — Hand-written OpenAPI 3.1 at `server/api/openapi.yaml` (**90 operations**), embedded into the binary and served live at `/openapi.yaml`. Server types and the TypeScript client are generated from the spec. A bijection test ensures the router and spec never drift.
 
 ---
 
@@ -75,7 +72,7 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
        │   (read-only)   │   │ (/admin, auth)  │
        └────────┬────────┘   └────────┬────────┘
                 │                     │
-                │  HTTP/JSON (v1/v0)  │
+                │    HTTP/JSON (v1)   │
                 └──────────┬──────────┘
                            ▼
                   ┌─────────────────┐
@@ -100,9 +97,9 @@ server/             Go service
 ├── cmd/server/     Entrypoint
 ├── internal/
 │   ├── http/       chi router, handlers, middleware (auth, logging, rate limit)
-│   ├── mcp/        MCP registry endpoints + /v0/ wire-format layer
+│   ├── mcp/        MCP registry endpoints
 │   ├── agents/     Agent registry + A2A card generation
-│   ├── auth/       OIDC/JWT validation, scopes, admin guard
+│   ├── auth/       OIDC broker, session validation, RBAC guards
 │   ├── store/      Postgres repositories (pgx)
 │   ├── domain/     Entities, validation
 │   ├── bootstrap/  Seed-from-YAML with idempotent upsert + narrow tools backfill
@@ -113,7 +110,7 @@ web/                Vite + React SPA (public + admin)
 ├── src/components/ shadcn/ui + feature components
 ├── src/pages/      React Router v7 routes
 ├── src/lib/        API client (generated from OpenAPI), utils
-└── src/auth/       oidc-client-ts PKCE flow
+└── src/auth/       session-cookie auth (login redirect + /api/v1/me)
 
 deploy/             docker-compose profiles, Keycloak realm, OTel config
 └── helm/ai-registry/  Kubernetes chart (optional CNPG cluster)
@@ -145,11 +142,10 @@ Then open:
 | http://localhost:8080/admin  | Admin SPA (sign in via Keycloak)                    |
 | http://localhost:8081/openapi.yaml | Live OpenAPI 3.1 spec                         |
 | http://localhost:8081/api/v1/mcp/servers | JSON API (versioned)                    |
-| http://localhost:8081/v0/servers         | MCP-registry-spec wire format           |
 | http://localhost:8081/.well-known/agent-card.json | Global A2A Agent Card          |
 | http://localhost:8180/       | Keycloak (realm `ai-registry`)                      |
 
-The dev realm provisions four users so every Phase 7 path is reachable out of the box. See [`deploy/keycloak-realm-dev.json`](deploy/keycloak-realm-dev.json) for the full definition.
+The dev realm provisions four users so every authorization path is reachable out of the box. See [`deploy/keycloak-realm-dev.json`](deploy/keycloak-realm-dev.json) for the full definition.
 
 | Username                  | Password   | Realm role | Groups                              | Exercises                                    |
 | ---                       | ---        | ---        | ---                                 | ---                                          |
@@ -199,12 +195,12 @@ See `deploy/config.example.yaml` and `deploy/.env.example` for the full list. Se
 
 ## API surface
 
-96 operations across these tags:
+90 operations across these tags:
 
 | Tag          | Purpose                                                        |
 | ---          | ---                                                            |
 | `system`     | `/healthz`, `/readyz`, OpenAPI spec, global `.well-known/*`    |
-| `auth`       | Local email + password login (`POST /api/v1/auth/login`); caller identity + effective grants (`GET /api/v1/me`) |
+| `auth`       | OIDC broker (`/auth/oidc/login`, `/callback`, logout) + local email + password login (`POST /api/v1/auth/login`); caller identity + effective grants (`GET /api/v1/me`) |
 | `publishers` | Namespace/publisher CRUD                                       |
 | `rbac`       | Groups, users, and publisher-scoped role grants               |
 | `mcp`        | MCP server + version CRUD, search, detail, view/copy, reports, change-approval (submit / withdraw / approve / reject / deletion-request) |
@@ -212,9 +208,8 @@ See `deploy/config.example.yaml` and `deploy/.env.example` for the full list. Se
 | `reports`    | Abuse / issue reports + admin triage                          |
 | `review`     | Reviewer-only `GET /review-queue` listing pending versions and deletions |
 | `audit`      | Admin-only audit log                                           |
-| `v0`         | Strict MCP-registry-spec-compatible read layer                 |
 
-Versioned private API lives under `/api/v1/`; the spec-compatible wire-format layer lives under `/v0/`. Both are generated from the same OpenAPI document.
+All operations live under `/api/v1/` and are generated from the same OpenAPI document.
 
 ---
 
@@ -223,11 +218,10 @@ Versioned private API lives under `/api/v1/`; the spec-compatible wire-format la
 The CI pipeline enforces a set of contracts that mechanically prevent drift between spec, code, and the MCP / A2A specifications:
 
 - **OpenAPI ↔ router bijection** — every route in the chi router has an operation in `openapi.yaml` and vice versa. Extra or missing either side = build failure.
-- **`/v0/` MCP wire-format conformance** — 40 tests pinning response shapes, cursor semantics, error envelopes, and RFC 3339 timestamps to the MCP registry spec.
 - **A2A Agent Card JSON Schema** — `server/api/a2a-agent-card.schema.json` pins the a2a-project/a2a June 2025 shape; every emission is validated against it.
 - **Write-authorization router contract** — every write endpoint requires authorization (a publisher-scoped role — Editor/Reviewer/Admin — or Server Admin), never reachable anonymously; a contract test fails CI if a write route is left ungated.
 - **OTel span emission contract** — every handler produces a span; drift fails CI.
-- **Migration forward-apply + idempotency** — all 13 forward migrations apply cleanly on a fresh Postgres via testcontainers.
+- **Migration forward-apply + idempotency** — all 15 forward migrations apply cleanly on a fresh Postgres via testcontainers.
 - **Public rate-limit wiring** — unauthenticated read endpoints are rate-limited by middleware, not handler code.
 - **Web test suite** — 580+ Vitest + React Testing Library tests; Playwright e2e on admin flows including the change-approval workflow.
 
@@ -288,13 +282,7 @@ pre-commit run --all-files
 
 ## Roadmap
 
-The phased roadmap lives in [`PLAN.md`](./PLAN.md). High-level status:
-
-- **v0.1.x** — Foundation: Postgres schema, chi router, OIDC, MCP + agent CRUD, public browse UI, admin UI, bootstrap seeding. ✅
-- **v0.2.x** — Observability + coverage depth. OTel traces/metrics/logs wired everywhere; contract tests for every CLAUDE.md non-negotiable; `/v0/` wire-format conformance; A2A schema conformance. ✅
-- **v0.3.x** — Browse polish (real MCP `tools[]` field end-to-end, card redesign, namespace landing pages, per-entry activity feed) and access control: workspaces under publishers, Keycloak group bindings, change-approval workflow with revision-tracked PR-style edits. ✅
-- **v0.4.x** — Publisher-scoped RBAC + local accounts: the workspace layer is **removed**, resources are publisher-scoped again, and authorization is roles (Viewer/Editor/Reviewer/Admin) granted to users or groups in the registry — Editor authors, Reviewer is the sole approver, Admin manages, Server Admin is break-glass. Adds local email + password login alongside OIDC (registry-signed tokens walled off the MCP surface), `GET /api/v1/me`, `mine=`-scoped admin lists, and the publisher-scoped admin home (switcher + Overview + Members / Activity / Settings). 🚧 (0.4.0-rc)
-- **Beyond 0.4.x** — Skills / prompts registry, federation, API-key auth (M2M), webhooks, and a dedicated production `docker-compose.prod.yml` profile.
+The phased roadmap lives in [`PLAN.md`](./PLAN.md). Everything through publisher-scoped RBAC, local accounts, and the brokered-OIDC / HttpOnly-cookie-session rework (with the `/v0` surface removed) is shipped. Remaining work — API-key (M2M) auth, a Skills / Prompts registry, federation, webhooks, and a dedicated production `docker-compose.prod.yml` profile — is tracked in `PLAN.md`.
 
 ---
 
@@ -310,7 +298,7 @@ The phased roadmap lives in [`PLAN.md`](./PLAN.md). High-level status:
 
 ## Status
 
-Pre-1.0. The API is versioned (`/api/v1/`, `/v0/`) and the contract tests keep it honest, but breaking changes may still land on minor bumps before `v1.0.0`.
+Pre-1.0. The API is versioned (`/api/v1/`) and the contract tests keep it honest, but breaking changes may still land on minor bumps before `v1.0.0`.
 
 ## License
 

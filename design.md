@@ -22,16 +22,18 @@ observability strategy, data and API design, and UI/UX specification.
 ┌─────────────────────────────────────────────────────────────────┐
 │                          Clients                                │
 │                                                                 │
-│   Browser (Public UI)   Browser (Admin UI)   CI/CD (API key)   │
-└────────────┬───────────────────┬──────────────────┬────────────┘
-             │                   │                  │
-             ▼                   ▼                  ▼
+│      Browser (Public UI)            Browser (Admin UI)         │
+└────────────────────┬──────────────────────┬────────────────────┘
+                     │                      │
+                     ▼                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │            Static SPA (Vite + React Router v7)                  │
 │  / · /mcp · /agents · /publishers           Public routes       │
 │  /admin/*                                   Auth-guarded        │
 │  — TanStack Query v5 against /api/v1/                           │
-│  — oidc-client-ts (PKCE, no client secret) for /admin           │
+│  — Auth is a registry session (HttpOnly cookie); login()       │
+│    redirects to /api/v1/auth/oidc/login or POSTs               │
+│    /api/v1/auth/login. The SPA is not an OIDC client.          │
 │  — Served as static files by nginx; no server-side rendering    │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ HTTP / JSON
@@ -39,22 +41,20 @@ observability strategy, data and API design, and UI/UX specification.
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Go Backend (chi)                         │
 │                                                                 │
-│  Middleware chain:                                              │
-│  OTel trace → request-id → CORS → rate-limit → auth guard       │
+│  Middleware chain:                                             │
+│  OTel trace → request-id → CORS → rate-limit → session auth     │
 │  → publisher-role / reviewer guards (per route)                 │
 │                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐   │
-│  │  /api/v1/    │  │  /v0/ (MCP)  │  │  /.well-known/     │   │
-│  │  publishers/ │  │  servers     │  │  oauth-protected-  │   │
-│  │  ↳ grants    │  │  publish     │  │  resource          │   │
-│  │  groups/     │  └──────────────┘  │  agent-card.json   │   │
-│  │  users/      │                    │  jwks.json         │   │
-│  │  mcp/*       │                    └────────────────────┘   │
-│  │  agents/*    │                                              │
-│  │  review-     │                                              │
-│  │   queue      │                                              │
-│  │  audit       │                                              │
-│  └──────────────┘                                              │
+│  ┌──────────────────────────┐  ┌────────────────────┐         │
+│  │  /api/v1/                │  │  /.well-known/     │         │
+│  │  auth/ (login/oidc)      │  │  agent-card.json   │         │
+│  │  me                      │  └────────────────────┘         │
+│  │  publishers/ ↳ grants    │                                  │
+│  │  groups/  users/         │                                  │
+│  │  mcp/*  agents/*         │                                  │
+│  │  review-queue            │                                  │
+│  │  reports  audit  stats   │                                  │
+│  └──────────────────────────┘                                  │
 │                                                                 │
 │  Internal packages:                                             │
 │  domain │ store │ auth │ mcp │ agents │ bootstrap │ observ.    │
@@ -65,18 +65,18 @@ observability strategy, data and API design, and UI/UX specification.
 ┌──────────────────────┐  ┌──────────────────────┐
 │     PostgreSQL       │  │   Keycloak (IdP)     │
 │                      │  │                      │
-│  publishers          │  │  OIDC / OAuth 2.1    │
-│  users / groups      │  │  JWKS endpoint       │
-│  role_grants         │  │  realm role: admin   │
-│  mcp_servers         │  │  groups: membership  │
-│  mcp_server_versions │  │    + the reviewer    │
-│  agents              │  │    group             │
-│  agent_versions      │  └──────────────────────┘
+│  publishers          │  │  OIDC (brokered;     │
+│  users / groups      │  │  registry is a       │
+│  role_grants         │  │  single confidential │
+│  sessions            │  │  client)             │
+│  mcp_servers         │  │  realm role: admin   │
+│  mcp_server_versions │  │  groups: membership  │
+│  agents              │  └──────────────────────┘
+│  agent_versions      │
 │  audit_log           │
-│  reports             │
-│                      │  ┌──────────────────────┐
-└──────────────────────┘  │   OTel Collector     │
-                          │                      │
+│  reports             │  ┌──────────────────────┐
+│                      │  │   OTel Collector     │
+└──────────────────────┘  │                      │
                           │  OTLP gRPC :4317     │
                           │  → Jaeger (traces)   │
                           │  → Prometheus (metr) │
@@ -97,16 +97,30 @@ Browser → SPA (TanStack Query) → GET /api/v1/mcp/servers
   → OTel middleware (end span, record latency metric)
 ```
 
+**Login (brokered OIDC)**
+```
+Browser → GET /api/v1/auth/oidc/login
+  → server runs Authorization Code + PKCE against the IdP
+  → GET /api/v1/auth/oidc/callback
+    → server exchanges the code with its client_secret
+    → maps the external identity to an internal users row
+    → snapshots claim group membership + the claim Server-Admin flag
+      into a new session row
+    → sets the registry session cookie (Secure; HttpOnly)
+  → SPA learns identity + grants from GET /api/v1/me
+```
+Local email + password login (`POST /api/v1/auth/login`) sets the same
+session cookie; the IdP token never reaches the browser.
+
 **Publisher write (Editor submits a version for review)**
 ```
-Admin SPA (oidc-client-ts or local session) → POST .../versions/{v}/submit
+Admin SPA (session cookie) → POST .../versions/{v}/submit
   → OTel middleware (start span)
-  → auth middleware: validate JWT (issuer, signature, audience)
+  → session auth middleware: resolve the cookie into a Principal
   → RequirePublisherRole(Editor) middleware:
        • resolve the target publisher from the {namespace} path segment
        • resolve the caller's effective role on that publisher from
-         role_grants (direct user grant or via a group the JWT lists),
-         falling back to claim groups when no users row is provisioned
+         role_grants (direct user grant or via a group the session lists)
        • allow if the effective role satisfies Editor OR Server Admin
   → handler: domain.TransitionToPendingReview(version, reason="submit")
     → Postgres UPDATE on review_state, increment revision (child span)
@@ -117,10 +131,10 @@ Admin SPA (oidc-client-ts or local session) → POST .../versions/{v}/submit
 
 **Reviewer approval**
 ```
-Admin SPA → POST /api/v1/review-queue / .../{kind}/{ns}/{slug}/versions/{v}/approve
-  → auth middleware: validate JWT
-  → RequireReviewer middleware: claim must include AUTH_REVIEWER_GROUP
-    OR realm role "admin"
+Admin SPA → POST .../{kind}/{ns}/{slug}/versions/{v}/approve
+  → session auth middleware
+  → RequireReviewer middleware: effective Reviewer role on the publisher
+    OR Server Admin
   → revision-mismatch check (discriminated 409 if stale)
   → handler: PublishMCPServerVersion(...) — publishes the version,
     flips review_state to none, stamps reviewed_by/at/decision
@@ -130,7 +144,7 @@ Admin SPA → POST /api/v1/review-queue / .../{kind}/{ns}/{slug}/versions/{v}/ap
 
 **A2A Agent Card**
 ```
-MCP client / browser → GET /agents/{ns}/{slug}/.well-known/agent-card.json
+Client / browser → GET /agents/{ns}/{slug}/.well-known/agent-card.json
   → handler: store.GetAgentWithLatestVersion()
   → agents.GenerateCard(agent, version) → AgentCard struct
   → JSON response (application/json)
@@ -148,12 +162,12 @@ otel-collector:4317
 jaeger:16686
 ```
 
-**Production (docker-compose prod profile)**
+**Production (docker-compose)**
 ```
 postgres (managed or container with volume)
 server (multi-stage Docker image, distroless)
-web (vite build output served by nginx; nginx proxies /api/* /v0/*
-     /config.json to the server upstream)
+web (vite build output served by nginx; nginx proxies /api/*
+     and /config.json to the server upstream)
 reverse proxy (Caddy or nginx) → TLS termination
 otel-collector → external Prometheus / Grafana / Tempo
 ```
@@ -190,7 +204,7 @@ ServiceMonitor → Prometheus scrape
 | `db.query` (per SQL call) | CLIENT | `db.system=postgresql`, `db.operation`, `db.sql.table` |
 | `mcp.publish` | INTERNAL | `mcp.server_id`, `mcp.version`, `publisher.slug` |
 | `agent.card_generate` | INTERNAL | `agent.id`, `agent.version` |
-| `auth.jwt_validate` | INTERNAL | `auth.method=jwt\|apikey`, result |
+| `auth.session_resolve` | INTERNAL | `auth.method=oidc\|local`, result |
 
 Propagation format: W3C TraceContext (`traceparent` / `tracestate` headers).
 
@@ -205,7 +219,7 @@ All metrics are registered once in `/internal/observability/metrics.go`.
 | `registry.mcp.servers.total` | UpDownCounter | `status`, `visibility` | Live count of MCP server entries |
 | `registry.mcp.versions.published` | Counter | `publisher` | Versions published |
 | `registry.agents.total` | UpDownCounter | `status`, `visibility` | Live count of agent entries |
-| `registry.auth.failures` | Counter | `reason` (`invalid_token`, `expired`, `missing`, `forbidden`) | Auth failures |
+| `registry.auth.failures` | Counter | `reason` (`invalid_session`, `expired`, `missing`, `forbidden`) | Auth failures |
 | `registry.ratelimit.hits` | Counter | `route` | Rate-limit rejections |
 
 ### 2.4 Structured Logging
@@ -233,7 +247,7 @@ Log levels:
 - `WARN`: Rate-limit hits, validation errors, degraded dependencies.
 - `ERROR`: Unhandled errors, DB failures, OTel export failures.
 
-Never log: `Authorization` header value, raw JWT, API key plaintext.
+Never log: session cookie value, `Authorization` header value, raw IdP token.
 
 ### 2.5 Export Configuration (env)
 
@@ -257,19 +271,17 @@ publishers ──< mcp_servers ──< mcp_server_versions
 
 publishers ──< role_grants >── users / groups   (authorization)
 groups     ──< group_members >── users
+users      ──< sessions                          (registry cookie sessions)
 
 audit_log (polymorphic: resource_type + resource_id, includes synthetic
            bootstrap-loader events)
 reports (polymorphic: target_type + target_id; admin triages)
 ```
 
-Every MCP server / agent belongs to exactly one publisher. The workspace
-layer (migrations `000008`–`000011`) was removed by
-migration `000013`: `publisher_id` is restored `NOT NULL` on
-resources, the `(publisher_id, slug)` unique key is back, and the
-`workspaces` table is dropped. Authorization is now publisher-scoped
-RBAC — `role_grants` ties a role (Viewer/Editor/Reviewer/Admin) to a user
-or group on a publisher.
+Every MCP server / agent belongs to exactly one publisher; resources are
+publisher-scoped. Authorization is publisher-scoped RBAC — `role_grants` ties
+a role (Viewer/Editor/Reviewer/Admin) to a user or group on a publisher (or
+globally when `publisher_id` is NULL).
 
 ### 3.2 Key Table Schemas
 
@@ -283,7 +295,23 @@ verified    BOOLEAN NOT NULL DEFAULT false,
 created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 
--- role_grants (authorization / migration 000012)
+-- sessions (registry cookie sessions)
+id           TEXT PRIMARY KEY,         -- ULID, internal
+token_hash   TEXT NOT NULL UNIQUE,     -- hex SHA-256 of the cookie token
+user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+auth_method  TEXT NOT NULL,            -- 'oidc' | 'local'
+claim_groups TEXT[] NOT NULL DEFAULT '{}',   -- snapshotted OIDC claim group slugs
+claim_admin  BOOLEAN NOT NULL DEFAULT false, -- snapshotted claim Server-Admin
+created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+expires_at   TIMESTAMPTZ NOT NULL,
+revoked_at   TIMESTAMPTZ              -- NULL until logout / revoke
+-- The opaque cookie token is never stored; only its SHA-256 hash is the
+-- lookup key, so a DB leak yields no usable session. claim_groups /
+-- claim_admin snapshot the OIDC claim inputs at login (empty / false for
+-- local logins); effective roles are still resolved live from role_grants
+-- on every request.
+
+-- role_grants (authorization)
 id             TEXT PRIMARY KEY,       -- ULID
 publisher_id   TEXT REFERENCES publishers(id),  -- NULL = global (server-wide) grant
 principal_type TEXT NOT NULL,          -- 'user' | 'group'
@@ -320,12 +348,12 @@ tools               JSONB NOT NULL DEFAULT '[]',
 protocol_version    TEXT NOT NULL,
 published_at        TIMESTAMPTZ,       -- NULL until published
 
--- Change-approval (migration 000010) — orthogonal to status/published_at
+-- Change-approval — orthogonal to status/published_at
 review_state        TEXT NOT NULL DEFAULT 'none',
                                        -- none | pending_review | rejected
 revision            INTEGER NOT NULL DEFAULT 0,
                                        -- monotonic; bumped on every edit/transition
-submitted_by        TEXT,              -- OIDC sub of the submitter
+submitted_by        TEXT,              -- submitter subject
 submitted_by_email  TEXT,
 submitted_at        TIMESTAMPTZ,
 reviewed_by         TEXT,
@@ -342,7 +370,7 @@ UNIQUE (server_id, version)
 
 -- audit_log
 id            BIGSERIAL PRIMARY KEY,
-actor_subject TEXT NOT NULL,           -- OIDC sub or "system:bootstrap"
+actor_subject TEXT NOT NULL,           -- user subject or "system:bootstrap"
 actor_email   TEXT,
 action        TEXT NOT NULL,           -- e.g. mcp_server.publish, publisher.created
 resource_type TEXT NOT NULL,
@@ -355,20 +383,19 @@ created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 
 Indexes: `(publisher_id, slug)` on entry tables, `(server_id, version)` on
 versions, `(publisher_id, principal_type, principal_id, role)` on
-`role_grants`, `status`, `visibility`,
-`review_state` (partial index `WHERE review_state = 'pending_review'`)
-to make the review queue scan cheap. Full-text index on
+`role_grants`, `(user_id)` and `(expires_at)` on `sessions`, `status`,
+`visibility`, `review_state` (partial index `WHERE review_state =
+'pending_review'`) to make the review queue scan cheap. Full-text index on
 `name || ' ' || description` via `tsvector`.
 
 ### 3.3 Version Lifecycle State Machine
 
 Two orthogonal axes: the publish-status axis (`status` / `published_at`)
-and the review-state axis (`review_state`, introduced by migration
-`000010`). The publish axis still drives what's visible to public
-readers; the review axis decides who is allowed to make the next
-publish-axis transition.
+and the review-state axis (`review_state`). The publish axis drives what's
+visible to public readers; the review axis decides who is allowed to make the
+next publish-axis transition.
 
-**Publish axis** (unchanged from v0.2):
+**Publish axis**
 
 ```
          ┌─────────┐
@@ -389,7 +416,7 @@ publish-axis transition.
 Published versions are immutable: no `PATCH` on a `mcp_server_versions`
 row after `published_at` is set.
 
-**Review axis** (change-approval workflow):
+**Review axis** (change-approval workflow)
 
 ```
                     edit / create
@@ -460,8 +487,8 @@ Response:
 | Type slug | Status | Meaning |
 |-----------|--------|---------|
 | `not-found` | 404 | Entity does not exist or is not visible |
-| `forbidden` | 403 | Authenticated but lacks the required role on the target publisher (Editor/Reviewer/Admin), Server Admin, or the reviewer group (depending on the route) |
-| `unauthorized` | 401 | Missing or invalid bearer token |
+| `forbidden` | 403 | Authenticated but lacks the required role on the target publisher (Editor/Reviewer/Admin) or Server Admin |
+| `unauthorized` | 401 | Missing or invalid registry session |
 | `validation-error` | 422 | Request body failed schema validation; `errors[]` extension field |
 | `conflict` | 409 | Duplicate slug or version |
 | `immutable` | 409 | Attempt to mutate a published (immutable) version |
@@ -505,8 +532,9 @@ entry is already pending review"; etc.). Don't fold them into a generic
 | `card` | `white` | Card background |
 
 Dark mode mirrors the same tokens with `slate-950` background and `slate-100`
-foreground, toggled via a `class="dark"` on `<html>`. shadcn/ui's CSS variable
-system handles the swap automatically.
+foreground, toggled via a `class="dark"` on `<html>` by a local
+`ThemeProvider`. shadcn/ui's CSS variable system handles the swap
+automatically.
 
 #### Typography
 
@@ -521,8 +549,7 @@ system handles the swap automatically.
 The web app does not bundle a webfont — Tailwind's default system stacks
 (`font-sans` → `ui-sans-serif, system-ui, …`; `font-mono` →
 `ui-monospace, SFMono-Regular, …`) keep first-paint fast and the bundle
-small. The original Next.js scaffold used `Geist` via `next/font`; that
-loader was dropped along with the rest of the Next.js stack in Phase 6.
+small.
 
 #### Spacing & Radius
 
@@ -554,11 +581,11 @@ loader was dropped along with the rest of the Next.js stack in Phase 6.
 - Left: logo mark (indigo SVG) + "AI Registry" wordmark.
 - Center: `<nav>` links — MCP Servers, Agents, Docs.
 - Right: command-palette trigger (`⌘K`), dark-mode toggle, "Admin →" link (only
-  if session exists).
+  if a session exists).
 
 **Homepage** (`/`):
 - Hero section: headline + sub-headline + search bar (prominent, centered).
-- Two stat tiles: "N MCP Servers" / "N Agents" (from `/api/v1/stats`).
+- Two stat tiles: "N MCP Servers" / "N Agents" (from `/api/v1/public-stats`).
 - Featured entries grid (6 cards, pinned by admin).
 
 **Listing pages** (`/mcp`, `/agents`):
@@ -580,7 +607,7 @@ loader was dropped along with the rest of the Next.js stack in Phase 6.
   ```
 - Pagination: "Load more" button (appends to list), not page numbers.
 
-**Detail pages** (`/mcp/[ns]/[slug]`, `/agents/[ns]/[slug]`):
+**Detail pages** (`/mcp/{ns}/{slug}`, `/agents/{ns}/{slug}`):
 - Two-column: main (content) 2/3 + aside (metadata) 1/3.
 - Tabs: Overview · Versions · Install.
 - Install tab shows copy-ready shell snippets per runtime/package manager.
@@ -590,11 +617,12 @@ loader was dropped along with the rest of the Next.js stack in Phase 6.
 
 ### 4.3 Admin UI Layout
 
-Guarded by `<RequireAuth>` wrapping every `/admin/*` route. Authentication
-runs entirely client-side via `oidc-client-ts` (PKCE public client; no
-Next.js, no Auth.js, no client secret). Unauthenticated visits trigger a
-redirect to the IdP authorize endpoint and a callback flow handled by
-`/auth/callback`.
+Guarded by `<RequireAuth>` wrapping every `/admin/*` route. Authentication is
+a registry session behind an HttpOnly cookie: `login()` redirects to the
+server's `/api/v1/auth/oidc/login` (brokered, server-side) or the local form
+POSTs `/api/v1/auth/login`. The SPA learns its identity and grants from
+`GET /api/v1/me`. Unauthenticated visits to a guarded route redirect to the
+login page.
 
 ```
 ┌──────────┬──────────────────────────────────────────┐
