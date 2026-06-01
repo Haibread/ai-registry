@@ -749,8 +749,18 @@ func (db *DB) PublishMCPServerVersion(ctx context.Context, serverID, version str
 	ctx, span := startSpan(ctx, "PublishMCPServerVersion")
 	defer span.End()
 
+	// Publishing the version and promoting the parent must be atomic: if the
+	// promotion is lost, the version is live but the server stays 'draft' and
+	// never appears in default (status='published') listings.
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op after commit
+
 	now := time.Now().UTC()
-	tag, err := db.Pool.Exec(ctx, `
+	tag, err := tx.Exec(ctx, `
 		UPDATE mcp_server_versions
 		SET published_at = $1
 		WHERE server_id = $2 AND version = $3 AND published_at IS NULL`,
@@ -762,7 +772,7 @@ func (db *DB) PublishMCPServerVersion(ctx context.Context, serverID, version str
 	if tag.RowsAffected() == 0 {
 		// Check whether it exists at all or is already published.
 		var publishedAt *time.Time
-		err := db.Pool.QueryRow(ctx,
+		err := tx.QueryRow(ctx,
 			`SELECT published_at FROM mcp_server_versions WHERE server_id=$1 AND version=$2`,
 			serverID, version,
 		).Scan(&publishedAt)
@@ -774,9 +784,17 @@ func (db *DB) PublishMCPServerVersion(ctx context.Context, serverID, version str
 		return ErrImmutable
 	}
 	// After publish, promote the server status to 'published' if it was draft.
-	_, _ = db.Pool.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE mcp_servers SET status='published', updated_at=now() WHERE id=$1 AND status='draft'`,
-		serverID)
+		serverID); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("promoting server status: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("commit tx: %w", err)
+	}
 	return nil
 }
 
@@ -973,7 +991,17 @@ func (db *DB) DeleteMCPServer(ctx context.Context, serverID string) error {
 	ctx, span := startSpan(ctx, "DeleteMCPServer")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx,
+	// Parent and child rows must flip together: a partial soft-delete (server
+	// 'deleted' but versions still live, or vice versa) leaves the entry in an
+	// inconsistent state, so wrap both UPDATEs in one transaction.
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op after commit
+
+	tag, err := tx.Exec(ctx,
 		`UPDATE mcp_servers SET status='deleted', updated_at=now() WHERE id=$1 AND status != 'deleted'`,
 		serverID)
 	if err != nil {
@@ -985,12 +1013,16 @@ func (db *DB) DeleteMCPServer(ctx context.Context, serverID string) error {
 		return ErrNotFound
 	}
 	// Mark all versions deleted too.
-	_, err = db.Pool.Exec(ctx,
+	if _, err = tx.Exec(ctx,
 		`UPDATE mcp_server_versions SET status='deleted', status_changed_at=now() WHERE server_id=$1`,
-		serverID)
-	if err != nil {
+		serverID); err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("deleting mcp server versions: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("commit tx: %w", err)
 	}
 	return nil
 }

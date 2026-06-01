@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
@@ -54,17 +56,32 @@ func internalError(w http.ResponseWriter, r *http.Request, err error) {
 	problem.Write(w, http.StatusInternalServerError, "internal", "an internal error occurred", r.URL.Path)
 }
 
-// decodeJSON deserialises the request body into v.
-// On failure it writes the appropriate problem response and returns false.
+// decodeJSON deserialises the request body into v. Decoding is strict: unknown
+// fields are rejected (so a typo'd field name 422s instead of being silently
+// dropped) and the body must contain exactly one JSON value with no trailing
+// data. On failure it writes the appropriate problem response and returns false.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
 		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
+		switch {
+		case errors.As(err, &maxErr):
 			problem.Write(w, http.StatusRequestEntityTooLarge, "request-too-large",
 				"request body exceeds the 1 MiB limit", r.URL.Path)
-			return false
+		case strings.HasPrefix(err.Error(), "json: unknown field "):
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+				"request body contains an "+strings.TrimPrefix(err.Error(), "json: "), r.URL.Path)
+		default:
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
 		}
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", "invalid JSON body", r.URL.Path)
+		return false
+	}
+	// A request body must be a single JSON object; reject any trailing data
+	// (a second value, garbage after the object) rather than silently ignoring it.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+			"request body must contain a single JSON object", r.URL.Path)
 		return false
 	}
 	return true

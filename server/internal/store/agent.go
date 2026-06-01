@@ -618,8 +618,18 @@ func (db *DB) PublishAgentVersion(ctx context.Context, agentID, version string) 
 	ctx, span := startSpan(ctx, "PublishAgentVersion")
 	defer span.End()
 
+	// Publishing the version and promoting the parent must be atomic: if the
+	// promotion is lost, the version is live but the agent stays 'draft' and
+	// never appears in default (status='published') listings.
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op after commit
+
 	now := time.Now().UTC()
-	tag, err := db.Pool.Exec(ctx, `
+	tag, err := tx.Exec(ctx, `
 		UPDATE agent_versions
 		SET published_at = $1
 		WHERE agent_id = $2 AND version = $3 AND published_at IS NULL`,
@@ -630,7 +640,7 @@ func (db *DB) PublishAgentVersion(ctx context.Context, agentID, version string) 
 	}
 	if tag.RowsAffected() == 0 {
 		var publishedAt *time.Time
-		err := db.Pool.QueryRow(ctx,
+		err := tx.QueryRow(ctx,
 			`SELECT published_at FROM agent_versions WHERE agent_id=$1 AND version=$2`,
 			agentID, version,
 		).Scan(&publishedAt)
@@ -641,9 +651,17 @@ func (db *DB) PublishAgentVersion(ctx context.Context, agentID, version string) 
 		recordErr(span, ErrImmutable)
 		return ErrImmutable
 	}
-	_, _ = db.Pool.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE agents SET status='published', updated_at=now() WHERE id=$1 AND status='draft'`,
-		agentID)
+		agentID); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("promoting agent status: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("commit tx: %w", err)
+	}
 	return nil
 }
 
@@ -782,7 +800,16 @@ func (db *DB) DeleteAgent(ctx context.Context, agentID string) error {
 	ctx, span := startSpan(ctx, "DeleteAgent")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx,
+	// Parent and child rows must flip together: a partial soft-delete leaves the
+	// agent in an inconsistent state, so wrap both UPDATEs in one transaction.
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op after commit
+
+	tag, err := tx.Exec(ctx,
 		`UPDATE agents SET status='deleted', updated_at=now() WHERE id=$1 AND status != 'deleted'`,
 		agentID)
 	if err != nil {
@@ -793,12 +820,16 @@ func (db *DB) DeleteAgent(ctx context.Context, agentID string) error {
 		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
-	_, err = db.Pool.Exec(ctx,
+	if _, err = tx.Exec(ctx,
 		`UPDATE agent_versions SET status='deleted', status_changed_at=now() WHERE agent_id=$1`,
-		agentID)
-	if err != nil {
+		agentID); err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("deleting agent versions: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("commit tx: %w", err)
 	}
 	return nil
 }

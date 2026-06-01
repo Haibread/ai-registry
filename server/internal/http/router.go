@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -151,7 +150,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Core middleware ───────────────────────────────────────────────────────
 	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.CORS(deps.CORSOrigins))
-	r.Use(chimiddleware.Recoverer)
+	r.Use(middleware.Recover(deps.Logger))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(deps.Logger, deps.Metrics))
 	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MiB
