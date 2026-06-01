@@ -247,23 +247,22 @@ test.describe('Public coverage', () => {
 
   // ── W3g: Public 404 for private / missing ──────────────────────────────
 
-  // page.request shares THIS project's admin session cookie, so to probe the
-  // genuinely-public (anonymous) API surface we need a cookie-less request
-  // context (ADR 0006 amendment: auth is a cookie, which page.request sends).
-  test('private MCP server is hidden from the public API', async ({ playwright }) => {
-    const anon = await playwright.request.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000' })
+  // page.request shares THIS project's admin session cookie (ADR 0006
+  // amendment: auth is a cookie, which page.request sends automatically — the
+  // old bearer token was not). Clear the context's cookies so these probes hit
+  // the genuinely-anonymous public API surface.
+  test('private MCP server is hidden from the public API', async ({ page }) => {
+    await page.context().clearCookies()
     // Private rows must not be readable anonymously. Public reads return 404;
     // the rate limiter may also reject (429). Both prove the row is not leaked.
-    const res = await anon.get(`/api/v1/mcp/servers/${PUB_SLUG}/${PRIVATE_SLUG}`)
+    const res = await page.request.get(`/api/v1/mcp/servers/${PUB_SLUG}/${PRIVATE_SLUG}`)
     expect([404, 429]).toContain(res.status())
-    await anon.dispose()
   })
 
-  test('missing MCP server returns 404 from the public API', async ({ playwright }) => {
-    const anon = await playwright.request.newContext({ baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000' })
-    const res = await anon.get(`/api/v1/mcp/servers/${PUB_SLUG}/does-not-exist-${RUN_ID}`)
+  test('missing MCP server returns 404 from the public API', async ({ page }) => {
+    await page.context().clearCookies()
+    const res = await page.request.get(`/api/v1/mcp/servers/${PUB_SLUG}/does-not-exist-${RUN_ID}`)
     expect([404, 429]).toContain(res.status())
-    await anon.dispose()
   })
 })
 
