@@ -8,9 +8,20 @@ import type { paths } from './schema'
 const withCredentials: typeof fetch = (input, init) =>
   fetch(input, { ...init, credentials: 'include' })
 
-/** Public client — read-only public pages. Still sends the cookie if present. */
+// withoutCredentials never sends the session cookie. fetch's same-origin
+// default WOULD send it, which would hand a signed-in admin the authenticated
+// view (private/draft entries) on the *public* browse pages — so the public
+// client must opt out explicitly. Private entries surface only in the admin UI.
+const withoutCredentials: typeof fetch = (input, init) =>
+  fetch(input, { ...init, credentials: 'omit' })
+
+/**
+ * Public client — read-only public pages. Deliberately omits the session
+ * cookie so public pages always render the public catalog, regardless of who is
+ * signed in. Admin/private reads go through useAuthClient.
+ */
 export function getPublicClient() {
-  return createClient<paths>({ baseUrl: '', fetch: withCredentials })
+  return createClient<paths>({ baseUrl: '', fetch: withoutCredentials })
 }
 
 /**

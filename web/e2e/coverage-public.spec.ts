@@ -8,9 +8,11 @@
  *  - Theme toggle (light/dark) with localStorage persistence
  *  - Public 404 / not-found for a private or missing entry
  *
- * Setup uses the admin storage state to seed public data via the API, then
- * navigates as an anonymous user (a fresh context with no session cookie), so
- * the assertions exercise the public, unauthenticated read surface.
+ * Setup uses the admin storage state to seed public data via the API. The
+ * page-level assertions then exercise the public read surface: the public
+ * client (getPublicClient) omits the session cookie, so even though this
+ * project carries the admin storageState, public pages render the public view
+ * (private/draft entries stay hidden).
  */
 
 import { test, expect, type Page } from '@playwright/test'
