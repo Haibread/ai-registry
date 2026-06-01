@@ -8,7 +8,7 @@ import { SearchBar } from '@/components/ui/search-bar'
 import { useAuth } from '@/auth/AuthContext'
 
 export function Header() {
-  const { accessToken, logout, loginError } = useAuth()
+  const { isAuthenticated, logout, loginError } = useAuth()
   const location = useLocation()
   // The home hero already hosts a big SearchBar — don't duplicate it in the
   // header on `/`, but surface it on every other page so cross-type search is
@@ -54,7 +54,7 @@ export function Header() {
 
         <div className={`flex items-center gap-2 ${showHeaderSearch ? 'ml-2' : 'ml-auto'}`}>
           <ThemeToggle />
-          {accessToken ? (
+          {isAuthenticated ? (
             <>
               <Button variant="ghost" size="sm" asChild>
                 <Link to="/admin">Admin</Link>

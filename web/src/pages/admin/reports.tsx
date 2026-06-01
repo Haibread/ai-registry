@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 import { formatDate } from '@/lib/utils'
 
 type ReportStatus = 'pending' | 'reviewed' | 'dismissed'
@@ -30,7 +29,6 @@ function statusVariant(status: string): 'default' | 'secondary' | 'outline' {
 }
 
 export default function AdminReports() {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState<ReportStatus>('pending')
@@ -42,7 +40,7 @@ export default function AdminReports() {
       api
         .GET('/api/v1/reports', { params: { query: { status: statusFilter } } })
         .then((r) => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const items = data?.items ?? []

@@ -39,18 +39,8 @@ const AGENT_ENDPOINT = 'https://agents.example.test/e2e-detail'
 test.describe.configure({ mode: 'serial' })
 
 async function apiDelete(page: import('@playwright/test').Page, path: string) {
-  const token = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find(k => k.startsWith('oidc.user:'))
-    if (!key) return ''
-    try {
-      return (JSON.parse(localStorage.getItem(key)!) as { access_token?: string }).access_token ?? ''
-    } catch {
-      return ''
-    }
-  })
-  return page.request.delete(path, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  // Rides the session cookie shared by page.request (ADR 0006 amendment).
+  return page.request.delete(path)
 }
 
 test.describe('Public detail pages', () => {

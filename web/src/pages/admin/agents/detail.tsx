@@ -16,7 +16,6 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 import { usePermissions } from '@/auth/useMe'
 import type { components } from '@/lib/schema'
 
@@ -24,7 +23,6 @@ type AgentSkill = components['schemas']['AgentSkill']
 
 export default function AdminAgentDetail() {
   const { ns, slug } = useParams<{ ns: string; slug: string }>()
-  const { accessToken } = useAuth()
   const perms = usePermissions()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -36,7 +34,7 @@ export default function AdminAgentDetail() {
     queryFn: () => api.GET('/api/v1/agents/{namespace}/{slug}', {
       params: { path: { namespace: ns!, slug: slug! } },
     }).then(r => r.data),
-    enabled: !!ns && !!slug && !!accessToken,
+    enabled: !!ns && !!slug && true,
   })
 
   const invalidate = () => {

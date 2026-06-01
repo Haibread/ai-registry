@@ -21,7 +21,7 @@
  *
  * Prerequisites (same as the other admin specs):
  *   - docker compose up; Keycloak has imported the dev realm
- *   - AUTH_STORAGE=local in deploy/.env (Playwright reads localStorage)
+ *   - the setup project populated e2e/.auth/<role>.json (session cookies)
  *
  * Run: npm run test:e2e -- --project=phase7-flows
  */
@@ -39,9 +39,8 @@ test.describe.configure({ mode: 'serial' })
 async function pageAs(browser: Browser, role: 'admin' | 'author' | 'reviewer' | 'user'): Promise<Page> {
   const ctx = await browser.newContext({ storageState: `e2e/.auth/${role}.json` })
   const page = await ctx.newPage()
-  // The helpers extract the OIDC token from localStorage via
-  // page.evaluate, which requires the page to have an origin. Land on
-  // the homepage — RequireAuth doesn't bounce off it for any role.
+  // Land on the homepage so the context is active; the API helpers ride the
+  // session cookie shared by page.request (RequireAuth doesn't bounce off / ).
   await page.goto('/')
   return page
 }

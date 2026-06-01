@@ -104,17 +104,58 @@
     },
     {
       "clientId": "ai-registry-server",
-      "name": "AI Registry Server",
-      "description": "Resource server \u2014 validates tokens issued to the web client",
+      "name": "AI Registry Server (OIDC broker)",
+      "description": "Confidential client for the registry's server-side OIDC broker (Authorization Code + PKCE; ADR 0006 amendment, 2026-06-01). The browser never sees the IdP token.",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
-      "secret": "change-me-in-production",
+      "secret": "dev-broker-secret",
       "publicClient": false,
-      "standardFlowEnabled": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "bearerOnly": true,
-      "protocol": "openid-connect"
+      "redirectUris": [
+        "http://localhost:3000/api/v1/auth/oidc/callback",
+        "http://localhost:8081/api/v1/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      },
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "realm-roles-id-token",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "claim.name": "groups"
+          }
+        }
+      ]
     },
     {
       "clientId": "ai-registry-cli",

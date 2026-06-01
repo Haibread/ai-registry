@@ -16,12 +16,10 @@ import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
 import { InstallCommand } from '@/components/ui/install-command'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 import { usePermissions } from '@/auth/useMe'
 
 export default function AdminMCPDetail() {
   const { ns, slug } = useParams<{ ns: string; slug: string }>()
-  const { accessToken } = useAuth()
   const perms = usePermissions()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -33,7 +31,7 @@ export default function AdminMCPDetail() {
     queryFn: () => api.GET('/api/v1/mcp/servers/{namespace}/{slug}', {
       params: { path: { namespace: ns!, slug: slug! } },
     }).then(r => r.data),
-    enabled: !!ns && !!slug && !!accessToken,
+    enabled: !!ns && !!slug && true,
   })
 
   const invalidate = () => {

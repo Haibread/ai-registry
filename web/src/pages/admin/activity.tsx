@@ -5,7 +5,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ActivityTimeline } from '@/components/admin/activity-timeline'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 import { usePublisher } from '@/auth/PublisherContext'
 
 const PAGE = 30
@@ -15,7 +14,6 @@ const PAGE = 30
 // (Viewer and up) can read it; the endpoint enforces that.
 export default function AdminActivity() {
   const { currentSlug } = usePublisher()
-  const { accessToken } = useAuth()
   const api = useAuthClient()
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isPending } = useInfiniteQuery({
@@ -28,7 +26,7 @@ export default function AdminActivity() {
         .then((r) => r.data),
     initialPageParam: '',
     getNextPageParam: (last) => last?.next_cursor || undefined,
-    enabled: !!accessToken && !!currentSlug,
+    enabled: !!currentSlug,
   })
 
   if (!currentSlug) {

@@ -9,12 +9,7 @@ import (
 	"github.com/haibread/ai-registry/internal/config"
 )
 
-// TestMain sets a baseline OIDC_AUDIENCE for the whole package. Audience
-// binding is now required (fail-closed, OAuth 2.1), so every Load-success test
-// needs one; tests that exercise the requirement itself override it via
-// t.Setenv.
 func TestMain(m *testing.M) {
-	_ = os.Setenv("OIDC_AUDIENCE", "ai-registry-server")
 	os.Exit(m.Run())
 }
 
@@ -104,31 +99,6 @@ func TestLoad_MissingOIDCIssuer(t *testing.T) {
 	_, err := config.Load("")
 	if err == nil {
 		t.Error("expected error when OIDC_ISSUER is empty, got nil")
-	}
-}
-
-func TestLoad_MissingOIDCAudience(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
-	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
-	t.Setenv("OIDC_AUDIENCE", "") // fail-closed: audience binding is required
-
-	_, err := config.Load("")
-	if err == nil {
-		t.Error("expected error when OIDC_AUDIENCE is empty, got nil")
-	}
-}
-
-func TestLoad_OIDCAudience_FromEnv(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
-	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
-	t.Setenv("OIDC_AUDIENCE", "my-resource-audience")
-
-	cfg, err := config.Load("")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Auth.OIDCAudience != "my-resource-audience" {
-		t.Errorf("OIDCAudience = %q, want my-resource-audience", cfg.Auth.OIDCAudience)
 	}
 }
 
@@ -535,9 +505,6 @@ func TestLoad_LocalAuth_Defaults(t *testing.T) {
 	if !cfg.Auth.LocalLoginEnabled {
 		t.Error("LocalLoginEnabled default = false, want true")
 	}
-	if cfg.Auth.LocalTokenTTL != time.Hour {
-		t.Errorf("LocalTokenTTL default = %v, want 1h", cfg.Auth.LocalTokenTTL)
-	}
 	if cfg.Auth.BootstrapAdminEmail != "" {
 		t.Errorf("BootstrapAdminEmail default = %q, want empty", cfg.Auth.BootstrapAdminEmail)
 	}
@@ -547,8 +514,6 @@ func TestLoad_LocalAuth_FromEnv(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
 	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
 	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "false")
-	t.Setenv("AUTH_LOCAL_SIGNING_KEY", "pem-key-value")
-	t.Setenv("AUTH_LOCAL_TOKEN_TTL", "30m")
 	t.Setenv("AUTH_BOOTSTRAP_ADMIN_EMAIL", "admin@example.com")
 	t.Setenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD", "s3cret")
 
@@ -558,12 +523,6 @@ func TestLoad_LocalAuth_FromEnv(t *testing.T) {
 	}
 	if cfg.Auth.LocalLoginEnabled {
 		t.Error("AUTH_LOCAL_LOGIN_ENABLED=false should disable local login")
-	}
-	if cfg.Auth.LocalSigningKey != "pem-key-value" {
-		t.Errorf("LocalSigningKey = %q, want env value", cfg.Auth.LocalSigningKey)
-	}
-	if cfg.Auth.LocalTokenTTL != 30*time.Minute {
-		t.Errorf("LocalTokenTTL = %v, want 30m", cfg.Auth.LocalTokenTTL)
 	}
 	if cfg.Auth.BootstrapAdminEmail != "admin@example.com" || cfg.Auth.BootstrapAdminPassword != "s3cret" {
 		t.Errorf("bootstrap admin = (%q,%q), want env values", cfg.Auth.BootstrapAdminEmail, cfg.Auth.BootstrapAdminPassword)
@@ -577,13 +536,11 @@ database:
 auth:
   oidc_issuer: "https://auth.example.com/realm"
   local_login: false
-  local_token_ttl: "2h"
   bootstrap_admin_email: "boot@example.com"
 `)
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("OIDC_ISSUER", "")
 	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "")
-	t.Setenv("AUTH_LOCAL_TOKEN_TTL", "")
 	t.Setenv("AUTH_BOOTSTRAP_ADMIN_EMAIL", "")
 	// The bootstrap email comes from the YAML file; its password is a
 	// credential supplied via env (never the file), so set it to satisfy the
@@ -596,9 +553,6 @@ auth:
 	}
 	if cfg.Auth.LocalLoginEnabled {
 		t.Error("local_login: false in YAML should disable local login")
-	}
-	if cfg.Auth.LocalTokenTTL != 2*time.Hour {
-		t.Errorf("LocalTokenTTL = %v, want 2h from YAML", cfg.Auth.LocalTokenTTL)
 	}
 	if cfg.Auth.BootstrapAdminEmail != "boot@example.com" {
 		t.Errorf("BootstrapAdminEmail = %q, want YAML value", cfg.Auth.BootstrapAdminEmail)

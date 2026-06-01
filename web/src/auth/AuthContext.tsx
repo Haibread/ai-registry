@@ -1,255 +1,149 @@
-// `AuthContext.tsx` colocates the `AuthProvider` component with the
-// `useAuth` hook, the `getUserManager` helper, and the `resetManagerForTesting`
-// escape hatch. Splitting them into separate files would require updating ~20
-// import sites across the app for a marginal HMR benefit (auth state is
-// resolved once at app start; a full reload on edits here is acceptable).
+// AuthContext is the single source of auth *state* and the login/logout actions
+// (ADR 0006 amendment, 2026-06-01). The browser holds no token — the registry
+// session is an HttpOnly cookie — so "am I signed in?" is answered by a
+// GET /api/v1/me fetch held here in state (not react-query), which keeps the
+// global <Header> off the query layer. `usePermissions` (admin role gating)
+// reads this `me`. OIDC is brokered server-side, so org sign-in is just a
+// redirect to /api/v1/auth/oidc/login.
 /* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts'
+import type { components } from '@/lib/schema'
 
-// ── Runtime config fetch ──────────────────────────────────────────────────────
-// OIDC coordinates are not baked into the bundle at build time. Instead the SPA
-// fetches /config.json from the server on first load. The result is cached for
-// the lifetime of the page so the network call is made at most once.
+export type Me = components['schemas']['Me']
 
 interface AppConfig {
-  oidc_issuer: string
-  oidc_client_id: string
-  // 'session' (default) scopes tokens to the current tab — the secure default.
-  // 'local' is an E2E-only escape hatch so Playwright's storageState() can
-  // capture the authenticated session; the server ships 'session' in prod.
-  auth_storage?: 'session' | 'local'
+  oidc_enabled: boolean
+  local_login_enabled: boolean
 }
-
-let _managerPromise: Promise<UserManager> | undefined
-
-// _resolvedStore is the Storage the OIDC UserManager was built with (session
-// or local, per /config.json). Captured so the local-login token persists in
-// the SAME store — same XSS-blast-radius posture as the OIDC token.
-let _resolvedStore: Storage | undefined
-
-// Key under which the registry-issued local-login token is persisted.
-const LOCAL_TOKEN_KEY = 'ai-registry.local_token'
-
-/** Resets the module-level UserManager cache. Only for use in tests. */
-export function resetManagerForTesting() {
-  _managerPromise = undefined
-  _resolvedStore = undefined
-}
-
-function localTokenStore(): Storage {
-  return _resolvedStore ?? window.sessionStorage
-}
-
-// jwtExpired reports whether a JWT's `exp` (seconds) is in the past. A token we
-// can't parse is treated as expired so a corrupt value never sticks. A live but
-// server-rejected token is still cleared by the api-client's 401 handler.
-function jwtExpired(token: string): boolean {
-  const parts = token.split('.')
-  if (parts.length !== 3) return true
-  try {
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number }
-    return typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now()
-  } catch {
-    return true
-  }
-}
-
-export function getUserManager(): Promise<UserManager> {
-  if (_managerPromise) return _managerPromise
-  _managerPromise = fetch('/config.json')
-    .then((res) => {
-      if (!res.ok) throw new Error(`GET /config.json failed: ${res.status}`)
-      return res.json() as Promise<AppConfig>
-    })
-    .then(
-      ({ oidc_issuer, oidc_client_id, auth_storage }) => {
-        // Default to sessionStorage so OIDC tokens are scoped to the current
-        // tab. The server only returns 'local' when explicitly configured for
-        // Playwright e2e runs (AUTH_STORAGE=local), where storageState() must
-        // be able to capture the authenticated session.
-        const store = auth_storage === 'local' ? window.localStorage : window.sessionStorage
-        _resolvedStore = store
-        return new UserManager({
-          authority: oidc_issuer,
-          client_id: oidc_client_id,
-          redirect_uri: window.location.origin + '/auth/callback',
-          post_logout_redirect_uri: window.location.origin,
-          response_type: 'code',
-          scope: 'openid profile email',
-          automaticSilentRenew: true,
-          userStore: new WebStorageStateStore({ store }),
-        })
-      },
-    )
-    .catch((err) => {
-      // Reset so the next call retries rather than replaying the rejection.
-      _managerPromise = undefined
-      throw err
-    })
-  return _managerPromise
-}
-
-// ── Context ───────────────────────────────────────────────────────────────────
 
 interface AuthState {
-  user: User | null
-  isLoading: boolean
+  me: Me | null
+  isAuthenticated: boolean
+  authLoading: boolean
+  configLoading: boolean
+  oidcEnabled: boolean
+  localLoginEnabled: boolean
   loginError: string | null
-  accessToken: string | undefined
-  // email of the signed-in principal: the OIDC profile email, or — for a
-  // local-token session — the email decoded from the registry token.
-  email: string | undefined
   login: () => void
-  // loginLocal exchanges email + password for a registry-issued token via
-  // POST /api/v1/auth/login and stores it. Rejects with a user-facing message
-  // on failure (the caller renders it).
   loginLocal: (email: string, password: string) => Promise<void>
-  logout: () => void
-  clearSession: () => Promise<void>
-  userManager: UserManager | null
-}
-
-function jwtEmail(token: string): string | undefined {
-  const parts = token.split('.')
-  if (parts.length !== 3) return undefined
-  try {
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as { email?: string }
-    return payload.email
-  } catch {
-    return undefined
-  }
+  logout: () => Promise<void>
+  refresh: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
 
+async function fetchMe(): Promise<Me | null> {
+  try {
+    const res = await fetch('/api/v1/me', {
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    })
+    if (!res.ok) return null
+    return (await res.json()) as Me
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [um, setUm] = useState<UserManager | null>(null)
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [me, setMe] = useState<Me | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [cfg, setCfg] = useState<AppConfig | null>(null)
+  const [configLoading, setConfigLoading] = useState(true)
   const [loginError, setLoginError] = useState<string | null>(null)
-  const [localToken, setLocalToken] = useState<string | null>(null)
 
-  const clearLocalToken = useCallback(() => {
-    localTokenStore().removeItem(LOCAL_TOKEN_KEY)
-    setLocalToken(null)
+  const refresh = useCallback(async () => {
+    setMe(await fetchMe())
   }, [])
 
-  // Step 1: resolve UserManager (triggers the /config.json fetch once).
-  // Do NOT call setIsLoading(false) here — wait until Step 2 has loaded the
-  // user from localStorage, otherwise RequireAuth sees isLoading=false with no
-  // accessToken and incorrectly redirects to "/" before the stored session is read.
   useEffect(() => {
-    getUserManager()
-      .then((resolved) => { setUm(resolved) })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        setLoginError(`Authentication configuration failed: ${msg}`)
-        setIsLoading(false)
+    let cancelled = false
+    fetch('/config.json')
+      .then((r) => (r.ok ? (r.json() as Promise<AppConfig>) : Promise.reject(new Error(String(r.status)))))
+      .then((c) => {
+        if (!cancelled) setCfg(c)
       })
-  }, [])
-
-  // Step 2: subscribe to auth events once the manager is ready.
-  useEffect(() => {
-    if (!um) return
-
-    // Restore a persisted local-login token (independent of any OIDC user),
-    // discarding an expired one so a stale value never briefly appears
-    // authenticated. Done inside the async chain (not synchronously in the
-    // effect body) so it doesn't trigger a cascading render on mount.
-    const restoreLocalToken = () => {
-      const stored = localTokenStore().getItem(LOCAL_TOKEN_KEY)
-      if (stored && !jwtExpired(stored)) setLocalToken(stored)
-      else if (stored) localTokenStore().removeItem(LOCAL_TOKEN_KEY)
-    }
-
-    um.getUser()
-      .then((u) => setUser(u))
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setCfg({ oidc_enabled: false, local_login_enabled: true })
+      })
       .finally(() => {
-        restoreLocalToken()
-        setIsLoading(false)
+        if (!cancelled) setConfigLoading(false)
       })
-
-    const onUserLoaded = (u: User) => setUser(u)
-    const onUserUnloaded = () => setUser(null)
-    um.events.addUserLoaded(onUserLoaded)
-    um.events.addUserUnloaded(onUserUnloaded)
-
+    fetchMe().then((m) => {
+      if (!cancelled) {
+        setMe(m)
+        setAuthLoading(false)
+      }
+    })
     return () => {
-      um.events.removeUserLoaded(onUserLoaded)
-      um.events.removeUserUnloaded(onUserUnloaded)
+      cancelled = true
     }
-  }, [um])
+  }, [])
+
+  // A 401 on any request (from useAuthClient) dispatches this; re-check the
+  // session so the UI flips to signed-out without a manual reload.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      void refresh()
+    }
+    window.addEventListener('auth:unauthorized', onUnauthorized)
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized)
+  }, [refresh])
 
   const login = useCallback(() => {
-    setLoginError(null)
-    if (!um) {
-      setLoginError('Authentication is not configured. Check that the server is reachable and /config.json is served correctly.')
-      return
-    }
-    um.signinRedirect().catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err)
-      setLoginError(
-        msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')
-          ? 'Cannot reach the authentication server. Check your OIDC configuration and CORS settings.'
-          : `Sign-in failed: ${msg}`,
-      )
-    })
-  }, [um])
-
-  const loginLocal = useCallback(async (email: string, password: string) => {
-    setLoginError(null)
-    const res = await fetch('/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-    if (!res.ok) {
-      let detail = 'Invalid email or password.'
-      if (res.status === 404) detail = 'Local login is not enabled on this server.'
-      else if (res.status === 429) detail = 'Too many attempts. Try again later.'
-      else {
-        const body = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null
-        if (body?.detail) detail = body.detail
-        else if (body?.title) detail = body.title
-      }
-      throw new Error(detail)
-    }
-    const { access_token } = (await res.json()) as { access_token: string }
-    localTokenStore().setItem(LOCAL_TOKEN_KEY, access_token)
-    setLocalToken(access_token)
+    window.location.href = '/api/v1/auth/oidc/login'
   }, [])
 
-  // logout clears whichever session is active. A local-token session just drops
-  // the token (no IdP round-trip); an OIDC session does the IdP sign-out.
-  const logout = useCallback(() => {
-    if (localToken) clearLocalToken()
-    if (um && user) return um.signoutRedirect()
-  }, [um, user, localToken, clearLocalToken])
+  const loginLocal = useCallback(
+    async (email: string, password: string) => {
+      setLoginError(null)
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      if (!res.ok) {
+        let detail = 'Invalid email or password.'
+        if (res.status === 404) detail = 'Local login is not enabled on this server.'
+        else if (res.status === 429) detail = 'Too many attempts. Try again later.'
+        else {
+          const body = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null
+          if (body?.detail) detail = body.detail
+          else if (body?.title) detail = body.title
+        }
+        throw new Error(detail)
+      }
+      await refresh()
+    },
+    [refresh],
+  )
 
-  // clearSession is the 401 hook: drop both token sources so the UI returns to
-  // the signed-out state without an IdP redirect.
-  const clearSession = useCallback(async () => {
-    clearLocalToken()
-    await um?.removeUser()
-  }, [um, clearLocalToken])
+  const logout = useCallback((): Promise<void> => {
+    // Full navigation (not a background fetch): the server revokes the registry
+    // session and, for an OIDC session, 302s through the IdP's RP-initiated
+    // logout so the Keycloak SSO session ends too — otherwise re-clicking
+    // "Sign in" would silently re-authenticate. A fetch could not follow that
+    // cross-origin redirect. Local sessions just land back on the SPA.
+    window.location.href = '/api/v1/auth/logout'
+    return Promise.resolve()
+  }, [])
 
   return (
     <AuthContext.Provider
       value={{
-        user,
-        isLoading,
+        me,
+        isAuthenticated: !!me?.authenticated,
+        authLoading,
+        configLoading,
+        oidcEnabled: !!cfg?.oidc_enabled,
+        localLoginEnabled: cfg?.local_login_enabled ?? true,
         loginError,
-        // A local token takes precedence over the OIDC one when both exist.
-        accessToken: localToken ?? user?.access_token,
-        email: localToken ? jwtEmail(localToken) : user?.profile?.email,
         login,
         loginLocal,
         logout,
-        clearSession,
-        userManager: um,
+        refresh,
       }}
     >
       {children}

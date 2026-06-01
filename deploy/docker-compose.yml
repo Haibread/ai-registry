@@ -57,26 +57,32 @@ services:
       # OIDC_JWKS_URL lets the server fetch JWKS internally without going via the host.
       # Override any of these in .env to customise for your environment.
       OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-ai-registry-web}
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs}
-      # Enforce OAuth 2.1 audience binding (MCP auth spec). Tokens minted by
-      # the realm must carry aud=ai-registry-server; the realm's
-      # ai-registry-server-audience client scope adds this automatically.
-      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ai-registry-server}
-      # RBAC + change-approval auth knobs (see ADRs 0006 / 0003).
+      # OIDC (ADR 0006 amendment) is brokered server-side with a single
+      # CONFIDENTIAL client; it is enabled only when BOTH OIDC_CLIENT_ID and
+      # OIDC_CLIENT_SECRET are set. OFF by default — local login (below) is the
+      # out-of-the-box front door. To enable OIDC, point OIDC_CLIENT_ID at a
+      # confidential Keycloak client (standard flow + the callback redirect URI
+      # registered), set OIDC_CLIENT_SECRET, and ensure OIDC_ISSUER is reachable
+      # from the server container (discovery is fetched server-side).
+      # RBAC + change-approval auth knobs (see ADR 0006).
       # Defaults match the server's built-in fallbacks; override in .env
       # when binding to a non-default IdP claim or reviewer group.
       AUTH_GROUPS_CLAIM: ${AUTH_GROUPS_CLAIM:-groups}
       AUTH_REVIEWER_GROUP: ${AUTH_REVIEWER_GROUP:-registry-reviewers}
-      # Local email+password login (ADR 0006) is OFF in the bundled stack
-      # until the login UI and a provisioned signing key land. When enabling
-      # it (AUTH_LOCAL_LOGIN_ENABLED=true) you MUST also supply
-      # AUTH_LOCAL_SIGNING_KEY (a PEM RSA key) via .env / a secret — the
-      # server refuses to boot with local login on but no key.
-      AUTH_LOCAL_LOGIN_ENABLED: ${AUTH_LOCAL_LOGIN_ENABLED:-false}
-      # SPA token storage: "session" (default, per-tab) or "local"
-      # (survives tab close, wider XSS exposure).
-      AUTH_STORAGE: ${AUTH_STORAGE:-session}
+      # Local email+password login (ADR 0006) — the out-of-the-box front door.
+      # ON by default so the bundled stack is usable with no IdP. Logging in
+      # needs an account: the bootstrap admin below is seeded on first boot.
+      AUTH_LOCAL_LOGIN_ENABLED: ${AUTH_LOCAL_LOGIN_ENABLED:-true}
+      # Bootstrap Server Admin seeded on first boot (create-only). These are
+      # QUICKSTART credentials — CHANGE them via .env for any real deployment.
+      AUTH_BOOTSTRAP_ADMIN_EMAIL: ${AUTH_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+      AUTH_BOOTSTRAP_ADMIN_PASSWORD: ${AUTH_BOOTSTRAP_ADMIN_PASSWORD:-devadmin12345}
+      # Session cookie is Secure by default; this localhost quickstart is plain
+      # HTTP, so default it off (or the browser drops the cookie and login
+      # silently fails). Set AUTH_SESSION_SECURE=true behind real HTTPS.
+      AUTH_SESSION_SECURE: ${AUTH_SESSION_SECURE:-false}
+      AUTH_SESSION_SAMESITE: ${AUTH_SESSION_SAMESITE:-lax}
       DATABASE_URL: ${DATABASE_URL:-postgres://registry:registry@postgres:5432/registry?sslmode=disable}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       # Public-facing base URL of the stack. Required — the A2A global agent

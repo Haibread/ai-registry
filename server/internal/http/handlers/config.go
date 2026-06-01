@@ -2,32 +2,21 @@ package handlers
 
 import "net/http"
 
-// ConfigJSON returns a handler for GET /config.json.
-// It serves the public client-side configuration required by the browser SPA
-// to bootstrap its OIDC client at runtime — eliminating the need to bake
-// OIDC coordinates into the Docker image as build-time environment variables.
+// ConfigJSON returns a handler for GET /config.json — the public runtime config
+// the browser SPA reads on first load (ADR 0006 amendment, 2026-06-01). The SPA
+// is no longer an OIDC client, so this no longer ships OIDC coordinates; it
+// ships only feature flags so the SPA knows which sign-in buttons to render.
 //
-// The endpoint is intentionally public (no auth required): the OIDC issuer
-// and client ID are not secrets, and the SPA must be able to call it before
-// a user has authenticated.
-//
-// authStorage controls where the SPA persists OIDC tokens. "session" (the
-// default) scopes tokens to the browser tab, which limits XSS-exfiltration
-// blast radius. "local" is an E2E escape hatch: Playwright's storageState
-// captures localStorage across contexts — do not use in production.
-func ConfigJSON(oidcIssuer, oidcClientID, authStorage string) http.HandlerFunc {
-	if authStorage != "local" {
-		authStorage = "session"
-	}
+// The endpoint is intentionally public (no auth): the flags are not secrets and
+// the SPA must read them before a user has authenticated.
+func ConfigJSON(oidcEnabled, localLoginEnabled bool) http.HandlerFunc {
 	type response struct {
-		OIDCIssuer   string `json:"oidc_issuer"`
-		OIDCClientID string `json:"oidc_client_id"`
-		AuthStorage  string `json:"auth_storage"`
+		OIDCEnabled       bool `json:"oidc_enabled"`
+		LocalLoginEnabled bool `json:"local_login_enabled"`
 	}
 	payload := response{
-		OIDCIssuer:   oidcIssuer,
-		OIDCClientID: oidcClientID,
-		AuthStorage:  authStorage,
+		OIDCEnabled:       oidcEnabled,
+		LocalLoginEnabled: localLoginEnabled,
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusOK, payload)

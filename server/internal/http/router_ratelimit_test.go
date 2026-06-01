@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/haibread/ai-registry/internal/auth"
 	stdhttp "github.com/haibread/ai-registry/internal/http"
 )
 
@@ -38,7 +37,6 @@ func TestPublicRateLimitRPM_WiredToMiddleware(t *testing.T) {
 
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
 		Logger:             discardLogger(),
-		AuthConf:           auth.Config{OIDCIssuer: "https://example.invalid"},
 		PublicRateLimitRPM: limit,
 	})
 
@@ -81,7 +79,6 @@ func TestPublicRateLimitRPM_WiredToMiddleware(t *testing.T) {
 func TestPublicRateLimitRPM_ZeroDefaultsTo1000(t *testing.T) {
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
 		Logger:             discardLogger(),
-		AuthConf:           auth.Config{OIDCIssuer: "https://example.invalid"},
 		PublicRateLimitRPM: 0, // must NOT be interpreted as "allow zero"
 	})
 

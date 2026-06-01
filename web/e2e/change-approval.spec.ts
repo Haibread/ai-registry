@@ -12,8 +12,8 @@
  *
  * Prerequisites (same as the other admin specs):
  *   - docker compose -f docker-compose.dev.yml up -d
- *   - AUTH_STORAGE=local in deploy/.env
- *   - e2e/.auth/admin.json populated by the setup project.
+ *   - e2e/.auth/admin.json populated by the setup project (carries the
+ *     registry session cookie).
  *
  * Run:  npm run test:e2e -- --project=change-approval
  */

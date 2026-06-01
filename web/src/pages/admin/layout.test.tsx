@@ -39,7 +39,7 @@ vi.mock('@/auth/useMe', () => ({
     isEditorAnywhere: true,
     isReviewerAnywhere: true,
   }),
-  useMe: () => ({ data: { authenticated: true, is_server_admin: true, grants: [] }, isLoading: false }),
+  useMe: () => ({ data: { authenticated: true, is_server_admin: true, grants: [], email: 'admin@example.com' }, isLoading: false }),
   satisfiesRole: () => true,
 }))
 

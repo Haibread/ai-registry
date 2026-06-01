@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,7 +26,6 @@ type RouterDeps struct {
 	Logger      *slog.Logger
 	DB          *store.DB
 	Metrics     *observability.Metrics
-	AuthConf    auth.Config
 	CORSOrigins []string
 	// TrustedProxy, when non-nil, is the CIDR from which X-Forwarded-For
 	// headers are trusted for client IP extraction in rate limiting.
@@ -39,10 +39,17 @@ type RouterDeps struct {
 	// global agent-card). Empty triggers HTTP 500 in those handlers rather
 	// than silently advertising localhost.
 	PublicBaseURL string
-	// LocalIssuer signs/verifies registry-issued local tokens (ADR 0006).
-	// Nil when local login is disabled — then only OIDC tokens are accepted
-	// and the /api/v1/auth/login + JWKS routes report local login disabled.
-	LocalIssuer *auth.LocalIssuer
+	// Sessions issues / resolves the registry session cookie (ADR 0006
+	// amendment, 2026-06-01). Nil only in route-walk tests.
+	Sessions *auth.SessionManager
+	// OIDC is the server-side OIDC broker (confidential client). Nil when OIDC
+	// login is not configured — then /api/v1/auth/oidc/* report 404.
+	OIDC *auth.OIDCBroker
+	// LocalLoginEnabled mirrors AUTH_LOCAL_LOGIN_ENABLED; gates POST /auth/login.
+	LocalLoginEnabled bool
+	// OIDCEnabled reports whether the broker is configured, surfaced to the SPA
+	// via /config.json so it knows whether to render the SSO button.
+	OIDCEnabled bool
 }
 
 // NewRouter builds and returns the fully wrapped HTTP handler: the chi router
@@ -70,21 +77,23 @@ func NewRouterForTest(deps RouterDeps) *chi.Mux {
 // buildMux constructs the chi router with middleware and routes. It is the
 // unwrapped inner of NewRouter, exported to tests via NewRouterForTest.
 func buildMux(deps RouterDeps) *chi.Mux {
-	// ── Auth validator ────────────────────────────────────────────────────────
-	jwksCache := auth.NewJWKSCache(deps.AuthConf.JWKSEndpoint(), 0)
-	validator := auth.NewValidator(jwksCache, deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCAudience, deps.AuthConf.GroupsClaim).
-		WithLocalIssuer(deps.LocalIssuer)
-	// Only attach a principal store when a real DB is present. Passing a nil
-	// *store.DB would wrap a typed-nil in the interface (non-nil interface),
-	// making Authenticate attempt DB calls on it. Route-walk tests build the
-	// router with a nil DB and must not trip that.
+	// ── Session authenticator ───────────────────────────────────────────────
+	// Resolves the session cookie → Principal (ADR 0006 amendment). Only attach
+	// a principal store when a real DB is present: a nil *store.DB would wrap a
+	// typed-nil in the interface, so route-walk tests (nil DB) must not get one.
+	var principalStore auth.PrincipalStore
 	if deps.DB != nil {
-		validator.WithPrincipalStore(deps.DB)
+		principalStore = deps.DB
+	}
+	authn := auth.NewAuthenticator(deps.Sessions, principalStore)
+
+	oidcCookieSecure := true
+	if deps.Sessions != nil {
+		oidcCookieSecure = deps.Sessions.CookieSecure()
 	}
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)
-	v0H := handlers.NewV0MCPHandlers(deps.DB, deps.DB)
 	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB, deps.Metrics)
 	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
 	revH := handlers.NewReviewHandlers(deps.DB, deps.DB)
@@ -93,7 +102,14 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger, deps.PublicBaseURL)
 	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
-	authH := handlers.NewAuthHandlers(deps.LocalIssuer, deps.DB)
+	authH := handlers.NewAuthHandlers(deps.Sessions, deps.DB, deps.LocalLoginEnabled)
+	// Post-logout the IdP redirects back to the SPA origin; derive it from the
+	// public base URL (falls back to "/" when unset).
+	postLogoutRedirect := "/"
+	if deps.PublicBaseURL != "" {
+		postLogoutRedirect = strings.TrimRight(deps.PublicBaseURL, "/") + "/"
+	}
+	oidcH := handlers.NewOIDCAuthHandlers(deps.OIDC, deps.Sessions, deps.DB, oidcCookieSecure, "/", postLogoutRedirect)
 	groupH := handlers.NewGroupHandlers(deps.DB, deps.DB)
 	userH := handlers.NewUserHandlers(deps.DB, deps.DB)
 	grantH := handlers.NewGrantHandlers(deps.DB, deps.DB)
@@ -140,7 +156,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r.Use(middleware.RequestLogger(deps.Logger, deps.Metrics))
 	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MiB
 	r.Use(middleware.RequireJSONBody)
-	r.Use(validator.Authenticate) // parse JWT when present; never blocks
+	r.Use(authn.Authenticate) // resolve session cookie when present; never blocks
 
 	// ── System endpoints ──────────────────────────────────────────────────────
 	r.Get("/healthz", handlers.Healthz)
@@ -148,43 +164,12 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r.With(auth.RequireAdmin).Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/openapi.yaml", handlers.OpenAPISpec)
 	r.Get("/docs", handlers.SwaggerUI)
-	// Public runtime config consumed by the browser SPA (OIDC bootstrap).
-	r.Get("/config.json", handlers.ConfigJSON(deps.AuthConf.OIDCIssuer, deps.AuthConf.OIDCClientID, deps.AuthConf.AuthStorage))
+	// Public runtime config consumed by the browser SPA (sign-in feature flags).
+	r.Get("/config.json", handlers.ConfigJSON(deps.OIDCEnabled, deps.LocalLoginEnabled))
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
-	r.Get("/.well-known/oauth-protected-resource",
-		handlers.OAuthProtectedResource(deps.PublicBaseURL, deps.AuthConf.OIDCIssuer, deps.Logger))
 	// Global registry agent card (makes the registry a first-class A2A citizen)
 	r.Get("/.well-known/agent-card.json", cardH.GlobalAgentCard)
-	// Registry JWKS for self-verifying locally-issued tokens (ADR 0006).
-	r.Get("/.well-known/jwks.json", authH.JWKS)
-
-	// ── MCP registry wire-format compat layer ─────────────────────────────────
-	r.Route("/v0", func(r chi.Router) {
-		// MCP wall (ADR 0006 §3): the MCP surface is OAuth-only — reject
-		// registry-issued local tokens here even though they are valid on the
-		// human/admin API.
-		r.Use(auth.RejectLocalToken)
-		r.Get("/servers", v0H.ListServers)
-		r.Get("/servers/{id}", v0H.GetServer)
-
-		// Name-based routes (spec-preferred: namespace/slug path)
-		r.Route("/servers/{namespace}/{slug}", func(r chi.Router) {
-			r.Get("/", v0H.GetServerByName)
-			r.With(requireMCPServerNS).Patch("/status", v0H.PatchServerStatus)
-			r.Route("/versions", func(r chi.Router) {
-				r.Get("/", v0H.ListServerVersions)
-				r.Route("/{version}", func(r chi.Router) {
-					r.Get("/", v0H.GetServerVersion)
-					r.With(requireMCPServerNS).Put("/", v0H.UpdateServerVersion)
-					r.With(requireMCPServerNS).Delete("/", v0H.DeleteServerVersion)
-					r.With(requireMCPServerNS).Patch("/status", v0H.PatchVersionStatus)
-				})
-			})
-		})
-
-		r.With(auth.RequireAdmin).Post("/publish", v0H.Publish)
-	})
 
 	// ── Per-agent A2A card (public, outside /api/v1 per A2A spec path) ────────
 	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", cardH.PerAgentCard)
@@ -197,9 +182,17 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	publicRL := middleware.RateLimit(publicRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
 
-		// Local email+password login → registry-issued token (ADR 0006).
-		// Unauthenticated by design; rate-limited and lockout-protected.
+		// Auth front doors (ADR 0006 amendment): local email+password login and
+		// logout, plus the brokered OIDC login/callback (confidential client,
+		// server-side). All unauthenticated by design; rate-limited and, for
+		// local login, lockout-protected. Each ends in a session cookie.
 		r.With(publicRL).Post("/auth/login", authH.Login)
+		r.With(publicRL).Post("/auth/logout", authH.Logout)
+		// Browser logout: revokes the session and, for an OIDC session, bounces
+		// through the IdP's RP-initiated logout so the SSO session ends too.
+		r.With(publicRL).Get("/auth/logout", oidcH.Logout)
+		r.With(publicRL).Get("/auth/oidc/login", oidcH.Login)
+		r.With(publicRL).Get("/auth/oidc/callback", oidcH.Callback)
 
 		// Resolved identity + effective role grants for the authenticated
 		// caller. Powers the SPA's role-gated admin UI (ADR 0006). 401 when no

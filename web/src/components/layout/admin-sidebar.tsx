@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, Flag, Activity, ScrollText, ClipboardCheck, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 import { usePermissions, type Permissions } from '@/auth/useMe'
 import { usePublisher } from '@/auth/PublisherContext'
 import { PublisherSwitcher } from '@/components/admin/publisher-switcher'
@@ -81,7 +80,6 @@ interface AdminSidebarProps {
 // a 30-second interval so a reviewer who leaves the tab open notices new
 // submissions without a hard refresh.
 function useReviewQueueCount(): number | null {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
   const { data } = useQuery({
     queryKey: ['admin-review-queue-count'],
@@ -95,7 +93,7 @@ function useReviewQueueCount(): number | null {
       const items = r.data?.items ?? []
       return { count: items.length, hasMore: !!r.data?.next_cursor }
     },
-    enabled: !!accessToken,
+    enabled: true,
     refetchInterval: 30_000,
   })
   if (!data) return null

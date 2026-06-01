@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -167,41 +168,58 @@ func run() error {
 		logger.Info("trusted proxy configured", slog.String("cidr", cidr))
 	}
 
-	// ── Local token issuer (ADR 0006) ────────────────────────────────────────
-	// Built only when local login is enabled. This is where the
-	// "signing key required when local login is enabled" rule is enforced —
-	// config.Load deliberately defers it here so an unrelated config load is
-	// never rejected for a half-built feature.
-	var localIssuer *authpkg.LocalIssuer
+	// ── Sessions (ADR 0006 amendment, 2026-06-01) ────────────────────────────
+	// Both front doors end in a registry session behind an HttpOnly cookie.
+	sessions := authpkg.NewSessionManager(db, authpkg.SessionConfig{
+		CookieName: cfg.Auth.SessionCookieName,
+		TTL:        cfg.Auth.SessionTTL,
+		Secure:     cfg.Auth.SessionCookieSecure,
+		SameSite:   authpkg.ParseSameSite(cfg.Auth.SessionCookieSameSite),
+	})
 	if cfg.Auth.LocalLoginEnabled {
-		if cfg.Auth.LocalSigningKey == "" {
-			return fmt.Errorf("AUTH_LOCAL_SIGNING_KEY is required when local login is enabled (set AUTH_LOCAL_LOGIN_ENABLED=false to disable local login)")
+		logger.Info("local login enabled")
+	}
+
+	// ── OIDC broker (optional) ────────────────────────────────────────────────
+	// Built only when a confidential client is configured. OIDC is brokered
+	// server-side; the IdP token never reaches the browser. A discovery failure
+	// here is fatal (operators asked for OIDC), but local login is independent.
+	var oidcBroker *authpkg.OIDCBroker
+	oidcEnabled := false
+	if cfg.Auth.OIDCClientID != "" && cfg.Auth.OIDCClientSecret != "" {
+		redirect := cfg.Auth.OIDCRedirectURL
+		if redirect == "" && cfg.HTTP.PublicBaseURL != "" {
+			redirect = strings.TrimRight(cfg.HTTP.PublicBaseURL, "/") + "/api/v1/auth/oidc/callback"
 		}
-		localIssuer, err = authpkg.NewLocalIssuer(cfg.Auth.LocalSigningKey, cfg.Auth.LocalTokenTTL)
+		oidcBroker, err = authpkg.NewOIDCBroker(ctx, authpkg.OIDCConfig{
+			Issuer:          cfg.Auth.OIDCIssuer,
+			ClientID:        cfg.Auth.OIDCClientID,
+			ClientSecret:    cfg.Auth.OIDCClientSecret,
+			RedirectURL:     redirect,
+			Scopes:          cfg.Auth.OIDCScopes,
+			JWKSURLOverride: cfg.Auth.OIDCJWKSUrl,
+			InternalURL:     cfg.Auth.OIDCInternalURL,
+		})
 		if err != nil {
-			return fmt.Errorf("initialising local token issuer: %w", err)
+			return fmt.Errorf("initialising OIDC broker: %w", err)
 		}
-		logger.Info("local login enabled", slog.String("kid", localIssuer.KID()))
+		oidcEnabled = true
+		logger.Info("oidc broker enabled", slog.String("redirect_url", redirect))
 	}
 
 	// ── HTTP server ──────────────────────────────────────────────────────────
 	handler := registryhttp.NewRouter(registryhttp.RouterDeps{
-		Logger:  logger,
-		DB:      db,
-		Metrics: metrics,
-		AuthConf: authpkg.Config{
-			OIDCIssuer:   cfg.Auth.OIDCIssuer,
-			OIDCJWKSUrl:  cfg.Auth.OIDCJWKSUrl,
-			OIDCClientID: cfg.Auth.OIDCClientID,
-			OIDCAudience: cfg.Auth.OIDCAudience,
-			AuthStorage:  cfg.Auth.AuthStorage,
-			GroupsClaim:  cfg.Auth.GroupsClaim,
-		},
+		Logger:             logger,
+		DB:                 db,
+		Metrics:            metrics,
 		CORSOrigins:        cfg.HTTP.CORSOrigins,
 		TrustedProxy:       trustedProxy,
 		PublicRateLimitRPM: cfg.HTTP.PublicRateLimitRPM,
 		PublicBaseURL:      cfg.HTTP.PublicBaseURL,
-		LocalIssuer:        localIssuer,
+		Sessions:           sessions,
+		OIDC:               oidcBroker,
+		LocalLoginEnabled:  cfg.Auth.LocalLoginEnabled,
+		OIDCEnabled:        oidcEnabled,
 	})
 	srv := registryhttp.NewServer(handler, registryhttp.ServerConfig{
 		Addr:         cfg.HTTP.Addr,

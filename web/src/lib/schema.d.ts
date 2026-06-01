@@ -98,26 +98,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/.well-known/oauth-protected-resource": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * MCP OAuth 2.0 Protected Resource Metadata
-         * @description RFC 8707 resource metadata required by the MCP authorization spec.
-         */
-        get: operations["oauthProtectedResource"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/.well-known/agent-card.json": {
         parameters: {
             query?: never;
@@ -138,26 +118,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/.well-known/jwks.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Registry JSON Web Key Set
-         * @description Public keys for verifying registry-issued local access tokens. Empty `keys` when local login is disabled.
-         */
-        get: operations["registryJWKS"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -169,9 +129,73 @@ export interface paths {
         put?: never;
         /**
          * Local email + password login
-         * @description Exchanges an email and password for a short-lived, registry-signed access token. Local tokens are accepted only on the human/admin API — they are rejected on the MCP surface, which stays OAuth-only. Available only when local login is enabled.
+         * @description Verifies an email and password and opens a registry session, set as a Secure, HttpOnly cookie (ADR 0006 amendment). Available only when local login is enabled.
          */
         post: operations["localLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Log out (browser) and end the IdP session
+         * @description Browser logout (ADR 0006 amendment): revokes the registry session and clears the cookie, then redirects back to the app. For an OIDC session it first bounces the browser through the identity provider's RP-initiated logout (end_session_endpoint, with id_token_hint) so the IdP SSO session is terminated too; a local session redirects straight back to the app.
+         */
+        get: operations["logoutRedirect"];
+        put?: never;
+        /**
+         * Log out (revoke the current session)
+         * @description Revokes the caller's session and clears the session cookie. Idempotent — succeeds even with no active session. The no-redirect variant for programmatic callers; browsers should use GET (below) so an OIDC session is also ended at the identity provider.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oidc/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Begin OIDC login (server-side broker)
+         * @description Redirects the browser to the configured identity provider to begin the Authorization Code + PKCE flow (ADR 0006 amendment). The registry is a confidential client; the IdP token never reaches the browser. 404 when OIDC login is not configured.
+         */
+        get: operations["oidcLogin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oidc/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * OIDC redirect callback (server-side broker)
+         * @description Handles the identity-provider redirect: validates state, exchanges the code, maps the identity to a registry user, opens a session, and redirects to the app. 404 when OIDC login is not configured.
+         */
+        get: operations["oidcCallback"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1283,153 +1307,6 @@ export interface paths {
         patch: operations["updateReportStatus"];
         trace?: never;
     };
-    "/v0/servers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List MCP servers (MCP registry wire format)
-         * @description Returns the paginated server list in the canonical MCP registry wire format. Only public, published servers are returned.
-         */
-        get: operations["v0ListServers"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v0/servers/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get an MCP server by ULID (MCP registry wire format) */
-        get: operations["v0GetServer"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v0/servers/{namespace}/{slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get an MCP server by namespace/slug (MCP registry wire format) */
-        get: operations["v0GetServerByName"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v0/servers/{namespace}/{slug}/versions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List published versions of an MCP server (MCP registry wire format) */
-        get: operations["v0ListServerVersions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v0/servers/{namespace}/{slug}/versions/{version}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a specific version of an MCP server (MCP registry wire format)
-         * @description Use `latest` as the version value to get the latest published version.
-         */
-        get: operations["v0GetServerVersion"];
-        /** Update a server version (admin only) — not yet implemented */
-        put: operations["v0UpdateServerVersion"];
-        post?: never;
-        /** Delete a server version (admin only) — not yet implemented */
-        delete: operations["v0DeleteServerVersion"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v0/servers/{namespace}/{slug}/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update status for all published versions of a server (admin only) */
-        patch: operations["v0PatchServerStatus"];
-        trace?: never;
-    };
-    "/v0/servers/{namespace}/{slug}/versions/{version}/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update status of a specific server version (admin only) */
-        patch: operations["v0PatchVersionStatus"];
-        trace?: never;
-    };
-    "/v0/publish": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Publish an MCP server version (admin only, MCP registry wire format)
-         * @description Creates or updates an MCP server entry and immediately publishes a version. The request body is the server.json shape directly (no wrapper). Auto-creates the server record if the publisher exists.
-         */
-        post: operations["v0Publish"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2369,26 +2246,6 @@ export interface operations {
             };
         };
     };
-    oauthProtectedResource: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Resource metadata */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
     globalAgentCard: {
         parameters: {
             query?: never;
@@ -2399,26 +2256,6 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description A2A Agent Card */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    registryJWKS: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description JSON Web Key Set */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2442,14 +2279,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description A registry-issued access token */
-            200: {
+            /** @description Session opened; the session cookie is set via Set-Cookie. */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["LoginResponse"];
-                };
+                content?: never;
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -2464,6 +2299,93 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    logoutRedirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the IdP's end-session endpoint (OIDC session) or directly back to the app (local session), with the session cookie cleared. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oidcLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the identity provider's authorize endpoint. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    oidcCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the app with the session cookie set. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid login state or missing authorization code. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     getMe: {
@@ -4754,360 +4676,6 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationError"];
-        };
-    };
-    v0ListServers: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string;
-                /** @description Full-text search (also accepts "q" for legacy compat) */
-                search?: string;
-                /** @description Return servers updated after this RFC 3339 timestamp */
-                updated_since?: string;
-                include_deleted?: boolean;
-                /** @description Exact semver filter, or "latest" */
-                version?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated server list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0ListResponse"];
-                };
-            };
-        };
-    };
-    v0GetServer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ULID of the MCP server */
-                id: components["parameters"]["ServerIDParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Server detail */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0ServerResponse"];
-                };
-            };
-            /** @description Server not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-        };
-    };
-    v0GetServerByName: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                namespace: components["parameters"]["NamespaceParam"];
-                slug: components["parameters"]["SlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Server detail */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0ServerResponse"];
-                };
-            };
-            /** @description Server not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-        };
-    };
-    v0ListServerVersions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                namespace: components["parameters"]["NamespaceParam"];
-                slug: components["parameters"]["SlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of published versions in wire format */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0ListResponse"];
-                };
-            };
-            /** @description Server not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-        };
-    };
-    v0GetServerVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                namespace: components["parameters"]["NamespaceParam"];
-                slug: components["parameters"]["SlugParam"];
-                version: components["parameters"]["VersionParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Version detail in wire format */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0ServerResponse"];
-                };
-            };
-            /** @description Version not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-        };
-    };
-    v0UpdateServerVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                namespace: components["parameters"]["NamespaceParam"];
-                slug: components["parameters"]["SlugParam"];
-                version: components["parameters"]["VersionParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
-        responses: {
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Not implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-        };
-    };
-    v0DeleteServerVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                namespace: components["parameters"]["NamespaceParam"];
-                slug: components["parameters"]["SlugParam"];
-                version: components["parameters"]["VersionParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Not implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-        };
-    };
-    v0PatchServerStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                namespace: components["parameters"]["NamespaceParam"];
-                slug: components["parameters"]["SlugParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["V0StatusPatchRequest"];
-            };
-        };
-        responses: {
-            /** @description All versions updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0AllVersionsStatusResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Server not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-        };
-    };
-    v0PatchVersionStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                namespace: components["parameters"]["NamespaceParam"];
-                slug: components["parameters"]["SlugParam"];
-                version: components["parameters"]["VersionParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["V0StatusPatchRequest"];
-            };
-        };
-        responses: {
-            /** @description Version status updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0ServerResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Server or version not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-        };
-    };
-    v0Publish: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["V0PublishRequest"];
-            };
-        };
-        responses: {
-            /** @description Server published; returns the full ServerResponse */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0ServerResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description Version already exists */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["V0Error"];
-                };
-            };
         };
     };
 }

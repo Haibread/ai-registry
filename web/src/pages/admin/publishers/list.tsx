@@ -5,16 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 
 export default function AdminPublisherList() {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
 
   const { data } = useQuery({
     queryKey: ['admin-publishers'],
     queryFn: () => api.GET('/api/v1/publishers', { params: { query: { limit: 100 } } }).then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const publishers = data?.items ?? []

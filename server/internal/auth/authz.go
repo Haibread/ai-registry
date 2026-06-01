@@ -139,18 +139,3 @@ func CheckPublisherRole(ctx context.Context, rs RoleStore, publisherID string, r
 	}
 	return domain.Satisfies(held, required), true, nil
 }
-
-// RejectLocalToken is the MCP wall (ADR 0006 §3, non-negotiable): the MCP and
-// agent protocol surface is OAuth-only, so a registry-issued local token is
-// refused there even though it is valid on the human/admin API. Unauthenticated
-// and OIDC-authenticated requests pass through (other guards handle them).
-func RejectLocalToken(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if kind, ok := IssuerKindFromContext(r.Context()); ok && kind == IssuerLocal {
-			problem.Write(w, http.StatusForbidden, "forbidden",
-				"Local registry tokens are not accepted on the MCP surface; use an OAuth (OIDC) token.", r.URL.Path)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}

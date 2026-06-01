@@ -11,11 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DeleteButton } from '@/components/admin/delete-button'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 
 export default function AdminGroupDetail() {
   const { slug } = useParams<{ slug: string }>()
-  const { accessToken } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const api = useAuthClient()
@@ -24,13 +22,13 @@ export default function AdminGroupDetail() {
   const { data: group, isPending, isError } = useQuery({
     queryKey: ['admin-group', slug],
     queryFn: () => api.GET('/api/v1/groups/{slug}', { params: { path: { slug: slug! } } }).then(r => r.data),
-    enabled: !!slug && !!accessToken,
+    enabled: !!slug && true,
   })
 
   const { data: membersData } = useQuery({
     queryKey: ['admin-group-members', slug],
     queryFn: () => api.GET('/api/v1/groups/{slug}/members', { params: { path: { slug: slug! } } }).then(r => r.data),
-    enabled: !!slug && !!accessToken,
+    enabled: !!slug && true,
   })
 
   const invalidate = () => {

@@ -25,7 +25,15 @@ function renderPage() {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    authState = { accessToken: undefined, isLoading: false, login: mockLogin, loginLocal: mockLoginLocal }
+    authState = {
+      isAuthenticated: false,
+      authLoading: false,
+      configLoading: false,
+      oidcEnabled: true,
+      localLoginEnabled: true,
+      login: mockLogin,
+      loginLocal: mockLoginLocal,
+    }
   })
 
   it('offers both the OIDC button and the local form', () => {

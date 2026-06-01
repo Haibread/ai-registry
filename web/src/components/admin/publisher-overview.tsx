@@ -7,7 +7,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ActivityTimeline } from '@/components/admin/activity-timeline'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 import { usePermissions } from '@/auth/useMe'
 import type { PublisherOption } from '@/auth/PublisherContext'
 import type { components } from '@/lib/schema'
@@ -50,7 +49,6 @@ const TILE_TONE: Record<AttentionTile['tone'], string> = {
 // PublisherOverview is the scoped admin home: what needs the caller, the state
 // of the publisher, and what happened recently — all for the selected publisher.
 export function PublisherOverview({ slug, option }: { slug: string; option: PublisherOption | null }) {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
   const perms = usePermissions()
 
@@ -58,7 +56,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
     queryKey: ['publisher-stats', slug],
     queryFn: () =>
       api.GET('/api/v1/publishers/{slug}/stats', { params: { path: { slug } } }).then((r) => r.data),
-    enabled: !!accessToken && !!slug,
+    enabled: !!slug,
   })
 
   const { data: activity, isPending: activityPending } = useQuery({
@@ -67,7 +65,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
       api
         .GET('/api/v1/publishers/{slug}/activity', { params: { path: { slug }, query: { limit: 8 } } })
         .then((r) => r.data),
-    enabled: !!accessToken && !!slug,
+    enabled: !!slug,
   })
 
   const canEdit = perms.canEdit(slug)

@@ -11,7 +11,6 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/haibread/ai-registry/internal/auth"
 	stdhttp "github.com/haibread/ai-registry/internal/http"
 )
 
@@ -31,10 +30,9 @@ import (
 //
 // Routes under test are chosen to be DB-free so the test stays hermetic:
 //
-//   - GET /healthz                            — static 200
-//   - GET /config.json                         — reads OIDC bootstrap values
-//   - GET /.well-known/oauth-protected-resource — static JSON
-//   - GET /openapi.yaml                        — embedded spec bytes
+//   - GET /healthz      — static 200
+//   - GET /config.json  — reads sign-in feature flags
+//   - GET /openapi.yaml — embedded spec bytes
 //
 // If this test starts failing, the most likely cause is somebody replaced
 // otelhttp.NewHandler with a bare mux in NewRouter — the exact bug CLAUDE.md
@@ -59,8 +57,7 @@ func TestHTTPHandlers_EmitOTelSpans(t *testing.T) {
 	// discardLogger is defined in router_ratelimit_test.go — both tests share
 	// the same need for a non-nil logger to avoid RequestLogger panics.
 	handler := stdhttp.NewRouter(stdhttp.RouterDeps{
-		Logger:   discardLogger(),
-		AuthConf: auth.Config{OIDCIssuer: "https://example.invalid"},
+		Logger: discardLogger(),
 	})
 
 	routes := []struct {
@@ -69,7 +66,6 @@ func TestHTTPHandlers_EmitOTelSpans(t *testing.T) {
 	}{
 		{http.MethodGet, "/healthz"},
 		{http.MethodGet, "/config.json"},
-		{http.MethodGet, "/.well-known/oauth-protected-resource"},
 		{http.MethodGet, "/openapi.yaml"},
 	}
 

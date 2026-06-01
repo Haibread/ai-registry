@@ -12,8 +12,8 @@
  * is covered separately by phase7-flows.spec.ts (via the API); this spec
  * covers the management UI a Server Admin uses to set those grants up.
  *
- * Prerequisites: same as the other admin specs (docker-compose dev stack
- * with AUTH_STORAGE=local).
+ * Prerequisites: same as the other admin specs (docker-compose dev stack;
+ * the setup project populates e2e/.auth/*.json session cookies).
  *
  * Run:  npm run test:e2e -- --project=rbac-ui
  */

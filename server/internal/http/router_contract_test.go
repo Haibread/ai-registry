@@ -10,7 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/haibread/ai-registry/api"
-	"github.com/haibread/ai-registry/internal/auth"
 	stdhttp "github.com/haibread/ai-registry/internal/http"
 )
 
@@ -124,8 +123,7 @@ func parseOpenAPIRoutes(specBytes []byte) (map[string]bool, error) {
 // through the otelhttp wrapper applied by NewRouter.
 func collectRouterRoutes() (map[string]bool, error) {
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
-		Logger:   discardLogger(),
-		AuthConf: auth.Config{OIDCIssuer: "https://example.invalid"},
+		Logger: discardLogger(),
 	})
 
 	routes := map[string]bool{}

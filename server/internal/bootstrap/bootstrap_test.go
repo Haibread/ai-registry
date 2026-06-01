@@ -60,7 +60,8 @@ func TestMain(m *testing.M) {
 func resetDB(t *testing.T) {
 	t.Helper()
 	_, err := sharedDB.Pool.Exec(context.Background(),
-		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers, audit_log RESTART IDENTITY CASCADE`)
+		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers,
+		          role_grants, group_members, groups, users, audit_log RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("truncating tables: %v", err)
 	}
@@ -438,6 +439,120 @@ agents:
 	}
 	if agent.Visibility != "public" {
 		t.Errorf("agent visibility = %q, want public", agent.Visibility)
+	}
+}
+
+func TestLoadSpec_GrantValidation(t *testing.T) {
+	cases := map[string]string{
+		"both group and user": "grants:\n  - group: \"g\"\n    user: \"u@example.com\"\n    role: \"editor\"\n",
+		"neither group nor user": "grants:\n  - role: \"editor\"\n",
+		"invalid role": "groups:\n  - slug: \"g\"\n    name: \"G\"\ngrants:\n  - group: \"g\"\n    role: \"superuser\"\n",
+		"group missing name": "groups:\n  - slug: \"g\"\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := writeFile(t, "bootstrap.yaml", body)
+			if _, err := bootstrap.LoadSpec(path); err == nil {
+				t.Fatalf("expected a validation error for %q, got nil", name)
+			}
+		})
+	}
+}
+
+func TestRun_GroupsAndGrants(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	// A direct user grant requires the user to exist; federated users are
+	// provisioned on login, so pre-create one here.
+	if _, err := sharedDB.CreateUser(ctx, store.CreateUserParams{Email: "author@example.com"}); err != nil {
+		t.Fatalf("seeding user: %v", err)
+	}
+
+	path := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+
+groups:
+  - slug: "acme-team"
+    name: "Acme Team"
+  - slug: "global-reviewers"
+    name: "Global Reviewers"
+
+grants:
+  - group: "acme-team"
+    role: "admin"
+    publisher: "acme"
+  - group: "global-reviewers"
+    role: "reviewer"
+  - user: "author@example.com"
+    role: "editor"
+    publisher: "acme"
+`)
+	spec, err := bootstrap.LoadSpec(path)
+	if err != nil {
+		t.Fatalf("LoadSpec: %v", err)
+	}
+	if err := bootstrap.Run(ctx, sharedDB, spec, nil); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if _, err := sharedDB.GetGroupBySlug(ctx, "acme-team"); err != nil {
+		t.Fatalf("group acme-team not created: %v", err)
+	}
+
+	// A federated caller in both claim groups resolves to the per-publisher
+	// admin grant on acme and the global reviewer grant.
+	grants, err := sharedDB.ListGrantsForPrincipal(ctx, "", []string{"acme-team", "global-reviewers"})
+	if err != nil {
+		t.Fatalf("ListGrantsForPrincipal: %v", err)
+	}
+	var sawAdminOnAcme, sawGlobalReviewer bool
+	for _, g := range grants {
+		if g.Role == domain.RoleAdmin && g.PublisherSlug == "acme" {
+			sawAdminOnAcme = true
+		}
+		if g.Role == domain.RoleReviewer && g.PublisherID == "" {
+			sawGlobalReviewer = true
+		}
+	}
+	if !sawAdminOnAcme {
+		t.Errorf("expected admin grant on acme via acme-team, got %+v", grants)
+	}
+	if !sawGlobalReviewer {
+		t.Errorf("expected global reviewer grant via global-reviewers, got %+v", grants)
+	}
+
+	// The direct user grant resolves for that user with no claim groups.
+	u, err := sharedDB.GetUserByEmail(ctx, "author@example.com")
+	if err != nil {
+		t.Fatalf("GetUserByEmail: %v", err)
+	}
+	uGrants, err := sharedDB.ListGrantsForPrincipal(ctx, u.ID, nil)
+	if err != nil {
+		t.Fatalf("ListGrantsForPrincipal(user): %v", err)
+	}
+	var sawEditorOnAcme bool
+	for _, g := range uGrants {
+		if g.Role == domain.RoleEditor && g.PublisherSlug == "acme" {
+			sawEditorOnAcme = true
+		}
+	}
+	if !sawEditorOnAcme {
+		t.Errorf("expected editor grant on acme for the user, got %+v", uGrants)
+	}
+
+	// Idempotent: a second Run neither errors nor duplicates the grant.
+	if err := bootstrap.Run(ctx, sharedDB, spec, nil); err != nil {
+		t.Fatalf("Run (2nd): %v", err)
+	}
+	grants2, err := sharedDB.ListGrantsForPrincipal(ctx, "", []string{"acme-team"})
+	if err != nil {
+		t.Fatalf("ListGrantsForPrincipal (2nd): %v", err)
+	}
+	if len(grants2) != 1 {
+		t.Errorf("expected exactly 1 grant for acme-team after re-run, got %d: %+v", len(grants2), grants2)
 	}
 }
 

@@ -190,12 +190,14 @@ func TestMigration0011_RoundTrip(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = m.Close() })
 
-	// 000012 (RBAC) and 000013 (drop workspaces) now sit on top of 000011.
-	// Reverse both so this test exercises the 000011 down→up round-trip with
-	// 000011 as the effective head — the schema state it was written to assert
-	// against. 000013.down recreates workspaces and re-adds workspace_id.
-	if err := m.Steps(-2); err != nil {
-		t.Fatalf("rolling back 000013+000012 to reach the 000011 head: %v", err)
+	// Migrations now sit on top of 000011 (000012 RBAC, 000013 drop workspaces,
+	// 000014 sessions). Migrate down to exactly 000011 so this test exercises the
+	// 000011 down→up round-trip with 000011 as the effective head — the schema
+	// state it was written to assert against. Pinned to an absolute version so
+	// later migrations don't shift it. 000013.down recreates workspaces and
+	// re-adds workspace_id along the way.
+	if err := m.Migrate(11); err != nil {
+		t.Fatalf("migrating down to 000011: %v", err)
 	}
 
 	pool, err := pgxpool.New(ctx, dsn)

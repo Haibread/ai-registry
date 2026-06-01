@@ -12,7 +12,6 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/haibread/ai-registry/internal/auth"
 	stdhttp "github.com/haibread/ai-registry/internal/http"
 )
 
@@ -55,8 +54,7 @@ func TestHTTPHandlers_EveryRegisteredRouteEmitsSpan(t *testing.T) {
 	// chi.Walk; `serveMux` is the otelhttp-wrapped handler we actually fire
 	// requests at. They share configuration so the route set is identical.
 	deps := stdhttp.RouterDeps{
-		Logger:   discardLogger(),
-		AuthConf: auth.Config{OIDCIssuer: "https://example.invalid"},
+		Logger: discardLogger(),
 	}
 	walkMux := stdhttp.NewRouterForTest(deps)
 	serveMux := stdhttp.NewRouter(deps)

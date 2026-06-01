@@ -9,13 +9,12 @@
  *  - Public 404 / not-found for a private or missing entry
  *
  * Setup uses the admin storage state to seed public data via the API, then
- * navigates as an anonymous user (no auth-bearing cookies; the public client
- * is used because the admin storageState only carries oidc-client-ts state
- * for the admin flow, which public routes ignore).
+ * navigates as an anonymous user (a fresh context with no session cookie), so
+ * the assertions exercise the public, unauthenticated read surface.
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost, getAccessToken } from './helpers'
+import { apiPost } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB_SLUG = `e2e-public-pub-${RUN_ID}`
@@ -26,9 +25,9 @@ const AGENT_SLUG = `e2e-public-agent-${RUN_ID}`
 const AGENT_NAME = `E2E Public Agent ${RUN_ID}`
 const PRIVATE_SLUG = `e2e-public-priv-${RUN_ID}`
 
+// Deletes ride the session cookie shared by page.request (ADR 0006 amendment).
 async function apiDelete(page: Page, path: string) {
-  const token = await getAccessToken(page)
-  return page.request.delete(path, { headers: { Authorization: `Bearer ${token}` } })
+  return page.request.delete(path)
 }
 
 test.describe.configure({ mode: 'serial' })
