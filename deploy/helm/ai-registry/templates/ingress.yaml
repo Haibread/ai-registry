@@ -38,13 +38,6 @@ spec:
                 name: {{ include "ai-registry.server.fullname" . }}
                 port:
                   number: {{ .Values.server.service.port }}
-          - path: /v0(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: {{ include "ai-registry.server.fullname" . }}
-                port:
-                  number: {{ .Values.server.service.port }}
           - path: /healthz
             pathType: Exact
             backend:

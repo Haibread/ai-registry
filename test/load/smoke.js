@@ -55,14 +55,16 @@ export default function () {
     }));
   });
 
-  group('v0 list servers', () => {
-    const res = http.get(`${BASE_URL}/v0/servers`);
+  group('list servers', () => {
+    // The /v0 MCP-registry-spec surface was removed (ADR 0006 amendment);
+    // MCP servers are now listed under /api/v1, paginated as { items: [...] }.
+    const res = http.get(`${BASE_URL}/api/v1/mcp/servers`);
     failures.add(!check(res, {
       'servers 200': (r) => r.status === 200,
       'servers json': (r) => (r.headers['Content-Type'] || '').includes('json'),
-      'servers has metadata': (r) => {
+      'servers has items': (r) => {
         try {
-          return 'metadata' in r.json();
+          return Array.isArray(r.json().items);
         } catch (_e) {
           return false;
         }
