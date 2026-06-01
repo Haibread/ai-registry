@@ -371,9 +371,30 @@ func (c *Config) validate() error {
 	if c.Database.URL == "" {
 		return fmt.Errorf("DATABASE_URL is required")
 	}
-	if c.Auth.OIDCIssuer == "" {
-		return fmt.Errorf("OIDC_ISSUER is required")
+
+	// OIDC is brokered only when a confidential client is fully configured
+	// (both ID and secret). Mirror cmd/server's enablement check so validation
+	// and runtime agree on when OIDC is "on". A half-configured client is almost
+	// always a mistake that would otherwise silently leave OIDC disabled.
+	hasClientID := c.Auth.OIDCClientID != ""
+	hasClientSecret := c.Auth.OIDCClientSecret != ""
+	if hasClientID != hasClientSecret {
+		return fmt.Errorf("OIDC is half-configured: set both OIDC_CLIENT_ID and OIDC_CLIENT_SECRET to enable OIDC, or neither to disable it")
 	}
+	oidcEnabled := hasClientID && hasClientSecret
+
+	// OIDC_ISSUER is only needed when OIDC is enabled — the broker validates the
+	// id_token `iss` against it. Local-login-only deployments run without an IdP
+	// (decision N), so an empty issuer is valid when OIDC is off.
+	if oidcEnabled && c.Auth.OIDCIssuer == "" {
+		return fmt.Errorf("OIDC_ISSUER is required when OIDC is enabled (OIDC_CLIENT_ID and OIDC_CLIENT_SECRET are set)")
+	}
+
+	// At least one front door must be open, or no one can log in.
+	if !oidcEnabled && !c.Auth.LocalLoginEnabled {
+		return fmt.Errorf("no login method enabled: set AUTH_LOCAL_LOGIN_ENABLED=true, or configure OIDC (OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET)")
+	}
+
 	if c.Auth.BootstrapAdminEmail != "" && c.Auth.BootstrapAdminPassword == "" {
 		return fmt.Errorf("AUTH_BOOTSTRAP_ADMIN_PASSWORD is required when AUTH_BOOTSTRAP_ADMIN_EMAIL is set")
 	}

@@ -26,6 +26,9 @@ spec:
         {{- if and .Values.server.localLogin.enabled .Values.server.localLogin.bootstrapAdmin.password (not .Values.server.localLogin.bootstrapAdmin.existingSecret) }}
         checksum/local-login-secret: {{ include (print $.Template.BasePath "/server/local-login-secret.yaml") . | sha256sum }}
         {{- end }}
+        {{- if and .Values.server.oidcEnabled .Values.server.oidcClientSecret (not .Values.server.oidcClientSecretExistingSecret) }}
+        checksum/oidc-secret: {{ include (print $.Template.BasePath "/server/oidc-secret.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.server.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -101,6 +104,18 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.server.localLogin.bootstrapAdmin.existingSecret | default (printf "%s-bootstrap-admin" (include "ai-registry.server.fullname" .)) }}
                   key: AUTH_BOOTSTRAP_ADMIN_PASSWORD
+            {{- end }}
+            {{- /*
+              Confidential OIDC broker client secret: from the operator's
+              existingSecret when set, else the chart-rendered Secret. Only wired
+              when OIDC is enabled; local-login-only deployments omit it.
+            */}}
+            {{- if and .Values.server.oidcEnabled (or .Values.server.oidcClientSecret .Values.server.oidcClientSecretExistingSecret) }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.oidcClientSecretExistingSecret | default (printf "%s-oidc" (include "ai-registry.server.fullname" .)) }}
+                  key: OIDC_CLIENT_SECRET
             {{- end }}
             {{- with .Values.server.extraEnv }}
             {{- toYaml . | nindent 12 }}

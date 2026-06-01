@@ -1,3 +1,4 @@
+{{- include "ai-registry.server.validateAuth" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -19,31 +20,42 @@ data:
   PUBLIC_BASE_URL: {{ .Values.server.publicBaseURL | quote }}
   {{- end }}
 
-  # ── Auth (OIDC) ───────────────────────────────────────────────────────────
+  # ── Auth (OIDC, brokered server-side) ─────────────────────────────────────
+  # OIDC is brokered: the server is a single confidential client. Emitted only
+  # when oidcEnabled — otherwise the server runs local-login-only and needs no
+  # OIDC_* config. The client SECRET is wired via secretKeyRef in the Deployment
+  # (see oidc-secret.yaml), never emitted here. The validateAuth helper (invoked
+  # at the top of this file) has already verified issuer + client id + secret
+  # are present when oidcEnabled, so a misconfigured release fails at
+  # `helm install` instead of crash-looping on boot.
+  {{- if .Values.server.oidcEnabled }}
   OIDC_ISSUER: {{ .Values.server.oidcIssuer | quote }}
-  # Emitted unconditionally (like OIDC_ISSUER): audience binding is required, so
-  # an empty value must reach the server and fail its boot validation rather
-  # than silently disabling the `aud` check.
-  OIDC_AUDIENCE: {{ .Values.server.oidcAudience | quote }}
+  OIDC_CLIENT_ID: {{ .Values.server.oidcClientId | quote }}
+  {{- if .Values.server.oidcInternalUrl }}
+  OIDC_INTERNAL_URL: {{ .Values.server.oidcInternalUrl | quote }}
+  {{- end }}
   {{- if .Values.server.oidcJwksUrl }}
   OIDC_JWKS_URL: {{ .Values.server.oidcJwksUrl | quote }}
   {{- end }}
-  # Public client ID served via GET /config.json to bootstrap the browser SPA.
-  OIDC_CLIENT_ID: {{ .Values.server.oidcClientId | quote }}
+  {{- if .Values.server.oidcRedirectUrl }}
+  OIDC_REDIRECT_URL: {{ .Values.server.oidcRedirectUrl | quote }}
+  {{- end }}
+  {{- with .Values.server.oidcScopes }}
+  # Server splits OIDC_SCOPES on commas.
+  OIDC_SCOPES: {{ join "," . | quote }}
+  {{- end }}
+  {{- end }}
   {{- /*
     AUTH_* keys are optional — the server has built-in defaults
-    ("groups", "registry-reviewers", "session"). Only emit when the
-    operator has set them so an unset value leaves the default in
-    place rather than overriding it with an empty string.
+    ("groups", "registry-reviewers"). Only emit when the operator has set
+    them so an unset value leaves the default in place rather than
+    overriding it with an empty string.
   */}}
   {{- if .Values.server.authGroupsClaim }}
   AUTH_GROUPS_CLAIM: {{ .Values.server.authGroupsClaim | quote }}
   {{- end }}
   {{- if .Values.server.authReviewerGroup }}
   AUTH_REVIEWER_GROUP: {{ .Values.server.authReviewerGroup | quote }}
-  {{- end }}
-  {{- if .Values.server.authStorage }}
-  AUTH_STORAGE: {{ .Values.server.authStorage | quote }}
   {{- end }}
 
   # ── Auth (local accounts) ─────────────────────────────────────────
