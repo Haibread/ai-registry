@@ -15,7 +15,7 @@ const (
 )
 
 // Authenticator resolves the registry session cookie into a Principal and
-// populates request context (ADR 0006 amendment, 2026-06-01). It replaces the
+// populates request context. It replaces the
 // old multi-issuer JWT Validator: the registry is now the single token
 // authority — OIDC is brokered server-side and both front doors end in a
 // session cookie. It never blocks an unauthenticated request; the guards
@@ -88,7 +88,7 @@ func (a *Authenticator) Authenticate(next http.Handler) http.Handler {
 }
 
 // RequireAdmin is chi middleware that gates a route to Server Admins. It must be
-// chained after Authenticate. Server Admin is dual-sourced (ADR 0006): the
+// chained after Authenticate. Server Admin is dual-sourced: the
 // snapshotted realm-admin claim OR the resolved principal's is_server_admin
 // flag, via IsServerAdminFromContext.
 func RequireAdmin(next http.Handler) http.Handler {

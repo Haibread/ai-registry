@@ -57,7 +57,7 @@ const fixtures: Fixture[] = [
 
 async function loginAs(page: Page, email: string, password: string) {
   // The login page offers both the OIDC ("organization") button and a local
-  // email+password form (ADR 0006). The e2e identities live in Keycloak, so
+  // email+password form. The e2e identities live in Keycloak, so
   // drive the OIDC button to initiate the redirect.
   await page.goto('/login')
   await page.waitForLoadState('networkidle')

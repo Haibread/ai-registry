@@ -11,7 +11,7 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
-// GrantHandlers serves the role-grant management endpoints (ADR 0006 §7).
+// GrantHandlers serves the role-grant management endpoints.
 // Per-publisher grants are gated by publisher Admin (or Server Admin) at the
 // router; the global endpoints are Server-Admin only.
 type GrantHandlers struct {

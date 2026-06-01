@@ -42,8 +42,8 @@ AI Registry gives teams a single place to publish, discover, and evaluate the bu
 - OAuth 2.1 / OIDC with PKCE (public client via [`oidc-client-ts`](https://github.com/authts/oidc-client-ts) — no client secret, no NextAuth/Auth.js).
 - Keycloak in local dev via docker-compose with a pre-seeded realm.
 - Two login front doors: OIDC (Keycloak in dev) **and** local email + password accounts — the registry signs its own RS256 tokens for the latter and walls them off the MCP surface. Server Admin comes from `realm_access.roles[]` containing `"admin"` **or** a local `is_server_admin` flag.
-- **Publisher-scoped RBAC** — roles (Viewer/Editor/Reviewer/Admin) are granted to users or groups on a publisher; Editor authors, Reviewer approves, Admin manages, or global Server Admin. Write endpoints 403 without the role, independent of the UI. Claims carry **group membership only** — the JWT claim path is configurable via `AUTH_GROUPS_CLAIM` (default `groups`). The admin list endpoints take `mine=true` to scope results to the publishers the caller holds a role on (authors don't see each other's resources); `GET /api/v1/me` returns the caller's identity + effective grants for role-gating the UI. See [ADR 0006](docs/adr/0006-publisher-scoped-rbac.md).
-- **Change-approval workflow** — publisher Editors submit version edits or deletion requests that a Reviewer approves before they go live. The cross-publisher review queue is gated by the reviewer group (`AUTH_REVIEWER_GROUP`, default `registry-reviewers`). Discriminated 409 errors prevent stale-edit clobbering. See [ADR 0003](docs/adr/0003-change-approval-workflow.md).
+- **Publisher-scoped RBAC** — roles (Viewer/Editor/Reviewer/Admin) are granted to users or groups on a publisher; Editor authors, Reviewer approves, Admin manages, or global Server Admin. Write endpoints 403 without the role, independent of the UI. Claims carry **group membership only** — the JWT claim path is configurable via `AUTH_GROUPS_CLAIM` (default `groups`). The admin list endpoints take `mine=true` to scope results to the publishers the caller holds a role on (authors don't see each other's resources); `GET /api/v1/me` returns the caller's identity + effective grants for role-gating the UI.
+- **Change-approval workflow** — publisher Editors submit version edits or deletion requests that a Reviewer approves before they go live. The cross-publisher review queue is gated by the reviewer group (`AUTH_REVIEWER_GROUP`, default `registry-reviewers`). Discriminated 409 errors prevent stale-edit clobbering.
 - MCP-authorization-spec compatible (resource indicators, protected resource metadata).
 
 ### Observability
@@ -117,7 +117,7 @@ web/                Vite + React SPA (public + admin)
 
 deploy/             docker-compose profiles, Keycloak realm, OTel config
 └── helm/ai-registry/  Kubernetes chart (optional CNPG cluster)
-docs/               Architecture notes, ADRs
+docs/               Architecture notes
 PLAN.md             Phased implementation roadmap
 design.md           System architecture, observability, data & API, UI/UX
 CLAUDE.md           Project non-negotiables (API-first, spec compat, OTel, etc.)
@@ -206,7 +206,7 @@ See `deploy/config.example.yaml` and `deploy/.env.example` for the full list. Se
 | `system`     | `/healthz`, `/readyz`, OpenAPI spec, global `.well-known/*`    |
 | `auth`       | Local email + password login (`POST /api/v1/auth/login`); caller identity + effective grants (`GET /api/v1/me`) |
 | `publishers` | Namespace/publisher CRUD                                       |
-| `rbac`       | Groups, users, and publisher-scoped role grants (ADR 0006)    |
+| `rbac`       | Groups, users, and publisher-scoped role grants               |
 | `mcp`        | MCP server + version CRUD, search, detail, view/copy, reports, change-approval (submit / withdraw / approve / reject / deletion-request) |
 | `agents`     | Agent + version CRUD, per-agent A2A card, change-approval (same shape as MCP) |
 | `reports`    | Abuse / issue reports + admin triage                          |
@@ -225,7 +225,7 @@ The CI pipeline enforces a set of contracts that mechanically prevent drift betw
 - **OpenAPI ↔ router bijection** — every route in the chi router has an operation in `openapi.yaml` and vice versa. Extra or missing either side = build failure.
 - **`/v0/` MCP wire-format conformance** — 40 tests pinning response shapes, cursor semantics, error envelopes, and RFC 3339 timestamps to the MCP registry spec.
 - **A2A Agent Card JSON Schema** — `server/api/a2a-agent-card.schema.json` pins the a2a-project/a2a June 2025 shape; every emission is validated against it.
-- **Write-authorization router contract** — every write endpoint requires authorization (a publisher-scoped role — Editor/Reviewer/Admin — or Server Admin), never reachable anonymously; a contract test fails CI if a write route is left ungated (ADR 0006).
+- **Write-authorization router contract** — every write endpoint requires authorization (a publisher-scoped role — Editor/Reviewer/Admin — or Server Admin), never reachable anonymously; a contract test fails CI if a write route is left ungated.
 - **OTel span emission contract** — every handler produces a span; drift fails CI.
 - **Migration forward-apply + idempotency** — all 13 forward migrations apply cleanly on a fresh Postgres via testcontainers.
 - **Public rate-limit wiring** — unauthenticated read endpoints are rate-limited by middleware, not handler code.
@@ -293,7 +293,7 @@ The phased roadmap lives in [`PLAN.md`](./PLAN.md). High-level status:
 - **v0.1.x** — Foundation: Postgres schema, chi router, OIDC, MCP + agent CRUD, public browse UI, admin UI, bootstrap seeding. ✅
 - **v0.2.x** — Observability + coverage depth. OTel traces/metrics/logs wired everywhere; contract tests for every CLAUDE.md non-negotiable; `/v0/` wire-format conformance; A2A schema conformance. ✅
 - **v0.3.x** — Browse polish (real MCP `tools[]` field end-to-end, card redesign, namespace landing pages, per-entry activity feed) and access control: workspaces under publishers, Keycloak group bindings, change-approval workflow with revision-tracked PR-style edits. ✅
-- **v0.4.x** — Publisher-scoped RBAC + local accounts ([ADR 0006](docs/adr/0006-publisher-scoped-rbac.md)): the workspace layer is **removed**, resources are publisher-scoped again, and authorization is roles (Viewer/Editor/Reviewer/Admin) granted to users or groups in the registry — Editor authors, Reviewer is the sole approver, Admin manages, Server Admin is break-glass. Adds local email + password login alongside OIDC (registry-signed tokens walled off the MCP surface), `GET /api/v1/me`, `mine=`-scoped admin lists, and the publisher-scoped admin home (switcher + Overview + Members / Activity / Settings). 🚧 (0.4.0-rc)
+- **v0.4.x** — Publisher-scoped RBAC + local accounts: the workspace layer is **removed**, resources are publisher-scoped again, and authorization is roles (Viewer/Editor/Reviewer/Admin) granted to users or groups in the registry — Editor authors, Reviewer is the sole approver, Admin manages, Server Admin is break-glass. Adds local email + password login alongside OIDC (registry-signed tokens walled off the MCP surface), `GET /api/v1/me`, `mine=`-scoped admin lists, and the publisher-scoped admin home (switcher + Overview + Members / Activity / Settings). 🚧 (0.4.0-rc)
 - **Beyond 0.4.x** — Skills / prompts registry, federation, API-key auth (M2M), webhooks, and a dedicated production `docker-compose.prod.yml` profile.
 
 ---

@@ -1,5 +1,5 @@
 -- 000012_rbac.up.sql
--- ADR 0006 step 1 (additive): publisher-scoped RBAC + local accounts.
+-- Publisher-scoped RBAC + local accounts (additive migration).
 --
 -- This is the ADDITIVE half of a two-step rollout. The finalising migration
 -- (000013) flips publisher_id NOT NULL, restores UNIQUE(publisher_id, slug),
@@ -10,8 +10,8 @@
 --      group_members, role_grants).
 --   2. Re-adds a nullable publisher_id to mcp_servers and agents and backfills
 --      it from workspaces.publisher_id via the still-present workspace_id join
---      (ADR 0001's link survives until 000013).
---   3. Converts each workspace group_name binding (ADR 0002) into a group +
+--      (the workspace link survives until 000013).
+--   3. Converts each workspace group_name binding into a group +
 --      Editor grant on the workspace's publisher, so prior write access is
 --      preserved without any user-membership migration.
 --
@@ -95,7 +95,7 @@ CREATE INDEX idx_role_grants_publisher ON role_grants (publisher_id);
 
 -- ── Re-add publisher_id to resources (additive) ───────────────────────────
 -- Nullable for now; 000013 backfill-gates and flips it NOT NULL. Resources
--- reach their publisher directly again, mirroring the pre-ADR-0001 shape.
+-- reach their publisher directly again, mirroring the original pre-workspace shape.
 ALTER TABLE mcp_servers
     ADD COLUMN publisher_id TEXT REFERENCES publishers(id) ON DELETE RESTRICT;
 ALTER TABLE agents
@@ -120,7 +120,7 @@ CREATE INDEX idx_agents_publisher      ON agents (publisher_id);
 -- binding becomes a group (slug = the name) plus an Editor grant for that
 -- group on the workspace's publisher. The OIDC claim still names the group;
 -- the group now carries the grant, so existing Keycloak-group writers keep
--- access with no membership migration (ADR 0006). IDs use gen_random_uuid()
+-- access with no membership migration. IDs use gen_random_uuid()
 -- because SQL has no ULID minting — the id column is opaque TEXT and nothing
 -- parses these as ULIDs.
 INSERT INTO groups (id, slug, name)

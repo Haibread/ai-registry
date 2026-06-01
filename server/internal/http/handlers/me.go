@@ -111,7 +111,7 @@ type MineScopeStore interface {
 }
 
 // mineScope resolves the publisher scope for a mine=true admin listing
-// (ADR 0006 — "authors only see their own resources"):
+// ("authors only see their own resources"):
 //
 //   - all=true   → the caller sees every publisher's resources (Server Admin or
 //     a global grant). Apply NO publisher filter but DO drop the public-only

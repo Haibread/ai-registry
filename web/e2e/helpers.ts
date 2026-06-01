@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 
 /**
- * Authenticated API helpers (ADR 0006 amendment, 2026-06-01).
+ * Authenticated API helpers.
  *
  * Auth is now a registry session behind an HttpOnly cookie — there is no bearer
  * token and nothing in localStorage to read. The browser context loads the

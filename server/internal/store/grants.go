@@ -125,7 +125,7 @@ func (db *DB) EffectiveRoles(ctx context.Context, p EffectiveRolesParams) (map[d
 // must NOT apply the returned ids as a filter when hasGlobal is true; they
 // should treat the caller as scoped to all publishers instead.
 //
-// Backs the mine-scoped admin listing (ADR 0006): an author sees only the
+// Backs the mine-scoped admin listing: an author sees only the
 // resources of publishers they hold a role on.
 func (db *DB) EffectivePublisherIDs(ctx context.Context, userID string, claimGroupSlugs []string) (ids []string, hasGlobal bool, err error) {
 	ctx, span := startSpan(ctx, "EffectivePublisherIDs")

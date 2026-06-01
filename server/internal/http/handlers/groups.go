@@ -26,7 +26,7 @@ func memberEmailParam(r *http.Request) (string, bool) {
 	return email, true
 }
 
-// GroupHandlers serves the team/group management endpoints (ADR 0006 §7).
+// GroupHandlers serves the team/group management endpoints.
 // All routes are Server-Admin gated at the router.
 type GroupHandlers struct {
 	db    *store.DB
@@ -198,7 +198,7 @@ func (h *GroupHandlers) ListMembers(w http.ResponseWriter, r *http.Request) {
 
 // PutMember: PUT /api/v1/groups/{slug}/members/{email}
 // Adds the user (by email) to the group, auto-creating an invited user row
-// when the email is unknown (ADR 0006 §7).
+// when the email is unknown.
 func (h *GroupHandlers) PutMember(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	email, ok := memberEmailParam(r)

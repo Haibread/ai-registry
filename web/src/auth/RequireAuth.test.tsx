@@ -6,7 +6,7 @@ import { MemoryRouter, Routes, Route, Outlet } from 'react-router-dom'
 import { RequireAuth } from './RequireAuth'
 
 // RequireAuth derives auth state from useAuth (AuthContext's GET /api/v1/me),
-// not a JS token (ADR 0006 amendment). Mock it so we control the state.
+// not a JS token. Mock it so we control the state.
 vi.mock('./AuthContext', () => ({ useAuth: vi.fn() }))
 import { useAuth } from './AuthContext'
 const mockUseAuth = vi.mocked(useAuth)

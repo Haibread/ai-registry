@@ -83,7 +83,7 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		logger.Info("bootstrap: publisher ready", slog.String("slug", p.Slug))
 	}
 
-	// ── Groups (ADR 0006) ──────────────────────────────────────────────────────
+	// ── Groups ──────────────────────────────────────────────────────
 	// Seed registry groups whose slug matches the IdP's group-membership claim,
 	// so a federated user's claim groups resolve to the grants below.
 	groupIDs := make(map[string]string, len(spec.Groups))
@@ -96,7 +96,7 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		logger.Info("bootstrap: group ready", slog.String("slug", g.Slug))
 	}
 
-	// ── Grants (ADR 0006) ──────────────────────────────────────────────────────
+	// ── Grants ──────────────────────────────────────────────────────
 	// Idempotent (EnsureGrant); re-applied every boot with source = config, so a
 	// grant only disappears when removed from the bootstrap file.
 	for i, gr := range spec.Grants {
@@ -137,7 +137,7 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 	return nil
 }
 
-// ── groups & grants (ADR 0006) ─────────────────────────────────────────────────
+// ── groups & grants ─────────────────────────────────────────────────
 
 // upsertGrant idempotently applies one GrantSpec. The group / publisher are
 // resolved from the per-run lookup maps first (entities seeded in this same

@@ -121,7 +121,7 @@ describe('BulkActionBar', () => {
     expect(screen.getByText('Delete').closest('button')).toBeDisabled()
   })
 
-  // Role-gating (ADR 0006): an Editor who is not a Server Admin sees only the
+  // Role-gating: an Editor who is not a Server Admin sees only the
   // Deprecate action; visibility flips and deletes are hidden.
   it('hides visibility and delete when the caller lacks the role', () => {
     render(

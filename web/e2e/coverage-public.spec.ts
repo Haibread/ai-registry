@@ -27,7 +27,7 @@ const AGENT_SLUG = `e2e-public-agent-${RUN_ID}`
 const AGENT_NAME = `E2E Public Agent ${RUN_ID}`
 const PRIVATE_SLUG = `e2e-public-priv-${RUN_ID}`
 
-// Deletes ride the session cookie shared by page.request (ADR 0006 amendment).
+// Deletes ride the session cookie shared by page.request.
 async function apiDelete(page: Page, path: string) {
   return page.request.delete(path)
 }
@@ -247,8 +247,8 @@ test.describe('Public coverage', () => {
 
   // ── W3g: Public 404 for private / missing ──────────────────────────────
 
-  // page.request shares THIS project's admin session cookie (ADR 0006
-  // amendment: auth is a cookie, which page.request sends automatically — the
+  // page.request shares THIS project's admin session cookie
+  // (auth is a cookie, which page.request sends automatically — the
   // old bearer token was not). Clear the context's cookies so these probes hit
   // the genuinely-anonymous public API surface.
   test('private MCP server is hidden from the public API', async ({ page }) => {

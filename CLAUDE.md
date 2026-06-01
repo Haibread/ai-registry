@@ -12,13 +12,12 @@ A centralized registry for AI ecosystem artifacts:
   Agent Card.
 - **(Planned)** Skills / Prompts registry.
 
-> **In progress (ADR 0006 amendment, 2026-06-01):** authentication is being
+> **In progress (2026-06-01):** authentication is being
 > reworked to a **server-side OIDC broker** (single confidential client) with
 > **HttpOnly cookie sessions**, and the MCP-registry-spec **`/v0` surface is
 > being removed**. The sections below describe that target; the running code
 > still serves `/v0` and the old (multi-issuer, public-PKCE) auth until the
-> follow-up PRs land. See the
-> [Amendment](docs/adr/0006-publisher-scoped-rbac.md#amendment--2026-06-01-brokered-oidc-registry-sessions-and-removal-of-v0).
+> follow-up PRs land.
 
 ### Core principles (non-negotiable)
 
@@ -33,13 +32,13 @@ A centralized registry for AI ecosystem artifacts:
    or deleting a registry entry requires the appropriate role on the owning
    publisher — **Editor** to author, **Reviewer** to approve, **Admin** to
    manage — or global **Server Admin**. Unauthorized principals get 403 on
-   any write endpoint. Roles are granted to users/groups in the registry
-   (ADR 0006); claims carry group membership only.
+   any write endpoint. Roles are granted to users/groups in the registry;
+   claims carry group membership only.
 4. **A2A compatibility.** Every agent MUST generate a Google A2A-compatible
    Agent Card (`/.well-known/agent-card.json` shape) from its stored metadata.
    *(The former MCP-registry-spec conformance + MCP-authorization-spec
-   requirement was dropped with the `/v0` surface — ADR 0006 amendment,
-   2026-06-01. MCP server metadata still follows the MCP `server.json` field
+   requirement was dropped with the `/v0` surface (2026-06-01). MCP server
+   metadata still follows the MCP `server.json` field
    shapes where stored, but the registry no longer exposes an MCP protocol
    surface or acts as an OAuth resource server.)*
 5. **Every API endpoint MUST be documented in `server/api/openapi.yaml`.** This is
@@ -63,7 +62,7 @@ A centralized registry for AI ecosystem artifacts:
   no MCP wall (both went away with `/v0`). Claim group membership and the
   claim-based Server-Admin flag are **snapshotted into the session at login**.
   **Authorization** is publisher-scoped RBAC: users, groups, and role grants
-  live in the registry (ADR 0006); claims carry group membership only. Server
+  live in the registry; claims carry group membership only. Server
   Admin comes from the `realm_access.roles` claim **or** a local
   `is_server_admin` flag (bootstrap admin). Hashed per-publisher API keys for
   machine-to-machine ops remain planned (Decision B). The SPA is **not** an
@@ -110,7 +109,7 @@ A centralized registry for AI ecosystem artifacts:
 /web/                 # Vite + React SPA (user + admin UI; nginx in prod)
 /deploy/              # docker-compose, env examples
 /deploy/helm/         # Helm chart for k8s
-/docs/                # architecture notes, ADRs
+/docs/                # architecture notes
 PLAN.md               # phased implementation plan
 CLAUDE.md             # this file
 ```
@@ -164,7 +163,7 @@ Rules for implementors:
 
 - Write endpoints are enforced by middleware checking the caller's role on the
   owning publisher (Editor/Reviewer/Admin per the action) or global Server Admin
-  (`realm_access.roles` contains `admin`, or local `is_server_admin`) — ADR 0006.
+  (`realm_access.roles` contains `admin`, or local `is_server_admin`).
   Do not rely on the UI alone.
 - All write endpoints require an authenticated registry session (HttpOnly
   cookie); read endpoints are public by default (configurable). State-changing
@@ -181,7 +180,7 @@ Rules for implementors:
    types, then implement the handler.
 4. Keep A2A (Agent Card) compatibility: when in doubt, link to the relevant
    A2A spec section in the PR description. (MCP-registry-spec conformance is no
-   longer a target — the `/v0` surface was removed, ADR 0006 amendment.)
+   longer a target — the `/v0` surface was removed.)
 5. Do not add features outside the current phase without asking.
 6. **Always write tests** for every function, handler, or repository method you
    create or modify. No exceptions.
@@ -193,9 +192,9 @@ Rules for implementors:
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
-| A | Server Admin source | `realm_access.roles[]` contains `"admin"` (snapshotted into the session at login) **or** local `users.is_server_admin` (ADR 0006 + 2026-06-01 amendment) | Keycloak default shape; local flag lets the bootstrap admin run with no IdP |
-| B | API-key auth | Deferred post-0.4.0 | Phase 2-5 ship JWT-only; v0.4.0 ships ADR 0006 RBAC; hashed per-publisher API keys parked for a later minor (see PLAN.md and README) |
-| C | `/v0/` wire format | **Removed** (ADR 0006 amendment, 2026-06-01) | The MCP-registry-spec surface is dropped; MCP servers are exposed only via `/api/v1`. Was a strict MCP-spec shape (`{ servers: […], metadata: {…} }` list / single object detail) |
+| A | Server Admin source | `realm_access.roles[]` contains `"admin"` (snapshotted into the session at login) **or** local `users.is_server_admin` (2026-06-01 amendment) | Keycloak default shape; local flag lets the bootstrap admin run with no IdP |
+| B | API-key auth | Deferred post-0.4.0 | Phase 2-5 ship JWT-only; v0.4.0 ships RBAC; hashed per-publisher API keys parked for a later minor (see PLAN.md and README) |
+| C | `/v0/` wire format | **Removed** (2026-06-01 amendment) | The MCP-registry-spec surface is dropped; MCP servers are exposed only via `/api/v1`. Was a strict MCP-spec shape (`{ servers: […], metadata: {…} }` list / single object detail) |
 | D | Integration test infra | testcontainers-go (postgres module) with snapshot isolation | No external dependency needed to run `go test` |
 | E | `packages` JSONB validation | Structural: each entry must have `registryType`, `identifier`, `version`, `transport.type` | Matches MCP server.json spec; strict schema deferred |
 | F | `capabilities` JSONB validation | Free-form valid JSON only | Structure varies by server; strict validation deferred |
@@ -204,10 +203,10 @@ Rules for implementors:
 | I | Agent version lifecycle | Same draft→published→deprecated state machine as MCP servers | Consumers cache agent cards; silent mutation breaks them |
 | J | `skills[]` validation | Structural: `id`, `name`, `description` required strings; `tags` required string array | Skills has a defined A2A schema; enforce at write time |
 | K | `authentication` schemes allowlist | `Bearer`, `ApiKey`, `OAuth2`, `OpenIdConnect` | Arbitrary schemes can't be reliably introspected; add to allowlist explicitly |
-| L | Authorization model | Publisher-scoped RBAC — roles (Viewer/Editor/Reviewer/Admin) granted to users or groups; **Reviewer is the sole approver** — a publisher Admin can do everything *except* approve (Server Admin is the break-glass exception); making an entry public requires an approved (published) version (ADR 0006) | Self-managed in-registry; separation of duties by default |
-| M | Workspaces | **Removed** (ADR 0006) — resources are publisher-scoped again | Workspace layer (ADR 0001/0002) didn't earn its keep |
-| N | Local accounts | Local email+password login alongside brokered OIDC; both set a registry session cookie (ADR 0006 + 2026-06-01 amendment) | Run without an external IdP; bootstrap admin seeded from config |
-| O | Claim → authorization | Claims carry **group membership only**; roles are grants on users/groups (ADR 0006) | Only two principal types (user, group); no claim-to-role side channel |
+| L | Authorization model | Publisher-scoped RBAC — roles (Viewer/Editor/Reviewer/Admin) granted to users or groups; **Reviewer is the sole approver** — a publisher Admin can do everything *except* approve (Server Admin is the break-glass exception); making an entry public requires an approved (published) version | Self-managed in-registry; separation of duties by default |
+| M | Workspaces | **Removed** — resources are publisher-scoped again | Workspace layer didn't earn its keep |
+| N | Local accounts | Local email+password login alongside brokered OIDC; both set a registry session cookie (2026-06-01 amendment) | Run without an external IdP; bootstrap admin seeded from config |
+| O | Claim → authorization | Claims carry **group membership only**; roles are grants on users/groups | Only two principal types (user, group); no claim-to-role side channel |
 
 ## References
 

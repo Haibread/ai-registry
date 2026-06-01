@@ -581,7 +581,7 @@ func TestListReviewQueue_UnionsAllFourSources(t *testing.T) {
 
 // TestListReviewQueue_FiltersByPublisher verifies the PublisherIDs filter
 // restricts the queue to the named owning publishers (the store half of the
-// reviewer-scoping fix, ADR 0006); an empty filter returns everything.
+// reviewer-scoping fix); an empty filter returns everything.
 func TestListReviewQueue_FiltersByPublisher(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

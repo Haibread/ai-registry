@@ -285,7 +285,7 @@ export default function AdminAgentDetail() {
         </form>
       )}
 
-      {/* Role-gated actions (ADR 0006): edit/deprecate/request-deletion need
+      {/* Role-gated actions: edit/deprecate/request-deletion need
           Editor on this publisher; visibility + direct delete are Server-Admin
           only. The server still enforces each. */}
       {(perms.canEdit(ns) || perms.isServerAdmin) && (

@@ -58,19 +58,19 @@ services:
       # Override any of these in .env to customise for your environment.
       OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/ai-registry}
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs}
-      # OIDC (ADR 0006 amendment) is brokered server-side with a single
+      # OIDC is brokered server-side with a single
       # CONFIDENTIAL client; it is enabled only when BOTH OIDC_CLIENT_ID and
       # OIDC_CLIENT_SECRET are set. OFF by default — local login (below) is the
       # out-of-the-box front door. To enable OIDC, point OIDC_CLIENT_ID at a
       # confidential Keycloak client (standard flow + the callback redirect URI
       # registered), set OIDC_CLIENT_SECRET, and ensure OIDC_ISSUER is reachable
       # from the server container (discovery is fetched server-side).
-      # RBAC + change-approval auth knobs (see ADR 0006).
+      # RBAC + change-approval auth knobs.
       # Defaults match the server's built-in fallbacks; override in .env
       # when binding to a non-default IdP claim or reviewer group.
       AUTH_GROUPS_CLAIM: ${AUTH_GROUPS_CLAIM:-groups}
       AUTH_REVIEWER_GROUP: ${AUTH_REVIEWER_GROUP:-registry-reviewers}
-      # Local email+password login (ADR 0006) — the out-of-the-box front door.
+      # Local email+password login — the out-of-the-box front door.
       # ON by default so the bundled stack is usable with no IdP. Logging in
       # needs an account: the bootstrap admin below is seeded on first boot.
       AUTH_LOCAL_LOGIN_ENABLED: ${AUTH_LOCAL_LOGIN_ENABLED:-true}

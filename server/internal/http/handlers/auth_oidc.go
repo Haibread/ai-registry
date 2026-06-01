@@ -24,7 +24,7 @@ type oidcCallbackStore interface {
 	TouchLastSeen(ctx context.Context, id string) error
 }
 
-// OIDCAuthHandlers serve the server-side OIDC broker flow (ADR 0006 amendment):
+// OIDCAuthHandlers serve the server-side OIDC broker flow:
 // /auth/oidc/login redirects to the IdP, /auth/oidc/callback exchanges the code
 // and opens a registry session. The IdP token never reaches the browser.
 type OIDCAuthHandlers struct {

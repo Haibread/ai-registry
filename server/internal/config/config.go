@@ -54,7 +54,7 @@ type AuthConfig struct {
 	OIDCInternalURL string
 
 	// OIDCClientID is the confidential OAuth 2.0 client ID the server-side
-	// broker uses (ADR 0006 amendment, 2026-06-01). It is NOT served to the
+	// broker uses. It is NOT served to the
 	// browser — the SPA is no longer an OIDC client.
 	OIDCClientID string
 
@@ -78,7 +78,7 @@ type AuthConfig struct {
 	GroupsClaim string
 
 	// ReviewerGroup is the group seeded on boot with a global Reviewer
-	// grant (ADR 0006 §5). Retained for back-compat: on boot the server
+	// grant. Retained for back-compat: on boot the server
 	// ensures a group of this name exists with a global (publisher_id NULL)
 	// Reviewer grant (source = config). Deprecated in favour of managing the
 	// group + grant via the API. Default: "registry-reviewers". Configurable
@@ -86,7 +86,7 @@ type AuthConfig struct {
 	ReviewerGroup string
 
 	// LocalLoginEnabled turns the local email+password front door on or off
-	// (ADR 0006 §3). Default true so the registry is usable without an
+	// Default true so the registry is usable without an
 	// external IdP. Both front doors end in a registry session cookie, so no
 	// token-signing key is needed.
 	LocalLoginEnabled bool
@@ -104,12 +104,12 @@ type AuthConfig struct {
 	BootstrapAdminPassword string
 
 	// SessionCookieName is the name of the HttpOnly session cookie set after a
-	// successful login (ADR 0006 amendment, 2026-06-01). Default
+	// successful login. Default
 	// "ai_registry_session".
 	SessionCookieName string
 
 	// SessionTTL is how long a login session is valid. Fixed in v1 (no sliding
-	// / refresh — ADR 0006 F4), so users re-login at expiry. Default 24h.
+	// / refresh), so users re-login at expiry. Default 24h.
 	SessionTTL time.Duration
 
 	// SessionCookieSecure sets the cookie's Secure flag. Default true; set

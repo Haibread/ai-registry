@@ -50,7 +50,7 @@ const (
 	ActionAgentDeletionApproved  AuditAction = "agent.deletion_approved"
 	ActionAgentDeletionRejected  AuditAction = "agent.deletion_rejected"
 
-	// RBAC actions (ADR 0006). The security-sensitive mutations capture the
+	// RBAC actions. The security-sensitive mutations capture the
 	// target principal / grant in the event metadata so "who granted whom what,
 	// and when" is answerable from the log.
 	ActionRoleGrantCreated   AuditAction = "role_grant.created"

@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './AuthContext'
 
-// AuthContext (ADR 0006 amendment) provides login/logout actions + the public
+// AuthContext provides login/logout actions + the public
 // sign-in feature flags from /config.json. Auth *state* lives in useMe, not here.
 
 function Consumer() {

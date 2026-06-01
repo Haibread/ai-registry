@@ -12,7 +12,7 @@ import (
 
 // Group is a team — a named principal that role grants can attach to and that
 // users belong to. Its slug doubles as the value matched against OIDC claim
-// group names (ADR 0006 §5), so a federated user whose token names the slug
+// group names, so a federated user whose token names the slug
 // becomes an effective member without a local group_members row.
 type Group struct {
 	ID          string    `json:"id"`

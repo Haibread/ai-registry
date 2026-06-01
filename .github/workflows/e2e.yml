@@ -18,7 +18,7 @@ env:
   # escape hatch used for the docker/* actions.
   # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  # Throwaway bootstrap Server Admin for the local-login e2e (ADR 0006). The
+  # Throwaway bootstrap Server Admin for the local-login e2e. The
   # server seeds this account on boot (docker-compose.ci.yml) and the
   # local-login spec signs in with it. Not a real secret — it only exists for
   # the lifetime of the CI run's ephemeral stack.

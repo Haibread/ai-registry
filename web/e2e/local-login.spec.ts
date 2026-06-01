@@ -1,7 +1,7 @@
 /**
  * local-login.spec.ts
  *
- * End-to-end test for the local email + password front door (ADR 0006):
+ * End-to-end test for the local email + password front door:
  * the registry's own login path that does not involve the OIDC IdP. Drives
  * the /login form against the live stack, where the server is booted with
  * AUTH_LOCAL_LOGIN_ENABLED=true and a seeded bootstrap Server Admin (see

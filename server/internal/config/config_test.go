@@ -492,7 +492,7 @@ bootstrap_file: "/from/file.yaml"
 	}
 }
 
-// ── Local-auth knobs (ADR 0006) — env+YAML+default rule ─────────────────────
+// ── Local-auth knobs — env+YAML+default rule ─────────────────────
 
 func TestLoad_LocalAuth_Defaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")

@@ -29,7 +29,7 @@ func hasRequireAdmin(middlewares []func(http.Handler) http.Handler) bool {
 }
 
 // TestAllWriteRoutesRequireAdmin enforces CLAUDE.md's non-negotiable rule that
-// every write requires authorization (ADR 0006): creation, update, publishing,
+// every write requires authorization: creation, update, publishing,
 // and deletion of any registry entry are gated — by Server Admin, by a
 // publisher-scoped role (Editor authors, Reviewer approves), or by an
 // in-handler role check (resource create, whose publisher is in the body).
@@ -75,8 +75,8 @@ func TestAllWriteRoutesRequireAdmin(t *testing.T) {
 		// reports. List and Patch on /reports remain admin-only.
 		"POST /api/v1/reports": "public report submission",
 
-		// Auth front doors cannot themselves require a session (ADR 0006
-		// amendment). Login is rate-limited + lockout-protected; logout only
+		// Auth front doors cannot themselves require a session.
+		// Login is rate-limited + lockout-protected; logout only
 		// clears the cookie.
 		"POST /api/v1/auth/login":  "public local login (opens a session)",
 		"POST /api/v1/auth/logout": "public logout (clears the session cookie)",

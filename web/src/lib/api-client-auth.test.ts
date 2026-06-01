@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Tests for the useAuthClient onResponse middleware (ADR 0006 amendment): a 401
+// Tests for the useAuthClient onResponse middleware: a 401
 // on any request other than /me dispatches `auth:unauthorized` so AuthContext
 // re-checks the session and the UI flips to signed-out. /me is skipped
 // (AuthContext owns that fetch). Auth rides in the session cookie — no header.

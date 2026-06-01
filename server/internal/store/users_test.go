@@ -84,7 +84,7 @@ func TestCredentialsByEmail(t *testing.T) {
 
 // TestBindSubject_BindOnce verifies the bind-once invariant: an OIDC subject
 // binds onto a row with no subject, but a later attempt to rebind a different
-// subject is refused (the account-takeover guard, ADR 0006 §2).
+// subject is refused (the account-takeover guard).
 func TestBindSubject_BindOnce(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

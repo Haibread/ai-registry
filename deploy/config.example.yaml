@@ -64,8 +64,8 @@ auth:
   # host, so the IdP must advertise oidc_issuer (pin its hostname). Empty = use
   # oidc_issuer for everything. Example: http://keycloak:8080/realms/ai-registry
   oidc_internal_url: ""
-  # Confidential OAuth 2.0 client ID for the SERVER-SIDE OIDC broker (ADR 0006
-  # amendment). The SPA is no longer an OIDC client — this value is never sent
+  # Confidential OAuth 2.0 client ID for the SERVER-SIDE OIDC broker.
+  # The SPA is no longer an OIDC client — this value is never sent
   # to the browser. OIDC login is enabled only when this AND the secret are set;
   # the secret is a credential (env OIDC_CLIENT_SECRET only, never this file).
   oidc_client_id: ""
@@ -75,14 +75,14 @@ auth:
   # JWT claim path for the user's group memberships. Group membership
   # resolves to publisher-scoped role grants for authorization. Defaults to
   # "groups"; set to e.g. "realm_access.groups" if your IdP nests group
-  # memberships under a different key. See ADR 0006.
+  # memberships under a different key.
   groups_claim: "groups"
-  # Group seeded on boot with a global Reviewer grant (ADR 0006). Members
+  # Group seeded on boot with a global Reviewer grant. Members
   # (local group_members or a matching OIDC claim group) can approve/reject
   # pending changes on any publisher. Deprecated in favour of managing the
   # group + grant via the API.
   reviewer_group: "registry-reviewers"
-  # Local email+password login (ADR 0006). Default true so the registry is
+  # Local email+password login. Default true so the registry is
   # usable without an IdP. Both front doors end in a registry session cookie —
   # no token-signing key is involved. The bootstrap admin PASSWORD is a
   # credential and is intentionally NOT settable here — supply it via
@@ -92,7 +92,7 @@ auth:
   # a secret; the matching AUTH_BOOTSTRAP_ADMIN_PASSWORD must be set via env.
   # Leave empty to skip bootstrap seeding.
   bootstrap_admin_email: ""
-  # Registry session cookie (ADR 0006 amendment). Both front doors end in this
+  # Registry session cookie. Both front doors end in this
   # HttpOnly cookie. session_secure must be false for local plain-HTTP dev.
   session_cookie_name: "ai_registry_session"
   session_ttl: "24h"

@@ -1,5 +1,5 @@
-// AuthContext is the single source of auth *state* and the login/logout actions
-// (ADR 0006 amendment, 2026-06-01). The browser holds no token — the registry
+// AuthContext is the single source of auth *state* and the login/logout actions.
+// The browser holds no token — the registry
 // session is an HttpOnly cookie — so "am I signed in?" is answered by a
 // GET /api/v1/me fetch held here in state (not react-query), which keeps the
 // global <Header> off the query layer. `usePermissions` (admin role gating)

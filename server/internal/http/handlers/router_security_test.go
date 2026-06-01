@@ -18,7 +18,7 @@ import (
 // buildSecureRouter builds the real production router backed by testDB plus a
 // session manager, and returns a helper that opens a session for a Server-Admin
 // or a plain (no-grants) user and returns the session cookie. Auth is the
-// session-cookie model (ADR 0006 amendment) — there are no bearer tokens.
+// session-cookie model — there are no bearer tokens.
 func buildSecureRouter(t *testing.T) (http.Handler, func(isAdmin bool) *http.Cookie) {
 	t.Helper()
 	sm := auth.NewSessionManager(testDB, auth.SessionConfig{

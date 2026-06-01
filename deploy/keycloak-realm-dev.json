@@ -105,7 +105,7 @@
     {
       "clientId": "ai-registry-server",
       "name": "AI Registry Server (OIDC broker)",
-      "description": "Confidential client for the registry's server-side OIDC broker (Authorization Code + PKCE; ADR 0006 amendment, 2026-06-01). The browser never sees the IdP token.",
+      "description": "Confidential client for the registry's server-side OIDC broker (Authorization Code + PKCE). The browser never sees the IdP token.",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "dev-broker-secret",

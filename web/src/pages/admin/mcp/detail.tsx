@@ -249,7 +249,7 @@ export default function AdminMCPDetail() {
         </form>
       )}
 
-      {/* Actions are role-gated (ADR 0006): edit/deprecate/request-deletion
+      {/* Actions are role-gated: edit/deprecate/request-deletion
           need Editor on this publisher; visibility flips and the direct delete
           escape hatch are Server-Admin-only. The server still enforces each. */}
       {(perms.canEdit(ns) || perms.isServerAdmin) && (

@@ -39,7 +39,7 @@ const AGENT_ENDPOINT = 'https://agents.example.test/e2e-detail'
 test.describe.configure({ mode: 'serial' })
 
 async function apiDelete(page: import('@playwright/test').Page, path: string) {
-  // Rides the session cookie shared by page.request (ADR 0006 amendment).
+  // Rides the session cookie shared by page.request.
   return page.request.delete(path)
 }
 

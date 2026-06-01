@@ -1,7 +1,7 @@
 /**
  * rbac-ui.spec.ts
  *
- * End-to-end tests for the publisher-scoped RBAC admin UI (ADR 0006):
+ * End-to-end tests for the publisher-scoped RBAC admin UI:
  * the Groups pages (list / new / detail + members), the Users pages
  * (list / new / detail + Server-Admin toggle + set-password), and the
  * per-publisher Grants section on the publisher detail page.

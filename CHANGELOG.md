@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-### 🔐 Brokered OIDC + registry cookie sessions; `/v0` removed (ADR 0006 amendment)
+### 🔐 Brokered OIDC + registry cookie sessions; `/v0` removed
 
 Authentication is reworked into a **backend-for-frontend (BFF)** model. The SPA
 is no longer an OIDC client: it holds **no token**, just a `Secure; HttpOnly`
@@ -46,7 +46,7 @@ is rendered into one, or reference an `existingSecret` you manage
 The publish workflow now marks hyphenated SemVer tags (e.g. `v0.4.0-rc0`) as
 GitHub **pre-releases**, so a release candidate is never ranked "Latest" over
 the previous stable tag. Roadmap docs (README / PLAN / CLAUDE) updated: **0.4.0
-ships the ADR 0006 authorization epic** (publisher-scoped RBAC + local accounts
+ships the authorization epic** (publisher-scoped RBAC + local accounts
 + the publisher-scoped admin home; the workspace layer is removed), and API-key
 (M2M) auth plus a production `docker-compose.prod.yml` profile move to a later
 minor.
@@ -72,7 +72,7 @@ home (Overview, Members, Activity), and documents the feature in the README.
 ### 👥 Per-publisher Members + Activity pages
 
 Two publisher-scoped admin pages, reachable from the sidebar when a publisher is
-selected (ADR 0006). **Members** (`/admin/members`) manages the selected
+selected. **Members** (`/admin/members`) manages the selected
 publisher's role grants — a first-class home for a publisher Admin, who
 previously had no nav path to it; gated to Admins, with a hint otherwise.
 **Activity** (`/admin/activity`) is the full, paginated activity feed for the
@@ -108,7 +108,7 @@ per-publisher pages consume `currentSlug` in follow-up changes.
 ### 📊 Per-publisher stats + activity endpoints (scoped admin home, backend)
 
 Two read endpoints that let a publisher member see their own publisher without
-the Server-Admin-only global `/stats` and `/audit` (ADR 0006):
+the Server-Admin-only global `/stats` and `/audit`:
 
 - `GET /api/v1/publishers/{slug}/stats` — MCP/agent counts + status breakdowns,
   member counts by role, and a pending-review count, all scoped to one
@@ -152,7 +152,7 @@ with a *wrong* password now returns the uniform `401` instead of a distinct
 
 ### 🔒 Publisher-scoped read visibility for detail reads and the review queue
 
-Closed two gaps where reads weren't scoped to the caller's publisher (ADR 0006).
+Closed two gaps where reads weren't scoped to the caller's publisher.
 
 **Detail / versions / activity reads are now publisher-role-aware.** Previously
 a resource's detail (`GET …/mcp/servers/{ns}/{slug}`, its `/versions[/…]`, and
@@ -174,7 +174,7 @@ publishers they review, and a caller who holds no Reviewer role anywhere gets
 
 ### 🛂 Reviewer is the sole approver; going public needs approval
 
-Tightened the authorization lattice for separation of duties (ADR 0006). A
+Tightened the authorization lattice for separation of duties. A
 publisher **Admin can now do everything on the publisher except approve
 changes** — `domain.Satisfies` no longer treats `admin` as satisfying
 `reviewer`. Approving a submitted version (and publishing a version directly)
@@ -194,7 +194,7 @@ longer follows from the admin role.
 
 The admin list endpoints (`GET /api/v1/mcp/servers`, `GET /api/v1/agents`)
 gained a `mine=true` query parameter that scopes the listing to the resources
-the authenticated caller can manage (ADR 0006): Server Admins and global-grant
+the authenticated caller can manage: Server Admins and global-grant
 holders still see every publisher, an author sees only the publishers they hold
 a role on — **including their own private and draft entries** — and a caller
 with no grants sees nothing. This is how the admin UI keeps multiple authors
@@ -204,7 +204,7 @@ A new `GET /api/v1/me` returns the caller's resolved identity and effective
 role grants (per-publisher and global, plus `is_server_admin`), so the SPA can
 gate the admin UI by role without trusting any client-side claim.
 
-The **admin UI is now role-aware** (ADR 0006). The MCP/agent list pages default
+The **admin UI is now role-aware**. The MCP/agent list pages default
 to `mine=true`, so authors see only their own resources. Actions and navigation
 are gated by a new `usePermissions` hook: `New` appears only for Editors; edit /
 deprecate / submit need Editor on the resource's publisher; approve / reject
@@ -243,14 +243,13 @@ an existing release (e.g. cut by hand) has its notes refreshed instead of
 erroring — and omits `--latest` so `gh` picks "Latest" by semver. Closes the
 gap where `v0.3.2` and `v0.3.3` shipped images/charts but no Release.
 
-### 🧹 Remove the workspace layer (ADR 0006)
+### 🧹 Remove the workspace layer
 
 Workspaces are gone. Resources are scoped directly to their owning
 publisher again, and authorization is publisher-scoped RBAC (roles
 granted to users/groups) rather than a per-workspace Keycloak-group
-binding. See [ADR 0006](docs/adr/0006-publisher-scoped-rbac.md); this
-is the destructive second half (the additive RBAC + local-auth half
-shipped earlier).
+binding. This is the destructive second half (the additive RBAC +
+local-auth half shipped earlier).
 
 > **Breaking schema change.** Migration `000013_workspaces_remove`
 > backfills `publisher_id` from the workspace link, flips it `NOT NULL`,
@@ -412,9 +411,8 @@ never carried a `groups` claim.
 - README dev-stack section now lists all four users, their passwords,
   and what each one exercises.
 
-Dev only — production realm setup is still the operator's job per
-[ADR 0002](docs/adr/0002-workspace-group-binding.md) until 0002-F4 (Keycloak
-reconciler) lands.
+Dev only — production realm setup is still the operator's job until the
+Keycloak-reconciler work lands.
 
 ## v0.3.3 — 2026-05-25
 
@@ -440,9 +438,7 @@ Two workstreams shipped together as the chunky tail of v0.3.x:
 
 A new `workspaces` entity groups MCP servers and agents under each
 publisher and binds each set to a Keycloak group whose members can
-author content (no group → admin-only). See [ADR 0001](docs/adr/0001-workspaces-under-publishers.md)
-for the design and [ADR 0002](docs/adr/0002-workspace-group-binding.md)
-for the auth model.
+author content (no group → admin-only).
 
 - New `workspaces` table; two-step migration creates one `default`
   workspace per existing publisher and pivots resources onto it. The
@@ -473,7 +469,7 @@ for the auth model.
 
 A draft → pending review → published lifecycle that lets non-admin
 group members propose changes that a global reviewer group approves
-before they go live. See [ADR 0003](docs/adr/0003-change-approval-workflow.md).
+before they go live.
 
 - New `review_state` column on MCP / agent versions, orthogonal to
   `status` / `published_at`. States: `none`, `pending_review`,
@@ -530,9 +526,9 @@ descriptions.
 
 - **PLAN refresh** (#52) — mark v0.2.2 / v0.3.0 / v0.3.1 / v0.3.2 as
   shipped; PLAN was lagging behind the actual release state.
-- **Doc + dead-code cleanup** (#54) — flip ADRs 0001/0002/0003 from
-  `Proposed` → `Accepted`, drop the stale `next-themes` row from
-  PLAN's Phase 6 migration table, prune dead Renovate rules
+- **Doc + dead-code cleanup** (#54) — flip the workspace / approval
+  design docs from `Proposed` → `Accepted`, drop the stale `next-themes`
+  row from PLAN's Phase 6 migration table, prune dead Renovate rules
   (`next`, `eslint-config-next`, `next-auth`, `autoprefixer`,
   `tailwindcss-animate`), bump `@types/node` pin from `^22.0.0` →
   `^24.0.0` (CI runs Node 24), delete the unused
@@ -551,11 +547,11 @@ descriptions.
   → `"18"`. Closes the version drift with the docker-compose stack,
   which moved to `postgres:18-alpine` in PR #41. `pg-probe` snippets
   in `docs/runbook.md` updated to match.
-- **ADR 0004 backfill** (#57) — Phase 6 (Next.js → Vite migration)
-  was a cross-cutting decision but never got an ADR. `docs/adr/0004-vite-spa-migration.md`
-  captures the rationale, alternatives considered, and historical
-  implementation steps so the decision survives the next "why
-  aren't we on Next.js?" question.
+- **Migration rationale backfill** (#57) — Phase 6 (Next.js → Vite
+  migration) was a cross-cutting decision but its rationale was never
+  written down; #57 documented the rationale, alternatives considered,
+  and historical implementation steps so the decision survives the next
+  "why aren't we on Next.js?" question.
 - **OTel uplift** (#58) — three observability test gaps closed:
   - `router_otel_test.go` only pinned spans for 4 hand-picked routes;
     new `router_otel_walk_test.go` enumerates every chi-registered
@@ -590,13 +586,12 @@ rate-limiter time-based janitor (bigger change), per-handler
 internal child spans, eager markdown chunk on detail pages
 (`React.lazy` deferral).
 
-### 🏗️ Workspaces finalise (ADR 0001 Step 3, PR #62)
+### 🏗️ Workspaces finalise (Step 3, PR #62)
 
 The finalising migration designed alongside the original workspaces
 rollout but parked at the time. After this PR, MCP servers and agents
 no longer carry `publisher_id`; the owning publisher is reached via
-`workspaces.publisher_id` through a single JOIN. See ADR 0001's
-"Status note (2026-05-14)" for the post-shipping context.
+`workspaces.publisher_id` through a single JOIN.
 
 - New migration `000011_workspaces_finalise.{up,down}.sql`. The up
   migration is gated by a `DO $$ … RAISE EXCEPTION` block: if any row

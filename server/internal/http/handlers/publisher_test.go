@@ -432,7 +432,7 @@ func TestPublisherHandler_Activity(t *testing.T) {
 	}
 }
 
-// TestPublisherHandler_Stats_Gating verifies the route guard (ADR 0006): a
+// TestPublisherHandler_Stats_Gating verifies the route guard: a
 // publisher member (Viewer+) reads, an authenticated non-member gets 403, and
 // an anonymous caller gets 401.
 func TestPublisherHandler_Stats_Gating(t *testing.T) {
@@ -488,7 +488,7 @@ func TestPublisherHandler_Stats_Gating(t *testing.T) {
 }
 
 // TestPublisherHandler_Patch_Gating verifies the route guard for editing
-// publisher metadata (ADR 0006): a publisher Admin may edit, a publisher
+// publisher metadata: a publisher Admin may edit, a publisher
 // Editor may not (Editor does not satisfy Admin), a Server Admin keeps
 // break-glass access without a publisher grant, and an anonymous caller is
 // rejected. This pins the router's swap from Server-Admin-only

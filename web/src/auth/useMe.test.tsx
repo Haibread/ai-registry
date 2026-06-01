@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { usePermissions, satisfiesRole, type Role, type Me } from './useMe'
 
-// usePermissions reads the cached identity from AuthContext (ADR 0006
-// amendment) — no react-query. Drive it via a mutable mocked useAuth.
+// usePermissions reads the cached identity from AuthContext
+// — no react-query. Drive it via a mutable mocked useAuth.
 let authState: { me: Me | null; authLoading: boolean; isAuthenticated: boolean }
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => authState }))
 
@@ -19,7 +19,7 @@ beforeEach(() => {
   authState = { me: null, authLoading: false, isAuthenticated: false }
 })
 
-describe('satisfiesRole (mirrors the server lattice, ADR 0006)', () => {
+describe('satisfiesRole (mirrors the server lattice)', () => {
   const set = (...r: Role[]) => new Set<Role>(r)
 
   it('admin satisfies editor, viewer, and admin — but NOT reviewer', () => {

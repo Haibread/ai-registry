@@ -1,6 +1,6 @@
 -- 000013_workspaces_remove.up.sql
--- ADR 0006 step 2 (finalise): remove the workspace layer entirely. Resources
--- become publisher-scoped again, reversing ADR 0001's finalising migration
+-- Finalise: remove the workspace layer entirely. Resources
+-- become publisher-scoped again, reversing the earlier finalising migration
 -- (000011). Forward-only; the down migration exists for local-dev convenience.
 --
 -- Pre-condition: publisher_id was re-added + backfilled in 000012. This

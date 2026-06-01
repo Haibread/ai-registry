@@ -10,7 +10,7 @@ import (
 )
 
 // TestEffectiveRoles exercises the authoritative authorization query across
-// the principal/scope matrix (ADR 0006 §4): user grants, group grants reached
+// the principal/scope matrix: user grants, group grants reached
 // via local membership AND via a verbatim claim-slug match, global
 // (all-publishers) grants, and the negative case of a grant scoped to a
 // different publisher.
@@ -195,7 +195,7 @@ func TestListAndDeleteGrant(t *testing.T) {
 	}
 }
 
-// TestEffectivePublisherIDs verifies the mine-scope query (ADR 0006): the set
+// TestEffectivePublisherIDs verifies the mine-scope query: the set
 // of publishers a caller holds a grant on, plus the global-grant flag.
 func TestEffectivePublisherIDs(t *testing.T) {
 	resetDB(t)

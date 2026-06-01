@@ -56,7 +56,7 @@ export default function () {
   });
 
   group('list servers', () => {
-    // The /v0 MCP-registry-spec surface was removed (ADR 0006 amendment);
+    // The /v0 MCP-registry-spec surface was removed;
     // MCP servers are now listed under /api/v1, paginated as { items: [...] }.
     const res = http.get(`${BASE_URL}/api/v1/mcp/servers`);
     failures.add(!check(res, {

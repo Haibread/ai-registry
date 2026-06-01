@@ -13,7 +13,7 @@ interface BulkActionBarProps {
   onDeprecate: () => void
   onDelete: () => void
   isBusy?: boolean
-  // Role-gating (ADR 0006): the bar only renders the actions the caller can
+  // Role-gating: the bar only renders the actions the caller can
   // perform. Visibility flips and deletes are Server-Admin-only; deprecate is a
   // publisher Editor action. All default to true for backwards compatibility.
   canSetVisibility?: boolean

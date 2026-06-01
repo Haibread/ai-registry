@@ -130,7 +130,7 @@ paths:
       summary: Local email + password login
       description: >
         Verifies an email and password and opens a registry session, set as a
-        Secure, HttpOnly cookie (ADR 0006 amendment). Available only when local
+        Secure, HttpOnly cookie. Available only when local
         login is enabled.
       tags: [auth]
       requestBody:
@@ -168,7 +168,7 @@ paths:
       operationId: logoutRedirect
       summary: Log out (browser) and end the IdP session
       description: >
-        Browser logout (ADR 0006 amendment): revokes the registry session and
+        Browser logout: revokes the registry session and
         clears the cookie, then redirects back to the app. For an OIDC session it
         first bounces the browser through the identity provider's RP-initiated
         logout (end_session_endpoint, with id_token_hint) so the IdP SSO session
@@ -186,7 +186,7 @@ paths:
       summary: Begin OIDC login (server-side broker)
       description: >
         Redirects the browser to the configured identity provider to begin the
-        Authorization Code + PKCE flow (ADR 0006 amendment). The registry is a
+        Authorization Code + PKCE flow. The registry is a
         confidential client; the IdP token never reaches the browser. 404 when
         OIDC login is not configured.
       tags: [auth]
@@ -2270,9 +2270,8 @@ components:
       in: cookie
       name: ai_registry_session
       description: >
-        Registry session cookie set by the login endpoints (ADR 0006
-        amendment, 2026-06-01). Secure + HttpOnly; the browser sends it
-        automatically. There is no bearer token.
+        Registry session cookie set by the login endpoints. Secure + HttpOnly;
+        the browser sends it automatically. There is no bearer token.
 
   parameters:
     SlugParam:

@@ -1,7 +1,7 @@
 /**
  * publisher-home.spec.ts
  *
- * End-to-end coverage for the publisher-scoped admin home (ADR 0006):
+ * End-to-end coverage for the publisher-scoped admin home:
  * the publisher switcher, the scoped Overview, and the Members + Activity
  * pages. Runs as the Server-Admin session — which (per the switcher change)
  * can scope to any publisher — so it seeds a publisher + resource via the

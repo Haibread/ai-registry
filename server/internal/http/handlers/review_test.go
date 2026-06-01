@@ -575,7 +575,7 @@ func TestReviewHandler_ListReviewQueue(t *testing.T) {
 
 // TestReviewHandler_ListReviewQueue_Unauthenticated verifies the queue rejects
 // an anonymous caller with 401 (the route is authenticated-only; the handler
-// self-gates — ADR 0006).
+// self-gates).
 func TestReviewHandler_ListReviewQueue_Unauthenticated(t *testing.T) {
 	resetTables(t)
 	rec := httptest.NewRecorder()
@@ -587,7 +587,7 @@ func TestReviewHandler_ListReviewQueue_Unauthenticated(t *testing.T) {
 
 // TestReviewHandler_ListReviewQueue_NonReviewerForbidden verifies an
 // authenticated caller who holds no Reviewer role anywhere (here an Editor) gets
-// 403 — the queue is an approver tool (ADR 0006).
+// 403 — the queue is an approver tool.
 func TestReviewHandler_ListReviewQueue_NonReviewerForbidden(t *testing.T) {
 	resetTables(t)
 	ctx := context.Background()
@@ -614,7 +614,7 @@ func TestReviewHandler_ListReviewQueue_NonReviewerForbidden(t *testing.T) {
 
 // TestReviewHandler_ListReviewQueue_ScopedToReviewerPublishers verifies a
 // per-publisher Reviewer sees only their own publisher's pending items, not
-// another publisher's (ADR 0006 reviewer scoping).
+// another publisher's (reviewer scoping).
 func TestReviewHandler_ListReviewQueue_ScopedToReviewerPublishers(t *testing.T) {
 	resetTables(t)
 	ctx := context.Background()
@@ -669,7 +669,7 @@ func TestReviewHandler_ListReviewQueue_ScopedToReviewerPublishers(t *testing.T) 
 
 // TestReviewHandler_ListReviewQueue_GlobalReviewerSeesAll verifies a holder of a
 // GLOBAL Reviewer grant (the shape the seeded reviewer group carries) sees every
-// publisher's queue, without being a Server Admin (ADR 0006).
+// publisher's queue, without being a Server Admin.
 func TestReviewHandler_ListReviewQueue_GlobalReviewerSeesAll(t *testing.T) {
 	resetTables(t)
 	ctx := context.Background()

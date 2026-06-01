@@ -91,7 +91,7 @@ spec:
                   key: DATABASE_URL
             {{- end }}
             {{- /*
-              Local bootstrap-admin password (ADR 0006): from the operator's
+              Local bootstrap-admin password: from the operator's
               existingSecret when set, else the chart-rendered Secret. Omitted
               entirely when local login is off or no password source is given.
             */}}

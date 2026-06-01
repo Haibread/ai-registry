@@ -153,7 +153,7 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /rbac-ui\.spec\.ts/,
     },
-    // Local email + password login (ADR 0006). Authenticates through the
+    // Local email + password login. Authenticates through the
     // /login form itself rather than a stored OIDC session, so it has no
     // `setup` dependency and no storageState. Requires the stack booted with
     // AUTH_LOCAL_LOGIN_ENABLED=true + a seeded bootstrap admin (CI wires this
@@ -179,7 +179,7 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /phase7-flows\.spec\.ts/,
     },
-    // Publisher-scoped admin home (ADR 0006): the switcher, the scoped
+    // Publisher-scoped admin home: the switcher, the scoped
     // Overview, and the Members + Activity pages. Runs as the Server-Admin
     // session, which can scope to any publisher, and seeds its own data.
     {

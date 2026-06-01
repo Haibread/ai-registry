@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// User is a principal row (ADR 0006). The principal key is ID (a ULID), never
+// User is a principal row. The principal key is ID (a ULID), never
 // the OIDC subject. A row may carry Subject (can log in via OIDC), a password
 // (HasPassword true — can log in locally), both (linked), or neither (invited:
 // can hold grants/memberships but cannot log in until a credential is set).
@@ -332,7 +332,7 @@ func (db *DB) SetPasswordHash(ctx context.Context, id, hash string) error {
 
 // BindSubject binds an OIDC subject onto an existing user row, but only when
 // the row currently has no subject (bind-once). Rebinding a subject on a later
-// email change is a known account-takeover CVE class (ADR 0006 §2), so this
+// email change is a known account-takeover CVE class, so this
 // refuses to overwrite a non-NULL subject and returns ErrConflict instead.
 // Returns ErrNotFound if the user does not exist.
 func (db *DB) BindSubject(ctx context.Context, userID, subject string) error {

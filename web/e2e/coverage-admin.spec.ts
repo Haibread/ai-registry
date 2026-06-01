@@ -19,7 +19,7 @@ import { apiPost } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 
-// Deletes ride the session cookie shared by page.request (ADR 0006 amendment).
+// Deletes ride the session cookie shared by page.request.
 async function apiDelete(page: Page, path: string) {
   return page.request.delete(path)
 }
@@ -130,7 +130,7 @@ test.describe('Admin: bulk actions', () => {
       })
       expect(res.ok()).toBeTruthy()
       // Publish a version so the row can be flipped public — going public now
-      // requires an approved (published) version (ADR 0006).
+      // requires an approved (published) version.
       expect((await apiPost(page, `/api/v1/mcp/servers/${PUB_SLUG}/${slug}/versions`, {
         version: '1.0.0',
         runtime: 'stdio',

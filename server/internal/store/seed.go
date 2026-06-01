@@ -15,12 +15,12 @@ type SeedRBACParams struct {
 	// seed ensures a group of this slug exists and carries a global
 	// (all-publishers) Reviewer grant with source = config. Re-applied on
 	// every boot, so deleting the grant via the API only sticks if the seed
-	// is removed too (ADR 0006 §5).
+	// is removed too.
 	ReviewerGroupSlug string
 
 	// BootstrapAdminEmail / BootstrapAdminPasswordHash seed a local Server
 	// Admin on first boot. Create-only: an existing account is left untouched
-	// so a rotated password survives reboots (ADR 0006 §2). Empty email skips
+	// so a rotated password survives reboots. Empty email skips
 	// the step. The hash is the argon2id output from auth.HashPassword — this
 	// package never sees the plaintext.
 	BootstrapAdminEmail        string

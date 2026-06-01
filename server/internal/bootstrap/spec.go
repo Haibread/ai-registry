@@ -19,7 +19,7 @@ type PublisherSpec struct {
 	Verified bool   `yaml:"verified" json:"verified"`
 }
 
-// GroupSpec seeds a registry group (ADR 0006). Its slug MUST match the group
+// GroupSpec seeds a registry group. Its slug MUST match the group
 // name the IdP emits in the group-membership claim, so a federated user's claim
 // groups resolve to this group's role grants.
 type GroupSpec struct {
@@ -27,7 +27,7 @@ type GroupSpec struct {
 	Name string `yaml:"name" json:"name"`
 }
 
-// GrantSpec seeds a role grant (ADR 0006): it gives a group OR a user a role on
+// GrantSpec seeds a role grant: it gives a group OR a user a role on
 // a publisher, or globally when Publisher is empty. Exactly one of Group / User
 // must be set. Re-applied on every boot (source = config), so removing a grant
 // means removing it from the bootstrap file too.

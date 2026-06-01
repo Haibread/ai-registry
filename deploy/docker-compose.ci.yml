@@ -13,8 +13,8 @@ services:
     # E2E authenticates the fixture users (admin/author/reviewer/user) via the
     # brokered OIDC flow — they live in Keycloak — and exercises the local
     # email+password front door for the local-login spec. Both end in the
-    # registry session cookie, which Playwright captures via storageState
-    # (ADR 0006 amendment, 2026-06-01). No bearer token, no localStorage.
+    # registry session cookie, which Playwright captures via storageState.
+    # No bearer token, no localStorage.
     environment:
       # Local front door + a throwaway bootstrap admin for the local-login spec.
       AUTH_LOCAL_LOGIN_ENABLED: "true"

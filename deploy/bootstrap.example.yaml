@@ -20,7 +20,7 @@
 #   • readme     — long-form markdown rendered on the detail page
 #   • capabilities (MCP versions) — free-form MCP capabilities JSON
 #
-# Authorization (ADR 0006): MCP servers and agents are scoped directly to
+# Authorization: MCP servers and agents are scoped directly to
 # their owning publisher. Roles (Viewer/Editor/Reviewer/Admin) are granted to
 # users and groups — either via the admin API or seeded here in `groups` +
 # `grants` (idempotent, source = config). The group slugs below match the
@@ -41,7 +41,7 @@ publishers:
     name: "Community"
     verified: false
 
-# ── Groups (ADR 0006) ───────────────────────────────────────────────────────
+# ── Groups ───────────────────────────────────────────────────────
 # Slugs MUST match the group names the IdP emits in the group-membership claim
 # (the dev Keycloak realm puts author@example.com in anthropic-core +
 # anthropic-labs, and reviewer@example.com in registry-reviewers). The
@@ -55,7 +55,7 @@ groups:
   - slug: "openai-platform"
     name: "OpenAI Platform"
 
-# ── Grants (ADR 0006) ───────────────────────────────────────────────────────
+# ── Grants ───────────────────────────────────────────────────────
 # Give the seeded groups roles on their publishers. author@example.com is in
 # anthropic-core + anthropic-labs, so they become a publisher Admin on
 # anthropic (Admin via core, Editor via labs).

@@ -3,7 +3,7 @@ package handlers
 import "net/http"
 
 // ConfigJSON returns a handler for GET /config.json — the public runtime config
-// the browser SPA reads on first load (ADR 0006 amendment, 2026-06-01). The SPA
+// the browser SPA reads on first load. The SPA
 // is no longer an OIDC client, so this no longer ships OIDC coordinates; it
 // ships only feature flags so the SPA knows which sign-in buttons to render.
 //
