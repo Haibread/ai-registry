@@ -76,7 +76,7 @@ jobs:
       # OpenAPI↔router contract, or the admin-guard router contract are ever
       # deleted or renamed without updating this step, CI fails loudly instead
       # of silently passing. (The /v0 wire-format conformance suite was removed
-      # with the /v0 surface — ADR 0006 amendment.)
+      # with the /v0 surface.)
       - name: Contract & conformance suites (named)
         working-directory: server
         run: |

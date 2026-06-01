@@ -58,7 +58,7 @@ function friendlyProblem(error: unknown, fallback: string): string {
 
 export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps) {
   const perms = usePermissions()
-  // Submit/withdraw are publisher Editor actions (ADR 0006). Approve/reject are
+  // Submit/withdraw are publisher Editor actions. Approve/reject are
   // Reviewer actions and live on the review queue, not here.
   const canEdit = perms.canEdit(namespace)
   const api = useAuthClient()

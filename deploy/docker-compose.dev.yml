@@ -58,7 +58,7 @@ services:
     env_file: .env
     environment:
       # Dev defaults — override any of these in .env for your environment.
-      # OIDC (ADR 0006 amendment) is brokered server-side with a single
+      # OIDC is brokered server-side with a single
       # CONFIDENTIAL client; it is enabled because BOTH OIDC_CLIENT_ID and
       # OIDC_CLIENT_SECRET are set below (the `ai-registry-server` broker client
       # from keycloak-realm-dev.json). The browser hits Keycloak at
@@ -75,7 +75,7 @@ services:
       # in .env when overriding for a custom IdP setup.
       AUTH_GROUPS_CLAIM: ${AUTH_GROUPS_CLAIM:-groups}
       AUTH_REVIEWER_GROUP: ${AUTH_REVIEWER_GROUP:-registry-reviewers}
-      # Local email+password login (ADR 0006) — the dev front door. ON by
+      # Local email+password login — the dev front door. ON by
       # default so the stack is usable with no IdP. Logging in needs an account:
       # the bootstrap admin below is seeded on first boot.
       AUTH_LOCAL_LOGIN_ENABLED: ${AUTH_LOCAL_LOGIN_ENABLED:-true}

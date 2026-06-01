@@ -75,7 +75,7 @@ func (h *MCPHandlers) ListServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// mine=true scopes the listing to resources the caller can manage
-	// (ADR 0006): Server Admins / global-grant holders see everything, an
+	// Server Admins / global-grant holders see everything, an
 	// author sees only the publishers they hold a role on (including their own
 	// private/draft entries), and a caller with no grants sees nothing.
 	publicOnly := !auth.IsAdminFromContext(r.Context())
@@ -182,7 +182,7 @@ func (h *MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 // ── POST /api/v1/mcp/servers ──────────────────────────────────────────────
 
 func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
-	// Authorization is publisher-scoped (ADR 0006) and the target publisher is
+	// Authorization is publisher-scoped and the target publisher is
 	// in the body, so the role check happens in-handler once it is parsed.
 	// Reject anonymous callers up front — before parsing or any DB work.
 	if !auth.IsAuthenticated(r.Context()) {
@@ -232,7 +232,7 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 	// Authoring requires Editor on the owning publisher (Admin / Server Admin
 	// satisfy it via the lattice). The new server is created private + draft, so
 	// it only reaches the public catalog once a version is published and an
-	// Admin flips visibility — the approval gate stays intact (ADR 0006).
+	// Admin flips visibility — the approval gate stays intact.
 	ok, _, err := auth.CheckPublisherRole(r.Context(), h.db, publisherID, domain.RoleEditor)
 	if err != nil {
 		internalError(w, r, err)

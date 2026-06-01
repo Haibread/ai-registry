@@ -1,5 +1,5 @@
 -- 000014_sessions.up.sql
--- ADR 0006 amendment (2026-06-01): registry sessions behind an HttpOnly cookie
+-- Registry sessions behind an HttpOnly cookie
 -- (BFF). Both front doors — brokered OIDC and local password — create a session
 -- row. The opaque cookie token is never stored; only its SHA-256 hash
 -- (token_hash) is the lookup key, so a DB leak yields no usable session.

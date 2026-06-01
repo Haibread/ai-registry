@@ -3,7 +3,7 @@ import type { components } from '@/lib/schema'
 import { useAuth } from '@/auth/AuthContext'
 
 // Types come straight from the generated OpenAPI client so the SPA's notion of
-// a grant cannot drift from the server's (ADR 0006).
+// a grant cannot drift from the server's.
 export type Me = components['schemas']['Me']
 export type MeGrant = components['schemas']['MeGrant']
 export type Role = MeGrant['role']

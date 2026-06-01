@@ -29,8 +29,8 @@ export default function AdminAgentList() {
       params: {
         query: {
           limit: PAGE_LIMIT,
-          // mine=true scopes the list to the publishers the caller manages
-          // (ADR 0006); Server Admins still see everything.
+          // mine=true scopes the list to the publishers the caller manages;
+          // Server Admins still see everything.
           mine: true,
           q,
           namespace,

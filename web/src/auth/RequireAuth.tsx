@@ -4,7 +4,7 @@ import { useAuth } from '@/auth/AuthContext'
 interface Props { children: React.ReactNode }
 
 // RequireAuth gates the /admin surface. Auth state comes from the session
-// (AuthContext's GET /api/v1/me), not a JS token (ADR 0006 amendment).
+// (AuthContext's GET /api/v1/me), not a JS token.
 export function RequireAuth({ children }: Props) {
   const { isAuthenticated, authLoading } = useAuth()
 

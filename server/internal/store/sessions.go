@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Session is a server-side login session (ADR 0006 amendment, 2026-06-01).
+// Session is a server-side login session.
 // Both front doors — brokered OIDC and local password — create one. The opaque
 // cookie token is never stored; only its SHA-256 hash (TokenHash) is, so a DB
 // leak yields no usable session. ClaimGroups and ClaimAdmin snapshot the OIDC

@@ -93,7 +93,7 @@ type privateScopeStore interface {
 // owned by the publisher whose slug is namespace. It is true for a Server Admin
 // or any caller holding a role (Viewer and up) on that publisher, and false for
 // an anonymous caller or a member of a *different* publisher — those get
-// public-only reads (ADR 0006). It widens visibility only for the owning
+// public-only reads. It widens visibility only for the owning
 // publisher's own members; it never exposes one publisher's private data to
 // another's. A namespace that does not resolve to a publisher yields false, so
 // the read falls back to public-only and the handler's own 404 covers it.

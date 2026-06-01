@@ -56,8 +56,8 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
     })
     expect(res.status(), 'create publisher').toBe(201)
 
-    // Authorize the anthropic-core group to author on this publisher
-    // (ADR 0006). The author's `groups` claim names "anthropic-core"; the
+    // Authorize the anthropic-core group to author on this publisher.
+    // The author's `groups` claim names "anthropic-core"; the
     // matching registry group carries an Editor grant, so the claim resolves
     // to write access — no users-table row needed.
     // The group is global, so it may already exist from a previous run.
@@ -156,7 +156,7 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
 
     // user@example.com is authenticated but carries an empty groups[]
     // claim and no admin realm role, so it holds no role on this publisher
-    // and RequirePublisherRole must 403 (ADR 0006).
+    // and RequirePublisherRole must 403.
     const v2 = '2.0.0'
     const res = await apiPost(
       page,

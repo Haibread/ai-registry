@@ -86,7 +86,7 @@ type reviewScopeStore interface {
 }
 
 // reviewerScope resolves which publishers' pending items the caller may see in
-// the review queue (ADR 0006). seeAll is true for a Server Admin or a holder of
+// the review queue. seeAll is true for a Server Admin or a holder of
 // a global Reviewer grant (the seeded reviewer group carries one) — they see
 // every publisher's queue. Otherwise publisherIDs lists the publishers on which
 // the caller holds a Reviewer grant; an empty list means the caller reviews
@@ -123,7 +123,7 @@ func reviewerScope(ctx context.Context, st reviewScopeStore) (publisherIDs []str
 // Lists pending_review versions and pending deletions, newest first; each entry
 // carries a `kind` discriminator so the UI can render the right row type. The
 // route is authenticated-only — authorization and per-publisher scoping happen
-// here (ADR 0006): a Server Admin or global Reviewer sees every publisher's
+// here: a Server Admin or global Reviewer sees every publisher's
 // queue, a per-publisher Reviewer sees only the publishers they review, and a
 // caller who reviews nothing gets 403.
 func (h *ReviewHandlers) ListReviewQueue(w http.ResponseWriter, r *http.Request) {

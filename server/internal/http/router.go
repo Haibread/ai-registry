@@ -39,8 +39,8 @@ type RouterDeps struct {
 	// global agent-card). Empty triggers HTTP 500 in those handlers rather
 	// than silently advertising localhost.
 	PublicBaseURL string
-	// Sessions issues / resolves the registry session cookie (ADR 0006
-	// amendment, 2026-06-01). Nil only in route-walk tests.
+	// Sessions issues / resolves the registry session cookie. Nil only in
+	// route-walk tests.
 	Sessions *auth.SessionManager
 	// OIDC is the server-side OIDC broker (confidential client). Nil when OIDC
 	// login is not configured — then /api/v1/auth/oidc/* report 404.
@@ -78,7 +78,7 @@ func NewRouterForTest(deps RouterDeps) *chi.Mux {
 // unwrapped inner of NewRouter, exported to tests via NewRouterForTest.
 func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Session authenticator ───────────────────────────────────────────────
-	// Resolves the session cookie → Principal (ADR 0006 amendment). Only attach
+	// Resolves the session cookie → Principal. Only attach
 	// a principal store when a real DB is present: a nil *store.DB would wrap a
 	// typed-nil in the interface, so route-walk tests (nil DB) must not get one.
 	var principalStore auth.PrincipalStore
@@ -129,7 +129,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	// the lattice; Server Admin short-circuits) — a non-member gets 403.
 	requirePublisherViewer := auth.RequirePublisherRole(deps.DB, domain.RoleViewer, resolvePublisherSlug)
 
-	// Publisher-scoped RBAC guards (ADR 0006). A resource's {namespace} path
+	// Publisher-scoped RBAC guards. A resource's {namespace} path
 	// segment IS its owning publisher's slug, so the publisher is resolved from
 	// the slug — not from the resource's publisher_id column — which keeps the
 	// authorization decision a single publishers lookup. Writes require Editor,
@@ -182,7 +182,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	publicRL := middleware.RateLimit(publicRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
 
-		// Auth front doors (ADR 0006 amendment): local email+password login and
+		// Auth front doors: local email+password login and
 		// logout, plus the brokered OIDC login/callback (confidential client,
 		// server-side). All unauthenticated by design; rate-limited and, for
 		// local login, lockout-protected. Each ends in a session cookie.
@@ -195,11 +195,11 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		r.With(publicRL).Get("/auth/oidc/callback", oidcH.Callback)
 
 		// Resolved identity + effective role grants for the authenticated
-		// caller. Powers the SPA's role-gated admin UI (ADR 0006). 401 when no
+		// caller. Powers the SPA's role-gated admin UI. 401 when no
 		// token; the handler resolves the principal/claims itself.
 		r.Get("/me", meH.Me)
 
-		// ── RBAC administration (ADR 0006 §7) ─────────────────────────────────
+		// ── RBAC administration ─────────────────────────────────
 		// Groups (Server Admin).
 		r.Route("/groups", func(r chi.Router) {
 			r.With(auth.RequireAdmin).Get("/", groupH.ListGroups)
@@ -232,7 +232,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// Review queue: authenticated; the handler resolves the caller's reviewer
 		// scope (Server Admin / global Reviewer see every publisher, a
 		// per-publisher Reviewer sees only the publishers they review, anyone
-		// else gets 403) and filters results per-publisher (ADR 0006).
+		// else gets 403) and filters results per-publisher.
 		r.Get("/review-queue", revH.ListReviewQueue)
 
 		// Publishers
@@ -241,20 +241,20 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(auth.RequireAdmin).Post("/", pubH.CreatePublisher)
 			r.With(publicRL).Get("/{slug}", pubH.GetPublisher)
 			// Editing a publisher's metadata (name/contact) is a publisher
-			// Admin action (ADR 0006); Server Admin keeps break-glass via the
+			// Admin action; Server Admin keeps break-glass via the
 			// RequirePublisherRole short-circuit. Deletion removes the whole
 			// tenant, so it stays Server-Admin-only.
 			r.With(requirePublisherAdmin).Patch("/{slug}", pubH.PatchPublisher)
 			r.With(auth.RequireAdmin).Delete("/{slug}", pubH.DeletePublisher)
 
-			// Per-publisher admin home reads (ADR 0006): scoped stats + activity
+			// Per-publisher admin home reads: scoped stats + activity
 			// for any member of the publisher (Viewer+) or a Server Admin. This is
 			// how a publisher Editor/Admin sees their own dashboard without the
 			// Server-Admin-only global /stats and /audit.
 			r.With(requirePublisherViewer).Get("/{slug}/stats", pubH.GetPublisherStats)
 			r.With(requirePublisherViewer).Get("/{slug}/activity", pubH.GetPublisherActivity)
 
-			// Per-publisher role grants (ADR 0006). Publisher Admin or Server
+			// Per-publisher role grants. Publisher Admin or Server
 			// Admin; RequirePublisherRole resolves {slug} → publisher.
 			r.Route("/{slug}/grants", func(r chi.Router) {
 				r.With(requirePublisherAdmin).Get("/", grantH.ListPublisherGrants)
@@ -266,7 +266,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// MCP servers
 		r.Route("/mcp/servers", func(r chi.Router) {
 			r.With(publicRL).Get("/", mcpH.ListServers)
-			// Create is publisher-scoped (ADR 0006): a publisher Editor may
+			// Create is publisher-scoped: a publisher Editor may
 			// author. The role check is in-handler because the target publisher
 			// is in the request body, not the path; CreateServer 401s anonymous
 			// callers and 403s non-Editors.
@@ -274,7 +274,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {
 				r.With(publicRL).Get("/", mcpH.GetServer)
-				// Edits require Editor on the owning publisher (ADR 0006).
+				// Edits require Editor on the owning publisher.
 				// Admin override is built in.
 				r.With(requireMCPServerNS).Patch("/", mcpH.PatchServer)
 				// Legacy direct delete is admin-only: it bypasses the
@@ -316,7 +316,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// Agents
 		r.Route("/agents", func(r chi.Router) {
 			r.With(publicRL).Get("/", agentH.ListAgents)
-			// Create is publisher-scoped (ADR 0006); see the MCP create note.
+			// Create is publisher-scoped; see the MCP create note.
 			r.Post("/", agentH.CreateAgent)
 
 			r.Route("/{namespace}/{slug}", func(r chi.Router) {

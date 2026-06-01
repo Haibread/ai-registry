@@ -8,7 +8,7 @@ import (
 )
 
 // ResolveOrProvisionFederated maps a validated OIDC identity to a registry
-// users row (ADR 0006 §2): resolve by subject, else just-in-time provision.
+// users row: resolve by subject, else just-in-time provision.
 // Called by the OIDC callback once the broker has validated the id_token.
 func ResolveOrProvisionFederated(ctx context.Context, st PrincipalStore, claims *KeycloakClaims) (*store.User, error) {
 	u, err := st.GetUserBySubject(ctx, claims.Subject)

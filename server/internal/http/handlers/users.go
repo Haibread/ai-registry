@@ -13,7 +13,7 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
-// UserHandlers serves the user/principal management endpoints (ADR 0006 §7).
+// UserHandlers serves the user/principal management endpoints.
 // List/create/get/patch are Server-Admin gated at the router; set-password is
 // authenticated and self-or-admin (enforced in the handler).
 type UserHandlers struct {

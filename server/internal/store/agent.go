@@ -36,7 +36,7 @@ type AgentRow struct {
 type ListAgentsParams struct {
 	PublicOnly     bool
 	Namespace      string
-	PublisherIDs   []string // when non-empty, restrict to these publisher ids (mine-scoped admin listing, ADR 0006)
+	PublisherIDs   []string // when non-empty, restrict to these publisher ids (mine-scoped admin listing)
 	Status         string   // filter by status: "draft" | "published" | "deprecated" | "" (all non-deleted)
 	Visibility     string   // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string
@@ -96,7 +96,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	}
 	if len(p.PublisherIDs) > 0 {
 		// Mine-scoped admin listing: restrict to the publishers the caller holds
-		// a grant on (ADR 0006). Combines with Namespace if both are set.
+		// a grant on. Combines with Namespace if both are set.
 		filterWhere += fmt.Sprintf(" AND a.publisher_id = ANY($%d)", argN)
 		filterArgs = append(filterArgs, p.PublisherIDs)
 		argN++
@@ -369,7 +369,7 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 }
 
 // CreateAgentParams holds the fields needed to insert a new agent.
-// PublisherID is required — resources are publisher-scoped (ADR 0006).
+// PublisherID is required — resources are publisher-scoped.
 type CreateAgentParams struct {
 	PublisherID string
 	Slug        string

@@ -255,7 +255,7 @@ publishers ──< mcp_servers ──< mcp_server_versions
            │
            └─< agents      ──< agent_versions
 
-publishers ──< role_grants >── users / groups   (authorization, ADR 0006)
+publishers ──< role_grants >── users / groups   (authorization)
 groups     ──< group_members >── users
 
 audit_log (polymorphic: resource_type + resource_id, includes synthetic
@@ -264,8 +264,8 @@ reports (polymorphic: target_type + target_id; admin triages)
 ```
 
 Every MCP server / agent belongs to exactly one publisher. The workspace
-layer (ADR 0001/0002, migrations `000008`–`000011`) was removed by
-migration `000013` (ADR 0006): `publisher_id` is restored `NOT NULL` on
+layer (migrations `000008`–`000011`) was removed by
+migration `000013`: `publisher_id` is restored `NOT NULL` on
 resources, the `(publisher_id, slug)` unique key is back, and the
 `workspaces` table is dropped. Authorization is now publisher-scoped
 RBAC — `role_grants` ties a role (Viewer/Editor/Reviewer/Admin) to a user
@@ -283,7 +283,7 @@ verified    BOOLEAN NOT NULL DEFAULT false,
 created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 
--- role_grants (authorization, ADR 0006 / migration 000012)
+-- role_grants (authorization / migration 000012)
 id             TEXT PRIMARY KEY,       -- ULID
 publisher_id   TEXT REFERENCES publishers(id),  -- NULL = global (server-wide) grant
 principal_type TEXT NOT NULL,          -- 'user' | 'group'
@@ -389,7 +389,7 @@ publish-axis transition.
 Published versions are immutable: no `PATCH` on a `mcp_server_versions`
 row after `published_at` is set.
 
-**Review axis** (change-approval workflow, ADR 0003):
+**Review axis** (change-approval workflow):
 
 ```
                     edit / create
@@ -522,8 +522,7 @@ The web app does not bundle a webfont — Tailwind's default system stacks
 (`font-sans` → `ui-sans-serif, system-ui, …`; `font-mono` →
 `ui-monospace, SFMono-Regular, …`) keep first-paint fast and the bundle
 small. The original Next.js scaffold used `Geist` via `next/font`; that
-loader was dropped along with the rest of the Next.js stack in Phase 6
-(see [ADR 0004](docs/adr/0004-vite-spa-migration.md)).
+loader was dropped along with the rest of the Next.js stack in Phase 6.
 
 #### Spacing & Radius
 
@@ -636,7 +635,7 @@ redirect to the IdP authorize endpoint and a callback flow handled by
 - Lists the publisher's role grants — principal (user/group) · role ·
   source — with a "Grant role" form to add a Viewer/Editor/Reviewer/Admin
   grant to a user or group and a per-row Revoke action. Backed by the
-  `/api/v1/publishers/{slug}/grants` endpoints (ADR 0006).
+  `/api/v1/publishers/{slug}/grants` endpoints.
 
 **Review queue page** (`/admin/review`):
 - Reviewer-only (gated by `RequireReviewer`; non-reviewers see a 403

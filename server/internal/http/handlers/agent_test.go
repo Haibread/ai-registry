@@ -288,7 +288,7 @@ func TestAgentHandler_CreateAgent_MissingFields(t *testing.T) {
 }
 
 // TestAgentHandler_CreateAgent_ForbiddenWithoutEditor verifies an authenticated
-// caller with no Editor role on the target publisher gets 403 (ADR 0006).
+// caller with no Editor role on the target publisher gets 403.
 func TestAgentHandler_CreateAgent_ForbiddenWithoutEditor(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "ag-locked-ns", "Locked NS")

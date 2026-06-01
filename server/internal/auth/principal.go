@@ -8,8 +8,8 @@ import (
 )
 
 // Principal is the resolved caller used for publisher-scoped authorization. It
-// is populated by the Authenticator from the request's session (ADR 0006
-// amendment). UserID is the registry users.id — the principal key. ClaimGroups
+// is populated by the Authenticator from the request's session. UserID is the
+// registry users.id — the principal key. ClaimGroups
 // are the OIDC claim group slugs snapshotted into the session at login (empty
 // for local logins, whose group membership comes from group_members in the DB).
 // IsServerAdmin is true when the snapshotted claim carried realm admin OR

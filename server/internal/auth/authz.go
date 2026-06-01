@@ -24,8 +24,8 @@ type RoleStore interface {
 type PublisherResolver func(r *http.Request) (publisherID string, err error)
 
 // RequirePublisherRole returns chi middleware that authorizes a write/review
-// request against the caller's effective role on the target publisher
-// (ADR 0006 §6). It is the per-publisher replacement for the old
+// request against the caller's effective role on the target publisher.
+// It is the per-publisher replacement for the old
 // workspace-group write gate.
 //
 // The check is a capability check over the role lattice (domain.Satisfies),
@@ -94,7 +94,7 @@ func IsAuthenticated(ctx context.Context) bool {
 // principal was resolved, otherwise the verified token's claim groups. The
 // fallback matters because a federated group-writer whose access token carries
 // no email is not provisioned into a users row, yet still names its groups in
-// the claim — and the ADR 0006 model authorizes via the group's grant
+// the claim — and the RBAC model authorizes via the group's grant
 // (claim slug → group → grant), no users row required. authed is false when the
 // request carries neither source (no usable identity). This is the shared
 // front-half of RequirePublisherRole, CheckPublisherRole, and the mine/review

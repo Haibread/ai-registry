@@ -14,8 +14,8 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
-// SessionStore is the narrow store slice the SessionManager needs (ADR 0006
-// amendment, 2026-06-01). *store.DB satisfies it.
+// SessionStore is the narrow store slice the SessionManager needs.
+// *store.DB satisfies it.
 type SessionStore interface {
 	CreateSession(ctx context.Context, p store.CreateSessionParams) (*store.Session, error)
 	ActiveSessionByTokenHash(ctx context.Context, tokenHash string) (*store.Session, error)

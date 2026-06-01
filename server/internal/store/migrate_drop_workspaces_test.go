@@ -62,7 +62,7 @@ func newMigrateContainer(t *testing.T, dbName string) (*migrate.Migrate, *pgxpoo
 }
 
 // TestMigration0013_DropsWorkspaces verifies the finalise migration that
-// removes the workspace layer (ADR 0006): it backfills publisher_id from the
+// removes the workspace layer: it backfills publisher_id from the
 // workspace link (catching rows that only carry workspace_id), flips
 // publisher_id NOT NULL, swaps the slug unique key back to
 // (publisher_id, slug), drops workspace_id, and drops the workspaces table.

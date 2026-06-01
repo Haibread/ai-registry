@@ -17,7 +17,7 @@ import (
 )
 
 // OIDCConfig is the confidential-client configuration for the brokered OIDC
-// flow (ADR 0006 amendment, 2026-06-01). The registry is a single confidential
+// flow. The registry is a single confidential
 // client; the browser never sees the IdP token.
 type OIDCConfig struct {
 	Issuer       string

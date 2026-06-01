@@ -126,7 +126,7 @@ func run() error {
 	}
 	logger.Info("migrations complete")
 
-	// ── RBAC boot seed (ADR 0006) ────────────────────────────────────────────
+	// ── RBAC boot seed ────────────────────────────────────────────
 	// Idempotent: ensures the reviewer group + its global Reviewer grant, and
 	// seeds the bootstrap Server Admin (create-only). Runs after migrations so
 	// the RBAC tables exist.
@@ -168,7 +168,7 @@ func run() error {
 		logger.Info("trusted proxy configured", slog.String("cidr", cidr))
 	}
 
-	// ── Sessions (ADR 0006 amendment, 2026-06-01) ────────────────────────────
+	// ── Sessions ────────────────────────────
 	// Both front doors end in a registry session behind an HttpOnly cookie.
 	sessions := authpkg.NewSessionManager(db, authpkg.SessionConfig{
 		CookieName: cfg.Auth.SessionCookieName,

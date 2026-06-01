@@ -21,7 +21,7 @@ type localLoginStore interface {
 }
 
 // AuthHandlers serves the local email+password login and logout. Both end in a
-// registry session behind an HttpOnly cookie (ADR 0006 amendment, 2026-06-01) —
+// registry session behind an HttpOnly cookie —
 // there is no JS-readable bearer token anymore.
 type AuthHandlers struct {
 	sessions     *auth.SessionManager
@@ -148,8 +148,7 @@ func unauthorizedLogin(w http.ResponseWriter, r *http.Request) {
 
 // loginLimiter is a small in-memory failed-attempt limiter keyed by email. It
 // is best-effort (per-process, not shared across replicas) — enough to blunt
-// online password guessing. Durable/distributed lockout is future work
-// (ADR 0006 F4).
+// online password guessing. Durable/distributed lockout is future work.
 type loginLimiter struct {
 	mu       sync.Mutex
 	attempts map[string]*attemptRecord

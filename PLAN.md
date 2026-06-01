@@ -3,13 +3,12 @@
 Phased roadmap for building an API-first MCP + Agent registry with a user UI
 and an admin UI. See `CLAUDE.md` for conventions and constraints.
 
-> **In progress (ADR 0006 amendment, 2026-06-01):** auth is moving to a
+> **In progress (2026-06-01):** auth is moving to a
 > server-side OIDC broker (single confidential client) + HttpOnly cookie
 > sessions, and the MCP-registry-spec **`/v0` surface is being removed**.
 > Sections that describe `/v0` or the old multi-issuer / public-PKCE auth are
-> historical until [Phase 9](#phase-9--brokered-oidc--registry-sessions-remove-v0-adr-0006-amendment)
-> lands. See the
-> [Amendment](docs/adr/0006-publisher-scoped-rbac.md#amendment--2026-06-01-brokered-oidc-registry-sessions-and-removal-of-v0).
+> historical until [Phase 9](#phase-9--brokered-oidc--registry-sessions-remove-v0)
+> lands.
 
 ## 1. Goals & non-goals
 
@@ -18,7 +17,7 @@ and an admin UI. See `CLAUDE.md` for conventions and constraints.
 - Serve as the single source of truth for internal/public MCP servers and
   AI agents.
 - Catalog MCP servers and expose them via the registry's own `/api/v1` API.
-  *(Was: an MCP-spec-compatible `/v0` API — removed, ADR 0006 amendment.)*
+  *(Was: an MCP-spec-compatible `/v0` API — removed.)*
 - Generate A2A-compatible Agent Cards for every registered agent.
 - Provide a public read-only UI and an admin-only CRUD UI.
 - Be API-first: every UI action maps 1:1 to an API call.
@@ -95,7 +94,7 @@ Private entries are hidden from public GETs; admins see all entries via
 the admin endpoints.
 - `GET /agents/{ns}/{slug}/.well-known/agent-card.json` — A2A Agent Card.
 
-### 3.2 MCP-spec registry endpoints — REMOVED (ADR 0006 amendment, 2026-06-01)
+### 3.2 MCP-spec registry endpoints — REMOVED (2026-06-01)
 
 The `/v0/*` surface (the strict MCP-registry-spec wire format — `GET
 /v0/servers`, `GET /v0/servers/{id}`, `POST /v0/publish`) is being **removed**.
@@ -103,7 +102,7 @@ MCP servers are catalogued and served only through `/api/v1/mcp/*` (§3.1, §3.3
 The registry no longer mirrors the MCP registry API shape or acts as an OAuth
 resource server.
 
-### 3.3 Admin (publisher-scoped RBAC or Server Admin — ADR 0006)
+### 3.3 Admin (publisher-scoped RBAC or Server Admin)
 
 - Publishers: `POST/PATCH/DELETE /api/v1/publishers[...]`.
 - MCP: `POST /api/v1/mcp/servers`, `PATCH /{ns}/{slug}`,
@@ -112,7 +111,7 @@ resource server.
 - Agents: symmetric endpoints.
 - Visibility: `POST /{ns}/{slug}:set-visibility` (toggle `private`/`public`).
 - API keys: `POST/DELETE /api/v1/api-keys` — manage per-publisher API keys.
-- Users, groups & roles: **registry-managed** (ADR 0006) — `GET/POST
+- Users, groups & roles: **registry-managed** — `GET/POST
   /api/v1/users`, `/api/v1/groups[...]`, per-publisher
   `/api/v1/publishers/{slug}/grants` and global `/api/v1/grants`.
   Authentication is OIDC or local password.
@@ -124,7 +123,7 @@ resource server.
 
 ## 4. Authentication & authorization
 
-- **Single token authority** (ADR 0006 amendment, 2026-06-01): the registry
+- **Single token authority** (2026-06-01 amendment): the registry
   issues a session behind a `Secure; HttpOnly` cookie; there is no multi-issuer
   validation and no MCP wall (both went away with `/v0`). OIDC is **brokered
   server-side** — the registry is one **confidential** client that runs the
@@ -132,7 +131,7 @@ resource server.
   `/api/v1/auth/oidc/callback`, maps the IdP identity to an internal `users`
   row, and snapshots claim group membership + the claim Server-Admin flag into
   the session. Local email+password login sets the same cookie.
-- **Authorization** is publisher-scoped RBAC (ADR 0006): writes require
+- **Authorization** is publisher-scoped RBAC: writes require
   Editor / Reviewer / Admin on the owning publisher, or Server Admin
   (`realm_access.roles` contains `admin`, or local `is_server_admin`). Roles
   are granted to users/groups; claims carry group membership only.
@@ -200,8 +199,8 @@ agents, and publishers are wired into the admin detail pages
 (`web/src/pages/admin/{mcp,agents,publishers}/detail.tsx`) with
 confirmation dialogs.
 
-**User & role management — now registry-managed (ADR 0006):**
-Superseded by ADR 0006. *Authentication* stays delegated to the IdP (OIDC)
+**User & role management — now registry-managed:**
+*Authentication* stays delegated to the IdP (OIDC)
 and is joined by local email+password accounts; *authorization* is managed in
 the registry via `users`, `groups`, and per-publisher `role_grants`, exposed
 through `/api/v1/users`, `/api/v1/groups`, and the grants endpoints (+ admin
@@ -224,7 +223,7 @@ stance.)
 **Parked from Phase 5 (deferred beyond 0.4.0):**
 
 These items were originally listed as Phase 5 TODOs but were not
-attempted before Phase 5 closed. v0.4.0 ships the ADR 0006
+attempted before Phase 5 closed. v0.4.0 ships the
 authorization epic (publisher-scoped RBAC + local accounts + the
 publisher-scoped admin home), so the items below now slip to a later
 minor (post-0.4.0; see [README — Roadmap](README.md) and CLAUDE.md
@@ -519,15 +518,14 @@ activity. Wire-level Playwright assertions pin the privacy scrub.
 
 ### Phase 7 — Access control & change-approval workflow ✅
 
-Three sequenced ADRs designed how non-admin users author content and
-how changes are reviewed before going live. All three sub-phases
+Three sequenced design phases covered how non-admin users author content
+and how changes are reviewed before going live. All three sub-phases
 shipped (PRs #28 → #32) plus an admin UI polish sweep (PR #37) that
 made the new surfaces usable end-to-end.
 
-**Phase 7.1 — Workspaces under publishers ✅** — **superseded by
-[ADR 0006](docs/adr/0006-publisher-scoped-rbac.md)** (workspace layer removed;
+**Phase 7.1 — Workspaces under publishers ✅** — **superseded by the
+publisher-scoped RBAC work** (workspace layer removed;
 resources are publisher-scoped again)
-([ADR 0001](docs/adr/0001-workspaces-under-publishers.md))
 
 - New `workspaces` entity between publishers and resources.
 - Three-step migration: schema (`000008`) + Go-side backfill creating
@@ -541,10 +539,9 @@ resources are publisher-scoped again)
   per-entry `workspace:` ref so seed data demonstrates the feature.
 - Auth model unchanged in this phase (delivered in 7.2).
 
-**Phase 7.2 — Workspace OIDC group binding ✅** — **superseded by
-[ADR 0006](docs/adr/0006-publisher-scoped-rbac.md)** (replaced by
+**Phase 7.2 — Workspace OIDC group binding ✅** — **superseded by the
+publisher-scoped RBAC work** (replaced by
 publisher-scoped role grants)
-([ADR 0002](docs/adr/0002-workspace-group-binding.md))
 
 - `workspaces.group_name` (1:1, nullable; `NULL` = admin-only).
 - `KeycloakClaims.Groups` + `RequireWorkspaceWrite` middleware.
@@ -552,9 +549,8 @@ publisher-scoped role grants)
 - Manual Keycloak setup; reconciler ("operator") deferred to F4.
 
 **Phase 7.3 — Change-approval workflow ✅** (reviewer authorization gate
-amended by [ADR 0006](docs/adr/0006-publisher-scoped-rbac.md); workflow
+amended by the publisher-scoped RBAC work; workflow
 unchanged)
-([ADR 0003](docs/adr/0003-change-approval-workflow.md))
 
 - New `review_state` column orthogonal to existing `status` /
   `published_at`.
@@ -570,32 +566,31 @@ unchanged)
   entries, live-pinging review queue badge on the sidebar, toasts
   on every mutation, modal Edit dialog for workspace settings.
 
-#### Phase 7 backlog (deferred items from the ADRs)
+#### Phase 7 backlog (deferred items)
 
-From [ADR 0002](docs/adr/0002-workspace-group-binding.md):
+From the workspace OIDC group-binding work:
 
-- **0002-F1.** Per-resource-type group binding via Keycloak client
+- **F1.** Per-resource-type group binding via Keycloak client
   roles.
-- **0002-F2.** List members of a workspace's group via Keycloak Admin
+- **F2.** List members of a workspace's group via Keycloak Admin
   API.
-- **0002-F3.** Many-to-many workspace↔group binding.
-- **0002-F4.** Keycloak reconciler ("operator"). Pull-forward
+- **F3.** Many-to-many workspace↔group binding.
+- **F4.** Keycloak reconciler ("operator"). Pull-forward
   triggers: workspace count ≳ 50, or self-service workspace creation.
-- **0002-F5.** SCIM provisioning.
+- **F5.** SCIM provisioning.
 
-From [ADR 0003](docs/adr/0003-change-approval-workflow.md):
+From the change-approval workflow:
 
-- **0003-F1.** Per-resource-type or per-workspace reviewer groups.
-- **0003-F2.** Forbid self-approval (`submitted_by != reviewed_by`).
-- **0003-F3.** Notifications on submission/approval/rejection/deletion.
-- **0003-F4.** SLA timers on `pending_review`.
-- **0003-F5.** Bulk approval.
-- **0003-F6.** Reviewer comments / discussion thread.
-- **0003-F7.** Diff view in the admin UI between revisions.
-- **0003-F8.** Cleanup of long-abandoned `rejected` versions.
+- **F1.** Per-resource-type or per-workspace reviewer groups.
+- **F2.** Forbid self-approval (`submitted_by != reviewed_by`).
+- **F3.** Notifications on submission/approval/rejection/deletion.
+- **F4.** SLA timers on `pending_review`.
+- **F5.** Bulk approval.
+- **F6.** Reviewer comments / discussion thread.
+- **F7.** Diff view in the admin UI between revisions.
+- **F8.** Cleanup of long-abandoned `rejected` versions.
 
 ### Phase 8 — Publisher-scoped RBAC, local accounts, remove workspaces ✅
-([ADR 0006](docs/adr/0006-publisher-scoped-rbac.md))
 
 - **Remove workspaces**: resources go back to publisher-scoped
   (`publisher_id` restored and `NOT NULL`, `(publisher_id, slug)`
@@ -613,12 +608,12 @@ From [ADR 0003](docs/adr/0003-change-approval-workflow.md):
   reviewer-group seed (`AUTH_REVIEWER_GROUP`) becomes a group + global
   Reviewer grant.
 - Two-step migration (`000012` additive, `000013` finalise), shipped as two
-  PRs. Supersedes ADR 0001/0002, amends ADR 0003.
+  PRs. Supersedes the earlier workspace phases and amends the change-approval
+  workflow.
 
-### Phase 9 — Brokered OIDC + registry sessions; remove `/v0` (ADR 0006 amendment)
+### Phase 9 — Brokered OIDC + registry sessions; remove `/v0`
 
-Per the [2026-06-01 amendment](docs/adr/0006-publisher-scoped-rbac.md#amendment--2026-06-01-brokered-oidc-registry-sessions-and-removal-of-v0).
-**Accepted, not yet implemented.**
+Per the 2026-06-01 auth amendment. **Accepted, not yet implemented.**
 
 - **OIDC broker**: a single confidential client; `GET /api/v1/auth/oidc/login`
   → IdP (Authorization Code + PKCE + state/nonce) → `…/callback` (code exchange
@@ -659,7 +654,7 @@ Per the [2026-06-01 amendment](docs/adr/0006-publisher-scoped-rbac.md#amendment-
 | 4 | Deployment target | Docker Compose **and** Helm chart for k8s |
 | 5 | API-key auth | Yes — support both OIDC (interactive) and hashed API keys (machine-to-machine). Middleware tries JWT first, falls back to API-key. |
 | 6 | UI template | shadcn/ui blocks (minimal) — build from primitives, no third-party admin template |
-| 7 | User & role management | **Superseded by ADR 0006.** *Authentication* delegated to the IdP (OIDC) **and** local password accounts; *authorization* is registry-managed — `users`, `groups`, and per-publisher `role_grants`. Server Admin from `realm_access.roles` or a local `is_server_admin` flag. `/api/v1/users`, `/api/v1/groups`, and grants endpoints + admin pages exist. *(Reverses the original "no user table / IdP-only" decision.)* |
+| 7 | User & role management | **Superseded by publisher-scoped RBAC.** *Authentication* delegated to the IdP (OIDC) **and** local password accounts; *authorization* is registry-managed — `users`, `groups`, and per-publisher `role_grants`. Server Admin from `realm_access.roles` or a local `is_server_admin` flag. `/api/v1/users`, `/api/v1/groups`, and grants endpoints + admin pages exist. *(Reverses the original "no user table / IdP-only" decision.)* |
 
 ## 7. Definition of done (per phase)
 
@@ -667,5 +662,5 @@ Per the [2026-06-01 amendment](docs/adr/0006-publisher-scoped-rbac.md#amendment-
 - Migrations run cleanly up and down.
 - Unit + integration tests pass in CI.
 - Admin guard enforced on every mutating endpoint (verified by test).
-- Docs: README section per new capability; ADR if a cross-cutting decision
-  was made.
+- Docs: README section per new capability; a design note if a cross-cutting
+  decision was made.

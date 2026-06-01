@@ -53,7 +53,7 @@ server:
   # XSS exposure window — typically only for E2E test harnesses.
   authStorage: ""
 
-  # ── Auth (local accounts, ADR 0006) ────────────────────────────────────────
+  # ── Auth (local accounts) ────────────────────────────────────────
   # Local email + password login alongside OIDC. The registry signs its own
   # tokens for these accounts and walls them off the MCP surface (OAuth-only).
   # Leave disabled to run OIDC-only; enable to run without an external IdP or to

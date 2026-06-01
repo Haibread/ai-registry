@@ -7,13 +7,13 @@ import "github.com/golang-jwt/jwt/v5"
 type KeycloakClaims struct {
 	jwt.RegisteredClaims
 	Email string `json:"email"`
-	// EmailVerified gates the federated bind-once path (ADR 0006 §2): a first
+	// EmailVerified gates the federated bind-once path: a first
 	// OIDC login only binds onto a pre-invited local row when the token's email
 	// is verified, never on an unverified one.
 	EmailVerified bool        `json:"email_verified"`
 	RealmAccess   RealmAccess `json:"realm_access"`
 	// Groups carries the Keycloak group memberships. Authorization resolves
-	// these to in-registry groups and their role grants (ADR 0006). The
+	// these to in-registry groups and their role grants. The
 	// Keycloak group-membership mapper must emit a claim named "groups"
 	// with bare group names (Full group path disabled).
 	Groups []string `json:"groups"`
@@ -39,7 +39,7 @@ func (c *KeycloakClaims) IsAdmin() bool {
 }
 
 // HasGroup reports whether the token carries membership in the named
-// Keycloak group. Authorization is grant-based (ADR 0006) — claims carry
+// Keycloak group. Authorization is grant-based — claims carry
 // group membership only — so this is a claim-parsing accessor.
 func (c *KeycloakClaims) HasGroup(name string) bool {
 	if name == "" {

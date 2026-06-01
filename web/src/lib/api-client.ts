@@ -2,8 +2,8 @@ import { useMemo } from 'react'
 import createClient from 'openapi-fetch'
 import type { paths } from './schema'
 
-// withCredentials sends the registry session cookie on every request (ADR 0006
-// amendment, 2026-06-01). Auth is the HttpOnly cookie — there is no bearer token
+// withCredentials sends the registry session cookie on every request.
+// Auth is the HttpOnly cookie — there is no bearer token
 // in JS — so the client just needs credentials:'include'.
 const withCredentials: typeof fetch = (input, init) =>
   fetch(input, { ...init, credentials: 'include' })

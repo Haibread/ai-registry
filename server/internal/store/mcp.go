@@ -41,7 +41,7 @@ type LatestMCPVersion struct {
 type ListMCPServersParams struct {
 	PublicOnly     bool     // when true, only visibility='public' rows are returned
 	Namespace      string   // filter by publisher slug (optional)
-	PublisherIDs   []string // when non-empty, restrict to these publisher ids (mine-scoped admin listing, ADR 0006)
+	PublisherIDs   []string // when non-empty, restrict to these publisher ids (mine-scoped admin listing)
 	Status         string   // filter by status: "draft" | "published" | "deprecated" | "" (all)
 	Visibility     string   // filter by visibility: "public" | "private" | "" (all); only meaningful when PublicOnly=false
 	Query          string   // full-text search term (optional)
@@ -117,7 +117,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 	}
 	if len(p.PublisherIDs) > 0 {
 		// Mine-scoped admin listing: restrict to the publishers the caller holds
-		// a grant on (ADR 0006). Combines with Namespace if both are set.
+		// a grant on. Combines with Namespace if both are set.
 		filterWhere += fmt.Sprintf(" AND s.publisher_id = ANY($%d)", argN)
 		filterArgs = append(filterArgs, p.PublisherIDs)
 		argN++
@@ -506,7 +506,7 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 }
 
 // CreateMCPServerParams holds the fields needed to insert a new MCP server.
-// PublisherID is required — resources are publisher-scoped (ADR 0006).
+// PublisherID is required — resources are publisher-scoped.
 type CreateMCPServerParams struct {
 	PublisherID string
 	Slug        string

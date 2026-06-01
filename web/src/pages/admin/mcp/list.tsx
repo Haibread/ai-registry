@@ -29,8 +29,8 @@ export default function AdminMCPList() {
       params: {
         query: {
           limit: PAGE_LIMIT,
-          // mine=true scopes the list to the publishers the caller manages
-          // (ADR 0006): Server Admins still see everything, authors see only
+          // mine=true scopes the list to the publishers the caller manages:
+          // Server Admins still see everything, authors see only
           // their own resources (incl. private drafts).
           mine: true,
           q,

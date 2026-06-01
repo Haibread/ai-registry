@@ -7,7 +7,7 @@ import { usePermissions, type Permissions } from '@/auth/useMe'
 import { usePublisher } from '@/auth/PublisherContext'
 import { PublisherSwitcher } from '@/components/admin/publisher-switcher'
 
-// `requires` gates each nav entry (ADR 0006):
+// `requires` gates each nav entry:
 //   - 'always'          → any authenticated admin-area user (resource lists are
 //                         mine-scoped, so an author sees only their own).
 //   - 'reviewer'        → can review on at least one publisher (or Server Admin).

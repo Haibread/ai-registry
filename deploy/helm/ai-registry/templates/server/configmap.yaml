@@ -46,7 +46,7 @@ data:
   AUTH_STORAGE: {{ .Values.server.authStorage | quote }}
   {{- end }}
 
-  # ── Auth (local accounts, ADR 0006) ─────────────────────────────────────────
+  # ── Auth (local accounts) ─────────────────────────────────────────
   {{- /*
     The bootstrap admin PASSWORD is a secret and is wired via secretKeyRef in
     the Deployment (see local-login-secret.yaml) — never emitted here.

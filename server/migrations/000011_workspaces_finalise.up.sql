@@ -1,5 +1,5 @@
 -- 000011_workspaces_finalise.up.sql
--- ADR 0001 Step 3: finalise the workspaces migration started in 000008.
+-- Finalise the workspaces migration started in 000008.
 --
 -- Pre-condition: every row in mcp_servers and agents must have a non-NULL
 -- workspace_id. The Go-side BackfillWorkspaces (server/internal/store/
@@ -10,7 +10,7 @@
 --   1. Gates on the backfill having completed (RAISE EXCEPTION otherwise).
 --   2. Flips workspace_id to NOT NULL on mcp_servers and agents.
 --   3. Replaces the old UNIQUE(publisher_id, slug) with UNIQUE(workspace_id,
---      slug) — per ADR 0001, slug uniqueness is per-workspace, so two
+--      slug) — slug uniqueness is per-workspace, so two
 --      workspaces under one publisher can both expose a `weather` server.
 --   4. Drops the now-unused publisher_id column (and its index/FK, cascaded).
 --

@@ -438,7 +438,7 @@ type ListReviewQueueParams struct {
 	Limit  int32
 	Cursor string
 	// PublisherIDs, when non-empty, restricts the queue to items owned by these
-	// publishers — the reviewer-scoping filter (ADR 0006): a per-publisher
+	// publishers — the reviewer-scoping filter: a per-publisher
 	// Reviewer sees only the publishers they review. Empty means no filter; the
 	// handler passes nil for Server Admins and global-Reviewer-grant holders
 	// (see-all) and short-circuits to an empty result for a caller who reviews
@@ -450,7 +450,7 @@ type ListReviewQueueParams struct {
 // newest first. The query unions the four sources (MCP version, agent version,
 // MCP deletion, agent deletion) and sorts by the submission / request
 // timestamp. When p.PublisherIDs is non-empty the result is restricted to those
-// owning publishers (reviewer scoping, ADR 0006); empty means no filter.
+// owning publishers (reviewer scoping); empty means no filter.
 //
 // Reviewers and admins are the only legitimate callers; the handler resolves
 // the caller's reviewer scope (Server Admin / global Reviewer → all publishers;

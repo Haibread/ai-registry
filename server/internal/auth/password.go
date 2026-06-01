@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Local-account passwords are hashed with argon2id (ADR 0006 §2). This is the
+// Local-account passwords are hashed with argon2id. This is the
 // project's first stored credential — handle per the secrets conventions.
 //
 // The encoded form is the PHC string the rest of the world recognises:

@@ -129,7 +129,7 @@ export interface paths {
         put?: never;
         /**
          * Local email + password login
-         * @description Verifies an email and password and opens a registry session, set as a Secure, HttpOnly cookie (ADR 0006 amendment). Available only when local login is enabled.
+         * @description Verifies an email and password and opens a registry session, set as a Secure, HttpOnly cookie. Available only when local login is enabled.
          */
         post: operations["localLogin"];
         delete?: never;
@@ -147,7 +147,7 @@ export interface paths {
         };
         /**
          * Log out (browser) and end the IdP session
-         * @description Browser logout (ADR 0006 amendment): revokes the registry session and clears the cookie, then redirects back to the app. For an OIDC session it first bounces the browser through the identity provider's RP-initiated logout (end_session_endpoint, with id_token_hint) so the IdP SSO session is terminated too; a local session redirects straight back to the app.
+         * @description Browser logout: revokes the registry session and clears the cookie, then redirects back to the app. For an OIDC session it first bounces the browser through the identity provider's RP-initiated logout (end_session_endpoint, with id_token_hint) so the IdP SSO session is terminated too; a local session redirects straight back to the app.
          */
         get: operations["logoutRedirect"];
         put?: never;
@@ -171,7 +171,7 @@ export interface paths {
         };
         /**
          * Begin OIDC login (server-side broker)
-         * @description Redirects the browser to the configured identity provider to begin the Authorization Code + PKCE flow (ADR 0006 amendment). The registry is a confidential client; the IdP token never reaches the browser. 404 when OIDC login is not configured.
+         * @description Redirects the browser to the configured identity provider to begin the Authorization Code + PKCE flow. The registry is a confidential client; the IdP token never reaches the browser. 404 when OIDC login is not configured.
          */
         get: operations["oidcLogin"];
         put?: never;

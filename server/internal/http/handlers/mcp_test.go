@@ -237,7 +237,7 @@ func TestMCPHandler_GetServer_PrivateHiddenFromPublic(t *testing.T) {
 
 // TestMCPHandler_GetServer_PublisherMemberSeesOwnPrivate verifies a publisher's
 // own member (here a Viewer, not a Server Admin) can open the detail of their
-// own private/draft entry — not just see it in the mine-scoped list (ADR 0006).
+// own private/draft entry — not just see it in the mine-scoped list.
 func TestMCPHandler_GetServer_PublisherMemberSeesOwnPrivate(t *testing.T) {
 	resetTables(t)
 	ctx := context.Background()
@@ -270,7 +270,7 @@ func TestMCPHandler_GetServer_PublisherMemberSeesOwnPrivate(t *testing.T) {
 
 // TestMCPHandler_GetServer_OtherPublisherMemberDenied verifies that holding a
 // role on one publisher does NOT reveal another publisher's private entries:
-// the read falls back to public-only and 404s (ADR 0006).
+// the read falls back to public-only and 404s.
 func TestMCPHandler_GetServer_OtherPublisherMemberDenied(t *testing.T) {
 	resetTables(t)
 	ctx := context.Background()
@@ -361,7 +361,7 @@ func TestMCPHandler_CreateServer_MissingFields(t *testing.T) {
 }
 
 // TestMCPHandler_CreateServer_Unauthenticated401 verifies the in-handler auth
-// guard rejects anonymous create attempts before parsing or DB work (ADR 0006).
+// guard rejects anonymous create attempts before parsing or DB work.
 func TestMCPHandler_CreateServer_Unauthenticated401(t *testing.T) {
 	resetTables(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
@@ -375,7 +375,7 @@ func TestMCPHandler_CreateServer_Unauthenticated401(t *testing.T) {
 }
 
 // TestMCPHandler_CreateServer_ForbiddenWithoutEditor verifies an authenticated
-// caller with no Editor role on the target publisher gets 403 (ADR 0006).
+// caller with no Editor role on the target publisher gets 403.
 func TestMCPHandler_CreateServer_ForbiddenWithoutEditor(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "locked-ns", "Locked NS")
@@ -395,7 +395,7 @@ func TestMCPHandler_CreateServer_ForbiddenWithoutEditor(t *testing.T) {
 }
 
 // TestMCPHandler_CreateServer_EditorAllowed verifies a publisher Editor (not a
-// Server Admin) can author a new server (ADR 0006).
+// Server Admin) can author a new server.
 func TestMCPHandler_CreateServer_EditorAllowed(t *testing.T) {
 	resetTables(t)
 	ctx := context.Background()

@@ -1,6 +1,6 @@
 package domain
 
-// Role is a publisher-scoped authorization role (ADR 0006). Roles form a
+// Role is a publisher-scoped authorization role. Roles form a
 // lattice rather than a linear hierarchy: Viewer ⊂ {Editor, Reviewer} ⊂ Admin.
 // Editor and Reviewer are independent — neither implies the other — so by
 // default editors and reviewers are different people (separation of duties).
@@ -65,8 +65,8 @@ func Satisfies(held map[Role]bool, required Role) bool {
 }
 
 // PrincipalType is the kind of subject a role grant is attached to. Only two
-// principal types exist (ADR 0006 §4): a user or a group. Service-account /
-// API-key principals are future work (ADR 0006 F2).
+// principal types exist: a user or a group. Service-account /
+// API-key principals are future work.
 type PrincipalType string
 
 const (
@@ -85,7 +85,7 @@ func ValidPrincipalType(s string) bool {
 }
 
 // GrantSource records whether a role grant was created through the API or
-// seeded from configuration (the reviewer-group seed, ADR 0006 §5). Config
+// seeded from configuration (the reviewer-group seed). Config
 // grants are re-applied on every boot, so deleting one via the API only
 // sticks if the seed is also removed.
 type GrantSource string
