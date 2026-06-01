@@ -6,16 +6,14 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 
 export default function AdminUserList() {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
 
   const { data } = useQuery({
     queryKey: ['admin-users'],
     queryFn: () => api.GET('/api/v1/users', { params: { query: { limit: 100 } } }).then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const users = data?.items ?? []

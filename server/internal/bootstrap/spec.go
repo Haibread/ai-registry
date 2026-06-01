@@ -6,6 +6,8 @@ package bootstrap
 // Spec is the top-level structure of a bootstrap file.
 type Spec struct {
 	Publishers []PublisherSpec `yaml:"publishers" json:"publishers"`
+	Groups     []GroupSpec     `yaml:"groups"      json:"groups"`
+	Grants     []GrantSpec     `yaml:"grants"      json:"grants"`
 	MCPServers []MCPServerSpec `yaml:"mcp_servers" json:"mcp_servers"`
 	Agents     []AgentSpec     `yaml:"agents"      json:"agents"`
 }
@@ -15,6 +17,33 @@ type PublisherSpec struct {
 	Slug     string `yaml:"slug"     json:"slug"`
 	Name     string `yaml:"name"     json:"name"`
 	Verified bool   `yaml:"verified" json:"verified"`
+}
+
+// GroupSpec seeds a registry group (ADR 0006). Its slug MUST match the group
+// name the IdP emits in the group-membership claim, so a federated user's claim
+// groups resolve to this group's role grants.
+type GroupSpec struct {
+	Slug string `yaml:"slug" json:"slug"`
+	Name string `yaml:"name" json:"name"`
+}
+
+// GrantSpec seeds a role grant (ADR 0006): it gives a group OR a user a role on
+// a publisher, or globally when Publisher is empty. Exactly one of Group / User
+// must be set. Re-applied on every boot (source = config), so removing a grant
+// means removing it from the bootstrap file too.
+type GrantSpec struct {
+	// Group is the slug of the group receiving the grant (mutually exclusive
+	// with User). The group may be defined in this file's `groups` or already
+	// exist in the registry (e.g. the reviewer group seeded at boot).
+	Group string `yaml:"group" json:"group"`
+	// User is the email of the user receiving a direct grant (mutually
+	// exclusive with Group).
+	User string `yaml:"user" json:"user"`
+	// Role is one of viewer | editor | reviewer | admin.
+	Role string `yaml:"role" json:"role"`
+	// Publisher is the slug the grant applies to; empty means a global
+	// (all-publishers) grant.
+	Publisher string `yaml:"publisher" json:"publisher"`
 }
 
 // MCPServerSpec describes an MCP server and all its versions.

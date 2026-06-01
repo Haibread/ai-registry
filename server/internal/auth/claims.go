@@ -17,6 +17,10 @@ type KeycloakClaims struct {
 	// Keycloak group-membership mapper must emit a claim named "groups"
 	// with bare group names (Full group path disabled).
 	Groups []string `json:"groups"`
+	// Nonce echoes the value the broker sent on the authorize request. The
+	// callback rejects an id_token whose nonce does not match the one bound to
+	// the login transaction (replay protection). Present only on id_tokens.
+	Nonce string `json:"nonce"`
 }
 
 // RealmAccess holds the realm-level roles assigned to the token subject.

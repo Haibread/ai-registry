@@ -8,13 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useAuth } from '@/auth/AuthContext'
 
 export default function LoginPage() {
-  const { accessToken, isLoading, login, loginLocal } = useAuth()
+  const { login, loginLocal, oidcEnabled, localLoginEnabled, configLoading, isAuthenticated, authLoading } = useAuth()
   const navigate = useNavigate()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   // Already signed in → straight to the admin surface.
-  if (!isLoading && accessToken) {
+  if (!authLoading && isAuthenticated) {
     return <Navigate to="/admin" replace />
   }
 
@@ -51,37 +51,49 @@ export default function LoginPage() {
           </div>
         )}
 
-        <Button type="button" className="w-full" onClick={login}>
-          <LogIn className="h-4 w-4" aria-hidden="true" /> Sign in with your organization
-        </Button>
+        {oidcEnabled && (
+          <Button type="button" className="w-full" onClick={login}>
+            <LogIn className="h-4 w-4" aria-hidden="true" /> Sign in with your organization
+          </Button>
+        )}
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px flex-1 bg-border" />
-          or
-          <span className="h-px flex-1 bg-border" />
-        </div>
+        {oidcEnabled && localLoginEnabled && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Email &amp; password</CardTitle>
-            <CardDescription>For local accounts (no identity provider required).</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={handleLocal}>
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" autoComplete="username" required aria-required="true" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" name="password" type="password" autoComplete="current-password" required aria-required="true" />
-              </div>
-              <Button type="submit" variant="outline" className="w-full" disabled={submitting}>
-                {submitting ? 'Signing in…' : 'Sign in'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        {localLoginEnabled && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Email &amp; password</CardTitle>
+              <CardDescription>For local accounts (no identity provider required).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-4" onSubmit={handleLocal}>
+                <div className="space-y-1.5">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" name="email" type="email" autoComplete="username" required aria-required="true" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="password">Password</Label>
+                  <Input id="password" name="password" type="password" autoComplete="current-password" required aria-required="true" />
+                </div>
+                <Button type="submit" variant="outline" className="w-full" disabled={submitting}>
+                  {submitting ? 'Signing in…' : 'Sign in'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {!configLoading && !oidcEnabled && !localLoginEnabled && (
+          <p className="text-center text-sm text-muted-foreground">
+            No sign-in methods are enabled on this deployment.
+          </p>
+        )}
       </div>
     </div>
   )

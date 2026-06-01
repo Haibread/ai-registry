@@ -5,16 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 
 export default function AdminGroupList() {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
 
   const { data } = useQuery({
     queryKey: ['admin-groups'],
     queryFn: () => api.GET('/api/v1/groups', { params: { query: { limit: 100 } } }).then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const groups = data?.items ?? []

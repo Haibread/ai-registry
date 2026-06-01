@@ -1,7 +1,5 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import type { components } from '@/lib/schema'
-import { useAuthClient } from '@/lib/api-client'
 import { useAuth } from '@/auth/AuthContext'
 
 // Types come straight from the generated OpenAPI client so the SPA's notion of
@@ -39,22 +37,14 @@ export function satisfiesRole(held: ReadonlySet<Role>, required: Role): boolean 
 }
 
 /**
- * useMe fetches the caller's resolved identity + effective grants from
- * `GET /api/v1/me`. Enabled only when a token is present; cached for 5 minutes
- * since grants change rarely within a session.
+ * useMe returns the caller's resolved identity, sourced from AuthContext (which
+ * fetches GET /api/v1/me once and holds it in state). Kept as a thin
+ * react-query-shaped wrapper (`{ data, isLoading }`) for the handful of callers
+ * that read the raw identity (e.g. the admin layout's display email).
  */
-export function useMe() {
-  const { accessToken } = useAuth()
-  const api = useAuthClient()
-  return useQuery({
-    queryKey: ['me', accessToken ?? null],
-    queryFn: async () => {
-      const r = await api.GET('/api/v1/me')
-      return r.data ?? null
-    },
-    enabled: !!accessToken,
-    staleTime: 5 * 60_000,
-  })
+export function useMe(): { data: Me | null; isLoading: boolean } {
+  const { me, authLoading } = useAuth()
+  return { data: me, isLoading: authLoading }
 }
 
 export interface Permissions {
@@ -86,21 +76,20 @@ function rolesOn(grants: MeGrant[], slug: string | undefined): Set<Role> {
 }
 
 /**
- * usePermissions derives a stable capability view from `useMe`. Components call
- * it to gate which actions/nav they render. Backed by the cached `me` query, so
- * many callers share one request. The server still enforces every write.
+ * usePermissions derives a stable capability view from the cached identity in
+ * AuthContext. Components call it to gate which actions/nav they render. The
+ * server still enforces every write.
  */
 export function usePermissions(): Permissions {
-  const { data: me, isLoading } = useMe()
-  const { accessToken } = useAuth()
+  const { me, authLoading, isAuthenticated } = useAuth()
   return useMemo<Permissions>(() => {
     const grants = me?.grants ?? []
     const isServerAdmin = me?.is_server_admin ?? false
     const anyOf = (roles: ReadonlySet<Role>) =>
       isServerAdmin || grants.some((g) => roles.has(g.role))
     return {
-      isLoading,
-      isAuthenticated: !!accessToken,
+      isLoading: authLoading,
+      isAuthenticated,
       isServerAdmin,
       grants,
       rolesOn: (slug) => rolesOn(grants, slug),
@@ -110,5 +99,5 @@ export function usePermissions(): Permissions {
       isEditorAnywhere: anyOf(WRITE_ROLES),
       isReviewerAnywhere: anyOf(REVIEW_ROLES),
     }
-  }, [me, isLoading, accessToken])
+  }, [me, authLoading, isAuthenticated])
 }

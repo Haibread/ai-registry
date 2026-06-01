@@ -4,7 +4,30 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-_Nothing yet._
+### 🔐 Brokered OIDC + registry cookie sessions; `/v0` removed (ADR 0006 amendment)
+
+Authentication is reworked into a **backend-for-frontend (BFF)** model. The SPA
+is no longer an OIDC client: it holds **no token**, just a `Secure; HttpOnly`
+registry **session cookie**. OIDC is **brokered server-side** — the registry is a
+single **confidential** client that runs the Authorization Code + PKCE flow and
+maps the external identity to an internal user; the IdP token never reaches the
+browser. Local email + password login sets the same session cookie. Session
+tokens are stored only as a SHA-256 hash, and OIDC claim group membership +
+Server-Admin flag are snapshotted into the session at login.
+
+- **Sign-out now ends the IdP session too**: an OIDC logout bounces through the
+  provider's RP-initiated logout (`end_session_endpoint`, with `id_token_hint`)
+  so the SSO session is terminated, not just the registry cookie.
+- **The MCP-registry-spec `/v0` surface is removed** along with the OAuth
+  resource-server role and the multi-issuer token validator; MCP servers are
+  exposed only via `/api/v1`. A2A Agent Card compatibility is unchanged.
+- **Bootstrap can seed RBAC**: `groups` and `grants` sections in the bootstrap
+  file let a stack provision group→publisher role grants on boot (the dev seed
+  maps the Keycloak demo groups so the `author` fixture is a publisher Admin).
+- Dead auth config removed (`AUTH_STORAGE`, `AUTH_LOCAL_SIGNING_KEY`,
+  `AUTH_LOCAL_TOKEN_TTL`, `OIDC_AUDIENCE`); new knobs: `OIDC_CLIENT_SECRET`,
+  `OIDC_INTERNAL_URL`, `AUTH_SESSION_*`. The SPA drops the `oidc-client-ts`
+  dependency. E2E + CI updated to the cookie/brokered flow.
 
 ## v0.4.0-rc0 — 2026-05-31
 

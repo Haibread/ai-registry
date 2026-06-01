@@ -13,11 +13,9 @@ import { DeleteButton } from '@/components/admin/delete-button'
 import { GrantsSection } from '@/components/admin/grants-section'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 
 export default function AdminPublisherDetail() {
   const { slug } = useParams<{ slug: string }>()
-  const { accessToken } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
@@ -29,7 +27,7 @@ export default function AdminPublisherDetail() {
     queryFn: () => api.GET('/api/v1/publishers/{slug}', {
       params: { path: { slug: slug! } },
     }).then(r => r.data),
-    enabled: !!slug && !!accessToken,
+    enabled: !!slug && true,
   })
 
   const { data: mcpData } = useQuery({
@@ -37,7 +35,7 @@ export default function AdminPublisherDetail() {
     queryFn: () => api.GET('/api/v1/mcp/servers', {
       params: { query: { namespace: slug, limit: 50 } },
     }).then(r => r.data),
-    enabled: !!slug && !!accessToken,
+    enabled: !!slug && true,
   })
 
   const { data: agentsData } = useQuery({
@@ -45,7 +43,7 @@ export default function AdminPublisherDetail() {
     queryFn: () => api.GET('/api/v1/agents', {
       params: { query: { namespace: slug, limit: 50 } },
     }).then(r => r.data),
-    enabled: !!slug && !!accessToken,
+    enabled: !!slug && true,
   })
 
   const invalidate = () => {

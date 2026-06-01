@@ -1,457 +1,82 @@
 // @vitest-environment jsdom
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AuthProvider, useAuth, resetManagerForTesting } from './AuthContext'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AuthProvider, useAuth } from './AuthContext'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// AuthContext (ADR 0006 amendment) provides login/logout actions + the public
+// sign-in feature flags from /config.json. Auth *state* lives in useMe, not here.
 
-function makeUserManager(overrides: Partial<{
-  signinRedirect: () => Promise<void>
-  getUser: () => Promise<null>
-}> = {}) {
-  return {
-    signinRedirect: vi.fn().mockResolvedValue(undefined),
-    signoutRedirect: vi.fn().mockResolvedValue(undefined),
-    removeUser: vi.fn().mockResolvedValue(undefined),
-    getUser: vi.fn().mockResolvedValue(null),
-    events: {
-      addUserLoaded: vi.fn(),
-      addUserUnloaded: vi.fn(),
-      removeUserLoaded: vi.fn(),
-      removeUserUnloaded: vi.fn(),
-    },
-    ...overrides,
-  }
-}
-
-vi.mock('oidc-client-ts', () => ({
-  UserManager: vi.fn(),
-  // WebStorageStateStore is instantiated during UserManager creation.
-  // Provide a no-op mock so jsdom's limited localStorage doesn't throw.
-  WebStorageStateStore: vi.fn().mockImplementation(() => ({})),
-}))
-
-import { UserManager, WebStorageStateStore } from 'oidc-client-ts'
-const MockUserManager = vi.mocked(UserManager)
-const MockWebStorageStateStore = vi.mocked(WebStorageStateStore)
-
-function AuthConsumer() {
-  const { isLoading, loginError, accessToken, login } = useAuth()
+function Consumer() {
+  const { oidcEnabled, localLoginEnabled, configLoading, loginLocal } = useAuth()
   return (
     <div>
-      <span data-testid="loading">{String(isLoading)}</span>
-      <span data-testid="error">{loginError ?? ''}</span>
-      <span data-testid="token">{accessToken ?? ''}</span>
-      <button onClick={login}>Sign in</button>
+      <span data-testid="cfg">{configLoading ? 'loading' : `${oidcEnabled}:${localLoginEnabled}`}</span>
+      <button
+        onClick={() =>
+          loginLocal('a@b.com', 'pw').catch((e: Error) => {
+            const el = document.getElementById('err')
+            if (el) el.textContent = e.message
+          })
+        }
+      >
+        login
+      </button>
+      <span id="err" />
     </div>
   )
 }
 
-function renderAuth() {
+function renderProvider() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <AuthProvider>
-      <AuthConsumer />
-    </AuthProvider>
-  )
-}
-
-function mockConfigJson(
-  um: ReturnType<typeof makeUserManager>,
-  extra: Record<string, unknown> = {},
-) {
-  MockUserManager.mockImplementation(() => um as never)
-  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-    new Response(
-      JSON.stringify({ oidc_issuer: 'https://auth.example.com', oidc_client_id: 'spa', ...extra }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    ),
+    <QueryClientProvider client={qc}>
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>
+    </QueryClientProvider>,
   )
 }
 
 beforeEach(() => {
-  // Reset the module-level promise cache so each test starts fresh.
-  resetManagerForTesting()
-  MockUserManager.mockReset()
-  MockWebStorageStateStore.mockClear()
-})
-
-afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe('AuthProvider — config.json failure', () => {
-  it('sets loginError and resolves isLoading when /config.json returns non-200', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response('Not Found', { status: 404 }),
+describe('AuthProvider', () => {
+  it('loads sign-in feature flags from /config.json', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ oidc_enabled: true, local_login_enabled: false }), { status: 200 }),
     )
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-    expect(screen.getByTestId('error').textContent).toMatch(/Authentication configuration failed/)
-    expect(screen.getByTestId('error').textContent).toMatch(/404/)
+    renderProvider()
+    await waitFor(() => expect(screen.getByTestId('cfg').textContent).toBe('true:false'))
   })
 
-  it('sets loginError and resolves isLoading when /config.json fetch throws (network error)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('Failed to fetch'))
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-    expect(screen.getByTestId('error').textContent).toMatch(/Authentication configuration failed/)
-  })
-})
-
-describe('AuthProvider — login() with no UserManager', () => {
-  it('shows a configuration error when login() is called before UserManager is ready', async () => {
-    // fetch never resolves → um stays null
-    vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(new Promise(() => {}))
-
-    renderAuth()
-
-    await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
-    })
-
-    expect(screen.getByTestId('error').textContent).toMatch(/not configured/)
-    expect(screen.getByTestId('error').textContent).toMatch(/config\.json/)
+  it('defaults to local-login-on when /config.json fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('nope', { status: 500 }))
+    renderProvider()
+    await waitFor(() => expect(screen.getByTestId('cfg').textContent).toBe('false:true'))
   })
 
-  it('shows a configuration error when config.json failed and user clicks Sign In', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response('Not Found', { status: 404 }),
+  it('loginLocal POSTs to /api/v1/auth/login (with credentials) and surfaces a 401', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      // On mount AuthProvider fetches /config.json then /api/v1/me.
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ oidc_enabled: false, local_login_enabled: true }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 401 })) // /me → signed-out
+      .mockResolvedValueOnce(new Response(null, { status: 401 })) // login → error
+    renderProvider()
+    await waitFor(() => expect(screen.getByTestId('cfg').textContent).toBe('false:true'))
+
+    await userEvent.click(screen.getByText('login'))
+
+    await waitFor(() => expect(document.getElementById('err')?.textContent).toBe('Invalid email or password.'))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/auth/login',
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
     )
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-
-    await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
-    })
-
-    expect(screen.getByTestId('error').textContent).toMatch(/not configured/)
-  })
-})
-
-describe('AuthProvider — event wiring and session lifecycle', () => {
-  // `oidc-client-ts` drives token refresh by firing `addUserLoaded` whenever
-  // a new access token lands (initial sign-in, silent renew). Logout and
-  // expired-session paths fire `addUserUnloaded`. The tests below capture
-  // the callbacks the provider registers and invoke them directly — that
-  // proves the handlers are wired correctly without having to mock the
-  // entire oidc-client-ts renewal state machine.
-
-  it('exposes the new access token when oidc-client-ts fires addUserLoaded (silent renew path)', async () => {
-    let loadedCallback: ((u: { access_token: string }) => void) | undefined
-    const um = makeUserManager()
-    um.events.addUserLoaded = vi.fn((cb: (u: { access_token: string }) => void) => {
-      loadedCallback = cb
-    }) as never
-    mockConfigJson(um)
-
-    renderAuth()
-
-    // Wait for the provider to finish its initial getUser() → isLoading=false.
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-    expect(loadedCallback).toBeTypeOf('function')
-    expect(screen.getByTestId('token').textContent).toBe('')
-
-    // Simulate a silent renew completing: oidc-client-ts calls the callback
-    // we registered in useEffect.
-    act(() => {
-      loadedCallback!({ access_token: 'refreshed-token-v2' })
-    })
-
-    await waitFor(() =>
-      expect(screen.getByTestId('token').textContent).toBe('refreshed-token-v2'),
-    )
-  })
-
-  it('clears the access token when oidc-client-ts fires addUserUnloaded (expired session / logout)', async () => {
-    let loadedCallback: ((u: { access_token: string }) => void) | undefined
-    let unloadedCallback: (() => void) | undefined
-    const um = makeUserManager()
-    um.events.addUserLoaded = vi.fn((cb: (u: { access_token: string }) => void) => {
-      loadedCallback = cb
-    }) as never
-    um.events.addUserUnloaded = vi.fn((cb: () => void) => {
-      unloadedCallback = cb
-    }) as never
-    mockConfigJson(um)
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-
-    // Seed a "logged-in" state first so the clear is observable.
-    act(() => {
-      loadedCallback!({ access_token: 'token-before-expiry' })
-    })
-    await waitFor(() =>
-      expect(screen.getByTestId('token').textContent).toBe('token-before-expiry'),
-    )
-
-    // Now the session expires / user logs out — oidc-client-ts fires
-    // addUserUnloaded. The provider must drop user state so RequireAuth
-    // re-redirects and consumers stop sending stale Bearer tokens.
-    act(() => {
-      unloadedCallback!()
-    })
-    await waitFor(() =>
-      expect(screen.getByTestId('token').textContent).toBe(''),
-    )
-  })
-
-  it('unsubscribes from both events on unmount (no leaked handlers between remounts)', async () => {
-    const um = makeUserManager()
-    mockConfigJson(um)
-
-    const { unmount } = renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-
-    // Both add* were called exactly once during the effect.
-    expect(um.events.addUserLoaded).toHaveBeenCalledOnce()
-    expect(um.events.addUserUnloaded).toHaveBeenCalledOnce()
-
-    // Unmount runs the effect cleanup, which must remove the handlers.
-    unmount()
-    expect(um.events.removeUserLoaded).toHaveBeenCalledOnce()
-    expect(um.events.removeUserUnloaded).toHaveBeenCalledOnce()
-
-    // And crucially, both remove* received the SAME callbacks that add*
-    // received — a common subtle bug is to pass a fresh arrow function on
-    // cleanup, which is a silent no-op at the oidc-client-ts level.
-    const loadedAdded = (um.events.addUserLoaded as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0]
-    const loadedRemoved = (um.events.removeUserLoaded as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0]
-    expect(loadedRemoved).toBe(loadedAdded)
-  })
-
-  it('hydrates the initial token from UserManager.getUser() when a session is already in storage', async () => {
-    const um = makeUserManager({
-      getUser: vi.fn().mockResolvedValue({ access_token: 'persisted-token' } as never),
-    })
-    mockConfigJson(um)
-
-    renderAuth()
-
-    // The provider's Step-2 effect calls getUser() and stashes the result;
-    // the derived accessToken in context reflects it once the promise resolves.
-    await waitFor(() =>
-      expect(screen.getByTestId('token').textContent).toBe('persisted-token'),
-    )
-    expect(screen.getByTestId('loading').textContent).toBe('false')
-  })
-})
-
-describe('AuthProvider — token storage selection', () => {
-  // These tests pin the XSS-hardening contract: by default the SPA persists
-  // OIDC tokens in sessionStorage (scoped to the tab, XSS can still read it
-  // but the blast radius is smaller than a permanent localStorage token).
-  // Only when the server's /config.json explicitly sets auth_storage='local'
-  // — an E2E-only escape hatch — do we fall back to localStorage.
-
-  it('uses sessionStorage when /config.json omits auth_storage (production default)', async () => {
-    const um = makeUserManager()
-    mockConfigJson(um) // no auth_storage field
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-    expect(MockWebStorageStateStore).toHaveBeenCalledOnce()
-    expect(MockWebStorageStateStore.mock.calls[0][0]).toEqual({ store: window.sessionStorage })
-  })
-
-  it('uses sessionStorage when /config.json sets auth_storage="session"', async () => {
-    const um = makeUserManager()
-    mockConfigJson(um, { auth_storage: 'session' })
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-    expect(MockWebStorageStateStore.mock.calls[0][0]).toEqual({ store: window.sessionStorage })
-  })
-
-  it('uses localStorage when /config.json opts in with auth_storage="local" (E2E mode)', async () => {
-    const um = makeUserManager()
-    mockConfigJson(um, { auth_storage: 'local' })
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-    expect(MockWebStorageStateStore.mock.calls[0][0]).toEqual({ store: window.localStorage })
-  })
-
-  it('falls back to sessionStorage for unexpected auth_storage values', async () => {
-    const um = makeUserManager()
-    mockConfigJson(um, { auth_storage: 'garbage' })
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-    expect(MockWebStorageStateStore.mock.calls[0][0]).toEqual({ store: window.sessionStorage })
-  })
-})
-
-describe('AuthProvider — login() with UserManager ready', () => {
-  it('calls signinRedirect when UserManager is ready', async () => {
-    const um = makeUserManager()
-    mockConfigJson(um)
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-
-    await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
-    })
-
-    expect(um.signinRedirect).toHaveBeenCalledOnce()
-    expect(screen.getByTestId('error').textContent).toBe('')
-  })
-
-  it('shows CORS/network error when signinRedirect fails with Failed to fetch', async () => {
-    const um = makeUserManager({
-      signinRedirect: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
-    })
-    mockConfigJson(um)
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-
-    await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
-    })
-
-    await waitFor(() =>
-      expect(screen.getByTestId('error').textContent).toMatch(/Cannot reach the authentication server/),
-    )
-  })
-
-  it('shows generic error when signinRedirect fails with an unexpected error', async () => {
-    const um = makeUserManager({
-      signinRedirect: vi.fn().mockRejectedValue(new Error('invalid_client')),
-    })
-    mockConfigJson(um)
-
-    renderAuth()
-
-    await waitFor(() =>
-      expect(screen.getByTestId('loading').textContent).toBe('false'),
-    )
-
-    await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
-    })
-
-    await waitFor(() =>
-      expect(screen.getByTestId('error').textContent).toMatch(/Sign-in failed.*invalid_client/),
-    )
-  })
-})
-
-// makeLocalJWT builds an unsigned-looking JWT whose payload carries email + a
-// future exp, enough for the client's jwtEmail/jwtExpired decode (the server
-// signs the real one; the client never verifies it).
-function makeLocalJWT(email: string, expSecondsFromNow = 3600): string {
-  const b64url = (o: unknown) =>
-    btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-  const payload = { email, exp: Math.floor(Date.now() / 1000) + expSecondsFromNow }
-  return `${b64url({ alg: 'RS256', typ: 'JWT' })}.${b64url(payload)}.sig`
-}
-
-function LocalAuthConsumer() {
-  const { isLoading, accessToken, email, loginLocal } = useAuth()
-  return (
-    <div>
-      <span data-testid="loading">{String(isLoading)}</span>
-      <span data-testid="token">{accessToken ?? ''}</span>
-      <span data-testid="email">{email ?? ''}</span>
-      <button onClick={() => { void loginLocal('admin@example.com', 'pw').catch(() => {}) }}>Local sign in</button>
-    </div>
-  )
-}
-
-function renderLocalAuth() {
-  return render(
-    <AuthProvider>
-      <LocalAuthConsumer />
-    </AuthProvider>,
-  )
-}
-
-describe('AuthProvider — local login', () => {
-  beforeEach(() => {
-    window.sessionStorage.clear()
-    window.localStorage.clear()
-  })
-
-  it('stores the registry token and derives email on a successful loginLocal', async () => {
-    const um = makeUserManager()
-    mockConfigJson(um) // first fetch → /config.json
-    const token = makeLocalJWT('admin@example.com')
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ access_token: token, token_type: 'Bearer', expires_in: 3600 }), { status: 200 }),
-    )
-
-    renderLocalAuth()
-    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'))
-
-    await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: /local sign in/i }))
-    })
-
-    await waitFor(() => expect(screen.getByTestId('token').textContent).toBe(token))
-    expect(screen.getByTestId('email').textContent).toBe('admin@example.com')
-    expect(window.sessionStorage.getItem('ai-registry.local_token')).toBe(token)
-  })
-
-  it('does not store a token when loginLocal fails (401)', async () => {
-    const um = makeUserManager()
-    mockConfigJson(um)
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ detail: 'invalid email or password' }), { status: 401 }),
-    )
-
-    renderLocalAuth()
-    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'))
-
-    await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: /local sign in/i }))
-    })
-
-    // Token stays empty; nothing persisted.
-    expect(screen.getByTestId('token').textContent).toBe('')
-    expect(window.sessionStorage.getItem('ai-registry.local_token')).toBeNull()
   })
 })

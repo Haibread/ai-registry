@@ -61,7 +61,7 @@ func (h *MeHandlers) Me(w http.ResponseWriter, r *http.Request) {
 		userID = p.UserID
 		email = p.Email
 		groups = p.ClaimGroups
-		issuer = string(p.Issuer)
+		issuer = p.AuthMethod
 	}
 	if hasClaims && claims != nil {
 		if email == "" {

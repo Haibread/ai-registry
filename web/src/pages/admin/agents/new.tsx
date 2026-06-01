@@ -14,7 +14,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 
 const AUTH_SCHEME_OPTIONS = [
   { value: 'Bearer', label: 'Bearer (JWT / OAuth 2.0 access token)' },
@@ -35,7 +34,6 @@ const MODE_VALUES = ['text/plain', 'application/json', 'image/png', 'text/csv'] 
 type CreateError = { step?: string; message: string }
 
 export default function AdminAgentNew() {
-  const { accessToken, clearSession } = useAuth()
   const navigate = useNavigate()
 
   const [namespace, setNamespace] = useState('')
@@ -47,7 +45,6 @@ export default function AdminAgentNew() {
   const { data: publishersData } = useQuery({
     queryKey: ['publishers'],
     queryFn: () => api.GET('/api/v1/publishers', { params: { query: { limit: 100 } } }).then(r => r.data),
-    enabled: !!accessToken,
   })
 
   const publishers = publishersData?.items ?? []
@@ -101,9 +98,9 @@ export default function AdminAgentNew() {
 
       const versionRes = await fetch(`/api/v1/agents/${ns}/${slug}/versions`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken ?? ''}`,
         },
         body: JSON.stringify({
           version,
@@ -116,18 +113,16 @@ export default function AdminAgentNew() {
         }),
       })
       if (!versionRes.ok) {
-        if (versionRes.status === 401) { await clearSession(); return { namespace: ns, slug } }
         let msg = `Failed to create version (HTTP ${versionRes.status}).`
         try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch { /* body not JSON — keep default msg */ }
         throw { step: 'version', message: msg }
       }
 
       if (formData.get('publish') === 'on') {
-        const publishRes = await fetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
+        await fetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken ?? ''}` },
+          credentials: 'include',
         })
-        if (publishRes.status === 401) { await clearSession(); return { namespace: ns, slug } }
       }
 
       return { namespace: ns, slug }

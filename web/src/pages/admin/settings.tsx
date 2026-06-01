@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 import { usePublisher } from '@/auth/PublisherContext'
 import { usePermissions } from '@/auth/useMe'
 
@@ -19,7 +18,6 @@ import { usePermissions } from '@/auth/useMe'
 export default function AdminSettings() {
   const { currentSlug, current } = usePublisher()
   const perms = usePermissions()
-  const { accessToken } = useAuth()
   const api = useAuthClient()
   const queryClient = useQueryClient()
 
@@ -29,7 +27,7 @@ export default function AdminSettings() {
     queryKey: ['admin-publisher', slug],
     queryFn: () =>
       api.GET('/api/v1/publishers/{slug}', { params: { path: { slug } } }).then((r) => r.data),
-    enabled: !!accessToken && !!slug,
+    enabled: !!slug,
   })
 
   const save = useMutation({

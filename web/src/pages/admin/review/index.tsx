@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
@@ -61,7 +60,6 @@ function friendlyProblem(type?: string, detail?: string): string {
 }
 
 export default function AdminReviewQueue() {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -74,7 +72,7 @@ export default function AdminReviewQueue() {
     queryKey: ['admin-review-queue'],
     queryFn: () =>
       api.GET('/api/v1/review-queue').then((r) => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const items = (data?.items ?? []) as Item[]

@@ -44,30 +44,38 @@ type AuthConfig struct {
 	// e.g. http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs
 	OIDCJWKSUrl string
 
-	// OIDCClientID is the public OAuth 2.0 client ID for the browser SPA.
-	// Served via GET /config.json so the frontend can bootstrap its OIDC
-	// client at runtime without baking the value into the Docker image.
+	// OIDCInternalURL is the base URL (scheme://host) the server uses to reach
+	// the IdP for back-channel calls — discovery, token exchange, JWKS — when the
+	// public OIDCIssuer is unreachable from inside the network (e.g. Keycloak in
+	// Docker: browser uses http://localhost:8080, server uses http://keycloak:8080).
+	// The browser-facing authorize URL keeps the public host. Empty = use the
+	// public issuer for everything. The IdP must advertise OIDCIssuer (pin its
+	// hostname, e.g. Keycloak KC_HOSTNAME) so `iss` and the authorize URL match.
+	OIDCInternalURL string
+
+	// OIDCClientID is the confidential OAuth 2.0 client ID the server-side
+	// broker uses (ADR 0006 amendment, 2026-06-01). It is NOT served to the
+	// browser — the SPA is no longer an OIDC client.
 	OIDCClientID string
 
-	// OIDCAudience is the expected `aud` value on incoming access tokens.
-	// When non-empty, tokens missing this audience are rejected — required by
-	// the MCP authorization spec (OAuth 2.1 resource indicators / audience
-	// binding) to prevent tokens minted for unrelated clients on the same
-	// realm from being accepted at this resource server.
-	OIDCAudience string
+	// OIDCClientSecret is the confidential client's secret for the server-side
+	// broker. A credential — supply via env or a secrets manager, never a
+	// committed config file. Required to enable OIDC login.
+	OIDCClientSecret string
+
+	// OIDCRedirectURL is the callback the IdP redirects to after login. When
+	// empty it is derived from PublicBaseURL + /api/v1/auth/oidc/callback.
+	OIDCRedirectURL string
+
+	// OIDCScopes are requested at the authorize endpoint. Empty defaults to
+	// openid / profile / email.
+	OIDCScopes []string
 
 	// GroupsClaim is the JWT payload key the validator reads group
 	// memberships from. Default "groups". Configurable via env+YAML+
 	// default per CLAUDE.md when an external IdP emits this claim
 	// under a different name.
 	GroupsClaim string
-
-	// AuthStorage controls where the browser SPA persists OIDC tokens.
-	// "session" (the default) scopes tokens to the browser tab, limiting
-	// XSS-exfiltration blast radius. "local" is an E2E escape hatch —
-	// Playwright's storageState() captures localStorage across contexts, so
-	// the e2e stack sets AUTH_STORAGE=local. Never use "local" in production.
-	AuthStorage string
 
 	// ReviewerGroup is the group seeded on boot with a global Reviewer
 	// grant (ADR 0006 §5). Retained for back-compat: on boot the server
@@ -78,20 +86,10 @@ type AuthConfig struct {
 	ReviewerGroup string
 
 	// LocalLoginEnabled turns the local email+password front door on or off
-	// (ADR 0006 §3). When true, LocalSigningKey is required. Default true so
-	// the registry is usable without an external IdP.
+	// (ADR 0006 §3). Default true so the registry is usable without an
+	// external IdP. Both front doors end in a registry session cookie, so no
+	// token-signing key is needed.
 	LocalLoginEnabled bool
-
-	// LocalSigningKey is the PEM-encoded private key (RSA or Ed25519) the
-	// registry uses to sign its own access tokens for local logins and to
-	// publish a self-verification JWKS. It is a credential — supply via env
-	// or a secrets manager, never a committed config file. Required when
-	// LocalLoginEnabled is true.
-	LocalSigningKey string
-
-	// LocalTokenTTL is how long a registry-issued local token is valid.
-	// Default 1h; local users re-login at expiry (no refresh tokens in v1).
-	LocalTokenTTL time.Duration
 
 	// BootstrapAdminEmail is the email of the local Server Admin seeded on
 	// first boot (is_server_admin = true). Empty disables bootstrap seeding.
@@ -104,6 +102,23 @@ type AuthConfig struct {
 	// at first boot and should be rotated. Required when BootstrapAdminEmail
 	// is set.
 	BootstrapAdminPassword string
+
+	// SessionCookieName is the name of the HttpOnly session cookie set after a
+	// successful login (ADR 0006 amendment, 2026-06-01). Default
+	// "ai_registry_session".
+	SessionCookieName string
+
+	// SessionTTL is how long a login session is valid. Fixed in v1 (no sliding
+	// / refresh — ADR 0006 F4), so users re-login at expiry. Default 24h.
+	SessionTTL time.Duration
+
+	// SessionCookieSecure sets the cookie's Secure flag. Default true; set
+	// false only for local plain-HTTP development.
+	SessionCookieSecure bool
+
+	// SessionCookieSameSite is the cookie SameSite policy: "lax" (default),
+	// "strict", or "none".
+	SessionCookieSameSite string
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -185,20 +200,24 @@ type fileLogConfig struct {
 }
 
 type fileAuthConfig struct {
-	OIDCIssuer    string `yaml:"oidc_issuer"`
-	OIDCJWKSUrl   string `yaml:"oidc_jwks_url"`
-	OIDCClientID  string `yaml:"oidc_client_id"`
-	OIDCAudience  string `yaml:"oidc_audience"`
-	AuthStorage   string `yaml:"auth_storage"`
+	OIDCIssuer      string   `yaml:"oidc_issuer"`
+	OIDCJWKSUrl     string   `yaml:"oidc_jwks_url"`
+	OIDCInternalURL string   `yaml:"oidc_internal_url"`
+	OIDCClientID    string   `yaml:"oidc_client_id"`
+	OIDCRedirectURL string   `yaml:"oidc_redirect_url"`
+	OIDCScopes      []string `yaml:"oidc_scopes"`
+	// oidc_client_secret is a credential — env / secret only, never the file.
 	GroupsClaim   string `yaml:"groups_claim"`
 	ReviewerGroup string `yaml:"reviewer_group"`
 	LocalLogin    bool   `yaml:"local_login"`
-	// local_signing_key and the bootstrap admin password are credentials —
-	// env / secret only, never read from the config file (secrets
-	// conventions). The bootstrap admin EMAIL is not a secret, so it may be
-	// set in the file.
-	LocalTokenTTL       string `yaml:"local_token_ttl"`
+	// The bootstrap admin password is a credential — env / secret only, never
+	// read from the config file (secrets conventions). The bootstrap admin
+	// EMAIL is not a secret, so it may be set in the file.
 	BootstrapAdminEmail string `yaml:"bootstrap_admin_email"`
+	SessionCookieName   string `yaml:"session_cookie_name"`
+	SessionTTL          string `yaml:"session_ttl"`
+	SessionSecure       bool   `yaml:"session_secure"`
+	SessionSameSite     string `yaml:"session_samesite"`
 }
 
 type fileConfig struct {
@@ -233,10 +252,13 @@ func defaultFileConfig() fileConfig {
 			Level: "info",
 		},
 		Auth: fileAuthConfig{
-			GroupsClaim:   "groups",
-			ReviewerGroup: "registry-reviewers",
-			LocalLogin:    true,
-			LocalTokenTTL: "1h",
+			GroupsClaim:       "groups",
+			ReviewerGroup:     "registry-reviewers",
+			LocalLogin:        true,
+			SessionCookieName: "ai_registry_session",
+			SessionTTL:        "24h",
+			SessionSecure:     true,
+			SessionSameSite:   "lax",
 		},
 	}
 }
@@ -270,7 +292,7 @@ func Load(configFile string) (*Config, error) {
 	readTimeout := parseDurationDefault(fc.HTTP.ReadTimeout, 30*time.Second)
 	writeTimeout := parseDurationDefault(fc.HTTP.WriteTimeout, 30*time.Second)
 	idleTimeout := parseDurationDefault(fc.HTTP.IdleTimeout, 120*time.Second)
-	localTokenTTL := parseDurationDefault(fc.Auth.LocalTokenTTL, time.Hour)
+	sessionTTL := parseDurationDefault(fc.Auth.SessionTTL, 24*time.Hour)
 
 	// Build final config: env vars win over file values.
 	cfg := &Config{
@@ -300,16 +322,20 @@ func Load(configFile string) (*Config, error) {
 		Auth: AuthConfig{
 			OIDCIssuer:             envString("OIDC_ISSUER", fc.Auth.OIDCIssuer),
 			OIDCJWKSUrl:            envString("OIDC_JWKS_URL", fc.Auth.OIDCJWKSUrl),
+			OIDCInternalURL:        envString("OIDC_INTERNAL_URL", fc.Auth.OIDCInternalURL),
 			OIDCClientID:           envString("OIDC_CLIENT_ID", fc.Auth.OIDCClientID),
-			OIDCAudience:           envString("OIDC_AUDIENCE", fc.Auth.OIDCAudience),
-			AuthStorage:            envString("AUTH_STORAGE", fc.Auth.AuthStorage),
+			OIDCClientSecret:       envString("OIDC_CLIENT_SECRET", ""),
+			OIDCRedirectURL:        envString("OIDC_REDIRECT_URL", fc.Auth.OIDCRedirectURL),
+			OIDCScopes:             envStringSlice("OIDC_SCOPES", fc.Auth.OIDCScopes),
 			GroupsClaim:            envString("AUTH_GROUPS_CLAIM", fc.Auth.GroupsClaim),
 			ReviewerGroup:          envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
 			LocalLoginEnabled:      envBool("AUTH_LOCAL_LOGIN_ENABLED", fc.Auth.LocalLogin),
-			LocalSigningKey:        envString("AUTH_LOCAL_SIGNING_KEY", ""),
-			LocalTokenTTL:          envDuration("AUTH_LOCAL_TOKEN_TTL", localTokenTTL),
 			BootstrapAdminEmail:    envString("AUTH_BOOTSTRAP_ADMIN_EMAIL", fc.Auth.BootstrapAdminEmail),
 			BootstrapAdminPassword: envString("AUTH_BOOTSTRAP_ADMIN_PASSWORD", ""),
+			SessionCookieName:      envString("AUTH_SESSION_COOKIE_NAME", fc.Auth.SessionCookieName),
+			SessionTTL:             envDuration("AUTH_SESSION_TTL", sessionTTL),
+			SessionCookieSecure:    envBool("AUTH_SESSION_SECURE", fc.Auth.SessionSecure),
+			SessionCookieSameSite:  envString("AUTH_SESSION_SAMESITE", fc.Auth.SessionSameSite),
 		},
 		BootstrapFile: envString("BOOTSTRAP_FILE", fc.BootstrapFile),
 	}
@@ -348,19 +374,6 @@ func (c *Config) validate() error {
 	if c.Auth.OIDCIssuer == "" {
 		return fmt.Errorf("OIDC_ISSUER is required")
 	}
-	// Audience binding is non-negotiable for the OAuth / MCP surface (OAuth 2.1
-	// resource indicators). With an empty audience the validator skips the `aud`
-	// check and accepts any token the realm signed for any client, so we fail
-	// closed at boot rather than silently allow cross-client token reuse.
-	if c.Auth.OIDCAudience == "" {
-		return fmt.Errorf("OIDC_AUDIENCE is required (OAuth 2.1 audience binding; set it to this resource server's audience, e.g. ai-registry-server)")
-	}
-	// The "AUTH_LOCAL_SIGNING_KEY required when local login is enabled" rule is
-	// enforced where the local-auth subsystem initialises (it is the component
-	// that actually needs the key and can fail closed without a half-built
-	// feature breaking unrelated config loads). LocalLoginEnabled defaults to
-	// true, so validating the key here would reject every deployment until the
-	// local-auth wiring lands.
 	if c.Auth.BootstrapAdminEmail != "" && c.Auth.BootstrapAdminPassword == "" {
 		return fmt.Errorf("AUTH_BOOTSTRAP_ADMIN_PASSWORD is required when AUTH_BOOTSTRAP_ADMIN_EMAIL is set")
 	}

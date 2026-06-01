@@ -239,9 +239,11 @@ func TestMigration0013_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 	m, pool, _ := newMigrateContainer(t, "migrate_drop_ws_rt_test")
 
-	// Up to the current head (000013 applied; gates trivially pass empty).
-	if err := m.Up(); err != nil {
-		t.Fatalf("first Up: %v", err)
+	// Up to exactly 000013 (gates trivially pass empty). Pinned to an absolute
+	// version so migrations added on top (e.g. 000014 sessions) don't shift the
+	// down step below.
+	if err := m.Migrate(13); err != nil {
+		t.Fatalf("migrating to 000013: %v", err)
 	}
 
 	// Seed a publisher + a server BEFORE the down step so the down

@@ -10,13 +10,11 @@ import { BulkActionBar } from '@/components/admin/bulk-action-bar'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 import { usePermissions } from '@/auth/useMe'
 
 const PAGE_LIMIT = 50
 
 export default function AdminAgentList() {
-  const { accessToken } = useAuth()
   const perms = usePermissions()
   const api = useAuthClient()
   const [searchParams] = useSearchParams()
@@ -42,7 +40,7 @@ export default function AdminAgentList() {
         },
       },
     }).then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   // Defensive client-side filter: older server builds return soft-deleted

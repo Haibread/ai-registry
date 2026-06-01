@@ -10,27 +10,44 @@ name: ai-registry-ci
 
 services:
   server:
-    # E2E runs authenticate via the real OIDC flow and persist the session via
-    # Playwright's storageState(), which only captures localStorage. Set
-    # AUTH_STORAGE=local for CI so the SPA exposes its OIDC tokens where
-    # Playwright can see them. Production must keep the 'session' default.
-    #
-    # Also enable the local email+password front door (ADR 0006) so the
-    # local-login e2e can exercise it. The signing key is generated fresh per
-    # run by the e2e workflow and injected via AUTH_LOCAL_SIGNING_KEY — never
-    # committed. The bootstrap admin is a throwaway test account seeded on
-    # boot; the same creds are handed to the local-login spec.
+    # E2E authenticates the fixture users (admin/author/reviewer/user) via the
+    # brokered OIDC flow — they live in Keycloak — and exercises the local
+    # email+password front door for the local-login spec. Both end in the
+    # registry session cookie, which Playwright captures via storageState
+    # (ADR 0006 amendment, 2026-06-01). No bearer token, no localStorage.
     environment:
-      AUTH_STORAGE: local
+      # Local front door + a throwaway bootstrap admin for the local-login spec.
       AUTH_LOCAL_LOGIN_ENABLED: "true"
-      AUTH_LOCAL_SIGNING_KEY: ${AUTH_LOCAL_SIGNING_KEY}
       AUTH_BOOTSTRAP_ADMIN_EMAIL: ${E2E_LOCAL_ADMIN_EMAIL}
       AUTH_BOOTSTRAP_ADMIN_PASSWORD: ${E2E_LOCAL_ADMIN_PASSWORD}
+      # Plain-HTTP CI: the session cookie must not be Secure or the browser
+      # drops it and every authenticated request looks signed-out.
+      AUTH_SESSION_SECURE: "false"
+      # Server-side OIDC broker against the dev realm's confidential client.
+      # The browser reaches Keycloak at localhost:8080 (front-channel); the
+      # server reaches it at keycloak:8080 for discovery/token/JWKS.
+      OIDC_CLIENT_ID: ai-registry-server
+      OIDC_CLIENT_SECRET: dev-broker-secret
+      OIDC_INTERNAL_URL: http://keycloak:8080/realms/ai-registry
+      # Seed the dev groups + grants (anthropic-core/labs → anthropic,
+      # openai-platform → openai) so the federated `author` resolves to a
+      # publisher role via group membership.
+      BOOTSTRAP_FILE: /etc/ai-registry/bootstrap.yaml
+    volumes:
+      - ./bootstrap.example.yaml:/etc/ai-registry/bootstrap.yaml:ro
     depends_on:
       postgres:
         condition: service_started
       keycloak:
         condition: service_started
+
+  keycloak:
+    # Pin the front-channel hostname so the issuer + authorize URL are stably
+    # http://localhost:8080 regardless of how Keycloak is reached — required by
+    # the server-side broker (it fetches the back-channel via keycloak:8080).
+    environment:
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_STRICT: "false"
 
   web:
     depends_on:

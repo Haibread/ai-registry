@@ -58,18 +58,20 @@ auth:
   # Override JWKS fetch URL (useful inside Docker where the public URL is
   # unreachable from the server container).
   oidc_jwks_url: ""
-  # Public OAuth 2.0 client ID for the browser SPA (served via /config.json).
+  # Base URL the server uses to reach the IdP back-channel (discovery / token /
+  # JWKS) when the public oidc_issuer is unreachable from inside the network
+  # (e.g. Keycloak in Docker). The browser-facing authorize URL keeps the issuer
+  # host, so the IdP must advertise oidc_issuer (pin its hostname). Empty = use
+  # oidc_issuer for everything. Example: http://keycloak:8080/realms/ai-registry
+  oidc_internal_url: ""
+  # Confidential OAuth 2.0 client ID for the SERVER-SIDE OIDC broker (ADR 0006
+  # amendment). The SPA is no longer an OIDC client — this value is never sent
+  # to the browser. OIDC login is enabled only when this AND the secret are set;
+  # the secret is a credential (env OIDC_CLIENT_SECRET only, never this file).
   oidc_client_id: ""
-  # Expected JWT `aud` value (OAuth 2.1 resource indicators / MCP audience
-  # binding). REQUIRED — the server refuses to boot when empty. Tokens minted
-  # for other clients on the same realm are rejected; set it to this resource
-  # server's audience and have your IdP emit it. (Env var OIDC_AUDIENCE, which
-  # is a credential-free value, overrides this.)
-  oidc_audience: "ai-registry-server"
-  # SPA token storage: "session" (default, XSS-safer) or "local" (E2E only —
-  # Playwright's storageState() captures localStorage). Never use "local" in
-  # production.
-  auth_storage: "session"
+  # Override the IdP redirect/callback URL. Empty derives it from
+  # public_base_url + /api/v1/auth/oidc/callback.
+  oidc_redirect_url: ""
   # JWT claim path for the user's group memberships. Group membership
   # resolves to publisher-scoped role grants for authorization. Defaults to
   # "groups"; set to e.g. "realm_access.groups" if your IdP nests group
@@ -81,13 +83,18 @@ auth:
   # group + grant via the API.
   reviewer_group: "registry-reviewers"
   # Local email+password login (ADR 0006). Default true so the registry is
-  # usable without an IdP. The signing key and the bootstrap admin PASSWORD are
-  # credentials and are intentionally NOT settable here — supply them via
-  # AUTH_LOCAL_SIGNING_KEY / AUTH_BOOTSTRAP_ADMIN_PASSWORD (env / secret only).
+  # usable without an IdP. Both front doors end in a registry session cookie —
+  # no token-signing key is involved. The bootstrap admin PASSWORD is a
+  # credential and is intentionally NOT settable here — supply it via
+  # AUTH_BOOTSTRAP_ADMIN_PASSWORD (env / secret only).
   local_login: true
-  # Lifetime of a registry-issued local token (Go duration). Default 1h.
-  local_token_ttl: "1h"
   # Email of the bootstrap Server Admin seeded on first boot. The email is not
   # a secret; the matching AUTH_BOOTSTRAP_ADMIN_PASSWORD must be set via env.
   # Leave empty to skip bootstrap seeding.
   bootstrap_admin_email: ""
+  # Registry session cookie (ADR 0006 amendment). Both front doors end in this
+  # HttpOnly cookie. session_secure must be false for local plain-HTTP dev.
+  session_cookie_name: "ai_registry_session"
+  session_ttl: "24h"
+  session_secure: true
+  session_samesite: "lax"

@@ -8,7 +8,6 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { usePermissions, type Role } from '@/auth/useMe'
-import { useAuth } from '@/auth/AuthContext'
 import { useAuthClient } from '@/lib/api-client'
 
 export interface PublisherOption {
@@ -38,7 +37,6 @@ const PublisherContext = createContext<PublisherContextValue | null>(null)
 
 export function PublisherProvider({ children }: { children: React.ReactNode }) {
   const perms = usePermissions()
-  const { accessToken } = useAuth()
   const api = useAuthClient()
 
   // A Server Admin can act on every publisher, so offer the full list — not
@@ -48,7 +46,7 @@ export function PublisherProvider({ children }: { children: React.ReactNode }) {
     queryKey: ['all-publishers-switcher'],
     queryFn: () =>
       api.GET('/api/v1/publishers', { params: { query: { limit: 100 } } }).then((r) => r.data),
-    enabled: !!accessToken && perms.isServerAdmin,
+    enabled: perms.isServerAdmin,
     staleTime: 5 * 60_000,
   })
 

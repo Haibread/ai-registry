@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 import { usePermissions } from '@/auth/useMe'
 import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
@@ -58,7 +57,6 @@ function friendlyProblem(error: unknown, fallback: string): string {
 }
 
 export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps) {
-  const { accessToken } = useAuth()
   const perms = usePermissions()
   // Submit/withdraw are publisher Editor actions (ADR 0006). Approve/reject are
   // Reviewer actions and live on the review queue, not here.
@@ -83,7 +81,7 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
       })
       return (r.data ?? { items: [] }) as { items?: AnyVersion[] }
     },
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const items: AnyVersion[] = data?.items ?? []

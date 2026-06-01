@@ -50,19 +50,6 @@ jobs:
       - name: Create deploy/.env
         run: touch deploy/.env
 
-      # Generate a fresh RSA key per run for the registry's local-token issuer
-      # (ADR 0006) and hand it to docker compose via the env (never committed —
-      # gitleaks would reject a checked-in PEM). docker-compose.ci.yml reads
-      # ${AUTH_LOCAL_SIGNING_KEY} for the server's local login.
-      - name: Generate ephemeral local-auth signing key
-        run: |
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${RUNNER_TEMP}/local-signing-key.pem"
-          {
-            echo 'AUTH_LOCAL_SIGNING_KEY<<__PEM_EOF__'
-            cat "${RUNNER_TEMP}/local-signing-key.pem"
-            echo '__PEM_EOF__'
-          } >> "$GITHUB_ENV"
-
       # Build images and start all four services (postgres, keycloak, server, web).
       # docker-compose.ci.yml overrides depends_on conditions to service_started
       # so this command returns immediately without blocking on Keycloak's slow

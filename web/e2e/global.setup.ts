@@ -76,11 +76,11 @@ for (const fx of fixtures) {
   setup(`authenticate as ${fx.role}`, async ({ page }) => {
     await loginAs(page, fx.email, fx.password)
 
-    // For admin / author / reviewer the AuthCallback lands on /admin (or
-    // wherever RequireAuth would have sent them). For the no-roles `user`
-    // the SPA still completes the OIDC exchange — the 403s arrive later,
-    // at the API layer when the test attempts a write. Either way wait
-    // for the callback to settle.
+    // The brokered OIDC callback sets the session cookie server-side and
+    // redirects back to the app; storageState then captures that cookie. For
+    // the no-roles `user` the sign-in still succeeds — the 403s arrive later,
+    // at the API layer when the test attempts a write. Either way wait for the
+    // redirect away from Keycloak to settle.
     await page.waitForURL(url => !/\/realms\//.test(url.toString()), {
       timeout: 30_000,
     })

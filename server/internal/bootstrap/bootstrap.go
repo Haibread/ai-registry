@@ -83,6 +83,28 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		logger.Info("bootstrap: publisher ready", slog.String("slug", p.Slug))
 	}
 
+	// ── Groups (ADR 0006) ──────────────────────────────────────────────────────
+	// Seed registry groups whose slug matches the IdP's group-membership claim,
+	// so a federated user's claim groups resolve to the grants below.
+	groupIDs := make(map[string]string, len(spec.Groups))
+	for _, g := range spec.Groups {
+		grp, err := db.EnsureGroupBySlug(ctx, g.Slug, g.Name)
+		if err != nil {
+			return fmt.Errorf("bootstrap: group %q: %w", g.Slug, err)
+		}
+		groupIDs[g.Slug] = grp.ID
+		logger.Info("bootstrap: group ready", slog.String("slug", g.Slug))
+	}
+
+	// ── Grants (ADR 0006) ──────────────────────────────────────────────────────
+	// Idempotent (EnsureGrant); re-applied every boot with source = config, so a
+	// grant only disappears when removed from the bootstrap file.
+	for i, gr := range spec.Grants {
+		if err := upsertGrant(ctx, db, pubIDs, groupIDs, gr); err != nil {
+			return fmt.Errorf("bootstrap: grants[%d]: %w", i, err)
+		}
+	}
+
 	// ── MCP servers ───────────────────────────────────────────────────────────
 	for _, s := range spec.MCPServers {
 		pubID, ok := pubIDs[s.Publisher]
@@ -107,9 +129,65 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 
 	logger.Info("bootstrap: complete",
 		slog.Int("publishers", len(spec.Publishers)),
+		slog.Int("groups", len(spec.Groups)),
+		slog.Int("grants", len(spec.Grants)),
 		slog.Int("mcp_servers", len(spec.MCPServers)),
 		slog.Int("agents", len(spec.Agents)),
 	)
+	return nil
+}
+
+// ── groups & grants (ADR 0006) ─────────────────────────────────────────────────
+
+// upsertGrant idempotently applies one GrantSpec. The group / publisher are
+// resolved from the per-run lookup maps first (entities seeded in this same
+// file), then from the database (entities seeded earlier — e.g. the reviewer
+// group seeded at boot, or a publisher from a prior run). Grants carry
+// source = config so they re-apply on every boot.
+func upsertGrant(ctx context.Context, db *store.DB, pubIDs, groupIDs map[string]string, g GrantSpec) error {
+	var publisherID string
+	if g.Publisher != "" {
+		id, ok := pubIDs[g.Publisher]
+		if !ok {
+			pub, err := db.GetPublisher(ctx, g.Publisher)
+			if err != nil {
+				return fmt.Errorf("references unknown publisher %q: %w", g.Publisher, err)
+			}
+			id = pub.ID
+		}
+		publisherID = id
+	}
+
+	params := store.CreateGrantParams{
+		PublisherID: publisherID,
+		Role:        domain.Role(strings.ToLower(g.Role)),
+		Source:      domain.GrantSourceConfig,
+	}
+
+	switch {
+	case g.Group != "":
+		gid, ok := groupIDs[g.Group]
+		if !ok {
+			grp, err := db.GetGroupBySlug(ctx, g.Group)
+			if err != nil {
+				return fmt.Errorf("references unknown group %q: %w", g.Group, err)
+			}
+			gid = grp.ID
+		}
+		params.PrincipalType = domain.PrincipalGroup
+		params.PrincipalID = gid
+	case g.User != "":
+		u, err := db.GetUserByEmail(ctx, g.User)
+		if err != nil {
+			return fmt.Errorf("references unknown user %q: %w", g.User, err)
+		}
+		params.PrincipalType = domain.PrincipalUser
+		params.PrincipalID = u.ID
+	}
+
+	if err := db.EnsureGrant(ctx, params); err != nil {
+		return fmt.Errorf("ensuring grant: %w", err)
+	}
 	return nil
 }
 
@@ -662,6 +740,29 @@ func validateSpec(s *Spec) error {
 		}
 		if p.Slug != "" {
 			pubSlugs[p.Slug] = true
+		}
+	}
+
+	for i, g := range s.Groups {
+		if g.Slug == "" {
+			errs = append(errs, fmt.Sprintf("groups[%d]: slug is required", i))
+		}
+		if g.Name == "" {
+			errs = append(errs, fmt.Sprintf("groups[%d]: name is required", i))
+		}
+	}
+
+	// Grants reference a group/user and a publisher that may live in this file
+	// OR already exist in the registry (the reviewer group, a prior-run
+	// publisher, a provisioned user). Existence is therefore resolved at run
+	// time; here we only enforce the structural shape.
+	for i, gr := range s.Grants {
+		prefix := fmt.Sprintf("grants[%d]", i)
+		if (gr.Group != "") == (gr.User != "") {
+			errs = append(errs, prefix+": exactly one of group or user is required")
+		}
+		if !domain.ValidRole(strings.ToLower(gr.Role)) {
+			errs = append(errs, prefix+fmt.Sprintf(": invalid role %q (want viewer|editor|reviewer|admin)", gr.Role))
 		}
 	}
 

@@ -1,120 +1,69 @@
 // @vitest-environment jsdom
 //
-// Tests for useAuthClient middleware:
-//   - 401 responses trigger clearSession() so the UI shows Sign In immediately
-//   - Authorization header is set when a token is present
-//   - Authorization header is absent when no token
+// Tests for the useAuthClient onResponse middleware (ADR 0006 amendment): a 401
+// on any request other than /me dispatches `auth:unauthorized` so AuthContext
+// re-checks the session and the UI flips to signed-out. /me is skipped
+// (AuthContext owns that fetch). Auth rides in the session cookie — no header.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
-const mockClearSession = vi.fn()
-
-vi.mock('@/auth/AuthContext', () => ({
-  useAuth: vi.fn(() => ({
-    accessToken: 'test-token',
-    clearSession: mockClearSession,
-    email: undefined,
-    loginLocal: vi.fn(),
-  })),
-}))
-
-// Capture the middleware registered by useAuthClient so we can call it directly,
-// avoiding the jsdom relative-URL parsing issue that would occur with a real fetch.
 type Middleware = {
-  onRequest?: (ctx: { request: Request }) => Promise<Request>
   onResponse?: (ctx: { response: Response }) => Promise<Response>
 }
-let capturedMiddleware: Middleware = {}
+let captured: Middleware = {}
 const mockClient = {
-  use: vi.fn((mw: Middleware) => { capturedMiddleware = mw }),
+  use: vi.fn((mw: Middleware) => {
+    captured = mw
+  }),
   GET: vi.fn(),
 }
-vi.mock('openapi-fetch', () => ({
-  default: vi.fn(() => mockClient),
-}))
+vi.mock('openapi-fetch', () => ({ default: vi.fn(() => mockClient) }))
 
 import { useAuthClient } from './api-client'
-import { useAuth } from '@/auth/AuthContext'
 
-const mockUseAuth = vi.mocked(useAuth)
+function resp(status: number, url: string): Response {
+  const r = new Response(null, { status })
+  Object.defineProperty(r, 'url', { value: url })
+  return r
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
-  capturedMiddleware = {}
-  mockUseAuth.mockReturnValue({
-    accessToken: 'test-token',
-    clearSession: mockClearSession,
-    email: undefined,
-    loginLocal: vi.fn(),
-    login: vi.fn(),
-    logout: vi.fn(),
-    user: null,
-    isLoading: false,
-    userManager: {} as never,
-    loginError: null,
-  })
+  captured = {}
 })
 
 describe('useAuthClient', () => {
-  it('returns a client instance', () => {
+  it('returns the client and registers an onResponse middleware', () => {
     const { result } = renderHook(() => useAuthClient())
     expect(result.current).toBe(mockClient)
+    expect(captured.onResponse).toBeDefined()
   })
 
-  it('registers middleware on the client', () => {
+  it('dispatches auth:unauthorized on a 401 from a non-/me request', async () => {
+    const spy = vi.fn()
+    window.addEventListener('auth:unauthorized', spy)
     renderHook(() => useAuthClient())
-    expect(mockClient.use).toHaveBeenCalledOnce()
-    expect(capturedMiddleware.onRequest).toBeDefined()
-    expect(capturedMiddleware.onResponse).toBeDefined()
+    await captured.onResponse?.({ response: resp(401, 'http://localhost/api/v1/stats') })
+    expect(spy).toHaveBeenCalledOnce()
+    window.removeEventListener('auth:unauthorized', spy)
   })
 
-  it('calls clearSession when the server responds with 401', async () => {
+  it('does NOT dispatch on a 401 from /me itself (AuthContext owns it)', async () => {
+    const spy = vi.fn()
+    window.addEventListener('auth:unauthorized', spy)
     renderHook(() => useAuthClient())
-
-    const response = new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
-    await capturedMiddleware.onResponse?.({ response })
-
-    expect(mockClearSession).toHaveBeenCalledOnce()
+    await captured.onResponse?.({ response: resp(401, 'http://localhost/api/v1/me') })
+    expect(spy).not.toHaveBeenCalled()
+    window.removeEventListener('auth:unauthorized', spy)
   })
 
-  it('does NOT call clearSession for non-401 responses', async () => {
+  it('does NOT dispatch on a 2xx response', async () => {
+    const spy = vi.fn()
+    window.addEventListener('auth:unauthorized', spy)
     renderHook(() => useAuthClient())
-
-    const response = new Response(JSON.stringify({ ok: true }), { status: 200 })
-    await capturedMiddleware.onResponse?.({ response })
-
-    expect(mockClearSession).not.toHaveBeenCalled()
-  })
-
-  it('sets Authorization header when accessToken is present', async () => {
-    renderHook(() => useAuthClient())
-
-    const request = new Request('http://localhost:3000/v1/stats')
-    await capturedMiddleware.onRequest?.({ request })
-
-    expect(request.headers.get('Authorization')).toBe('Bearer test-token')
-  })
-
-  it('does not set Authorization header when accessToken is absent', async () => {
-    mockUseAuth.mockReturnValue({
-      accessToken: undefined,
-      clearSession: mockClearSession,
-      email: undefined,
-      loginLocal: vi.fn(),
-      login: vi.fn(),
-      logout: vi.fn(),
-      user: null,
-      isLoading: false,
-      userManager: {} as never,
-      loginError: null,
-    })
-
-    renderHook(() => useAuthClient())
-
-    const request = new Request('http://localhost:3000/v1/stats')
-    await capturedMiddleware.onRequest?.({ request })
-
-    expect(request.headers.get('Authorization')).toBeNull()
+    await captured.onResponse?.({ response: resp(200, 'http://localhost/api/v1/stats') })
+    expect(spy).not.toHaveBeenCalled()
+    window.removeEventListener('auth:unauthorized', spy)
   })
 })

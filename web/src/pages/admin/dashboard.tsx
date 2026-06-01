@@ -7,7 +7,6 @@ import { Badge, StatusBadge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 import { usePublisher } from '@/auth/PublisherContext'
 import { PublisherOverview } from '@/components/admin/publisher-overview'
 
@@ -37,25 +36,24 @@ export default function AdminDashboard() {
 }
 
 function GlobalDashboard() {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
 
   const { data: statsData, isError: statsError } = useQuery({
     queryKey: ['admin-stats'],
     queryFn: () => api.GET('/api/v1/stats').then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const { data: mcpData } = useQuery({
     queryKey: ['admin-mcp-recent'],
     queryFn: () => api.GET('/api/v1/mcp/servers', { params: { query: { limit: 5 } } }).then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const { data: agentsData } = useQuery({
     queryKey: ['admin-agents-recent'],
     queryFn: () => api.GET('/api/v1/agents', { params: { query: { limit: 5 } } }).then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const recentMcp = mcpData?.items ?? []

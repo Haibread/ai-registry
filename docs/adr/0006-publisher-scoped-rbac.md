@@ -1,12 +1,132 @@
 # ADR 0006 — Publisher-scoped RBAC, removing workspaces
 
-- **Status:** Accepted (2026-05-29); implemented 2026-05-30 (PRs #79–#85)
-- **Date:** 2026-05-29
+- **Status:** Accepted (2026-05-29); implemented 2026-05-30 (PRs #79–#85);
+  **amended in place 2026-06-01** — see the [Amendment](#amendment--2026-06-01-brokered-oidc-registry-sessions-and-removal-of-v0)
+  below (brokered OIDC, registry sessions, `/v0` removed). The amendment is
+  **Accepted but not yet implemented**; the original 2026-05-29 decision and
+  everything from [TL;DR](#tldr) onward describes the shipped state, with the
+  parts the amendment changes called out there.
+- **Date:** 2026-05-29 (amended 2026-06-01)
 - **Deciders:** @Haibread
 - **Supersedes:** [ADR 0001 — Workspaces under publishers](0001-workspaces-under-publishers.md),
   [ADR 0002 — Workspace OIDC group binding](0002-workspace-group-binding.md)
 - **Amends:** [ADR 0003 — Change-approval workflow](0003-change-approval-workflow.md)
   (the reviewer authorization gate; the workflow itself is unchanged)
+
+## Amendment — 2026-06-01: brokered OIDC, registry sessions, and removal of `/v0`
+
+- **Status:** Accepted (2026-06-01); **not yet implemented.**
+- **Deciders:** @Haibread.
+- **Amends in place:** this ADR's §3 (Authentication), §6 (Middleware), the
+  Server-Admin source in §4, and the auth endpoints in §7.
+- **Forces external changes:** Decision C and core principles #1 / #4 in
+  [CLAUDE.md](../../CLAUDE.md) (the MCP-spec `/v0` surface and the MCP
+  authorization spec) — see [Downstream impact](#downstream-doccode-impact-not-done-in-this-amendment).
+
+### Why
+
+The original model made the SPA a **public OIDC client (PKCE)** that received
+IdP tokens directly, made the server **multi-issuer** (validate IdP JWTs *or*
+registry-signed local tokens, routed by `iss`), and stood up an **MCP wall** to
+keep local tokens off the OAuth-only `/v0` surface. Almost all of that
+complexity existed to serve `/v0` — the MCP-registry-spec wire format that
+needed spec-compliant OAuth. **Removing `/v0` collapses the rationale:** with no
+spec surface to satisfy, the registry becomes the **single token authority**,
+OIDC is demoted to an upstream identity source the registry brokers, and the
+dual-issuer / MCP-wall apparatus disappears. This also settles the
+"decode the JWT instead of calling `/me`" question for good — after this change
+there is no JS-readable token to decode; the SPA learns its identity and grants
+only from `GET /api/v1/me`.
+
+### Decisions
+
+1. **Remove the `/v0` surface entirely.** The MCP-registry-spec wire format
+   (Decision C) is dropped. MCP servers stay catalogued and are exposed only
+   through the registry's own `/api/v1` API; the registry no longer presents an
+   MCP protocol surface and no longer acts as an OAuth resource server. This
+   reverses CLAUDE.md principle #4 ("MCP endpoints MUST conform to the MCP
+   specification… authentication MUST follow the MCP authorization spec") and
+   principle #1's MCP-spec framing. **This is a product-level decision well
+   beyond auth**, recorded here at the decider's request.
+
+2. **OIDC becomes a server-side broker (single confidential client).** The
+   registry holds **one confidential OIDC client** (`client_id` +
+   `client_secret`); the SPA is no longer an OIDC client.
+   - `GET /api/v1/auth/oidc/login` → the server mints `state` + `nonce` + a
+     PKCE verifier (held in a short-lived signed temp cookie) and 302s to the
+     IdP authorize endpoint with `redirect_uri = …/api/v1/auth/oidc/callback`.
+   - `GET /api/v1/auth/oidc/callback?code&state` → the server validates `state`,
+     exchanges `code` at the IdP token endpoint (PKCE verifier + `client_secret`),
+     validates the `id_token` (iss / aud / nonce / signature via the IdP JWKS),
+     and reads `sub` / `email` / `email_verified` / groups / realm roles.
+   - It maps the external identity to an internal `users` row using the **same
+     rules as §2** (resolve by `subject`; bind-once on a verified email to a
+     pre-invited row; else JIT-create). The IdP token is consumed here and
+     **never reaches the browser**. PKCE is used even though the client is
+     confidential (OAuth 2.1).
+
+3. **Sessions are server-side, behind an HttpOnly cookie (BFF).** Both front
+   doors — brokered OIDC and local password — end identically: the server
+   creates a **session row** and sets a `Secure; HttpOnly; SameSite=Lax` cookie
+   carrying an opaque session id. A new `sessions` table holds `id`, `user_id`,
+   the snapshotted claim data (Decision 4), `created_at`, `expires_at`,
+   `revoked_at`. Server-side (not a stateless JWT) so we keep this ADR's "changes
+   take effect immediately" posture — `disabled` / grant changes apply on the
+   next request, and a session is revocable. CSRF is mitigated by `SameSite`
+   plus a double-submit CSRF token on state-changing requests (the SPA and API
+   are same-origin behind nginx).
+   - **Consequence:** the registry-signed local **bearer JWT, its signing key
+     (`AUTH_LOCAL_SIGNING_KEY`), and the local JWKS endpoint are removed** —
+     there is no JS-held bearer token anymore. `POST /api/v1/auth/login` now
+     verifies the password and **sets the session cookie** instead of returning
+     an `access_token`.
+
+4. **Claim-derived data is snapshotted at login.** Because the IdP token is gone
+   after the callback, claim group membership and the claim-based Server-Admin
+   flag are **captured into the session at login**, refreshed on the next login.
+   Effective *roles* are still resolved live from the DB per request via the
+   existing grant resolution (§4) — only the claim *inputs* are frozen. Server
+   Admin stays dual-sourced: DB `is_server_admin` **or** the snapshotted claim.
+
+5. **Single-issuer middleware; no MCP wall.** `Authenticate` no longer validates
+   IdP JWTs or routes by `iss`; it resolves the **session cookie** to a
+   `users.id`, enforces `disabled`, and loads effective groups (local
+   `group_members` ∪ snapshotted claim groups). The multi-issuer `Validator`,
+   the request-path IdP `JWKSCache`, the `IssuerKind` routing, and the MCP-wall
+   leakage tests are all removed.
+
+6. **Config + frontend.** `/config.json` stops shipping OIDC client coordinates
+   and `auth_storage`; it ships only feature flags (`oidc_enabled`,
+   `local_login_enabled`) so the SPA knows which buttons to render. New server
+   config (env / YAML / default per CLAUDE.md): `AUTH_OIDC_CLIENT_ID`,
+   `AUTH_OIDC_CLIENT_SECRET` (secret — env/secret only), `AUTH_OIDC_ISSUER`,
+   `AUTH_OIDC_REDIRECT_URL`, `AUTH_OIDC_SCOPES`, plus session-cookie settings
+   (`AUTH_SESSION_COOKIE_NAME`, `AUTH_SESSION_TTL`, `AUTH_SESSION_SECURE`,
+   `AUTH_SESSION_SAMESITE`); `AUTH_LOCAL_SIGNING_KEY` is removed. The SPA drops
+   `oidc-client-ts` / `UserManager` / the `/auth/callback` route /
+   sessionStorage-token logic: `login()` redirects to
+   `/api/v1/auth/oidc/login`, `loginLocal()` POSTs then relies on the cookie,
+   `logout()` POSTs `/api/v1/auth/logout`. **`useMe` / `usePermissions` are
+   unchanged** — identity and grants still come from `GET /api/v1/me` (now
+   cookie-authenticated).
+
+### Downstream doc/code impact (not done in this amendment)
+
+- **CLAUDE.md** — principle #1 (MCP-spec API), principle #4 (MCP / MCP-auth
+  spec, marked "non-negotiable"), Decision C (`/v0` wire format), and the
+  token-issuer language in Decisions A / N all need rewriting. Editing those
+  stated non-negotiables needs explicit go-ahead.
+- **PLAN.md / README / `deploy/.env.example`** — `/v0` routes, OIDC public-client
+  setup, the local signing key; add the OIDC `client_secret` + session config.
+- **OpenAPI (`server/api/openapi.yaml`)** — delete the `/v0/...` paths and the
+  `Login` token response; add the OIDC login / callback / logout operations and
+  a session-cookie security scheme.
+- **Code** — remove the `/v0` handlers / router / tests; add the broker handler
+  and the `sessions` store + migration; collapse the auth middleware to
+  single-issuer; strip `oidc-client-ts` from the SPA. Follow-up implementation
+  PRs.
+
+---
 
 ## TL;DR
 
@@ -140,6 +260,12 @@ registry usable before any IdP is wired and means you can never lock
 yourself out.
 
 ### 3. Authentication (two front doors, one principal)
+
+> **Superseded by the [2026-06-01 amendment](#amendment--2026-06-01-brokered-oidc-registry-sessions-and-removal-of-v0).**
+> OIDC is now brokered server-side (single confidential client), both front
+> doors end in a server-side session behind an HttpOnly cookie, and the
+> registry-signed local bearer token + its JWKS are removed. The principal
+> model (one `users.id`, shared authorization path) below still holds.
 
 Both login methods resolve to a single `users.id`, then share the same
 authorization path.
@@ -293,6 +419,12 @@ hold a role, create a group whose slug is `X` and grant it that role.
 | `AUTH_GROUPS_CLAIM` | `auth.groups_claim` | `groups` |
 
 ### 6. Middleware
+
+> **Superseded by the [2026-06-01 amendment](#amendment--2026-06-01-brokered-oidc-registry-sessions-and-removal-of-v0).**
+> `Authenticate` is now **single-issuer**: it resolves a session cookie to a
+> `users.id` (no `iss` routing, no IdP JWKS on the request path) and the MCP
+> wall is gone with `/v0`. `RequirePublisherRole` / `RequireAdmin` and the
+> effective-role resolution below are unchanged.
 
 - `Authenticate` ([server/internal/auth/middleware.go](../../server/internal/auth/middleware.go))
   becomes **multi-issuer** (IdP JWKS or the registry's local key, by

@@ -129,33 +129,3 @@ func TestRequirePublisherRole_ClaimsFallback(t *testing.T) {
 		t.Errorf("no Principal → UserID should be empty, got %q", rs.last.UserID)
 	}
 }
-
-func TestRejectLocalToken(t *testing.T) {
-	h := RejectLocalToken(okHandler())
-
-	// Local token → rejected.
-	r := httptest.NewRequest(http.MethodPost, "/v0/servers/x/versions/1", nil)
-	r = r.WithContext(context.WithValue(r.Context(), issuerKindKey, IssuerLocal))
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, r)
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("local token on MCP surface should 403, got %d", rec.Code)
-	}
-
-	// OIDC token → allowed.
-	r = httptest.NewRequest(http.MethodPost, "/v0/servers/x/versions/1", nil)
-	r = r.WithContext(context.WithValue(r.Context(), issuerKindKey, IssuerOIDC))
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, r)
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("OIDC token should pass the MCP wall, got %d", rec.Code)
-	}
-
-	// No token → passes (public reads are unaffected; other guards apply).
-	r = httptest.NewRequest(http.MethodGet, "/v0/servers", nil)
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, r)
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("unauthenticated request should pass the MCP wall, got %d", rec.Code)
-	}
-}

@@ -3,13 +3,22 @@
 Phased roadmap for building an API-first MCP + Agent registry with a user UI
 and an admin UI. See `CLAUDE.md` for conventions and constraints.
 
+> **In progress (ADR 0006 amendment, 2026-06-01):** auth is moving to a
+> server-side OIDC broker (single confidential client) + HttpOnly cookie
+> sessions, and the MCP-registry-spec **`/v0` surface is being removed**.
+> Sections that describe `/v0` or the old multi-issuer / public-PKCE auth are
+> historical until [Phase 9](#phase-9--brokered-oidc--registry-sessions-remove-v0-adr-0006-amendment)
+> lands. See the
+> [Amendment](docs/adr/0006-publisher-scoped-rbac.md#amendment--2026-06-01-brokered-oidc-registry-sessions-and-removal-of-v0).
+
 ## 1. Goals & non-goals
 
 **Goals**
 
 - Serve as the single source of truth for internal/public MCP servers and
   AI agents.
-- Expose an MCP-spec-compatible registry API.
+- Catalog MCP servers and expose them via the registry's own `/api/v1` API.
+  *(Was: an MCP-spec-compatible `/v0` API — removed, ADR 0006 amendment.)*
 - Generate A2A-compatible Agent Cards for every registered agent.
 - Provide a public read-only UI and an admin-only CRUD UI.
 - Be API-first: every UI action maps 1:1 to an API call.
@@ -85,18 +94,14 @@ errors use `application/problem+json`.
 Private entries are hidden from public GETs; admins see all entries via
 the admin endpoints.
 - `GET /agents/{ns}/{slug}/.well-known/agent-card.json` — A2A Agent Card.
-- `GET /.well-known/oauth-protected-resource` — MCP-mandated resource metadata.
 
-### 3.2 MCP-spec registry endpoints
+### 3.2 MCP-spec registry endpoints — REMOVED (ADR 0006 amendment, 2026-06-01)
 
-Mirror the MCP registry API shape
-(https://github.com/modelcontextprotocol/registry):
-
-- `GET /v0/servers` — MCP registry discovery, cursor-paginated.
-- `GET /v0/servers/{id}` — canonical MCP server record.
-- `POST /v0/publish` — admin only, publish/update a server version.
-
-These are a thin compatibility layer over `/api/v1/mcp/*`.
+The `/v0/*` surface (the strict MCP-registry-spec wire format — `GET
+/v0/servers`, `GET /v0/servers/{id}`, `POST /v0/publish`) is being **removed**.
+MCP servers are catalogued and served only through `/api/v1/mcp/*` (§3.1, §3.3).
+The registry no longer mirrors the MCP registry API shape or acts as an OAuth
+resource server.
 
 ### 3.3 Admin (publisher-scoped RBAC or Server Admin — ADR 0006)
 
@@ -119,22 +124,22 @@ These are a thin compatibility layer over `/api/v1/mcp/*`.
 
 ## 4. Authentication & authorization
 
-- **Two token issuers** (ADR 0006): external IdP (Keycloak in dev) validated
-  via JWKS, **and** registry-signed local tokens from email+password login.
-  The validator checks `iss` and routes to the right key; local tokens are
-  rejected on the MCP surface.
+- **Single token authority** (ADR 0006 amendment, 2026-06-01): the registry
+  issues a session behind a `Secure; HttpOnly` cookie; there is no multi-issuer
+  validation and no MCP wall (both went away with `/v0`). OIDC is **brokered
+  server-side** — the registry is one **confidential** client that runs the
+  Authorization Code + PKCE flow at `/api/v1/auth/oidc/login` →
+  `/api/v1/auth/oidc/callback`, maps the IdP identity to an internal `users`
+  row, and snapshots claim group membership + the claim Server-Admin flag into
+  the session. Local email+password login sets the same cookie.
 - **Authorization** is publisher-scoped RBAC (ADR 0006): writes require
   Editor / Reviewer / Admin on the owning publisher, or Server Admin
   (`realm_access.roles` contains `admin`, or local `is_server_admin`). Roles
   are granted to users/groups; claims carry group membership only.
-- **MCP-compatibility**: implement the MCP authorization spec
-  - Serve `/.well-known/oauth-protected-resource` advertising the IdP as
-    authorization server.
-  - Accept `resource` parameter per RFC 8707.
-  - Require PKCE on any OAuth flow we initiate.
-- Admin UI uses `oidc-client-ts` (PKCE public client) with the IdP **and** a
-  local email+password login form (ADR 0006); the access token is stored in
-  React context and passed as Bearer on API calls.
+- Admin UI holds **no token**: `login()` redirects to the server's
+  `/api/v1/auth/oidc/login`, the local form POSTs `/api/v1/auth/login`, and the
+  SPA reads its identity + grants from `GET /api/v1/me`. The session rides in an
+  HttpOnly cookie (not JS-readable); no `oidc-client-ts`, no Bearer header.
 - Public GETs are unauthenticated by default; feature flag to require auth.
 - **API-key auth**: alongside OIDC, support static API keys for
   machine-to-machine admin operations (CI/CD publish pipelines). API keys are
@@ -610,7 +615,31 @@ From [ADR 0003](docs/adr/0003-change-approval-workflow.md):
 - Two-step migration (`000012` additive, `000013` finalise), shipped as two
   PRs. Supersedes ADR 0001/0002, amends ADR 0003.
 
-### Phase 9 — Later
+### Phase 9 — Brokered OIDC + registry sessions; remove `/v0` (ADR 0006 amendment)
+
+Per the [2026-06-01 amendment](docs/adr/0006-publisher-scoped-rbac.md#amendment--2026-06-01-brokered-oidc-registry-sessions-and-removal-of-v0).
+**Accepted, not yet implemented.**
+
+- **OIDC broker**: a single confidential client; `GET /api/v1/auth/oidc/login`
+  → IdP (Authorization Code + PKCE + state/nonce) → `…/callback` (code exchange
+  with `client_secret`, `id_token` validation, identity → `users` mapping).
+- **Registry sessions**: a `sessions` table + opaque `Secure; HttpOnly;
+  SameSite=Lax` cookie; CSRF via SameSite + double-submit token. Claim groups +
+  claim Server-Admin snapshotted at login.
+- **Single-issuer middleware**: drop the multi-issuer validator, the
+  request-path IdP JWKS, `IssuerKind`, the MCP wall, and the registry-signed
+  local bearer token + its signing key + the local JWKS endpoint. `POST
+  /api/v1/auth/login` sets the cookie instead of returning `access_token`.
+- **Remove `/v0`**: delete the MCP-registry-spec routes / handlers / tests and
+  the `/.well-known/oauth-protected-resource` endpoint.
+- **Frontend collapse**: remove `oidc-client-ts` / `UserManager` / the
+  `/auth/callback` route / sessionStorage tokens; `login()` redirects, identity
+  comes from `GET /api/v1/me`.
+- **Config + OpenAPI**: add `AUTH_OIDC_CLIENT_SECRET` + session-cookie settings,
+  drop `AUTH_LOCAL_SIGNING_KEY`; delete the `/v0` paths and add the OIDC
+  login / callback / logout operations + a session-cookie security scheme.
+
+### Phase 10 — Later
 - Skills & Prompts registry (same pattern as MCP servers).
 - Signed publishes (sigstore/cosign).
 - Webhooks on publish events.

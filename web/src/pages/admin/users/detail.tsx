@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
-import { useAuth } from '@/auth/AuthContext'
 
 type UserPatch = {
   disabled?: boolean
@@ -18,7 +17,6 @@ type UserPatch = {
 
 export default function AdminUserDetail() {
   const { id } = useParams<{ id: string }>()
-  const { accessToken } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const api = useAuthClient()
@@ -26,7 +24,7 @@ export default function AdminUserDetail() {
   const { data: user, isPending, isError } = useQuery({
     queryKey: ['admin-user', id],
     queryFn: () => api.GET('/api/v1/users/{id}', { params: { path: { id: id! } } }).then(r => r.data),
-    enabled: !!id && !!accessToken,
+    enabled: !!id && true,
   })
 
   const invalidate = () => {

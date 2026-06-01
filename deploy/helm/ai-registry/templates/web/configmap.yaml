@@ -7,7 +7,7 @@ metadata:
     {{- include "ai-registry.web.labels" . | nindent 4 }}
 data:
   {{- /*
-    API_URL: upstream address nginx proxies /api/, /v0/, /config.json, etc. to.
+    API_URL: upstream address nginx proxies /api/, /config.json, etc. to.
     Defaults to the in-cluster server service URL derived from the release name.
     Override with web.apiUrl if the server is reachable via a different address.
   */}}

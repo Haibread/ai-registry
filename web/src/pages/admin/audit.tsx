@@ -37,7 +37,6 @@ import {
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 import type { components } from '@/lib/schema'
 
 type AuditEvent = components['schemas']['AuditEvent']
@@ -128,7 +127,6 @@ function formatFullTimestamp(iso: string): string {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function AdminAuditPage() {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
 
   const [resourceType, setResourceType] = useState<string>('all')
@@ -156,7 +154,7 @@ export default function AdminAuditPage() {
       const r = await api.GET('/api/v1/audit', { params: { query } })
       return r.data ?? null
     },
-    enabled: !!accessToken,
+    enabled: true,
     // Keep previous page visible while the next one loads.
     placeholderData: (prev) => prev,
   })

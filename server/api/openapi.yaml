@@ -22,8 +22,6 @@ tags:
     description: AI agent registry (v1)
   - name: audit
     description: Audit log (admin only)
-  - name: v0
-    description: MCP registry wire-format (spec-compatible /v0 surface)
 
 paths:
   # ── System ───────────────────────────────────────────────────────────────
@@ -69,7 +67,7 @@ paths:
       description: Exposes Prometheus-format metrics for scraping.
       tags: [system]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       responses:
         "200":
           description: Prometheus metrics text
@@ -108,20 +106,6 @@ paths:
               schema:
                 type: string
 
-  /.well-known/oauth-protected-resource:
-    get:
-      operationId: oauthProtectedResource
-      summary: MCP OAuth 2.0 Protected Resource Metadata
-      description: RFC 8707 resource metadata required by the MCP authorization spec.
-      tags: [system]
-      responses:
-        "200":
-          description: Resource metadata
-          content:
-            application/json:
-              schema:
-                type: object
-
   /.well-known/agent-card.json:
     get:
       operationId: globalAgentCard
@@ -138,22 +122,6 @@ paths:
               schema:
                 type: object
 
-  /.well-known/jwks.json:
-    get:
-      operationId: registryJWKS
-      summary: Registry JSON Web Key Set
-      description: >
-        Public keys for verifying registry-issued local access tokens.
-        Empty `keys` when local login is disabled.
-      tags: [system]
-      responses:
-        "200":
-          description: JSON Web Key Set
-          content:
-            application/json:
-              schema:
-                type: object
-
   # ── Authentication ─────────────────────────────────────────────────────────
 
   /api/v1/auth/login:
@@ -161,10 +129,9 @@ paths:
       operationId: localLogin
       summary: Local email + password login
       description: >
-        Exchanges an email and password for a short-lived, registry-signed
-        access token. Local tokens are accepted only on the
-        human/admin API — they are rejected on the MCP surface, which stays
-        OAuth-only. Available only when local login is enabled.
+        Verifies an email and password and opens a registry session, set as a
+        Secure, HttpOnly cookie (ADR 0006 amendment). Available only when local
+        login is enabled.
       tags: [auth]
       requestBody:
         required: true
@@ -172,11 +139,8 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
-        "200":
-          description: A registry-issued access token
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "204":
+          description: Session opened; the session cookie is set via Set-Cookie.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -186,6 +150,77 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Log out (revoke the current session)
+      description: >
+        Revokes the caller's session and clears the session cookie. Idempotent —
+        succeeds even with no active session. The no-redirect variant for
+        programmatic callers; browsers should use GET (below) so an OIDC session
+        is also ended at the identity provider.
+      tags: [auth]
+      responses:
+        "204":
+          description: Session cleared.
+    get:
+      operationId: logoutRedirect
+      summary: Log out (browser) and end the IdP session
+      description: >
+        Browser logout (ADR 0006 amendment): revokes the registry session and
+        clears the cookie, then redirects back to the app. For an OIDC session it
+        first bounces the browser through the identity provider's RP-initiated
+        logout (end_session_endpoint, with id_token_hint) so the IdP SSO session
+        is terminated too; a local session redirects straight back to the app.
+      tags: [auth]
+      responses:
+        "302":
+          description: >
+            Redirect to the IdP's end-session endpoint (OIDC session) or directly
+            back to the app (local session), with the session cookie cleared.
+
+  /api/v1/auth/oidc/login:
+    get:
+      operationId: oidcLogin
+      summary: Begin OIDC login (server-side broker)
+      description: >
+        Redirects the browser to the configured identity provider to begin the
+        Authorization Code + PKCE flow (ADR 0006 amendment). The registry is a
+        confidential client; the IdP token never reaches the browser. 404 when
+        OIDC login is not configured.
+      tags: [auth]
+      responses:
+        "302":
+          description: Redirect to the identity provider's authorize endpoint.
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/auth/oidc/callback:
+    get:
+      operationId: oidcCallback
+      summary: OIDC redirect callback (server-side broker)
+      description: >
+        Handles the identity-provider redirect: validates state, exchanges the
+        code, maps the identity to a registry user, opens a session, and
+        redirects to the app. 404 when OIDC login is not configured.
+      tags: [auth]
+      parameters:
+        - name: code
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string }
+      responses:
+        "302":
+          description: Redirect to the app with the session cookie set.
+        "400":
+          description: Invalid login state or missing authorization code.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /api/v1/me:
     get:
@@ -200,7 +235,7 @@ paths:
         publisher-scoped check. Works for both OIDC and local tokens.
       tags: [auth]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       responses:
         "200":
           description: The caller's identity and grants
@@ -216,7 +251,7 @@ paths:
       operationId: listGroups
       summary: List groups (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -232,7 +267,7 @@ paths:
       operationId: createGroup
       summary: Create a group (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       requestBody:
         required: true
         content:
@@ -259,7 +294,7 @@ paths:
       operationId: getGroup
       summary: Get a group by slug (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       responses:
         "200":
           description: The group
@@ -273,7 +308,7 @@ paths:
       operationId: patchGroup
       summary: Update a group (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       requestBody:
         required: true
         content:
@@ -292,7 +327,7 @@ paths:
       operationId: deleteGroup
       summary: Delete a group (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       responses:
         "204":
           description: Deleted
@@ -305,7 +340,7 @@ paths:
       operationId: listGroupMembers
       summary: List a group's members (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - name: slug
           in: path
@@ -336,7 +371,7 @@ paths:
       summary: Add a member to a group by email (Server Admin)
       description: Auto-creates an invited user when the email is unknown.
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       responses:
         "200":
           description: The added (or auto-created) user
@@ -350,7 +385,7 @@ paths:
       operationId: removeGroupMember
       summary: Remove a member from a group (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       responses:
         "204":
           description: Removed
@@ -363,7 +398,7 @@ paths:
       operationId: listUsers
       summary: List users (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -379,7 +414,7 @@ paths:
       operationId: createUser
       summary: Create a local or invited user (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       requestBody:
         required: true
         content:
@@ -406,7 +441,7 @@ paths:
       operationId: getUser
       summary: Get a user by id (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       responses:
         "200":
           description: The user
@@ -420,7 +455,7 @@ paths:
       operationId: patchUser
       summary: Update a user's display name, disabled, or is_server_admin (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       requestBody:
         required: true
         content:
@@ -441,7 +476,7 @@ paths:
       operationId: setUserPassword
       summary: Set a user's password (self or Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - name: id
           in: path
@@ -465,7 +500,7 @@ paths:
       operationId: listGlobalGrants
       summary: List global (all-publishers) role grants (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       responses:
         "200":
           description: Global grants
@@ -478,7 +513,7 @@ paths:
       operationId: createGlobalGrant
       summary: Create a global role grant (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       requestBody:
         required: true
         content:
@@ -500,7 +535,7 @@ paths:
       operationId: deleteGlobalGrant
       summary: Delete a global role grant (Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - name: id
           in: path
@@ -523,7 +558,7 @@ paths:
       operationId: listPublisherGrants
       summary: List a publisher's role grants (publisher Admin or Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       responses:
         "200":
           description: The publisher's grants
@@ -537,7 +572,7 @@ paths:
       operationId: createPublisherGrant
       summary: Grant a role on a publisher (publisher Admin or Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       requestBody:
         required: true
         content:
@@ -560,7 +595,7 @@ paths:
       operationId: deletePublisherGrant
       summary: Revoke a role grant on a publisher (publisher Admin or Server Admin)
       tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - name: slug
           in: path
@@ -594,7 +629,7 @@ paths:
         publisher's items; a per-publisher Reviewer sees only the publishers
         they review; a caller who holds no Reviewer role anywhere gets 403.
       tags: [review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -627,7 +662,7 @@ paths:
       summary: Create a publisher (admin only)
       tags: [publishers]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -675,7 +710,7 @@ paths:
         lesser role, 401 when unauthenticated.
       tags: [publishers]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/SlugParam"
       requestBody:
@@ -712,7 +747,7 @@ paths:
       description: Hard-deletes the publisher. Returns 409 if the publisher still owns active MCP servers or agents.
       tags: [publishers]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/SlugParam"
       responses:
@@ -738,7 +773,7 @@ paths:
         per-publisher counterpart to the Server-Admin-only global stats.
       tags: [publishers]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/SlugParam"
       responses:
@@ -767,7 +802,7 @@ paths:
         the actor (the publisher's own collaborators).
       tags: [publishers]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/SlugParam"
         - $ref: "#/components/parameters/LimitParam"
@@ -881,7 +916,7 @@ paths:
         403 without the role.
       tags: [mcp]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -926,7 +961,7 @@ paths:
       summary: Update an MCP server's metadata (admin only)
       tags: [mcp]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -974,7 +1009,7 @@ paths:
         admin force-delete path.
       tags: [mcp]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1000,7 +1035,7 @@ paths:
         is always allowed.
       tags: [mcp]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1041,7 +1076,7 @@ paths:
       summary: Deprecate an MCP server (admin only)
       tags: [mcp]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1141,7 +1176,7 @@ paths:
       summary: Create a new version of an MCP server (admin only)
       tags: [mcp]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1195,7 +1230,7 @@ paths:
       operationId: submitMCPVersion
       summary: Submit an MCP server version for review
       tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1219,7 +1254,7 @@ paths:
       operationId: withdrawMCPVersion
       summary: Withdraw a pending MCP server version back to draft
       tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1240,7 +1275,7 @@ paths:
       operationId: approveMCPVersion
       summary: Approve a pending MCP server version (reviewer)
       tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1270,7 +1305,7 @@ paths:
       operationId: rejectMCPVersion
       summary: Reject a pending MCP server version with a reason (reviewer)
       tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1301,7 +1336,7 @@ paths:
         stays visible on public reads until a reviewer approves the
         deletion (which sets deleted_at).
       tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1321,7 +1356,7 @@ paths:
       operationId: approveMCPDeletion
       summary: Approve a pending MCP server deletion (reviewer)
       tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1341,7 +1376,7 @@ paths:
       operationId: rejectMCPDeletion
       summary: Reject a pending MCP server deletion with a reason (reviewer)
       tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1375,7 +1410,7 @@ paths:
         publish are forbidden.
       tags: [mcp]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1482,7 +1517,7 @@ paths:
         without the role.
       tags: [agents]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -1527,7 +1562,7 @@ paths:
       summary: Update an agent's metadata (admin only)
       tags: [agents]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1569,7 +1604,7 @@ paths:
         force-delete path.
       tags: [agents]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1594,7 +1629,7 @@ paths:
         `private` is always allowed.
       tags: [agents]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1635,7 +1670,7 @@ paths:
       summary: Deprecate an agent (admin only)
       tags: [agents]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1735,7 +1770,7 @@ paths:
       summary: Create a new version of an agent (admin only)
       tags: [agents]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1789,7 +1824,7 @@ paths:
       operationId: submitAgentVersion
       summary: Submit an agent version for review
       tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1810,7 +1845,7 @@ paths:
       operationId: withdrawAgentVersion
       summary: Withdraw a pending agent version back to draft
       tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1831,7 +1866,7 @@ paths:
       operationId: approveAgentVersion
       summary: Approve a pending agent version (reviewer)
       tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1858,7 +1893,7 @@ paths:
       operationId: rejectAgentVersion
       summary: Reject a pending agent version with a reason (reviewer)
       tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1885,7 +1920,7 @@ paths:
       operationId: requestAgentDeletion
       summary: Request deletion of an agent
       tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1905,7 +1940,7 @@ paths:
       operationId: approveAgentDeletion
       summary: Approve a pending agent deletion (reviewer)
       tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1925,7 +1960,7 @@ paths:
       operationId: rejectAgentDeletion
       summary: Reject a pending agent deletion with a reason (reviewer)
       tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      security: [{ cookieAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1957,7 +1992,7 @@ paths:
         submitting for a Reviewer to approve. Published versions are immutable.
       tags: [agents]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1988,7 +2023,7 @@ paths:
       summary: Update agent version lifecycle status (admin only)
       tags: [agents]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2081,7 +2116,7 @@ paths:
       summary: Registry resource counts (admin only)
       tags: [system]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       responses:
         "200":
           description: Total counts for each resource type
@@ -2100,7 +2135,7 @@ paths:
       summary: List audit log events (admin only)
       tags: [audit]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - name: resource_type
           in: query
@@ -2162,7 +2197,7 @@ paths:
       summary: List community issue reports (admin only)
       tags: [reports]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - name: status
           in: query
@@ -2195,7 +2230,7 @@ paths:
       summary: Update a report's status (admin only)
       tags: [reports]
       security:
-        - bearerAuth: []
+        - cookieAuth: []
       parameters:
         - name: id
           in: path
@@ -2228,322 +2263,16 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
-  # ── v0 MCP registry wire-format ───────────────────────────────────────────
-
-  /v0/servers:
-    get:
-      operationId: v0ListServers
-      summary: List MCP servers (MCP registry wire format)
-      description: >
-        Returns the paginated server list in the canonical MCP registry wire
-        format. Only public, published servers are returned.
-      tags: [v0]
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: cursor
-          in: query
-          schema:
-            type: string
-        - name: search
-          in: query
-          description: Full-text search (also accepts "q" for legacy compat)
-          schema:
-            type: string
-        - name: updated_since
-          in: query
-          description: Return servers updated after this RFC 3339 timestamp
-          schema:
-            type: string
-            format: date-time
-        - name: include_deleted
-          in: query
-          schema:
-            type: boolean
-            default: false
-        - name: version
-          in: query
-          description: Exact semver filter, or "latest"
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Paginated server list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0ListResponse"
-
-  /v0/servers/{id}:
-    get:
-      operationId: v0GetServer
-      summary: Get an MCP server by ULID (MCP registry wire format)
-      tags: [v0]
-      parameters:
-        - $ref: "#/components/parameters/ServerIDParam"
-      responses:
-        "200":
-          description: Server detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0ServerResponse"
-        "404":
-          description: Server not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-
-  /v0/servers/{namespace}/{slug}:
-    get:
-      operationId: v0GetServerByName
-      summary: Get an MCP server by namespace/slug (MCP registry wire format)
-      tags: [v0]
-      parameters:
-        - $ref: "#/components/parameters/NamespaceParam"
-        - $ref: "#/components/parameters/SlugParam"
-      responses:
-        "200":
-          description: Server detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0ServerResponse"
-        "404":
-          description: Server not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-
-  /v0/servers/{namespace}/{slug}/versions:
-    get:
-      operationId: v0ListServerVersions
-      summary: List published versions of an MCP server (MCP registry wire format)
-      tags: [v0]
-      parameters:
-        - $ref: "#/components/parameters/NamespaceParam"
-        - $ref: "#/components/parameters/SlugParam"
-      responses:
-        "200":
-          description: List of published versions in wire format
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0ListResponse"
-        "404":
-          description: Server not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-
-  /v0/servers/{namespace}/{slug}/versions/{version}:
-    get:
-      operationId: v0GetServerVersion
-      summary: Get a specific version of an MCP server (MCP registry wire format)
-      description: Use `latest` as the version value to get the latest published version.
-      tags: [v0]
-      parameters:
-        - $ref: "#/components/parameters/NamespaceParam"
-        - $ref: "#/components/parameters/SlugParam"
-        - $ref: "#/components/parameters/VersionParam"
-      responses:
-        "200":
-          description: Version detail in wire format
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0ServerResponse"
-        "404":
-          description: Version not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-    put:
-      operationId: v0UpdateServerVersion
-      summary: Update a server version (admin only) — not yet implemented
-      tags: [v0]
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/NamespaceParam"
-        - $ref: "#/components/parameters/SlugParam"
-        - $ref: "#/components/parameters/VersionParam"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "501":
-          description: Not implemented
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-    delete:
-      operationId: v0DeleteServerVersion
-      summary: Delete a server version (admin only) — not yet implemented
-      tags: [v0]
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/NamespaceParam"
-        - $ref: "#/components/parameters/SlugParam"
-        - $ref: "#/components/parameters/VersionParam"
-      responses:
-        "501":
-          description: Not implemented
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /v0/servers/{namespace}/{slug}/status:
-    patch:
-      operationId: v0PatchServerStatus
-      summary: Update status for all published versions of a server (admin only)
-      tags: [v0]
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/NamespaceParam"
-        - $ref: "#/components/parameters/SlugParam"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/V0StatusPatchRequest"
-      responses:
-        "200":
-          description: All versions updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0AllVersionsStatusResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          description: Server not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-
-  /v0/servers/{namespace}/{slug}/versions/{version}/status:
-    patch:
-      operationId: v0PatchVersionStatus
-      summary: Update status of a specific server version (admin only)
-      tags: [v0]
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/NamespaceParam"
-        - $ref: "#/components/parameters/SlugParam"
-        - $ref: "#/components/parameters/VersionParam"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/V0StatusPatchRequest"
-      responses:
-        "200":
-          description: Version status updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0ServerResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          description: Server or version not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-
-  /v0/publish:
-    post:
-      operationId: v0Publish
-      summary: Publish an MCP server version (admin only, MCP registry wire format)
-      description: >
-        Creates or updates an MCP server entry and immediately publishes a
-        version. The request body is the server.json shape directly (no wrapper).
-        Auto-creates the server record if the publisher exists.
-      tags: [v0]
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/V0PublishRequest"
-      responses:
-        "200":
-          description: Server published; returns the full ServerResponse
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0ServerResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "409":
-          description: Version already exists
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V0Error"
-
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: ai_registry_session
+      description: >
+        Registry session cookie set by the login endpoints (ADR 0006
+        amendment, 2026-06-01). Secure + HttpOnly; the browser sends it
+        automatically. There is no bearer token.
 
   parameters:
     SlugParam:

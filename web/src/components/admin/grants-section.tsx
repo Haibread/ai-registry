@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 
 type PrincipalType = 'user' | 'group'
 type Role = 'viewer' | 'editor' | 'reviewer' | 'admin'
@@ -24,7 +23,6 @@ interface GrantsSectionProps {
  * shared UI behind the publisher detail page and the global Grants page.
  */
 export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
-  const { accessToken } = useAuth()
   const api = useAuthClient()
   const queryClient = useQueryClient()
   const scopeKey = publisherSlug ?? 'global'
@@ -43,18 +41,18 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
       const r = await api.GET('/api/v1/grants')
       return r.data
     },
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const groupsQuery = useQuery({
     queryKey: ['admin-groups'],
     queryFn: () => api.GET('/api/v1/groups', { params: { query: { limit: 100 } } }).then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
   const usersQuery = useQuery({
     queryKey: ['admin-users'],
     queryFn: () => api.GET('/api/v1/users', { params: { query: { limit: 100 } } }).then(r => r.data),
-    enabled: !!accessToken,
+    enabled: true,
   })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin-grants', scopeKey] })

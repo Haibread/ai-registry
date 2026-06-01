@@ -69,7 +69,7 @@ func TestMeHandler_returns_identity_and_grants(t *testing.T) {
 	h := handlers.NewMeHandlers(st)
 
 	ctx := auth.ContextWithPrincipal(context.Background(), &auth.Principal{
-		UserID: "u1", Email: "dev@acme.test", Issuer: auth.IssuerLocal,
+		UserID: "u1", Email: "dev@acme.test", AuthMethod: "local",
 	})
 	rr := httptest.NewRecorder()
 	h.Me(rr, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil).WithContext(ctx))
@@ -98,7 +98,7 @@ func TestMeHandler_returns_identity_and_grants(t *testing.T) {
 func TestMeHandler_reports_server_admin(t *testing.T) {
 	h := handlers.NewMeHandlers(&fakeMeStore{user: &store.User{ID: "admin", Email: "root@acme.test", IsServerAdmin: true}})
 	ctx := auth.ContextWithPrincipal(context.Background(), &auth.Principal{
-		UserID: "admin", Email: "root@acme.test", IsServerAdmin: true, Issuer: auth.IssuerLocal,
+		UserID: "admin", Email: "root@acme.test", IsServerAdmin: true, AuthMethod: "local",
 	})
 	rr := httptest.NewRecorder()
 	h.Me(rr, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil).WithContext(ctx))

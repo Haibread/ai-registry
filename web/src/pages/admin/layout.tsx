@@ -5,10 +5,13 @@ import { AdminSidebar } from '@/components/layout/admin-sidebar'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
+import { useMe } from '@/auth/useMe'
 import { PublisherProvider } from '@/auth/PublisherContext'
 
 export default function AdminLayout() {
-  const { logout, email } = useAuth()
+  const { logout } = useAuth()
+  const { data: me } = useMe()
+  const email = me?.email
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
 

@@ -14,7 +14,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuthClient } from '@/lib/api-client'
-import { useAuth } from '@/auth/AuthContext'
 
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'stdio (local process)' },
@@ -34,7 +33,6 @@ const REGISTRY_OPTIONS = [
 type CreateError = { step?: string; message: string }
 
 export default function AdminMCPNew() {
-  const { accessToken, clearSession } = useAuth()
   const navigate = useNavigate()
 
   const [namespace, setNamespace] = useState('')
@@ -47,7 +45,6 @@ export default function AdminMCPNew() {
   const { data: publishersData } = useQuery({
     queryKey: ['publishers'],
     queryFn: () => api.GET('/api/v1/publishers', { params: { query: { limit: 100 } } }).then(r => r.data),
-    enabled: !!accessToken,
   })
 
   const publishers = publishersData?.items ?? []
@@ -117,9 +114,9 @@ export default function AdminMCPNew() {
 
       const versionRes = await fetch(`/api/v1/mcp/servers/${ns}/${slug}/versions`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken ?? ''}`,
         },
         body: JSON.stringify({
           version,
@@ -130,7 +127,6 @@ export default function AdminMCPNew() {
         }),
       })
       if (!versionRes.ok) {
-        if (versionRes.status === 401) { await clearSession(); return { namespace: ns, slug } }
         let msg = `Failed to create version (HTTP ${versionRes.status}).`
         try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch { /* body not JSON — keep default msg */ }
         throw { step: 'version', message: msg }
@@ -138,11 +134,10 @@ export default function AdminMCPNew() {
 
       // Step 3: Publish if requested
       if (formData.get('publish') === 'on') {
-        const publishRes = await fetch(`/api/v1/mcp/servers/${ns}/${slug}/versions/${version}/publish`, {
+        await fetch(`/api/v1/mcp/servers/${ns}/${slug}/versions/${version}/publish`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken ?? ''}` },
+          credentials: 'include',
         })
-        if (publishRes.status === 401) { await clearSession(); return { namespace: ns, slug } }
       }
 
       return { namespace: ns, slug }

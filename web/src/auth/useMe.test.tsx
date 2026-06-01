@@ -1,25 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { usePermissions, satisfiesRole, type Role, type Me } from './useMe'
 
-vi.mock('@/auth/AuthContext', () => ({
-  useAuth: () => ({ accessToken: 'test-token' }),
-}))
+// usePermissions reads the cached identity from AuthContext (ADR 0006
+// amendment) — no react-query. Drive it via a mutable mocked useAuth.
+let authState: { me: Me | null; authLoading: boolean; isAuthenticated: boolean }
+vi.mock('@/auth/AuthContext', () => ({ useAuth: () => authState }))
 
-const mockGET = vi.fn()
-vi.mock('@/lib/api-client', () => ({
-  useAuthClient: () => ({ GET: mockGET }),
-}))
-
-import { usePermissions, satisfiesRole, type Role } from './useMe'
-
-function makeWrapper() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-  )
+function signedIn(me: Partial<Me>) {
+  authState = {
+    me: { authenticated: true, is_server_admin: false, grants: [], ...me } as Me,
+    authLoading: false,
+    isAuthenticated: true,
+  }
 }
+
+beforeEach(() => {
+  authState = { me: null, authLoading: false, isAuthenticated: false }
+})
 
 describe('satisfiesRole (mirrors the server lattice, ADR 0006)', () => {
   const set = (...r: Role[]) => new Set<Role>(r)
@@ -28,7 +26,6 @@ describe('satisfiesRole (mirrors the server lattice, ADR 0006)', () => {
     expect(satisfiesRole(set('admin'), 'editor')).toBe(true)
     expect(satisfiesRole(set('admin'), 'viewer')).toBe(true)
     expect(satisfiesRole(set('admin'), 'admin')).toBe(true)
-    // Reviewer is the sole approver — admin cannot approve.
     expect(satisfiesRole(set('admin'), 'reviewer')).toBe(false)
     expect(satisfiesRole(set('admin', 'reviewer'), 'reviewer')).toBe(true)
   })
@@ -46,19 +43,11 @@ describe('satisfiesRole (mirrors the server lattice, ADR 0006)', () => {
 })
 
 describe('usePermissions', () => {
-  beforeEach(() => vi.clearAllMocks())
+  it('scopes an editor to the publisher they hold a grant on', () => {
+    signedIn({ grants: [{ role: 'editor', publisher_id: 'p1', publisher_slug: 'acme', publisher_name: 'Acme' }] })
+    const { result } = renderHook(() => usePermissions())
 
-  it('scopes an editor to the publisher they hold a grant on', async () => {
-    mockGET.mockResolvedValue({
-      data: {
-        authenticated: true,
-        is_server_admin: false,
-        grants: [{ role: 'editor', publisher_id: 'p1', publisher_slug: 'acme', publisher_name: 'Acme' }],
-      },
-    })
-    const { result } = renderHook(() => usePermissions(), { wrapper: makeWrapper() })
-    await waitFor(() => expect(result.current.grants.length).toBe(1))
-
+    expect(result.current.grants.length).toBe(1)
     expect(result.current.isServerAdmin).toBe(false)
     expect(result.current.isEditorAnywhere).toBe(true)
     expect(result.current.isReviewerAnywhere).toBe(false)
@@ -67,44 +56,31 @@ describe('usePermissions', () => {
     expect(result.current.canReview('acme')).toBe(false)
   })
 
-  it('applies a global grant to every publisher', async () => {
-    mockGET.mockResolvedValue({
-      data: { authenticated: true, is_server_admin: false, grants: [{ role: 'reviewer' }] },
-    })
-    const { result } = renderHook(() => usePermissions(), { wrapper: makeWrapper() })
-    await waitFor(() => expect(result.current.grants.length).toBe(1))
+  it('applies a global grant to every publisher', () => {
+    signedIn({ grants: [{ role: 'reviewer' }] })
+    const { result } = renderHook(() => usePermissions())
 
     expect(result.current.canReview('anything')).toBe(true)
     expect(result.current.canEdit('anything')).toBe(false)
     expect(result.current.isReviewerAnywhere).toBe(true)
   })
 
-  it('lets a publisher admin edit and admin, but not review', async () => {
-    mockGET.mockResolvedValue({
-      data: {
-        authenticated: true,
-        is_server_admin: false,
-        grants: [{ role: 'admin', publisher_id: 'p1', publisher_slug: 'acme', publisher_name: 'Acme' }],
-      },
-    })
-    const { result } = renderHook(() => usePermissions(), { wrapper: makeWrapper() })
-    await waitFor(() => expect(result.current.grants.length).toBe(1))
+  it('lets a publisher admin edit and admin, but not review', () => {
+    signedIn({ grants: [{ role: 'admin', publisher_id: 'p1', publisher_slug: 'acme', publisher_name: 'Acme' }] })
+    const { result } = renderHook(() => usePermissions())
 
     expect(result.current.canEdit('acme')).toBe(true)
     expect(result.current.canAdmin('acme')).toBe(true)
     expect(result.current.isEditorAnywhere).toBe(true)
-    // Admin is not an approver — only a Reviewer grant (or Server Admin) is.
     expect(result.current.canReview('acme')).toBe(false)
     expect(result.current.isReviewerAnywhere).toBe(false)
   })
 
-  it('lets a server admin do everything', async () => {
-    mockGET.mockResolvedValue({
-      data: { authenticated: true, is_server_admin: true, grants: [] },
-    })
-    const { result } = renderHook(() => usePermissions(), { wrapper: makeWrapper() })
-    await waitFor(() => expect(result.current.isServerAdmin).toBe(true))
+  it('lets a server admin do everything', () => {
+    signedIn({ is_server_admin: true, grants: [] })
+    const { result } = renderHook(() => usePermissions())
 
+    expect(result.current.isServerAdmin).toBe(true)
     expect(result.current.canEdit('x')).toBe(true)
     expect(result.current.canReview('x')).toBe(true)
     expect(result.current.canAdmin('x')).toBe(true)

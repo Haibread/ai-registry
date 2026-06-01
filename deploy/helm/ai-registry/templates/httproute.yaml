@@ -51,9 +51,6 @@ spec:
             value: /api
         - path:
             type: PathPrefix
-            value: /v0
-        - path:
-            type: PathPrefix
             value: /agents
         - path:
             type: PathPrefix

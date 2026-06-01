@@ -8,14 +8,15 @@
  *  - Theme toggle (light/dark) with localStorage persistence
  *  - Public 404 / not-found for a private or missing entry
  *
- * Setup uses the admin storage state to seed public data via the API, then
- * navigates as an anonymous user (no auth-bearing cookies; the public client
- * is used because the admin storageState only carries oidc-client-ts state
- * for the admin flow, which public routes ignore).
+ * Setup uses the admin storage state to seed public data via the API. The
+ * page-level assertions then exercise the public read surface: the public
+ * client (getPublicClient) omits the session cookie, so even though this
+ * project carries the admin storageState, public pages render the public view
+ * (private/draft entries stay hidden).
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost, getAccessToken } from './helpers'
+import { apiPost } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB_SLUG = `e2e-public-pub-${RUN_ID}`
@@ -26,9 +27,9 @@ const AGENT_SLUG = `e2e-public-agent-${RUN_ID}`
 const AGENT_NAME = `E2E Public Agent ${RUN_ID}`
 const PRIVATE_SLUG = `e2e-public-priv-${RUN_ID}`
 
+// Deletes ride the session cookie shared by page.request (ADR 0006 amendment).
 async function apiDelete(page: Page, path: string) {
-  const token = await getAccessToken(page)
-  return page.request.delete(path, { headers: { Authorization: `Bearer ${token}` } })
+  return page.request.delete(path)
 }
 
 test.describe.configure({ mode: 'serial' })
@@ -246,15 +247,20 @@ test.describe('Public coverage', () => {
 
   // ── W3g: Public 404 for private / missing ──────────────────────────────
 
+  // page.request shares THIS project's admin session cookie (ADR 0006
+  // amendment: auth is a cookie, which page.request sends automatically — the
+  // old bearer token was not). Clear the context's cookies so these probes hit
+  // the genuinely-anonymous public API surface.
   test('private MCP server is hidden from the public API', async ({ page }) => {
-    // Anonymous request — private rows must not be readable. Public reads
-    // return 404; the rate limiter may also reject (429) under heavy load.
-    // Both outcomes prove the row is not leaked.
+    await page.context().clearCookies()
+    // Private rows must not be readable anonymously. Public reads return 404;
+    // the rate limiter may also reject (429). Both prove the row is not leaked.
     const res = await page.request.get(`/api/v1/mcp/servers/${PUB_SLUG}/${PRIVATE_SLUG}`)
     expect([404, 429]).toContain(res.status())
   })
 
   test('missing MCP server returns 404 from the public API', async ({ page }) => {
+    await page.context().clearCookies()
     const res = await page.request.get(`/api/v1/mcp/servers/${PUB_SLUG}/does-not-exist-${RUN_ID}`)
     expect([404, 429]).toContain(res.status())
   })

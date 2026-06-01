@@ -15,13 +15,13 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost, getAccessToken } from './helpers'
+import { apiPost } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 
+// Deletes ride the session cookie shared by page.request (ADR 0006 amendment).
 async function apiDelete(page: Page, path: string) {
-  const token = await getAccessToken(page)
-  return page.request.delete(path, { headers: { Authorization: `Bearer ${token}` } })
+  return page.request.delete(path)
 }
 
 async function goTo(page: Page, path: string) {

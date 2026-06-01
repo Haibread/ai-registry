@@ -72,16 +72,17 @@ jobs:
 
       # Explicit conformance + contract suite run. Everything under this step
       # already ran as part of `go test ./...` above — the repeat is deliberate
-      # so the CI log surfaces these tests by name. If the /v0/ wire-format
-      # conformance, A2A Agent Card schema, OpenAPI↔router contract, or the
-      # admin-guard router contract are ever deleted or renamed without
-      # updating this step, CI fails loudly instead of silently passing.
+      # so the CI log surfaces these tests by name. If the A2A Agent Card schema,
+      # OpenAPI↔router contract, or the admin-guard router contract are ever
+      # deleted or renamed without updating this step, CI fails loudly instead
+      # of silently passing. (The /v0 wire-format conformance suite was removed
+      # with the /v0 surface — ADR 0006 amendment.)
       - name: Contract & conformance suites (named)
         working-directory: server
         run: |
           set -euo pipefail
           go test -count=1 -v \
-            -run '^(TestV0Conformance_|TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
+            -run '^(TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
             ./internal/http/handlers/...
           go test -count=1 -v \
             -run '^(TestOpenAPIContract_MatchesRouter$|TestAllWriteRoutesRequireAdmin$|TestPublicWriteRoutesBypassAdmin$)' \

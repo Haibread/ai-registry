@@ -20,29 +20,32 @@ type localLoginStore interface {
 	TouchLastSeen(ctx context.Context, id string) error
 }
 
-// AuthHandlers serves the local email+password login and the registry's own
-// JWKS (ADR 0006 §3). They are only wired when local login is enabled.
+// AuthHandlers serves the local email+password login and logout. Both end in a
+// registry session behind an HttpOnly cookie (ADR 0006 amendment, 2026-06-01) —
+// there is no JS-readable bearer token anymore.
 type AuthHandlers struct {
-	issuer  *auth.LocalIssuer
-	store   localLoginStore
-	lockout *loginLimiter
+	sessions     *auth.SessionManager
+	store        localLoginStore
+	localEnabled bool
+	lockout      *loginLimiter
 }
 
-// NewAuthHandlers builds the local-auth handlers around the local token issuer
-// and the credential store.
-func NewAuthHandlers(issuer *auth.LocalIssuer, st localLoginStore) *AuthHandlers {
+// NewAuthHandlers builds the local-auth handlers around the session manager and
+// the credential store. localEnabled mirrors AUTH_LOCAL_LOGIN_ENABLED.
+func NewAuthHandlers(sessions *auth.SessionManager, st localLoginStore, localEnabled bool) *AuthHandlers {
 	return &AuthHandlers{
-		issuer:  issuer,
-		store:   st,
-		lockout: newLoginLimiter(5, 15*time.Minute, 15*time.Minute),
+		sessions:     sessions,
+		store:        st,
+		localEnabled: localEnabled,
+		lockout:      newLoginLimiter(5, 15*time.Minute, 15*time.Minute),
 	}
 }
 
-// Login handles POST /api/v1/auth/login: email + password → a short-lived
-// registry-signed token. Failures are deliberately uniform ("invalid email or
-// password") so the endpoint never reveals whether an email exists.
+// Login handles POST /api/v1/auth/login: email + password → a registry session
+// cookie. Failures are deliberately uniform ("invalid email or password") so
+// the endpoint never reveals whether an email exists.
 func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
-	if h.issuer == nil {
+	if !h.localEnabled || h.sessions == nil {
 		problem.Write(w, http.StatusNotFound, "not-found",
 			"local login is disabled on this deployment", r.URL.Path)
 		return
@@ -84,8 +87,8 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// An OIDC-only or invited account has no local password — run the same
-	// dummy verification and fail uniformly with a wrong password, never
-	// revealing that the account exists but can't log in locally.
+	// dummy verification and fail uniformly, never revealing that the account
+	// exists but can't log in locally.
 	if creds.PasswordHash == "" {
 		auth.VerifyPasswordDummy(body.Password)
 		h.lockout.fail(email)
@@ -102,9 +105,8 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	// A disabled account is refused only after the password checks out, so a
 	// caller who does not know the password cannot distinguish "disabled" from
-	// "wrong password" (both 401) — closing the enumeration channel while still
-	// telling the legitimate owner why they can't sign in. The disabled
-	// kill-switch is also enforced at token-validation time (middleware).
+	// "wrong password". The disabled kill-switch is also enforced at session
+	// validation time (Authenticator).
 	if creds.Disabled {
 		problem.Write(w, http.StatusForbidden, "forbidden",
 			"this account is disabled", r.URL.Path)
@@ -115,26 +117,28 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	// Best-effort; a removed row mid-request is not a login failure.
 	_ = h.store.TouchLastSeen(r.Context(), creds.UserID)
 
-	token, err := h.issuer.Mint(creds.UserID, email)
+	token, err := h.sessions.Issue(r.Context(), auth.IssueParams{
+		UserID:     creds.UserID,
+		AuthMethod: "local",
+	})
 	if err != nil {
 		internalError(w, r, err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]any{
-		"access_token": token,
-		"token_type":   "Bearer",
-		"expires_in":   int(h.issuer.TTL().Seconds()),
-	})
+	http.SetCookie(w, h.sessions.Cookie(token))
+	w.WriteHeader(http.StatusNoContent)
 }
 
-// JWKS serves the registry's local-token public keys so a verifier can
-// self-validate locally-issued tokens, mirroring the OIDC JWKS path.
-func (h *AuthHandlers) JWKS(w http.ResponseWriter, r *http.Request) {
-	if h.issuer == nil {
-		writeJSON(w, r, http.StatusOK, map[string]any{"keys": []any{}})
-		return
+// Logout handles POST /api/v1/auth/logout: revoke the current session and clear
+// the cookie. Idempotent — succeeds even with no active session.
+func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
+	if h.sessions != nil {
+		if token := h.sessions.TokenFromRequest(r); token != "" {
+			_ = h.sessions.Revoke(r.Context(), token)
+		}
+		http.SetCookie(w, h.sessions.ClearCookie())
 	}
-	writeJSON(w, r, http.StatusOK, h.issuer.JWKSJSON())
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func unauthorizedLogin(w http.ResponseWriter, r *http.Request) {
