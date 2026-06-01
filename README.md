@@ -52,71 +52,11 @@ A single place to publish, discover, and evaluate AI ecosystem building blocks. 
 
 ## Tech stack
 
-**Server** — Go 1.25 · [chi](https://github.com/go-chi/chi) v5 · [pgx/v5](https://github.com/jackc/pgx) · PostgreSQL 18 · [golang-migrate](https://github.com/golang-migrate/migrate) · [jwt/v5](https://github.com/golang-jwt/jwt) · [oklog/ulid](https://github.com/oklog/ulid) · [testcontainers-go](https://github.com/testcontainers/testcontainers-go) · OpenTelemetry SDK + OTLP exporter
+- **Server** — Go + chi · pgx · PostgreSQL · golang-migrate · OpenTelemetry SDK. Exact versions: see `server/go.mod`.
+- **Frontend** — Vite + React Router v7 + TanStack Query + TypeScript + shadcn/ui + Tailwind; Vitest and Playwright for tests. Exact versions: see `web/package.json`.
+- **Infra** — docker-compose for local/self-hosted, Helm chart (optional CNPG Postgres) for k8s, Keycloak for local OIDC, OTel Collector.
 
-**Frontend** — [Vite](https://vitejs.dev/) · React 19 · [React Router v7](https://reactrouter.com/) · [TanStack Query v5](https://tanstack.com/query/v5) · TypeScript · [shadcn/ui](https://ui.shadcn.com/) + Radix · Tailwind v4 · Vitest + React Testing Library · Playwright (e2e)
-
-**Infra** — docker-compose (`docker-compose.yml` baseline + `dev` overlay; `ci` overlay for CI only) · Helm chart with optional CNPG-managed PostgreSQL 18 cluster, HTTPRoute, and Ingress · Keycloak for local OIDC · OTel Collector. (A dedicated `docker-compose.prod.yml` profile is parked under v0.4.x.)
-
-**API spec** — Hand-written OpenAPI 3.1 at `server/api/openapi.yaml` (**90 operations**), embedded into the binary and served live at `/openapi.yaml`. Server types and the TypeScript client are generated from it; a bijection test keeps router and spec from drifting.
-
----
-
-## Architecture at a glance
-
-```
-       ┌─────────────────┐   ┌─────────────────┐
-       │   Public SPA    │   │    Admin SPA    │
-       │   (read-only)   │   │ (/admin, auth)  │
-       └────────┬────────┘   └────────┬────────┘
-                │                     │
-                │    HTTP/JSON (v1)   │
-                └──────────┬──────────┘
-                           ▼
-                  ┌─────────────────┐
-                  │ Go server (chi) │
-                  │   OpenAPI 3.1   │
-                  │   OIDC · OTel   │
-                  └────────┬────────┘
-                           │
-            ┌──────────────┼──────────────┐
-            ▼              ▼              ▼
-      ┌───────────┐  ┌───────────┐  ┌───────────┐
-      │ Postgres  │  │ Keycloak  │  │   OTel    │
-      │  + JSONB  │  │  (OIDC)   │  │ Collector │
-      └───────────┘  └───────────┘  └───────────┘
-```
-
-Directory layout:
-
-```
-server/             Go service
-├── api/            OpenAPI 3.1 spec + A2A agent-card JSON schema (embedded)
-├── cmd/server/     Entrypoint
-├── internal/
-│   ├── http/       chi router, handlers, middleware (auth, logging, rate limit)
-│   ├── mcp/        MCP registry endpoints
-│   ├── agents/     Agent registry + A2A card generation
-│   ├── auth/       OIDC broker, session validation, RBAC guards
-│   ├── store/      Postgres repositories (pgx)
-│   ├── domain/     Entities, validation
-│   ├── bootstrap/  Seed-from-YAML with idempotent upsert + narrow tools backfill
-│   └── observability/  OTel tracer, meter, logger providers
-└── migrations/     SQL migrations (forward-only)
-
-web/                Vite + React SPA (public + admin)
-├── src/components/ shadcn/ui + feature components
-├── src/pages/      React Router v7 routes
-├── src/lib/        API client (generated from OpenAPI), utils
-└── src/auth/       session-cookie auth (login redirect + /api/v1/me)
-
-deploy/             docker-compose profiles, Keycloak realm, OTel config
-└── helm/ai-registry/  Kubernetes chart (optional CNPG cluster)
-docs/               Architecture notes
-PLAN.md             Phased implementation roadmap
-design.md           System architecture, observability, data & API, UI/UX
-CLAUDE.md           Project non-negotiables (API-first, spec compat, OTel, etc.)
-```
+The codebase splits into two top-level directories: `server/` (Go service) and `web/` (Vite + React SPA), with `deploy/` for compose profiles and the Helm chart.
 
 ---
 
@@ -143,14 +83,7 @@ Then open:
 | http://localhost:8081/.well-known/agent-card.json | Global A2A Agent Card          |
 | http://localhost:8180/       | Keycloak (realm `ai-registry`)                      |
 
-The dev realm provisions four users covering every authorization path. Full definition in [`deploy/keycloak-realm-dev.json`](deploy/keycloak-realm-dev.json).
-
-| Username                  | Password   | Realm role | Groups                              | Exercises                                    |
-| ---                       | ---        | ---        | ---                                 | ---                                          |
-| `admin@example.com`       | `admin`    | `admin`    | —                                   | Full admin (every write path)                |
-| `author@example.com`      | `author`   | —          | `anthropic-core`, `anthropic-labs`  | Editor authoring via a group role grant + submit-for-review |
-| `reviewer@example.com`    | `reviewer` | —          | `registry-reviewers`                | Approve / reject in the change-approval queue |
-| `user@example.com`        | `user`     | —          | —                                   | 403 baseline (no roles, no groups)           |
+The dev realm provisions users covering every authorization path. Dev realm users: see [`deploy/keycloak-realm-dev.json`](deploy/keycloak-realm-dev.json).
 
 Claims carry only group membership; a group authorizes writes when it holds a role grant (e.g. Editor) on the target publisher. Grant roles to users or groups from the publisher detail page in the admin UI, or via the `/api/v1/publishers/{slug}/grants` API.
 
@@ -178,47 +111,19 @@ Full reference in [`deploy/bootstrap.example.yaml`](deploy/bootstrap.example.yam
 
 ## Configuration
 
-Every setting is available in **all three**, highest precedence first:
-
-1. **Environment variable** — `UPPER_SNAKE_CASE` (e.g. `DATABASE_URL`)
-2. **YAML config file** — `lower_snake_case` key, path via `CONFIG_FILE` env or `--config` flag
-3. **Built-in default** — `server/internal/config/config.go`
-
-Full list in `deploy/config.example.yaml` and `deploy/.env.example`. Sensitive values (DSNs, client secrets) should come from env or a secrets manager, not a committed file.
+Every setting resolves from env var, then YAML config file, then built-in default (highest precedence first). All keys are documented in `deploy/.env.example` (and `deploy/config.example.yaml`); defaults live in `server/internal/config/config.go`.
 
 ---
 
 ## API surface
 
-90 operations across these tags:
-
-| Tag          | Purpose                                                        |
-| ---          | ---                                                            |
-| `system`     | `/healthz`, `/readyz`, OpenAPI spec, global `.well-known/*`    |
-| `auth`       | OIDC broker (`/auth/oidc/login`, `/callback`, logout) + local email + password login (`POST /api/v1/auth/login`); caller identity + effective grants (`GET /api/v1/me`) |
-| `publishers` | Namespace/publisher CRUD                                       |
-| `rbac`       | Groups, users, and publisher-scoped role grants               |
-| `mcp`        | MCP server + version CRUD, search, detail, view/copy, reports, change-approval (submit / withdraw / approve / reject / deletion-request) |
-| `agents`     | Agent + version CRUD, per-agent A2A card, change-approval (same shape as MCP) |
-| `reports`    | Abuse / issue reports + admin triage                          |
-| `review`     | Reviewer-only `GET /review-queue` listing pending versions and deletions |
-| `audit`      | Admin-only audit log                                           |
-
-All operations live under `/api/v1/` and are generated from the same OpenAPI document.
+All operations live under `/api/v1/`. API surface: see `server/api/openapi.yaml` (served live at `/openapi.yaml`). Server types and the TypeScript client are generated from it.
 
 ---
 
 ## Quality gates
 
-CI enforces contracts that mechanically prevent drift between spec, code, and the MCP / A2A specifications:
-
-- **OpenAPI ↔ router bijection** — every chi route has an operation in `openapi.yaml` and vice versa; extra or missing either side fails the build.
-- **A2A Agent Card JSON Schema** — `server/api/a2a-agent-card.schema.json` pins the a2a-project/a2a June 2025 shape; every emission is validated against it.
-- **Write-authorization router contract** — every write endpoint requires a publisher-scoped role (Editor/Reviewer/Admin) or Server Admin, never anonymous; an ungated write route fails CI.
-- **OTel span emission contract** — every handler produces a span; drift fails CI.
-- **Migration forward-apply + idempotency** — all 15 forward migrations apply cleanly on a fresh Postgres via testcontainers.
-- **Public rate-limit wiring** — unauthenticated reads are rate-limited by middleware, not handler code.
-- **Web test suite** — 580+ Vitest + React Testing Library tests; Playwright e2e on admin flows including the change-approval workflow.
+CI mechanically prevents drift between spec, code, and the A2A specification — enforcing the OpenAPI↔router bijection, A2A Agent Card schema conformance, write-authorization on every write route, and an OTel span per handler. CI contracts: see `.github/workflows/`.
 
 Run the suites locally:
 
@@ -248,27 +153,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full set of non-negotiables.
 
 ### Pre-commit hooks
 
-[pre-commit](https://pre-commit.com) runs formatters, linters, and secret scanners before each commit; the same hooks (minus those covered by dedicated jobs) run in CI. Install the framework, enable the git hook, then install the tools the `language: system` hooks shell out to:
-
-```bash
-# framework + git hook (run once per clone)
-pipx install pre-commit            # or: brew install pre-commit
-pre-commit install
-
-# tools the hooks invoke (must be on PATH)
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
-go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
-# gofmt ships with the Go toolchain; helm is already required for the chart.
-# hadolint: see https://github.com/hadolint/hadolint (or `brew install hadolint`).
-# The web hooks (eslint, tsc) need `npm ci` run in web/ first.
-```
-
-Run every hook across the whole tree:
-
-```bash
-pre-commit run --all-files
-```
+[pre-commit](https://pre-commit.com) runs formatters, linters, and secret scanners before each commit; the same hooks run in CI. Install with `pre-commit install`; see [`.pre-commit-config.yaml`](.pre-commit-config.yaml) for the hooks and the tools they shell out to.
 
 ---
 

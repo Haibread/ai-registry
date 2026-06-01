@@ -79,28 +79,11 @@ A centralized registry for AI ecosystem artifacts:
   fields. Key business metrics (request counts, latency histograms, registry
   entry counts) must be emitted as OTel metrics.
 
-## Repository layout (target)
+## Repository layout
 
-```
-/server/              # Go service
-  /api/               # OpenAPI 3.1 spec (source of truth, embedded into binary)
-  /cmd/server/        # entrypoint
-  /internal/
-    /http/            # chi router, handlers, middleware (auth, logging)
-    /mcp/             # MCP server registry endpoints (under /api/v1)
-    /agents/          # Agent registry + A2A card generation
-    /auth/            # OIDC broker, session validation, RBAC guards
-    /store/           # Postgres repositories
-    /domain/          # entities, validation
-    /observability/   # OTel setup: tracer, meter, logger providers
-  /migrations/        # SQL migrations
-/web/                 # Vite + React SPA (user + admin UI; nginx in prod)
-/deploy/              # docker-compose, env examples
-/deploy/helm/         # Helm chart for k8s
-/docs/                # architecture notes
-PLAN.md               # phased implementation plan
-CLAUDE.md             # this file
-```
+Go service in `server/` (`internal/{http,mcp,agents,auth,store,domain,observability}`,
+plus `api/` for the embedded OpenAPI spec and `migrations/`), SPA in `web/`,
+ops in `deploy/` (+ `deploy/helm/`), notes in `docs/`. `ls` for the rest.
 
 ## Conventions
 

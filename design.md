@@ -1,16 +1,20 @@
 # AI Registry — Design Document
 
-Full design of the AI Registry: system architecture, observability, data & API
-design, and UI/UX.
+Design intent and rationale for the AI Registry: system architecture, the auth
+model, observability principles, the data lifecycle, and the non-obvious UI/UX
+decisions. This document deliberately points at code for anything mechanical
+(schemas, routes, tokens) and keeps only what an agent cannot quickly recover by
+reading the repository.
 
 ---
 
 ## Table of Contents
 
 1. [System Architecture](#1-system-architecture)
-2. [Observability Design](#2-observability-design)
-3. [Data & API Design](#3-data--api-design)
-4. [UI/UX Design](#4-uiux-design)
+2. [Auth Model](#2-auth-model)
+3. [Observability Design](#3-observability-design)
+4. [Data Lifecycle](#4-data-lifecycle)
+5. [UI/UX Design](#5-uiux-design)
 
 ---
 
@@ -27,32 +31,17 @@ design, and UI/UX.
                      ▼                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │            Static SPA (Vite + React Router v7)                  │
-│  / · /mcp · /agents · /publishers           Public routes       │
-│  /admin/*                                   Auth-guarded        │
-│  — TanStack Query v5 against /api/v1/                           │
-│  — Auth is a registry session (HttpOnly cookie); login()       │
-│    redirects to /api/v1/auth/oidc/login or POSTs               │
-│    /api/v1/auth/login. The SPA is not an OIDC client.          │
-│  — Served as static files by nginx; no server-side rendering    │
+│  Public routes (browse) + /admin/* (auth-guarded)              │
+│  TanStack Query against /api/v1/; the SPA is NOT an OIDC        │
+│  client — it learns identity + grants from GET /api/v1/me.      │
+│  Served as static files by nginx; no server-side rendering.     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ HTTP / JSON
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Go Backend (chi)                         │
-│  Middleware chain:                                             │
-│  OTel trace → request-id → CORS → rate-limit → session auth     │
-│  → publisher-role / reviewer guards (per route)                 │
-│                                                                 │
-│  ┌──────────────────────────┐  ┌────────────────────┐         │
-│  │  /api/v1/                │  │  /.well-known/     │         │
-│  │  auth/ (login/oidc)      │  │  agent-card.json   │         │
-│  │  me                      │  └────────────────────┘         │
-│  │  publishers/ ↳ grants    │                                  │
-│  │  groups/  users/         │                                  │
-│  │  mcp/*  agents/*         │                                  │
-│  │  review-queue            │                                  │
-│  │  reports  audit  stats   │                                  │
-│  └──────────────────────────┘                                  │
+│  Middleware: trace → request-id → CORS → rate-limit →           │
+│              session auth → publisher-role / reviewer guard     │
 │  Internal packages:                                             │
 │  domain │ store │ auth │ mcp │ agents │ bootstrap │ observ.    │
 └──────────────────────┬──────────────────────────────────────────┘
@@ -61,201 +50,122 @@ design, and UI/UX.
           ▼                         ▼
 ┌──────────────────────┐  ┌──────────────────────┐
 │     PostgreSQL       │  │   Keycloak (IdP)     │
-│  publishers          │  │  OIDC (brokered;     │
-│  users / groups      │  │  registry is a       │
-│  role_grants         │  │  single confidential │
-│  sessions            │  │  client)             │
-│  mcp_servers         │  │  realm role: admin   │
-│  mcp_server_versions │  │  groups: membership  │
-│  agents              │  └──────────────────────┘
-│  agent_versions      │
-│  audit_log           │
-│  reports             │  ┌──────────────────────┐
-│                      │  │   OTel Collector     │
-└──────────────────────┘  │  OTLP gRPC :4317     │
-                          │  → Jaeger (traces)   │
-                          │  → Prometheus (metr) │
-                          │  → Loki (logs)       │
+│  registry state,     │  │  OIDC (brokered;     │
+│  RBAC grants, cookie │  │  registry is a       │
+│  sessions, audit log │  │  single confidential │
+│                      │  │  client)             │
+└──────────────────────┘  └──────────────────────┘
+                          ┌──────────────────────┐
+                          │   OTel Collector     │
+                          │  → Jaeger / Prom /   │
+                          │    Loki              │
                           └──────────────────────┘
 ```
 
-### 1.2 Request Flows
+The registry is the single source of truth: it owns the API, the SPA is only a
+client of it, and PostgreSQL holds all registry state. The IdP is used only to
+authenticate users (see [Auth Model](#2-auth-model)).
 
-**Public read (MCP server list)**
-```
-Browser → SPA (TanStack Query) → GET /api/v1/mcp/servers
-  → OTel middleware (start span)
-  → rate-limit check
-  → handler: store.ListMCPServers(visibility=public)
-    → Postgres query (child span)
-  → JSON response
-  → OTel middleware (end span, record latency metric)
-```
+Router, middleware chain, and handlers: see `server/internal/http/`.
+API surface: see `server/api/openapi.yaml` (served live at `/openapi.yaml`).
 
-**Login (brokered OIDC)**
-```
-Browser → GET /api/v1/auth/oidc/login
-  → server runs Authorization Code + PKCE against the IdP
-  → GET /api/v1/auth/oidc/callback
-    → server exchanges the code with its client_secret
-    → maps the external identity to an internal users row
-    → snapshots claim group membership + the claim Server-Admin flag
-      into a new session row
-    → sets the registry session cookie (Secure; HttpOnly)
-  → SPA learns identity + grants from GET /api/v1/me
-```
-Local email + password login (`POST /api/v1/auth/login`) sets the same
-session cookie; the IdP token never reaches the browser.
+### 1.2 Request Model
 
-**Publisher write (Editor submits a version for review)**
-```
-Admin SPA (session cookie) → POST .../versions/{v}/submit
-  → OTel middleware (start span)
-  → session auth middleware: resolve the cookie into a Principal
-  → RequirePublisherRole(Editor) middleware:
-       • resolve the target publisher from the {namespace} path segment
-       • resolve the caller's effective role on that publisher from
-         role_grants (direct user grant or via a group the session lists)
-       • allow if the effective role satisfies Editor OR Server Admin
-  → handler: domain.TransitionToPendingReview(version, reason="submit")
-    → Postgres UPDATE on review_state, increment revision (child span)
-  → audit log write (child span)
-  → 204 No Content
-  → OTel middleware (end span, increment submit counter)
-```
-
-**Reviewer approval**
-```
-Admin SPA → POST .../{kind}/{ns}/{slug}/versions/{v}/approve
-  → session auth middleware
-  → RequireReviewer middleware: effective Reviewer role on the publisher
-    OR Server Admin
-  → revision-mismatch check (discriminated 409 if stale)
-  → handler: PublishMCPServerVersion(...) — publishes the version,
-    flips review_state to none, stamps reviewed_by/at/decision
-  → audit log write
-  → 204 No Content
-```
-
-**A2A Agent Card**
-```
-Client / browser → GET /agents/{ns}/{slug}/.well-known/agent-card.json
-  → handler: store.GetAgentWithLatestVersion()
-  → agents.GenerateCard(agent, version) → AgentCard struct
-  → JSON response (application/json)
-```
+The middleware chain (in order) is: OTel trace → request-id → CORS →
+rate-limit → session auth → per-route publisher-role / reviewer guard. Read
+endpoints are public by default; write endpoints require an authenticated
+session and an effective role on the owning publisher (or Server Admin).
+Effective roles are resolved live from `role_grants` on every request, not
+trusted from the session. Wiring and per-route guards live in
+`server/internal/http/` and `server/internal/auth/`.
 
 ### 1.3 Deployment Topology
 
-**Development (docker-compose)**
-```
-postgres:5432
-keycloak:8080
-server:8081         ← go run / air hot-reload
-web:3000            ← vite dev (HMR, proxies /api/* to server:8081)
-otel-collector:4317
-jaeger:16686
-```
+**Development (docker-compose)** — Postgres, Keycloak, the Go server (hot
+reload), the Vite dev server (HMR, proxying `/api/*` to the server), and the
+OTel collector + Jaeger. See `deploy/docker-compose.yml` +
+`deploy/docker-compose.dev.yml`.
 
-**Production (docker-compose)**
-```
-postgres (managed or container with volume)
-server (multi-stage Docker image, distroless)
-web (vite build output served by nginx; nginx proxies /api/*
-     and /config.json to the server upstream)
-reverse proxy (Caddy or nginx) → TLS termination
-otel-collector → external Prometheus / Grafana / Tempo
-```
+**Production (docker-compose)** — Postgres (managed or container with a
+volume), the server as a distroless image, the built SPA served by nginx (which
+also proxies `/api/*` and `/config.json` to the server), a reverse proxy for TLS
+termination, and an OTel collector exporting to external Prometheus / Grafana /
+Tempo.
 
-**Kubernetes (Helm chart)**
-```
-Deployment: server (2+ replicas, HPA on CPU)
-Deployment: web (2+ replicas)
-Service + Ingress (with TLS via cert-manager)
-PodDisruptionBudget on both
-ExternalSecret → Postgres creds, OIDC client secret
-ServiceMonitor → Prometheus scrape
-```
+**Kubernetes (Helm chart)** — server and web Deployments (multiple replicas,
+HPA on the server), a Service + Ingress with cert-manager TLS, PodDisruption
+Budgets, an ExternalSecret for Postgres creds and the OIDC client secret, and a
+ServiceMonitor for Prometheus scrape. See `deploy/helm/`.
 
 ---
 
-## 2. Observability Design
+## 2. Auth Model
 
-### 2.1 Principles
+Authentication and authorization are deliberately split, and the registry is the
+**single token authority** — there is no multi-issuer validation and the SPA
+never holds an IdP token.
 
-- A single OTel SDK setup in `/internal/observability/` provides a
+**Two front doors, one session.** Users either log in with local email +
+password or via brokered OIDC. OIDC is brokered **server-side**: the registry is
+a single **confidential** OIDC client (Keycloak in dev). The browser hits
+`/api/v1/auth/oidc/login`, the *server* runs the Authorization Code + PKCE flow,
+exchanges the code with its `client_secret`, and maps the external identity onto
+an internal `users` row. The IdP token never reaches the browser. Both front
+doors end in the same registry-issued session behind a `Secure; HttpOnly`
+cookie (BFF pattern). The opaque cookie token is never stored — only its
+SHA-256 hash is the lookup key, so a DB leak yields no usable session.
+
+*Why brokered + cookie sessions:* keeping the confidential client and all token
+handling on the server means no client secret in the browser, no
+`oidc-client-ts`, and one place that owns token lifetime. It also lets the
+registry run with **no external IdP at all** (the bootstrap admin logs in
+locally), which matters for self-hosted single-host installs.
+
+**Claims carry group membership only.** At login the session **snapshots** the
+OIDC claim group membership and the claim-based Server-Admin flag. There is no
+claim-to-role side channel: roles are grants stored in the registry. This keeps
+exactly two principal types (user, group) and avoids the IdP dictating
+authorization.
+
+**Authorization is publisher-scoped RBAC.** Roles (Viewer / Editor / Reviewer /
+Admin) are granted to users or groups, scoped to a publisher (or globally when
+the grant has no publisher). Per the resolved decisions: **Reviewer is the sole
+approver** — a publisher Admin can do everything *except* approve a version
+(separation of duties by default). Server Admin is the break-glass exception and
+comes from the `realm_access.roles` claim containing `admin` **or** a local
+`users.is_server_admin` flag (so the bootstrap admin works with no IdP).
+
+Implementation: `server/internal/auth/` (broker, session, RBAC guards) and
+`server/internal/domain/rbac.go`.
+
+---
+
+## 3. Observability Design
+
+Principles (the mechanics — span names, metric names, attributes — live in code
+and should be read there):
+
+- A single OTel SDK setup in `server/internal/observability/` provides the
   `TracerProvider`, `MeterProvider`, and `LoggerProvider`, wired into
   `context.Context` at startup and never created ad-hoc.
-- Every exported function that touches the network or DB receives a
-  `context.Context` and propagates the span.
-- Structured logs always carry `trace_id` and `span_id` for log-to-trace
-  correlation in the collector pipeline.
+- **Every HTTP handler is traced**; every DB call produces a **child span** of
+  the request span. Exported functions that touch the network or DB take a
+  `context.Context` and propagate it.
+- **Structured logs always carry `trace_id` and `span_id`** for log-to-trace
+  correlation in the collector pipeline. Logs are JSON via `slog` with an OTel
+  bridge; diagnostic verbosity is controlled only by the log level. Never log
+  the session cookie value, the `Authorization` header, or a raw IdP token.
+- Propagation is W3C TraceContext.
 
-### 2.2 Tracing
-
-Propagation: W3C TraceContext (`traceparent` / `tracestate` headers).
-
-| Span name | Kind | Attributes |
-|-----------|------|------------|
-| `http.server` (per request) | SERVER | `http.method`, `http.route`, `http.status_code`, `http.request_content_length` |
-| `db.query` (per SQL call) | CLIENT | `db.system=postgresql`, `db.operation`, `db.sql.table` |
-| `mcp.publish` | INTERNAL | `mcp.server_id`, `mcp.version`, `publisher.slug` |
-| `agent.card_generate` | INTERNAL | `agent.id`, `agent.version` |
-| `auth.session_resolve` | INTERNAL | `auth.method=oidc\|local`, result |
-
-### 2.3 Metrics
-
-Registered once in `/internal/observability/metrics.go`.
-
-| Metric name | Type | Labels | Description |
-|-------------|------|--------|-------------|
-| `registry.http.requests.total` | Counter | `method`, `route`, `status` | Total HTTP requests |
-| `registry.http.request.duration` | Histogram | `method`, `route`, `status` | Latency in ms (buckets: 5, 25, 100, 250, 500, 1000, 5000) |
-| `registry.mcp.servers.total` | UpDownCounter | `status`, `visibility` | Live count of MCP server entries |
-| `registry.mcp.versions.published` | Counter | `publisher` | Versions published |
-| `registry.agents.total` | UpDownCounter | `status`, `visibility` | Live count of agent entries |
-| `registry.auth.failures` | Counter | `reason` (`invalid_session`, `expired`, `missing`, `forbidden`) | Auth failures |
-| `registry.ratelimit.hits` | Counter | `route` | Rate-limit rejections |
-
-### 2.4 Structured Logging
-
-JSON via `slog` with an OTel bridge, so records flow through the
-`LoggerProvider` to the collector. Required fields on every line:
-
-```json
-{
-  "time": "2026-04-07T12:00:00Z",
-  "level": "INFO",
-  "msg": "...",
-  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "span_id": "00f067aa0ba902b7",
-  "service.name": "ai-registry-server",
-  "service.version": "0.1.0"
-}
-```
-
-Log levels:
-- `DEBUG`: SQL queries, cache decisions (disabled in prod by default).
-- `INFO`: Request in/out, publish events, auth events.
-- `WARN`: Rate-limit hits, validation errors, degraded dependencies.
-- `ERROR`: Unhandled errors, DB failures, OTel export failures.
-
-Never log: session cookie value, `Authorization` header value, raw IdP token.
-
-### 2.5 Export Configuration (env)
-
-```
-OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-OTEL_SERVICE_NAME=ai-registry-server
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production
-```
+Span names, metric definitions, and label sets: see
+`server/internal/observability/` and the handlers. Export configuration is via
+the standard `OTEL_*` env vars (documented in `deploy/.env.example`).
 
 ---
 
-## 3. Data & API Design
+## 4. Data Lifecycle
 
-### 3.1 Entity-Relationship Diagram
+### 4.1 Entity Relationships
 
 ```
 publishers ──< mcp_servers ──< mcp_server_versions
@@ -268,461 +178,123 @@ users      ──< sessions                          (registry cookie sessions)
 
 audit_log (polymorphic: resource_type + resource_id, includes synthetic
            bootstrap-loader events)
-reports (polymorphic: target_type + target_id; admin triages)
+reports   (polymorphic: target_type + target_id; admin triages)
 ```
 
 Every MCP server / agent belongs to exactly one publisher; resources are
-publisher-scoped. Authorization is publisher-scoped RBAC — `role_grants` ties a
-role (Viewer/Editor/Reviewer/Admin) to a user or group on a publisher (or
-globally when `publisher_id` is NULL).
+publisher-scoped (no workspace layer). Slug uniqueness is publisher-scoped — two
+publishers can each own a `files` server, but a single publisher cannot own two.
+Authorization is publisher-scoped RBAC: `role_grants` ties a role to a user or
+group on a publisher (or globally when the grant has no publisher).
 
-### 3.2 Key Table Schemas
+Schema (columns, types, indexes): see `server/migrations/`.
 
-```sql
--- publishers
-id          TEXT PRIMARY KEY,          -- ULID
-slug        TEXT UNIQUE NOT NULL,
-name        TEXT NOT NULL,
-contact     TEXT,
-verified    BOOLEAN NOT NULL DEFAULT false,
-created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+### 4.2 Version Lifecycle State Machine
 
--- sessions (registry cookie sessions)
-id           TEXT PRIMARY KEY,         -- ULID, internal
-token_hash   TEXT NOT NULL UNIQUE,     -- hex SHA-256 of the cookie token
-user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-auth_method  TEXT NOT NULL,            -- 'oidc' | 'local'
-claim_groups TEXT[] NOT NULL DEFAULT '{}',   -- snapshotted OIDC claim group slugs
-claim_admin  BOOLEAN NOT NULL DEFAULT false, -- snapshotted claim Server-Admin
-created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-expires_at   TIMESTAMPTZ NOT NULL,
-revoked_at   TIMESTAMPTZ              -- NULL until logout / revoke
--- The opaque cookie token is never stored; only its SHA-256 hash is the
--- lookup key, so a DB leak yields no usable session. claim_groups /
--- claim_admin snapshot the OIDC claim inputs at login (empty / false for
--- local logins); effective roles are still resolved live from role_grants
--- on every request.
-
--- role_grants (authorization)
-id             TEXT PRIMARY KEY,       -- ULID
-publisher_id   TEXT REFERENCES publishers(id),  -- NULL = global (server-wide) grant
-principal_type TEXT NOT NULL,          -- 'user' | 'group'
-principal_id   TEXT NOT NULL,          -- users.id or groups.id
-role           TEXT NOT NULL,          -- viewer | editor | reviewer | admin
-source         TEXT NOT NULL,          -- 'api' | 'seed'
-created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
-
--- mcp_servers
-id           TEXT PRIMARY KEY,         -- ULID
-publisher_id TEXT NOT NULL REFERENCES publishers(id),
-slug         TEXT NOT NULL,
-name         TEXT NOT NULL,
-description  TEXT,
-homepage_url TEXT,
-repo_url     TEXT,
-license      TEXT,
-visibility   TEXT NOT NULL DEFAULT 'private',  -- private | public
-status       TEXT NOT NULL DEFAULT 'draft',    -- draft | published | deprecated
-created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-UNIQUE (publisher_id, slug)
--- Slug uniqueness is publisher-scoped: two different publishers can each
--- own a `files` server, but a publisher cannot own two.
-
--- mcp_server_versions
-id                  TEXT PRIMARY KEY,  -- ULID
-server_id           TEXT NOT NULL REFERENCES mcp_servers(id),
-version             TEXT NOT NULL,     -- semver
-runtime             TEXT NOT NULL,     -- stdio | http | sse | streamable_http
-install             JSONB NOT NULL,
-capabilities        JSONB NOT NULL,
-tools               JSONB NOT NULL DEFAULT '[]',
-protocol_version    TEXT NOT NULL,
-published_at        TIMESTAMPTZ,       -- NULL until published
-
--- Change-approval — orthogonal to status/published_at
-review_state        TEXT NOT NULL DEFAULT 'none',
-                                       -- none | pending_review | rejected
-revision            INTEGER NOT NULL DEFAULT 0,
-                                       -- monotonic; bumped on every edit/transition
-submitted_by        TEXT,              -- submitter subject
-submitted_by_email  TEXT,
-submitted_at        TIMESTAMPTZ,
-reviewed_by         TEXT,
-reviewed_by_email   TEXT,
-reviewed_at         TIMESTAMPTZ,
-review_decision     TEXT,              -- approved | rejected | NULL
-rejection_reason    TEXT,
-
-released_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-UNIQUE (server_id, version)
-
--- agents / agent_versions: symmetric to mcp_servers / mcp_server_versions
--- including the same change-approval column set on agent_versions.
-
--- audit_log
-id            BIGSERIAL PRIMARY KEY,
-actor_subject TEXT NOT NULL,           -- user subject or "system:bootstrap"
-actor_email   TEXT,
-action        TEXT NOT NULL,           -- e.g. mcp_server.publish, publisher.created
-resource_type TEXT NOT NULL,
-resource_id   TEXT NOT NULL,
-resource_ns   TEXT,                    -- publisher slug for scoped resources
-resource_slug TEXT,
-metadata      JSONB,
-created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-```
-
-Indexes: `(publisher_id, slug)` on entry tables, `(server_id, version)` on
-versions, `(publisher_id, principal_type, principal_id, role)` on `role_grants`,
-`(user_id)` and `(expires_at)` on `sessions`, `status`, `visibility`,
-`review_state` (partial index `WHERE review_state = 'pending_review'`) to make
-the review queue scan cheap. Full-text index on `name || ' ' || description`
-via `tsvector`.
-
-### 3.3 Version Lifecycle State Machine
-
-Two orthogonal axes: the publish-status axis (`status` / `published_at`) drives
-what public readers see; the review-state axis (`review_state`) decides who may
-make the next publish-axis transition.
+Two **orthogonal** axes. The publish-status axis drives what public readers see;
+the review-state axis decides *who* may make the next publish-axis transition.
+This separation is the non-obvious bit — keeping them independent is what lets a
+version be edited and re-reviewed without ever silently mutating something the
+public has already cached.
 
 **Publish axis**
 
 ```
-         ┌─────────┐
-         │  draft  │  ← created by POST /versions
-         └────┬────┘
-              │ :publish (admin or reviewer-approved)
-              ▼
-       ┌────────────┐
-       │ published  │  ← immutable; metadata edits forbidden
-       └─────┬──────┘
-             │ :deprecate
-             ▼
-      ┌────────────┐
-      │ deprecated │  ← still readable; hidden from default listing
-      └────────────┘
+   draft ── :publish ──▶ published ── :deprecate ──▶ deprecated
+ (created)  (admin or    (immutable;                 (still readable;
+            reviewer-     no metadata                  hidden from
+            approved)     edits after                  default listing)
+                          published_at)
 ```
 
-Published versions are immutable: no `PATCH` on a `mcp_server_versions` row
-after `published_at` is set.
+Published versions are immutable — no edits to a version row once
+`published_at` is set, because consumers cache agent cards and server metadata.
 
 **Review axis** (change-approval workflow)
 
 ```
-                    edit / create
-                          │
-                          ▼
-                     ┌─────────┐
-              ┌──────│  none   │──────┐
-              │      └────┬────┘      │
-              │           │ :submit   │
-       :reject│           │           │ :approve
-              │           ▼           │  (reviewer)
-              │     ┌──────────────┐  │
-              │     │pending_review│  │
-              │     └──────┬───────┘  │
-              │            │ :withdraw│
-              │            │ (author) │
-              ▼            │          ▼
-        ┌──────────┐       │     publish-axis
-        │ rejected │ ──────┘     transition runs
-        └────┬─────┘   :resubmit (publish handler)
-             │
-             │  edit (revision++)
-             ▼
-        ┌──────────┐
-        │   none   │  ← rejected versions are still drafts; another submit
-        └──────────┘    moves them back to pending_review.
+        edit / create
+              │
+              ▼
+   ┌───────▶ none ◀────────┐
+   │          │            │ :approve (Reviewer only;
+   │ :reject  │ :submit    │  also runs the publish-axis transition)
+   │          ▼            │
+   │     pending_review ───┘
+   │          │ :withdraw (author)
+   ▼          │
+ rejected ────┘
+   │  :resubmit
+   │  edit (revision++)
+   ▼
+  none   ← rejected versions are still drafts; another submit
+           moves them back to pending_review.
 ```
 
-Publisher Editors can drive `none → pending_review` and `pending_review → none`
-(withdraw). Only Reviewers can drive `pending_review → none` via approve (which
-also runs the publish-axis transition) or `pending_review → rejected`. Every
-transition increments the row's `revision` counter, so concurrent edits surface
-a discriminated 409 (`review-revision-mismatch`) instead of clobbering each
-other.
+Publisher Editors drive `none → pending_review` and the `pending_review → none`
+withdraw. Only Reviewers approve (`pending_review → none`, which also fires the
+publish-axis transition) or reject. **Every transition increments the row's
+`revision`**, so concurrent edits surface a discriminated `409`
+(`review-revision-mismatch`) instead of clobbering each other, and only one
+version per entry may be pending at a time. Entry deletion uses the same review
+queue, scoped to the entry rather than a single version.
 
-Entries themselves can also carry a pending-deletion review, implemented as a
-row in the same review queue scoped to the entry rather than a single version.
+Agents mirror MCP servers exactly, including this change-approval column set.
 
-### 3.4 Pagination & Filtering
+State-machine implementation and the discriminated `409` error types: see
+`server/internal/domain/` and `server/internal/http/handlers/review.go`. Error
+responses follow RFC 7807; the full catalogue is in `server/api/openapi.yaml`.
 
-All list endpoints use **cursor-based pagination** (opaque base64 cursor
-encoding `(created_at, id)` for stable ordering):
+### 4.3 Pagination
 
-```
-GET /api/v1/mcp/servers?q=search&namespace=acme&limit=20&cursor=<opaque>
-
-Response:
-{
-  "items": [...],
-  "next_cursor": "<opaque>",   // absent if last page
-  "total_count": 142           // approximate, from stats table
-}
-```
-
-### 3.5 Error Catalogue (RFC 7807)
-
-```json
-{
-  "type": "https://registry.example.com/errors/not-found",
-  "title": "Resource not found",
-  "status": 404,
-  "detail": "MCP server 'acme/my-server' does not exist.",
-  "instance": "/api/v1/mcp/servers/acme/my-server"
-}
-```
-
-| Type slug | Status | Meaning |
-|-----------|--------|---------|
-| `not-found` | 404 | Entity does not exist or is not visible |
-| `forbidden` | 403 | Authenticated but lacks the required role on the target publisher (Editor/Reviewer/Admin) or Server Admin |
-| `unauthorized` | 401 | Missing or invalid registry session |
-| `validation-error` | 422 | Request body failed schema validation; `errors[]` extension field |
-| `conflict` | 409 | Duplicate slug or version |
-| `immutable` | 409 | Attempt to mutate a published (immutable) version |
-| `review-state-mismatch` | 409 | Transition not allowed from the current `review_state` (e.g. approve called on a `none` row) |
-| `review-revision-mismatch` | 409 | Caller's `revision` doesn't match the row — the version was edited under them; refresh and retry |
-| `review-already-pending` | 409 | Another version on the same entry is already pending review (one-at-a-time invariant) |
-| `already-published` | 409 | Approve called on an already-published version |
-| `rate-limited` | 429 | Too many requests; `Retry-After` header set |
-| `internal` | 500 | Unexpected server error |
-
-The `review-*` and `already-published` types are **discriminated** — the admin
-UI maps each `type` to a friendly inline message ("the version was edited since
-this page loaded — refresh"; "another version on this entry is already pending
-review"; etc.). Don't fold them into a generic `conflict`.
+All list endpoints use cursor-based pagination (an opaque base64 cursor encoding
+`(created_at, id)` for stable ordering) rather than page numbers, so that
+inserts don't shift pages under a paging client. Shapes are in
+`server/api/openapi.yaml`.
 
 ---
 
-## 4. UI/UX Design
+## 5. UI/UX Design
 
-### 4.1 Design System
+**Framework**: Vite + React 19 + React Router v7 + shadcn/ui + Tailwind CSS v4,
+shipped as a static SPA; nginx serves the bundle and proxies API paths to the Go
+backend. Design tokens (color, typography, spacing, radii), the component
+inventory, and responsive breakpoints are all derivable from `web/src/` and the
+Tailwind config — read them there rather than from a table here.
 
-**Framework**: Vite + React 19 + React Router v7 + shadcn/ui + Tailwind CSS v4.
-The whole app ships as a static SPA; nginx serves the bundle and proxies API
-paths to the Go backend.
+The non-obvious UX decisions worth recording:
 
-#### Color Palette
+- **No bundled webfont.** Tailwind's default system stacks (`font-sans`,
+  `font-mono`) keep first paint fast and the bundle small; the visual cost is
+  acceptable for a developer-facing registry.
+- **Dark mode** is toggled by a local `ThemeProvider` adding `class="dark"` on
+  `<html>` (no `next-themes`); shadcn's CSS-variable system handles the swap.
+- **Public UI is read-only**, Admin UI is CRUD — the API-first split is mirrored
+  in the front end. `/admin/*` is guarded by a `<RequireAuth>` wrapper;
+  unauthenticated visits redirect to login. `login()` either redirects to the
+  server's brokered `/api/v1/auth/oidc/login` or POSTs the local
+  `/api/v1/auth/login`; identity + grants come from `GET /api/v1/me`.
+- **Listing pages paginate with a "Load more" button** (append), not page
+  numbers — consistent with the cursor pagination model.
+- **The Admin sidebar's Review-queue badge is live**: a TanStack Query hook polls
+  `/api/v1/review-queue` on a 30s interval (shows "99+" past 99) and its cache is
+  invalidated on every change-approval mutation toast, so the count stays
+  current without a manual refresh.
+- **The Review queue is Reviewer-only** (gated by `RequireReviewer`;
+  non-reviewers get a 403 page), reflecting the separation-of-duties rule that
+  Admins cannot approve.
+- **Admin forms use plain `FormData` parsing**, not react-hook-form / zod — the
+  forms are simple enough that the extra dependencies don't earn their keep.
+  Validation errors render inline, scoped to the action that produced them, each
+  region carrying `role="alert"`.
+- **Destructive actions** use quiet styling (so they don't drown out a row's
+  primary actions) plus a `window.confirm` gate as the real safety net.
+- **Toasts** (`sonner`, top-right) fire on every change-approval and CRUD
+  mutation; the same mutation invalidates the review-queue badge cache.
 
-| Token | Tailwind / HSL | Usage |
-|-------|---------------|-------|
-| `background` | `slate-50` / `#f8fafc` | Page background (light) |
-| `foreground` | `slate-900` / `#0f172a` | Body text |
-| `primary` | `indigo-600` / `#4f46e5` | CTA buttons, active nav, links |
-| `primary-foreground` | `white` | Text on primary |
-| `secondary` | `slate-100` | Secondary buttons, tag backgrounds |
-| `muted` | `slate-200` | Dividers, disabled states |
-| `muted-foreground` | `slate-500` | Placeholder text, captions |
-| `accent` | `indigo-50` | Hover states, card hover ring |
-| `destructive` | `red-600` | Delete actions, error states |
-| `success` | `emerald-600` | Published badge, success toasts |
-| `warning` | `amber-500` | Deprecated badge, warning banners |
-| `border` | `slate-200` | Card and input borders |
-| `card` | `white` | Card background |
+Accessibility is a hard requirement, not a tier: WCAG AA contrast on all
+text/background pairs, visible focus rings on every interactive element,
+semantic landmark elements, ARIA labels on icon-only buttons, `aria-current` on
+active nav links, and keyboard-navigable command palette and menus.
 
-Dark mode mirrors the same tokens with `slate-950` background and `slate-100`
-foreground, toggled via `class="dark"` on `<html>` by a local `ThemeProvider`;
-shadcn/ui's CSS variable system handles the swap automatically.
-
-#### Typography
-
-| Role | Font | Weight | Size |
-|------|------|--------|------|
-| Display heading | Tailwind `font-sans` (system stack) | 700 | `text-3xl` – `text-5xl` |
-| Section heading | `font-sans` | 600 | `text-xl` – `text-2xl` |
-| Body | `font-sans` | 400 | `text-sm` – `text-base` |
-| Label / caption | `font-sans` | 500 | `text-xs` – `text-sm` |
-| Code / version | `font-mono` (system monospace stack) | 400 | `text-xs` – `text-sm` |
-
-No bundled webfont — Tailwind's default system stacks (`font-sans` →
-`ui-sans-serif, system-ui, …`; `font-mono` → `ui-monospace, SFMono-Regular, …`)
-keep first-paint fast and the bundle small.
-
-#### Spacing & Radius
-
-- Base unit: `4px` (Tailwind default).
-- Card radius: `rounded-xl` (12px); button radius: `rounded-lg` (8px); input
-  radius: `rounded-md` (6px).
-- Page max-width: `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`.
-
----
-
-### 4.2 Public UI Layout
-
-```
-┌─────────────────────────────────────────────────────┐
-│  TOPBAR (sticky, white, border-b)                   │
-│  [Logo]  MCP Servers  Agents  Docs     [Search ⌘K]  │
-└─────────────────────────────────────────────────────┘
-│  PAGE CONTENT (max-w-7xl)                           │
-└─────────────────────────────────────────────────────┘
-│  FOOTER (slate-900 bg)                              │
-│  Links · Status · GitHub · Docs                     │
-└─────────────────────────────────────────────────────┘
-```
-
-**Top bar** (`h-16`, `sticky top-0 z-50`):
-- Left: logo mark (indigo SVG) + "AI Registry" wordmark.
-- Center: `<nav>` links — MCP Servers, Agents, Docs.
-- Right: command-palette trigger (`⌘K`), dark-mode toggle, "Admin →" link (only
-  if a session exists).
-
-**Homepage** (`/`):
-- Hero: headline + sub-headline + prominent centered search bar.
-- Two stat tiles: "N MCP Servers" / "N Agents" (from `/api/v1/public-stats`).
-- Featured entries grid (6 cards, pinned by admin).
-
-**Listing pages** (`/mcp`, `/agents`):
-- Left sidebar (240px, `lg:block hidden`): filter panel — status, runtime
-  (MCP only), publisher, protocol version. Checkboxes, applied as query params.
-- Main: search input + sort dropdown + card grid (3 cols desktop, 2 tablet, 1
-  mobile).
-- Card anatomy:
-  ```
-  ┌───────────────────────────────┐
-  │ [Icon 40px]  Name             │
-  │              namespace/slug   │
-  │                               │
-  │ Description (2-line clamp)    │
-  │                               │
-  │ [runtime badge] [version tag] │
-  │ ★ publisher · updated N days  │
-  └───────────────────────────────┘
-  ```
-- Pagination: "Load more" button (appends to list), not page numbers.
-
-**Detail pages** (`/mcp/{ns}/{slug}`, `/agents/{ns}/{slug}`):
-- Two-column: main (content) 2/3 + aside (metadata) 1/3.
-- Tabs: Overview · Versions · Install.
-- Install tab: copy-ready shell snippets per runtime/package manager.
-- Versions tab: table with semver, release date, protocol version, status badge.
-
----
-
-### 4.3 Admin UI Layout
-
-Guarded by `<RequireAuth>` wrapping every `/admin/*` route. Auth is a registry
-session behind an HttpOnly cookie: `login()` redirects to the server's
-`/api/v1/auth/oidc/login` (brokered, server-side) or the local form POSTs
-`/api/v1/auth/login`. The SPA learns identity and grants from `GET /api/v1/me`.
-Unauthenticated visits to a guarded route redirect to the login page.
-
-```
-┌──────────┬──────────────────────────────────────────┐
-│ SIDEBAR  │  TOPBAR (breadcrumb + theme + user menu)  │
-│ md+ only │──────────────────────────────────────────│
-│ Dashboard│  PAGE CONTENT                             │
-│ Review   │                                           │
-│   queue  │  ⓘ                                        │
-│ Publishers│                                          │
-│ Groups   │                                           │
-│ Users    │                                           │
-│ MCP      │                                           │
-│  Servers │                                           │
-│ Agents   │                                           │
-│ Reports  │                                           │
-│ Audit    │                                           │
-│ API Keys │ (placeholder — see PLAN.md v0.4.x)        │
-└──────────┴──────────────────────────────────────────┘
-```
-
-**Sidebar** (`w-56`, `border-r bg-muted/30`, `hidden md:block`):
-- Each nav item: icon (lucide-react) + label, active style via `cn()`.
-- The Review queue item carries a live count badge fed by a TanStack Query hook
-  against `/api/v1/review-queue?limit=99` with a 30-second refetch interval
-  (reads "99+" past 99); the cache is invalidated on every change-approval
-  mutation toast so the count stays current.
-- Mobile (`<md`): the static sidebar is hidden; a hamburger button in the header
-  opens a fixed-position drawer reusing the same `AdminSidebar` component with
-  `mobile={true}`. The drawer dismisses on Escape, backdrop click, nav-link tap,
-  and `location.pathname` change. Body scroll is locked while open.
-
-**Grants section** (publisher detail page):
-- Renders below the publisher Edit / Delete actions, before the MCP servers and
-  agents tables.
-- Lists the publisher's role grants — principal (user/group) · role · source —
-  with a "Grant role" form to add a Viewer/Editor/Reviewer/Admin grant to a user
-  or group and a per-row Revoke action. Backed by the
-  `/api/v1/publishers/{slug}/grants` endpoints.
-
-**Review queue page** (`/admin/review`):
-- Reviewer-only (gated by `RequireReviewer`; non-reviewers see a 403 page).
-- One list of pending items, each rendered as either a "version pending review"
-  card (entry slug, version, revision, submitter email + timestamp) or a
-  "deletion request" card.
-- Actions: Approve · Reject (Reject opens an inline reason form; reason is
-  required and stored on the version's `rejection_reason`).
-- Per-version cards on entry detail pages mirror the same data with
-  Submit / Withdraw / Resubmit buttons gated by `review_state`.
-
-**Data tables** (shadcn/ui `<DataTable>` with TanStack Table):
-- Column sorting, row selection checkboxes for bulk actions.
-- Inline action menu (ellipsis `⋯`): Edit, Publish, Deprecate, Delete.
-- Status and visibility shown as colored badges.
-- Search/filter bar above the table.
-
-**Forms**: native HTML forms + shadcn/ui `<Input>` / `<Label>` / `<Button>`. No
-react-hook-form / zod in the admin tree — `FormData` parsing inside the submit
-handler suffices.
-- Inline validation errors below each form, scoped to the action that produced
-  them (`createError` / `editError` / `deleteError` rather than a single section
-  banner). Every error region carries `role="alert"` so screen readers announce
-  it.
-- "Save changes" (primary, right) + "Cancel" (outline, left) on edit forms,
-  matching dialog conventions.
-- Destructive actions use a `window.confirm` gate. The DeleteButton is rendered
-  with quiet styling (outline + destructive text + faded border, fills red on
-  hover) so it doesn't drown out the row's primary actions; the `confirm` dialog
-  is the real safety net.
-
-**Toast notifications** (`sonner`, mounted at the app root):
-- Triggered on every change-approval mutation (submit, withdraw, approve,
-  reject, request deletion) and on grant/group/user CRUD.
-- Position: top-right; rich colors; close button.
-- The sidebar review-queue badge cache is invalidated alongside change-approval
-  toasts so the count stays in sync.
-
----
-
-### 4.4 Component Inventory
-
-| Component | Location | Notes |
-|-----------|----------|-------|
-| `MCPCard` / `AgentCard` | `components/{mcp,agents}/*.tsx` | Used in all listing grids |
-| `StatusBadge` / `VisibilityBadge` | `components/ui/badge.tsx` | draft/published/deprecated · private/public |
-| `FilterBar` | `components/ui/filter-bar.tsx` | Search + namespace + status + visibility filters; debounced URL writes |
-| `Table` (shadcn) | `components/ui/table.tsx` | Wraps responsive horizontal scroll; columns hide via Tailwind breakpoints |
-| `InstallCommand` / `ConfigGenerator` | `components/{ui,mcp}/*.tsx` | Code blocks + copy |
-| `AdminSidebar` | `components/layout/admin-sidebar.tsx` | Includes the live review-queue badge hook |
-| `GrantsSection` | `components/admin/grants-section.tsx` | Lists/creates/revokes publisher role grants |
-| `VersionsSection` | `components/admin/versions-section.tsx` | Per-version submit / withdraw / resubmit |
-| `RequestDeletionButton` | `components/admin/request-deletion-button.tsx` | Submits a deletion review |
-| `DeleteButton` | `components/admin/delete-button.tsx` | Quiet outline + window.confirm gate |
-| `LifecycleStepper` | `components/admin/lifecycle-stepper.tsx` | Visual indicator of publish-axis state |
-| `ReviewQueue` | `pages/admin/review/index.tsx` | Reviewer-only Approve / Reject UI |
-
----
-
-### 4.5 Responsive Breakpoints
-
-Mobile-first: all layouts start single-column and expand at breakpoints.
-
-| Breakpoint | Width | Layout changes |
-|------------|-------|----------------|
-| `sm` | 640px | Search bar expands |
-| `md` | 768px | 2-col card grid |
-| `lg` | 1024px | 3-col grid; filter sidebar visible; admin sidebar visible |
-| `xl` | 1280px | Detail page 2-col layout |
-
----
-
-### 4.6 Accessibility
-
-- Color contrast: all text/background pairs meet WCAG AA (4.5:1 normal, 3:1 large).
-- Focus rings: `focus-visible:ring-2 ring-indigo-500` on all interactive elements.
-- Semantic HTML: `<nav>`, `<main>`, `<aside>`, `<header>`, `<footer>` landmarks.
-- ARIA labels on icon-only buttons; `aria-current="page"` on active nav links.
-- Keyboard navigable command palette and dropdown menus.
+Components and where they live: see `web/src/`.

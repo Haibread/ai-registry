@@ -21,74 +21,33 @@ user UI and an admin UI. See `CLAUDE.md` for conventions and constraints.
 
 ## 2. Domain model
 
-### 2.1 Common
+Entities and their fields: see `server/internal/domain/` and
+`server/migrations/`. The roles and the relationships that the code does **not**
+make obvious:
 
-- `Publisher` — org/team owning an entry. `{id, slug, name, contact, verified}`.
-- `User` — principal (OIDC-provisioned or local password).
-- `Group` / `RoleGrant` — publisher-scoped RBAC; roles (Viewer/Editor/Reviewer/Admin)
-  granted to users or groups per publisher. Server Admin comes from the
-  `realm_access.roles` claim or a local `is_server_admin` flag.
+- `Publisher` — org/team that owns entries; the unit RBAC is scoped to.
+- `User` / `Group` / `RoleGrant` — principals and publisher-scoped RBAC; roles
+  (Viewer/Editor/Reviewer/Admin) are granted to users or groups per publisher.
+  Server Admin comes from the `realm_access.roles` claim or a local
+  `is_server_admin` flag.
+- `MCPServer` → `MCPServerVersion` (1-to-many) and `Agent` → `AgentVersion`
+  (1-to-many). The parent holds identity + `visibility`/`status`; versions hold
+  the per-release payload. New entries default to `private`; an Editor/Admin can
+  flip to `public` only after an approved (published) version exists.
+- **Versions are immutable once published** — metadata edits are forbidden after
+  publish; a new publish creates a new version row. Consumers cache cards, so
+  silent mutation is disallowed by design.
+- **Agent Card** = projection of an `Agent` plus its latest published
+  `AgentVersion` into the A2A `AgentCard` schema (a2aproject/a2a June 2025 shape),
+  served per-agent and as a global card. The registry is a first-class A2A citizen.
 
-### 2.2 MCP Registry
+## 3. API surface
 
-- `MCPServer` — `{id (ULID), namespace (publisher slug), name, slug,
-  description, homepage_url, repository_url, license, visibility, status,
-  timestamps}`. New entries default to `private`; an Editor/Admin flips to
-  `public` only after an approved (published) version exists.
-  `status`: `draft | published | deprecated | deleted`.
-- `MCPServerVersion` — `{id, server_id, version (semver), released_at, runtime
-  (stdio|http|sse|streamable_http), install, capabilities, tools[],
-  protocol_version, checksum, signature}`. `tools[]` is a typed field (distinct from
-  the MCP spec's `capabilities.tools` negotiation flag). Immutable once published;
-  new publishes create new versions.
-
-### 2.3 Agent Registry
-
-- `Agent` — `{id, namespace, name, slug, description, visibility, status,
-  timestamps}`. Same visibility gating as MCP servers.
-- `AgentVersion` — `{id, agent_id, version, released_at, endpoint_url,
-  skills[], capabilities, authentication, default_input_modes,
-  default_output_modes, provider, documentation_url, icon_url,
-  protocol_version}`.
-- Agent Card = projection of `Agent` + latest published `AgentVersion` into the A2A
-  `AgentCard` schema (a2aproject/a2a June 2025 shape), served at
-  `/agents/{namespace}/{slug}/.well-known/agent-card.json` plus a global card at
-  `/.well-known/agent-card.json`.
-
-## 3. API surface (OpenAPI 3.1)
-
-All endpoints under `/api/v1` unless noted. Responses use `application/json`;
-errors use `application/problem+json`. The spec is the source of truth, served
-live at `/openapi.yaml`.
-
-### 3.1 Public (read-only, `visibility=public` entries only)
-
-- `GET /api/v1/mcp/servers`, `/mcp/servers/{ns}/{slug}`, `…/versions`,
-  `…/versions/{version}`, `…/activity`.
-- `GET /api/v1/agents` and the symmetric agent paths.
-- `GET /agents/{ns}/{slug}/.well-known/agent-card.json` — A2A Agent Card.
-
-Private/draft entries are hidden from public GETs; members of the owning publisher
-(Viewer and up) and Server Admins see them via the admin endpoints.
-
-### 3.2 Admin (publisher-scoped RBAC or Server Admin)
-
-- Publishers: `POST/PATCH/DELETE /api/v1/publishers[...]` (`PATCH` is a
-  publisher-Admin action; `DELETE` is Server-Admin-only). Per-publisher
-  `GET /publishers/{slug}/stats` and `…/activity`.
-- MCP: `POST /mcp/servers`, `PATCH /{ns}/{slug}`, `POST /{ns}/{slug}/versions`,
-  `…/versions/{v}:publish`, `…:deprecate`, `…:set-visibility`, plus the change-approval
-  verbs (`submit`/`withdraw`/`approve`/`reject`, `deletion-request`). Agents:
-  symmetric endpoints.
-- Review queue: `GET /api/v1/review-queue` (per-publisher scoped).
-- Users, groups & grants: `GET/POST /api/v1/users`, `/api/v1/groups[...]`,
-  per-publisher `/api/v1/publishers/{slug}/grants`, global `/api/v1/grants`.
-- `GET /api/v1/me` — caller's resolved identity + effective grants.
-
-### 3.3 System
-
-- `GET /healthz`, `/readyz`, `/metrics` (Prometheus).
-- `GET /openapi.yaml`, `/docs` (Swagger UI / Scalar).
+API surface: see `server/api/openapi.yaml` (the OpenAPI 3.1 source of truth,
+served live at `/openapi.yaml`). Conceptually it splits three ways: **public**
+read-only endpoints expose only `public` entries; **admin** mutations are gated
+by publisher-scoped RBAC (or Server Admin); **system** endpoints cover health,
+metrics, and the spec/docs. Errors use `application/problem+json`.
 
 ## 4. Authentication & authorization
 
