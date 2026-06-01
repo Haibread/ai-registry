@@ -49,7 +49,7 @@ Client-config generator gains an env dropdown.
   them per env.
 
 ### Option B — Environments as a sibling sub-resource
-New `/v0/mcp/servers/{ns}/{slug}/environments` resource. The entry
+New `/api/v1/mcp/servers/{ns}/{slug}/environments` resource. The entry
 describes the *product*; environments are the *deployments*. Each env
 is its own record with its own lifecycle.
 
@@ -93,10 +93,9 @@ Option C is a trap.
 
 ## Things this interacts with (don't forget)
 
-- **OpenAPI spec** — new nested schema for the connection profile; must
-  stay MCP-spec-compatible on the wire-format side (`/v0/` endpoints
-  may need to project a "default" env for spec consumers that don't
-  understand env selection).
+- **OpenAPI spec** — new nested schema for the connection profile; the
+  `/api/v1` read endpoints may need to project a "default" env for
+  consumers that don't understand env selection.
 - **A2A Agent Card** — an agent card describes a connection. Multi-env
   agents may need either one card per env (`/.well-known/agent-card.json`
   per env) or a single card with alternative endpoints. A2A spec

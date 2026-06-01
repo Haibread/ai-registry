@@ -190,14 +190,20 @@ kubectl describe certificate <cert-name>
 
 **Symptoms**
 
-- Admin UI login loops or returns `invalid_token`.
-- Server logs: `jwks fetch failed` or `token validation failed`.
+- Admin UI login loops or never establishes a session cookie.
+- Server logs: `jwks fetch failed` or `id_token validation failed` during the
+  OIDC callback.
+
+Note: OIDC is brokered server-side and auth is a registry session cookie, so a
+broker/callback outage blocks *new* logins while existing sessions keep working
+until they expire (`AUTH_SESSION_TTL`).
 
 **Triage**
 
 1. Is the issuer reachable from the cluster? `kubectl exec` into a server
    pod (distroless — use `kubectl debug` with an ephemeral ubuntu container)
-   and `curl -v $OIDC_JWKS_URL`.
+   and `curl -v $OIDC_JWKS_URL`. The broker validates the `id_token` against
+   the JWKS at `/api/v1/auth/oidc/callback`.
 2. Did the issuer rotate its signing key? JWKS is cached briefly; a rotation
    followed by a restart fixes it.
 3. Was the admin role renamed in Keycloak? The server expects
