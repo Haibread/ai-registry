@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🛡️ CSRF defense + security-header hardening
+
+- **CSRF protection is now actually enforced.** A new `EnforceSameOrigin`
+  middleware rejects cross-site state-changing requests (`POST/PUT/PATCH/DELETE`)
+  using the Fetch-Metadata `Sec-Fetch-Site` header, falling back to an `Origin`
+  allowlist (same list as CORS) for clients that don't send it. This closes the
+  gap where the docs claimed a "double-submit token" that did not exist; the real
+  defense is now `SameSite` cookies + same-origin enforcement + the
+  `application/json` content-type requirement, and it holds even when
+  `AUTH_SESSION_SAMESITE=none` is used for a cross-origin SPA.
+- **`Content-Security-Policy`** is sent on every response — a deny-by-default
+  policy for the JSON/YAML API surface, with a tailored policy on `/docs` so the
+  Scalar reference UI still loads.
+- **`Strict-Transport-Security`** is sent when the deployment serves over HTTPS
+  (mirrors the Secure-cookie setting).
+- **CORS now matches the cookie model.** For an exact allowlisted origin the
+  server emits `Access-Control-Allow-Credentials: true` (required for a
+  cross-origin SPA fetching with `credentials: 'include'`); the `*` wildcard
+  still never carries credentials. The stale "bearer-only" rationale is removed.
+
 ### 🔐 Brokered OIDC + registry cookie sessions; `/v0` removed
 
 Authentication is reworked into a **backend-for-frontend (BFF)** model. The SPA
