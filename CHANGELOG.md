@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🧹 Hygiene: untrack `deploy/.env`, drop stale copy + debug test
+
+- **`deploy/.env` is no longer tracked.** It held dev quick-start values
+  (`OIDC_CLIENT_SECRET=dev-broker-secret`, a default bootstrap-admin password)
+  and was committed before `.gitignore` listed it, so the ignore rule was inert
+  and the file would eventually catch a real secret. Untracked via
+  `git rm --cached`; the local file is kept and `deploy/.env.example` remains the
+  reference.
+- **API Keys page copy fixed:** it told users to "use your Keycloak access token"
+  for automation, but after the BFF rework the browser holds no token. Updated to
+  explain the session-cookie model and that M2M API keys are still on the roadmap.
+- Removed `web/e2e/debug-agent.spec.ts`, a leftover debugging scratch test with a
+  5 s hard sleep and no assertions.
+
 ### 🔐 Brokered OIDC + registry cookie sessions; `/v0` removed
 
 Authentication is reworked into a **backend-for-frontend (BFF)** model. The SPA
