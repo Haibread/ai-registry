@@ -2,8 +2,8 @@ apiVersion: v2
 name: ai-registry
 description: A centralized registry for AI ecosystem artifacts (MCP servers and AI agents)
 type: application
-version: 0.4.0-rc0
-appVersion: "0.4.0-rc0"
+version: 0.4.0-rc1
+appVersion: "0.4.0-rc1"
 keywords:
   - ai
   - mcp

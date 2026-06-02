@@ -117,6 +117,12 @@ services:
 
   # ── Web (Vite dev server with hot reload) ───────────────────────────────────
   web:
+    # The base compose builds web/Dockerfile (nginx) for this service. In dev we
+    # run the stock node image with a Vite dev server instead, so drop the
+    # inherited build — otherwise Compose builds the nginx image AND tags it
+    # `node:24-alpine`, clobbering the real Node image (the container then has
+    # nginx, not npm).
+    build: !reset null
     image: node:24-alpine
     restart: unless-stopped
     working_dir: /app
@@ -148,7 +154,11 @@ services:
       # Keep node_modules in a named volume so the host copy never shadows
       # the container's installed packages.
       - web_node_modules:/app/node_modules
-    ports:
+    # !override replaces the base service's port list instead of concatenating
+    # with it. Without this, Compose merges the base mapping (3000:8080, nginx)
+    # and this dev mapping (3000:3000, vite) into one container, which then tries
+    # to bind host port 3000 twice and fails with "port is already allocated".
+    ports: !override
       - "3000:3000"
     depends_on:
       server:
