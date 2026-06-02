@@ -9,15 +9,18 @@ import (
 // If allowedOrigins is empty, CORS headers are not set (defaults to deny).
 // Pass []string{"*"} only for fully public APIs; the registry uses an explicit list.
 //
-// The API is bearer-only — auth travels in the Authorization header, which
-// CORS does NOT treat as credentials. We therefore never set
-// Access-Control-Allow-Credentials: true. This also avoids the invalid
-// browser combo "Allow-Origin: *" + "Allow-Credentials: true", which would
-// otherwise be silently misconfigurable via the allowlist.
+// Auth is a Secure; HttpOnly session cookie, and the SPA fetches with
+// credentials: 'include'. For a cross-origin SPA deployment to work, the browser
+// requires Access-Control-Allow-Credentials: true together with an exact
+// (non-wildcard) Allow-Origin echo. We therefore set Allow-Credentials only for
+// an explicitly allow-listed origin.
 //
-// When a wildcard ("*") is configured, we emit "Allow-Origin: *" rather than
-// echoing the request origin, so caches can't fingerprint per-origin responses
-// and no credentialed request can ever succeed cross-origin.
+// A wildcard ("*") is incompatible with credentials by spec, so when "*" is
+// configured we emit "Allow-Origin: *" WITHOUT Allow-Credentials: caches can't
+// fingerprint per-origin responses and no credentialed (cookie) request can
+// succeed cross-origin — wildcard is for an unauthenticated public mirror only.
+// Cross-site state-changing requests are additionally blocked by
+// EnforceSameOrigin regardless of CORS.
 func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	wildcard := slices.Contains(allowedOrigins, "*")
 	return func(next http.Handler) http.Handler {
@@ -30,14 +33,17 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 						w.Header().Set("Access-Control-Allow-Origin", "*")
 					} else {
 						w.Header().Set("Access-Control-Allow-Origin", origin)
-						w.Header().Set("Vary", "Origin")
+						w.Header().Add("Vary", "Origin")
+						// Cookie auth is cross-origin-credentialed; safe only with
+						// an exact origin echo (never with the wildcard above).
+						w.Header().Set("Access-Control-Allow-Credentials", "true")
 					}
 				}
 				// Preflight
 				if r.Method == http.MethodOptions {
 					if allowed {
 						w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-						w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
+						w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID")
 						w.Header().Set("Access-Control-Max-Age", "86400")
 					}
 					w.WriteHeader(http.StatusNoContent)

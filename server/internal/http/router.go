@@ -148,8 +148,17 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r := chi.NewRouter()
 
 	// ── Core middleware ───────────────────────────────────────────────────────
-	r.Use(middleware.SecurityHeaders)
+	// HSTS is emitted only when cookies are Secure (i.e. the deployment is
+	// served over HTTPS); a plain-HTTP dev setup must not advertise it.
+	hsts := false
+	if deps.Sessions != nil {
+		hsts = deps.Sessions.CookieSecure()
+	}
+	r.Use(middleware.SecurityHeaders(hsts))
 	r.Use(middleware.CORS(deps.CORSOrigins))
+	// CSRF defense: reject cross-site state-changing requests (Fetch Metadata /
+	// Origin enforcement). Must run before any handler that mutates state.
+	r.Use(middleware.EnforceSameOrigin(deps.CORSOrigins))
 	r.Use(middleware.Recover(deps.Logger))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(deps.Logger, deps.Metrics))
@@ -160,7 +169,13 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	// ── System endpoints ──────────────────────────────────────────────────────
 	r.Get("/healthz", handlers.Healthz)
 	r.Get("/readyz", handlers.Readyz(deps.DB))
-	r.With(auth.RequireAdmin).Get("/metrics", promhttp.Handler().ServeHTTP)
+	// /metrics is intentionally unauthenticated: Prometheus scrapes it in-cluster
+	// via the ClusterIP Service, and the ServiceMonitor cannot present the
+	// session cookie that RequireAdmin needs. The payload is non-sensitive
+	// (request counters, latency histograms, registry-entry gauges) and the
+	// shipped Ingress does not route /metrics externally. Restrict pod-to-pod
+	// access with a NetworkPolicy if your cluster needs it.
+	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/openapi.yaml", handlers.OpenAPISpec)
 	r.Get("/docs", handlers.SwaggerUI)
 	// Public runtime config consumed by the browser SPA (sign-in feature flags).
