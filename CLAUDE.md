@@ -136,7 +136,10 @@ Rules for implementors:
   Do not rely on the UI alone.
 - All write endpoints require an authenticated registry session (HttpOnly
   cookie); read endpoints are public by default (configurable). State-changing
-  requests are CSRF-protected (SameSite + double-submit token).
+  requests are CSRF-protected by `SameSite` cookies plus server-side same-origin
+  enforcement (`EnforceSameOrigin` middleware: Fetch-Metadata `Sec-Fetch-Site`
+  with an `Origin` allowlist fallback) and the `application/json` content-type
+  requirement on bodies.
 - CORS: admin UI origin and user UI origin allow-listed via env.
 - Rate limit unauthenticated reads.
 - Never log tokens or full Authorization headers.

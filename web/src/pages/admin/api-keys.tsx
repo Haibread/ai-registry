@@ -20,7 +20,9 @@ export default function AdminApiKeys() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            In the meantime, use your Keycloak access token for automated operations.
+            Until then, there is no machine token for automated operations: the registry uses a
+            server-side session cookie (no token reaches the browser), so admin changes go through
+            this UI with a signed-in session.
           </p>
         </CardContent>
       </Card>

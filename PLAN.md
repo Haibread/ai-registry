@@ -66,7 +66,8 @@ metrics, and the spec/docs. Errors use `application/problem+json`.
   do everything except approve; Server Admin is the break-glass exception). Claims
   carry group membership only.
 - Public GETs are unauthenticated by default (feature flag to require auth) and
-  rate-limited. CSRF via SameSite + double-submit token.
+  rate-limited. CSRF defense: `SameSite` cookies + server-side same-origin
+  enforcement (Fetch-Metadata / `Origin` allowlist) on state-changing methods.
 
 ## 5. Shipped so far
 
