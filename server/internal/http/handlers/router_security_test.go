@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,7 +88,6 @@ func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 		{http.MethodPost, "/api/v1/agents/ns/slug/versions/1.0.0/publish"},
 		{http.MethodGet, "/api/v1/stats"},
 		{http.MethodGet, "/api/v1/audit"},
-		{http.MethodGet, "/metrics"},
 	}
 
 	for _, route := range routes {
@@ -107,5 +107,26 @@ func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 				t.Errorf("admin session: got %d, want neither 401 nor 403\nbody: %s", rec.Code, rec.Body.String())
 			}
 		})
+	}
+}
+
+// TestRouter_MetricsUnauthenticated verifies that /metrics is scrapeable
+// without a session. Prometheus scrapes it in-cluster via the ClusterIP
+// Service and cannot present the registry session cookie, so gating it behind
+// RequireAdmin (as it once was) silently broke metric collection on k8s. The
+// endpoint is not routed by the shipped Ingress, so it is not public.
+func TestRouter_MetricsUnauthenticated(t *testing.T) {
+	resetTables(t)
+	router, _ := buildSecureRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /metrics without auth: got %d, want 200\nbody: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want a Prometheus text exposition type", ct)
 	}
 }

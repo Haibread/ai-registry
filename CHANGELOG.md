@@ -17,6 +17,36 @@ All notable changes to this project are documented here.
   explain the session-cookie model and that M2M API keys are still on the roadmap.
 - Removed `web/e2e/debug-agent.spec.ts`, a leftover debugging scratch test with a
   5 s hard sleep and no assertions.
+### 📈 Fix: `/metrics` is now scrapeable (metrics were silently dead on k8s)
+
+`/metrics` was gated behind `RequireAdmin`, which needs a registry session
+cookie. The Prometheus Operator `ServiceMonitor` scrapes the in-cluster
+ClusterIP Service and cannot present that cookie, so every scrape got `403` and
+**no OTel metric was ever collected on Kubernetes**. The endpoint is now
+unauthenticated: its payload is non-sensitive (request counters, latency
+histograms, registry-entry gauges) and the shipped Ingress does not route
+`/metrics` externally. Add a `NetworkPolicy` if you need to restrict pod-to-pod
+scraping.
+
+### 🛡️ CSRF defense + security-header hardening
+
+- **CSRF protection is now actually enforced.** A new `EnforceSameOrigin`
+  middleware rejects cross-site state-changing requests (`POST/PUT/PATCH/DELETE`)
+  using the Fetch-Metadata `Sec-Fetch-Site` header, falling back to an `Origin`
+  allowlist (same list as CORS) for clients that don't send it. This closes the
+  gap where the docs claimed a "double-submit token" that did not exist; the real
+  defense is now `SameSite` cookies + same-origin enforcement + the
+  `application/json` content-type requirement, and it holds even when
+  `AUTH_SESSION_SAMESITE=none` is used for a cross-origin SPA.
+- **`Content-Security-Policy`** is sent on every response — a deny-by-default
+  policy for the JSON/YAML API surface, with a tailored policy on `/docs` so the
+  Scalar reference UI still loads.
+- **`Strict-Transport-Security`** is sent when the deployment serves over HTTPS
+  (mirrors the Secure-cookie setting).
+- **CORS now matches the cookie model.** For an exact allowlisted origin the
+  server emits `Access-Control-Allow-Credentials: true` (required for a
+  cross-origin SPA fetching with `credentials: 'include'`); the `*` wildcard
+  still never carries credentials. The stale "bearer-only" rationale is removed.
 
 ### 🔐 Brokered OIDC + registry cookie sessions; `/v0` removed
 
