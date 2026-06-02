@@ -160,7 +160,13 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	// ── System endpoints ──────────────────────────────────────────────────────
 	r.Get("/healthz", handlers.Healthz)
 	r.Get("/readyz", handlers.Readyz(deps.DB))
-	r.With(auth.RequireAdmin).Get("/metrics", promhttp.Handler().ServeHTTP)
+	// /metrics is intentionally unauthenticated: Prometheus scrapes it in-cluster
+	// via the ClusterIP Service, and the ServiceMonitor cannot present the
+	// session cookie that RequireAdmin needs. The payload is non-sensitive
+	// (request counters, latency histograms, registry-entry gauges) and the
+	// shipped Ingress does not route /metrics externally. Restrict pod-to-pod
+	// access with a NetworkPolicy if your cluster needs it.
+	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/openapi.yaml", handlers.OpenAPISpec)
 	r.Get("/docs", handlers.SwaggerUI)
 	// Public runtime config consumed by the browser SPA (sign-in feature flags).
