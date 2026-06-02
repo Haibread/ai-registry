@@ -30,8 +30,10 @@ repos:
       - id: check-yaml
         args:
           - --allow-multiple-documents
-        # Helm templates are Go-templated and not valid standalone YAML.
-        exclude: ^deploy/helm/.*/templates/
+        # Helm templates are Go-templated; the dev compose overlay uses
+        # Compose's !reset / !override merge tags — neither is valid
+        # standalone YAML under PyYAML's safe loader.
+        exclude: ^(deploy/helm/.*/templates/|deploy/docker-compose\.dev\.yml$)
       - id: check-added-large-files
       - id: check-merge-conflict
       - id: detect-private-key
