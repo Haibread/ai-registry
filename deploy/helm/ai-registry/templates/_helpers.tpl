@@ -54,6 +54,33 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Backend (server) helpers
 ------------------------------------------------------------------------- */}}
 
+{{/*
+Validate the server auth configuration. Fails the render with an actionable
+message rather than letting the pod crash-loop on boot. Mirrors the server's
+own validation (internal/config): at least one login method must be open, and
+an enabled OIDC broker needs an issuer, client ID, and a client-secret source.
+*/}}
+{{- define "ai-registry.server.validateAuth" -}}
+{{- $s := .Values.server -}}
+{{- if and (not $s.oidcEnabled) (not $s.localLogin.enabled) -}}
+{{- fail "No login method enabled: set server.localLogin.enabled=true (local accounts) and/or server.oidcEnabled=true (OIDC)." -}}
+{{- end -}}
+{{- if $s.oidcEnabled -}}
+{{- if not $s.oidcIssuer -}}
+{{- fail "server.oidcEnabled=true requires server.oidcIssuer (the IdP issuer URL)." -}}
+{{- end -}}
+{{- if not $s.oidcClientId -}}
+{{- fail "server.oidcEnabled=true requires server.oidcClientId (the confidential broker client ID)." -}}
+{{- end -}}
+{{- if and (not $s.oidcClientSecret) (not $s.oidcClientSecretExistingSecret) -}}
+{{- fail "server.oidcEnabled=true requires a client secret: set server.oidcClientSecret or server.oidcClientSecretExistingSecret." -}}
+{{- end -}}
+{{- end -}}
+{{- if and $s.oidcClientSecret $s.oidcClientSecretExistingSecret -}}
+{{- fail "Set only one of server.oidcClientSecret or server.oidcClientSecretExistingSecret, not both." -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "ai-registry.server.fullname" -}}
 {{- printf "%s-server" (include "ai-registry.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}

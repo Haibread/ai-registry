@@ -194,6 +194,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
+    # The stock chart is local-login-only (server.localLogin.enabled defaults
+    # true), so default renders need no OIDC config. The OIDC renders below opt
+    # in with server.oidcEnabled=true and supply a dummy issuer/client.
+    env:
+      ISSUER: https://idp.example.test/realms/ai-registry
+
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -207,8 +213,8 @@ jobs:
         run: helm lint deploy/helm/ai-registry
 
       # Render with default values and with each optional feature enabled, so
-      # template errors in opt-in paths (httpRoute, cnpg, bootstrap) fail CI.
-      - name: helm template (defaults)
+      # template errors in opt-in paths (httpRoute, cnpg, bootstrap, OIDC) fail CI.
+      - name: helm template (defaults — local-login-only)
         run: helm template test deploy/helm/ai-registry
 
       - name: helm template (httpRoute)
@@ -227,6 +233,27 @@ jobs:
           helm template test deploy/helm/ai-registry \
             --set server.bootstrap.enabled=true \
             --set server.bootstrap.sampleData=true
+
+      # Brokered-OIDC path: enabling OIDC with a confidential client id + inline
+      # client secret must render the OIDC Secret and the secretKeyRef env wiring.
+      - name: helm template (oidc broker)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set server.oidcEnabled=true \
+            --set server.oidcIssuer="$ISSUER" \
+            --set server.oidcClientId=ai-registry-server \
+            --set server.oidcClientSecret=render-test-secret \
+            | grep -q 'name: test-ai-registry-server-oidc'
+
+      # No-login-method guard: disabling local login without enabling OIDC must
+      # fail the render rather than ship a registry no one can log in to.
+      - name: helm template (no login method must fail)
+        run: |
+          if helm template test deploy/helm/ai-registry \
+               --set server.localLogin.enabled=false >/dev/null 2>&1; then
+            echo "::error::render should have failed when no login method is enabled" >&2
+            exit 1
+          fi
 
       # Schema-validate the rendered Kubernetes manifests. helm lint catches
       # chart-authoring issues but not bad spec fields; kubeconform checks
@@ -249,6 +276,10 @@ jobs:
       - name: kubeconform (all opt-ins)
         run: |
           helm template test deploy/helm/ai-registry \
+            --set server.oidcEnabled=true \
+            --set server.oidcIssuer="$ISSUER" \
+            --set server.oidcClientId=ai-registry-server \
+            --set server.oidcClientSecret=render-test-secret \
             --set httpRoute.enabled=true \
             --set httpRoute.gatewayRef.name=test-gateway \
             --set cnpg.enabled=true \

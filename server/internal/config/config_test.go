@@ -92,13 +92,64 @@ func TestLoad_MissingDatabaseURL(t *testing.T) {
 	}
 }
 
-func TestLoad_MissingOIDCIssuer(t *testing.T) {
+// OIDC_ISSUER is only required when OIDC is actually enabled (both client ID
+// and secret set). With OIDC configured but no issuer, Load must fail.
+func TestLoad_MissingOIDCIssuer_WhenOIDCEnabled(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
 	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("OIDC_CLIENT_ID", "ai-registry-server")
+	t.Setenv("OIDC_CLIENT_SECRET", "s3cret")
 
 	_, err := config.Load("")
 	if err == nil {
-		t.Error("expected error when OIDC_ISSUER is empty, got nil")
+		t.Error("expected error when OIDC is enabled but OIDC_ISSUER is empty, got nil")
+	}
+}
+
+// A local-login-only deployment (no OIDC client configured) must load without
+// an OIDC_ISSUER — the registry runs without an external IdP (decision N).
+func TestLoad_LocalLoginOnly_NoOIDC_OK(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("OIDC_CLIENT_ID", "")
+	t.Setenv("OIDC_CLIENT_SECRET", "")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("expected local-login-only config to load, got %v", err)
+	}
+	if cfg.Auth.OIDCIssuer != "" {
+		t.Errorf("OIDCIssuer = %q, want empty", cfg.Auth.OIDCIssuer)
+	}
+	if !cfg.Auth.LocalLoginEnabled {
+		t.Error("LocalLoginEnabled = false, want true (default front door)")
+	}
+}
+
+// With both front doors closed — local login disabled and no OIDC client — Load
+// must fail rather than booting a registry no one can log in to.
+func TestLoad_NoLoginMethod_Error(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("OIDC_CLIENT_ID", "")
+	t.Setenv("OIDC_CLIENT_SECRET", "")
+	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "false")
+
+	if _, err := config.Load(""); err == nil {
+		t.Error("expected error when no login method is enabled, got nil")
+	}
+}
+
+// A half-configured OIDC client (ID without secret, or vice versa) is rejected
+// so it can't silently leave OIDC disabled.
+func TestLoad_OIDCHalfConfigured_Error(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "https://auth.example.com/realm")
+	t.Setenv("OIDC_CLIENT_ID", "ai-registry-server")
+	t.Setenv("OIDC_CLIENT_SECRET", "")
+
+	if _, err := config.Load(""); err == nil {
+		t.Error("expected error when only OIDC_CLIENT_ID is set without a secret, got nil")
 	}
 }
 
@@ -513,6 +564,10 @@ func TestLoad_LocalAuth_Defaults(t *testing.T) {
 func TestLoad_LocalAuth_FromEnv(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
 	t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+	// Local login is disabled here, so OIDC must be the open front door —
+	// otherwise validation rejects a config with no login method.
+	t.Setenv("OIDC_CLIENT_ID", "ai-registry-server")
+	t.Setenv("OIDC_CLIENT_SECRET", "broker-secret")
 	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "false")
 	t.Setenv("AUTH_BOOTSTRAP_ADMIN_EMAIL", "admin@example.com")
 	t.Setenv("AUTH_BOOTSTRAP_ADMIN_PASSWORD", "s3cret")
@@ -535,6 +590,7 @@ database:
   url: "postgres://p:p@localhost/db"
 auth:
   oidc_issuer: "https://auth.example.com/realm"
+  oidc_client_id: "ai-registry-server"
   local_login: false
   bootstrap_admin_email: "boot@example.com"
 `)
@@ -542,6 +598,9 @@ auth:
 	t.Setenv("OIDC_ISSUER", "")
 	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "")
 	t.Setenv("AUTH_BOOTSTRAP_ADMIN_EMAIL", "")
+	// Local login is off in the file, so OIDC must be the open front door.
+	// The client secret is a credential supplied via env (never the file).
+	t.Setenv("OIDC_CLIENT_SECRET", "broker-secret")
 	// The bootstrap email comes from the YAML file; its password is a
 	// credential supplied via env (never the file), so set it to satisfy the
 	// password-required-with-email validation.

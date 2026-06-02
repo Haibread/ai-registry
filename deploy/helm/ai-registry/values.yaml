@@ -20,22 +20,49 @@ server:
     # Defaults to .Chart.AppVersion when empty
     tag: ""
 
-  # ── Auth (OIDC) ─────────────────────────────────────────────────────────
-  # [REQUIRED] OIDC issuer URL — must match the `iss` claim in issued JWTs.
+  # ── Auth (OIDC, brokered server-side) ───────────────────────────────────
+  # OIDC is brokered server-side: the registry is a single CONFIDENTIAL client
+  # that runs Authorization Code + PKCE and issues its own session cookie. The
+  # SPA is NOT an OIDC client.
+  #
+  # Master switch. Leave false to run local-login-only (see localLogin below) —
+  # no IdP required. Set true to add the OIDC front door; the chart then
+  # requires oidcIssuer, oidcClientId, and a client-secret source, failing the
+  # render if any is missing rather than letting the pod crash-loop on boot.
+  # At least one of oidcEnabled / localLogin.enabled must be true.
+  oidcEnabled: false
+  # [REQUIRED when oidcEnabled] OIDC issuer URL — the BROWSER-facing issuer;
+  # must match the `iss` claim in issued tokens.
   oidcIssuer: ""
-  # [REQUIRED] Expected JWT `aud` value (OAuth 2.1 resource indicators / MCP
-  # audience binding). The server refuses to boot when empty. Must match the
-  # audience your IdP emits for this resource server.
-  oidcAudience: "ai-registry-server"
-  # Override the JWKS URL for internal network resolution (e.g. when the
-  # server pod cannot reach the public issuer URL directly).
+  # Base URL (scheme://host) the server uses to reach the IdP for back-channel
+  # calls (discovery / token exchange / JWKS) when the public issuer is not
+  # reachable from inside the cluster. Empty = use oidcIssuer for everything.
+  # Example: http://keycloak.identity.svc:8080/realms/ai-registry
+  oidcInternalUrl: ""
+  # Override the JWKS fetch URL for internal network resolution (e.g. when the
+  # server pod cannot reach the public issuer URL directly). Usually unset when
+  # oidcInternalUrl is provided.
   # Example: http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs
   oidcJwksUrl: ""
-  # [REQUIRED] Public OAuth 2.0 client ID for the browser SPA.
-  # Served via GET /config.json so the frontend can configure its OIDC client
-  # at runtime without baking this value into the Docker image.
-  # Example: ai-registry-web
+  # [REQUIRED when oidcEnabled] Confidential broker client ID. This is the
+  # SERVER's OAuth client — it is NOT served to the browser.
+  # Example: ai-registry-server
   oidcClientId: ""
+  # [REQUIRED when oidcEnabled] Confidential broker client secret. Provide exactly
+  # one source (existingSecret wins): an inline value (DEV/quickstart only —
+  # rendered into a Kubernetes
+  # Secret, base64 NOT encrypted), or the name of a pre-existing Secret holding
+  # the key OIDC_CLIENT_SECRET. In production prefer existingSecret with
+  # external-secrets / sealed-secrets.
+  oidcClientSecret: ""
+  oidcClientSecretExistingSecret: ""
+  # Callback URL the IdP redirects to after login. Empty = derived from
+  # publicBaseURL + /api/v1/auth/oidc/callback. Override only when the IdP must
+  # redirect to a different host than publicBaseURL.
+  oidcRedirectUrl: ""
+  # OAuth scopes requested at the authorize endpoint. Empty = server default
+  # (openid, profile, email). List form, e.g. ["openid", "profile", "groups"].
+  oidcScopes: []
   # JWT claim path for the user's group memberships. Group membership
   # resolves to publisher-scoped role grants for authorization. Empty =
   # server default ("groups"). Set this to the path your IdP emits (e.g.
@@ -46,20 +73,15 @@ server:
   # ("registry-reviewers"). Must match a group emitted in the JWT
   # claim configured above.
   authReviewerGroup: ""
-  # SPA token storage strategy advertised via /config.json:
-  # "session" (default) keeps tokens in sessionStorage (per-tab,
-  # cleared on close); "local" stores them in localStorage (survives
-  # tabs and reloads). Only switch to "local" if you accept the wider
-  # XSS exposure window — typically only for E2E test harnesses.
-  authStorage: ""
 
   # ── Auth (local accounts) ────────────────────────────────────────
-  # Local email + password login alongside OIDC. The registry signs its own
-  # tokens for these accounts and walls them off the MCP surface (OAuth-only).
-  # Leave disabled to run OIDC-only; enable to run without an external IdP or to
-  # seed a break-glass Server Admin.
+  # Local email + password login, ending in the same registry session cookie as
+  # OIDC. Enabled by default so a stock `helm install` is a working local-login
+  # registry with no external IdP (decision N). Set false to run OIDC-only — but
+  # then oidcEnabled must be true, or the chart fails the render (no login
+  # method). Seed an initial account via bootstrapAdmin below.
   localLogin:
-    enabled: false
+    enabled: true
     # Bootstrap Server Admin seeded on startup when local login is enabled.
     # Idempotent: the account is upserted on each boot, never duplicated.
     bootstrapAdmin:
