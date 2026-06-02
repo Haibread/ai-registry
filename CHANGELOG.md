@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 📡 OTLP export for all three signals (metrics + logs, not just traces)
+
+The CLAUDE.md mandate is "OpenTelemetry for all signals — traces, metrics, and
+logs — exported via OTLP", but only traces were exported. Now, when an OTLP
+endpoint is configured:
+
+- **Metrics** are pushed via an OTLP periodic reader **in addition to** the
+  Prometheus pull endpoint (`/metrics`). The same OTel instruments feed both, so
+  Prometheus scraping is unchanged.
+- **Logs** are bridged to OTLP via `otelslog`. Structured JSON to stdout is
+  retained (a fan-out slog handler writes to both), so `kubectl logs` stays
+  useful while logs also reach the collector — still carrying `trace_id` /
+  `span_id`.
+- All three exporters share one gRPC connection to the collector.
+- The dev collector config gains a `logs` pipeline.
+
+When no OTLP endpoint is configured, behaviour is unchanged (stdout logs +
+Prometheus `/metrics` only).
 ### 🏗️ Multi-arch images + supply-chain attestations + stronger password floor
 
 - **Images are now built for `linux/amd64` and `linux/arm64`.** Both Dockerfiles
