@@ -2,7 +2,10 @@
 # Multi-stage build: compile in the Go toolchain image, ship in distroless.
 
 # ── Build stage ───────────────────────────────────────────────────────────────
-FROM golang:1.26-alpine AS builder
+# Pin the builder to the native BUILDPLATFORM so multi-arch builds cross-compile
+# with the Go toolchain (GOARCH=$TARGETARCH below) instead of running the whole
+# toolchain under QEMU emulation — much faster and avoids emulation flakiness.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 WORKDIR /src
 
@@ -12,9 +15,11 @@ RUN go mod download
 
 COPY . .
 
-# TARGETOS/TARGETARCH are set automatically by BuildKit for multi-platform builds.
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+# TARGETOS/TARGETARCH are injected automatically by BuildKit per target platform.
+# Declared WITHOUT defaults so the injected values win; for a plain `docker build`
+# (no buildx platform) they are empty and `go build` targets the native host.
+ARG TARGETOS
+ARG TARGETARCH
 
 # Build metadata — injected at link time so `server --version` (and the
 # startup log / OTel service.version attribute) reflect the exact image

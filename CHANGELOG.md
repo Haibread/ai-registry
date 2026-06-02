@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 🏗️ Multi-arch images + supply-chain attestations + stronger password floor
+
+- **Images are now built for `linux/amd64` and `linux/arm64`.** Both Dockerfiles
+  pin their build stage to `$BUILDPLATFORM`: the Go server cross-compiles
+  (`GOARCH=$TARGETARCH`) and the web build emits arch-independent static assets,
+  so arm64 builds run **without QEMU emulation**. This also fixes a latent bug —
+  the server Dockerfile's `ARG TARGETARCH=amd64` default would have shadowed the
+  injected target arch and shipped an amd64 binary inside an arm64 image.
+- **Supply-chain attestations:** the publish workflow now generates an **SBOM**
+  and **max-mode provenance** for both images and pushes them to GHCR.
+- **Local-account password floor raised from 8 to 12 characters** (OWASP
+  guidance) for the self-service set-password endpoint.
+- The web image declares an explicit non-root `USER 101`; `web/.next` is added to
+  `.dockerignore`.
+
 ### 🔐 Brokered OIDC + registry cookie sessions; `/v0` removed
 
 Authentication is reworked into a **backend-for-frontend (BFF)** model. The SPA
