@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"go.opentelemetry.io/otel/trace"
@@ -45,4 +46,55 @@ func (h *traceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (h *traceHandler) WithGroup(name string) slog.Handler {
 	return &traceHandler{inner: h.inner.WithGroup(name)}
+}
+
+// fanoutHandler dispatches each record to every wrapped handler, so a single
+// slog.Logger can write to stdout AND export via OTLP at once. Each handler
+// receives its own record clone because handlers (e.g. traceHandler) mutate it.
+type fanoutHandler struct {
+	handlers []slog.Handler
+}
+
+// NewFanoutHandler returns a slog.Handler that dispatches every record to all
+// of the given handlers. Exported so tests can exercise the fan-out contract
+// without reaching into the package's private types.
+func NewFanoutHandler(handlers ...slog.Handler) slog.Handler {
+	return &fanoutHandler{handlers: handlers}
+}
+
+func (f *fanoutHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, h := range f.handlers {
+		if h.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *fanoutHandler) Handle(ctx context.Context, r slog.Record) error {
+	var errs []error
+	for _, h := range f.handlers {
+		if h.Enabled(ctx, r.Level) {
+			if err := h.Handle(ctx, r.Clone()); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (f *fanoutHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	next := make([]slog.Handler, len(f.handlers))
+	for i, h := range f.handlers {
+		next[i] = h.WithAttrs(attrs)
+	}
+	return &fanoutHandler{handlers: next}
+}
+
+func (f *fanoutHandler) WithGroup(name string) slog.Handler {
+	next := make([]slog.Handler, len(f.handlers))
+	for i, h := range f.handlers {
+		next[i] = h.WithGroup(name)
+	}
+	return &fanoutHandler{handlers: next}
 }

@@ -104,6 +104,12 @@ func run() error {
 		}
 	}()
 
+	// Now that the OTel LoggerProvider is registered, upgrade the logger to also
+	// bridge records to OTLP (when a collector is configured) while keeping the
+	// stdout JSON stream. Earlier startup logs above used the stdout-only logger.
+	logger = observability.NewLoggerWithExport(cfg.Log.Level, cfg.OTel.OTLPEndpoint != "")
+	slog.SetDefault(logger)
+
 	// ── Metrics ──────────────────────────────────────────────────────────────
 	metrics, err := observability.InitMetrics()
 	if err != nil {

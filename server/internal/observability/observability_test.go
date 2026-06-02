@@ -146,6 +146,45 @@ func TestTraceHandler_PreservesUserAttrs(t *testing.T) {
 	}
 }
 
+// ── NewLoggerWithExport / fanout ────────────────────────────────────────────
+
+func TestNewLoggerWithExport_NoOTLPStillLogsToStdout(t *testing.T) {
+	// With otlpEnabled=false the function must return a working stdout logger
+	// (the no-collector deployment must not lose logs). We only assert the
+	// level contract here since the writer is os.Stdout.
+	logger := observability.NewLoggerWithExport("debug", false)
+	if logger == nil {
+		t.Fatal("NewLoggerWithExport returned nil")
+	}
+	if !logger.Enabled(context.Background(), slog.LevelDebug) {
+		t.Error("debug level should be enabled for level=debug")
+	}
+}
+
+func TestFanoutHandler_DispatchesToEveryHandler(t *testing.T) {
+	// The fanout handler underpins "stdout JSON AND OTLP": a single record must
+	// reach every wrapped handler, each getting an independent clone so one
+	// handler mutating the record (traceHandler stamps trace_id) can't corrupt
+	// another's copy.
+	var bufA, bufB bytes.Buffer
+	a := slog.NewJSONHandler(&bufA, &slog.HandlerOptions{Level: slog.LevelInfo})
+	// Wrap one side in the production traceHandler, which mutates the record.
+	b := observability.WrapWithTrace(slog.NewJSONHandler(&bufB, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(observability.NewFanoutHandler(a, b))
+
+	logger.Info("fanned-out", slog.String("k", "v"))
+
+	for name, buf := range map[string]*bytes.Buffer{"A": &bufA, "B": &bufB} {
+		var rec map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+			t.Fatalf("handler %s: decode: %v\nraw=%s", name, err, buf.String())
+		}
+		if rec["msg"] != "fanned-out" || rec["k"] != "v" {
+			t.Errorf("handler %s: got %v, want msg=fanned-out k=v", name, rec)
+		}
+	}
+}
+
 // ── InitMetrics ────────────────────────────────────────────────────────────
 
 func TestInitMetrics_ReturnsAllInstruments(t *testing.T) {
