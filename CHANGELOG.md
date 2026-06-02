@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### 📈 Fix: `/metrics` is now scrapeable (metrics were silently dead on k8s)
+
+`/metrics` was gated behind `RequireAdmin`, which needs a registry session
+cookie. The Prometheus Operator `ServiceMonitor` scrapes the in-cluster
+ClusterIP Service and cannot present that cookie, so every scrape got `403` and
+**no OTel metric was ever collected on Kubernetes**. The endpoint is now
+unauthenticated: its payload is non-sensitive (request counters, latency
+histograms, registry-entry gauges) and the shipped Ingress does not route
+`/metrics` externally. Add a `NetworkPolicy` if you need to restrict pod-to-pod
+scraping.
+
 ### 🛡️ CSRF defense + security-header hardening
 
 - **CSRF protection is now actually enforced.** A new `EnforceSameOrigin`
