@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -12,6 +13,11 @@ import (
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
+
+// minPasswordLength is the floor for local-account passwords (self-service and
+// bootstrap). 12 follows current OWASP guidance; argon2id (password.go) handles
+// the hashing strength.
+const minPasswordLength = 12
 
 // UserHandlers serves the user/principal management endpoints.
 // List/create/get/patch are Server-Admin gated at the router; set-password is
@@ -180,9 +186,9 @@ func (h *UserHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if len(body.Password) < 8 {
+	if len(body.Password) < minPasswordLength {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
-			"password must be at least 8 characters", r.URL.Path)
+			fmt.Sprintf("password must be at least %d characters", minPasswordLength), r.URL.Path)
 		return
 	}
 

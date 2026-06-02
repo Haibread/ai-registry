@@ -291,21 +291,21 @@ func TestUserHandler_SetPassword(t *testing.T) {
 
 	// Unauthenticated → 401.
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"longenough1"}`))
+	router.ServeHTTP(rec, jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"longenough1234"}`))
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("unauth: %d, want 401", rec.Code)
 	}
 
 	// A different non-admin principal → 403.
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, otherCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"longenough1"}`)))
+	router.ServeHTTP(rec, otherCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"longenough1234"}`)))
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("other: %d, want 403", rec.Code)
 	}
 
 	// Self → 204.
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, selfCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"longenough1"}`)))
+	router.ServeHTTP(rec, selfCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"longenough1234"}`)))
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("self: %d, want 204; %s", rec.Code, rec.Body.String())
 	}
@@ -316,8 +316,14 @@ func TestUserHandler_SetPassword(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("short password: %d, want 422", rec.Code)
 	}
+	// 11 chars is just under the 12-char floor → 422.
 	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, adminCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"adminsetpw1"}`)))
+	router.ServeHTTP(rec, adminCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"elevenchars"}`)))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("11-char password: %d, want 422 (12-char floor)", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, adminCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"adminsetpw123"}`)))
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("admin: %d, want 204", rec.Code)
 	}

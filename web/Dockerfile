@@ -2,7 +2,11 @@
 # Build context: repository root (docker-compose sets context: ..)
 
 # ── Builder ───────────────────────────────────────────────────────────────────
-FROM node:24-alpine AS builder
+# Pin to the native BUILDPLATFORM: the Vite output is static and
+# architecture-independent, so the (heavy) node build runs once on the host arch
+# and never under QEMU emulation. The per-arch runtime nginx layer below pulls
+# the matching architecture automatically.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 WORKDIR /app
 
 COPY web/package.json web/package-lock.json* ./
@@ -34,5 +38,10 @@ COPY web/nginx.conf /etc/nginx/templates/default.conf.template
 # Only substitute ${API_URL}. Without this, envsubst would also wipe nginx's
 # own variables ($host, $remote_addr, $proxy_add_x_forwarded_for, etc.).
 ENV NGINX_ENVSUBST_TEMPLATE_VARS=API_URL
+
+# Explicit non-root user (uid 101 = nginx in the unprivileged base). The base
+# already runs as 101, but stating it keeps the image safe under a runtime that
+# does not impose a securityContext (e.g. a plain `docker run`).
+USER 101
 
 EXPOSE 8080

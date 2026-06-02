@@ -22,6 +22,7 @@ Thumbs.db
 # Build artefacts (generated; should never be copied into an image).
 web/dist
 web/node_modules
+web/.next
 web/playwright-report
 web/test-results
 web/coverage
