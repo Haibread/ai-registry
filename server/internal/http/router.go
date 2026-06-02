@@ -148,8 +148,17 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r := chi.NewRouter()
 
 	// ── Core middleware ───────────────────────────────────────────────────────
-	r.Use(middleware.SecurityHeaders)
+	// HSTS is emitted only when cookies are Secure (i.e. the deployment is
+	// served over HTTPS); a plain-HTTP dev setup must not advertise it.
+	hsts := false
+	if deps.Sessions != nil {
+		hsts = deps.Sessions.CookieSecure()
+	}
+	r.Use(middleware.SecurityHeaders(hsts))
 	r.Use(middleware.CORS(deps.CORSOrigins))
+	// CSRF defense: reject cross-site state-changing requests (Fetch Metadata /
+	// Origin enforcement). Must run before any handler that mutates state.
+	r.Use(middleware.EnforceSameOrigin(deps.CORSOrigins))
 	r.Use(middleware.Recover(deps.Logger))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(deps.Logger, deps.Metrics))

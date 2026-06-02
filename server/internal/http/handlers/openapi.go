@@ -40,6 +40,16 @@ var docsHTML = []byte(`<!DOCTYPE html>
 func SwaggerUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	// Override the deny-by-default API CSP: the Scalar reference UI loads its
+	// bundle from jsdelivr and injects inline styles/scripts at runtime.
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; "+
+			"script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "+
+			"style-src 'self' 'unsafe-inline'; "+
+			"img-src 'self' data: https:; "+
+			"font-src 'self' https://cdn.jsdelivr.net data:; "+
+			"connect-src 'self'; "+
+			"frame-ancestors 'none'; base-uri 'none'")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(docsHTML)
 }
