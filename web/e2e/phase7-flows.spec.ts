@@ -49,10 +49,11 @@ test.describe('Phase 7: group-based authorization end-to-end', () => {
   test('admin seeds publisher, grants anthropic-core editor, server, draft version', async ({ browser }) => {
     const page = await pageAs(browser, 'admin')
 
+    // `verified` is a server-managed read-only field (defaults false), not part
+    // of CreatePublisherRequest — sending it now 422s under strict JSON decoding.
     let res = await apiPost(page, '/api/v1/publishers', {
       slug: PUB,
       name: `E2E Phase 7 ${RUN_ID}`,
-      verified: false,
     })
     expect(res.status(), 'create publisher').toBe(201)
 
