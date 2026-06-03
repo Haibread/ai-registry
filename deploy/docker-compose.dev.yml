@@ -84,11 +84,11 @@ services:
       # override in .env for any shared environment.
       AUTH_BOOTSTRAP_ADMIN_EMAIL: ${AUTH_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
       AUTH_BOOTSTRAP_ADMIN_PASSWORD: ${AUTH_BOOTSTRAP_ADMIN_PASSWORD:-devadmin12345}
-      # The session cookie is marked Secure by default; the dev stack is plain
-      # HTTP on localhost, so turn that off or the browser drops the cookie and
-      # login appears to succeed (204) while /me stays signed-out.
-      AUTH_SESSION_SECURE: ${AUTH_SESSION_SECURE:-false}
-      AUTH_SESSION_SAMESITE: ${AUTH_SESSION_SAMESITE:-lax}
+      # Auth is a bearer token (no cookie). No signing key is set here, so the
+      # server generates an ephemeral key at boot — fine for dev. In prod set
+      # JWT_SIGNING_KEY (PEM) or JWT_SIGNING_SEED (secret string, >= 32 chars).
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-}
+      JWT_SIGNING_SEED: ${JWT_SIGNING_SEED:-}
       DATABASE_URL: ${DATABASE_URL:-postgres://registry:registry@postgres:5432/registry?sslmode=disable}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       # Public-facing base URL. The A2A global agent card handler returns

@@ -54,8 +54,24 @@ data:
   {{- if .Values.server.authGroupsClaim }}
   AUTH_GROUPS_CLAIM: {{ .Values.server.authGroupsClaim | quote }}
   {{- end }}
+  {{- if .Values.server.oidcRolesClaim }}
+  OIDC_ROLES_CLAIM: {{ .Values.server.oidcRolesClaim | quote }}
+  {{- end }}
+  {{- if .Values.server.oidcAdminRole }}
+  OIDC_ADMIN_ROLE: {{ .Values.server.oidcAdminRole | quote }}
+  {{- end }}
   {{- if .Values.server.authReviewerGroup }}
   AUTH_REVIEWER_GROUP: {{ .Values.server.authReviewerGroup | quote }}
+  {{- end }}
+
+  # ── Tokens ────────────────────────────────────────────────────────
+  {{- /* The Ed25519 signing key is a secret, wired via secretKeyRef in the
+     Deployment (see jwt-secret.yaml) — never emitted here. */}}
+  {{- if .Values.server.accessTokenTtl }}
+  ACCESS_TOKEN_TTL: {{ .Values.server.accessTokenTtl | quote }}
+  {{- end }}
+  {{- if .Values.server.refreshTokenTtl }}
+  REFRESH_TOKEN_TTL: {{ .Values.server.refreshTokenTtl | quote }}
   {{- end }}
 
   # ── Auth (local accounts) ─────────────────────────────────────────

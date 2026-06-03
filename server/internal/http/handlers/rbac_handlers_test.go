@@ -397,6 +397,68 @@ func TestGrantHandler_PublisherGrant(t *testing.T) {
 	}
 }
 
+// TestGrantHandler_PublisherGroupGrant_ServerAdminOnly pins the rule that a
+// publisher Admin may grant roles to individual users but NOT to groups: a group
+// grant binds an IdP claim to a role, so only a Server Admin may create or delete
+// it. The handler test simulates "publisher Admin" as a non-Server-Admin
+// principal (the requirePublisherAdmin middleware that admits them is exercised
+// separately); a Server Admin carries IsServerAdmin.
+func TestGrantHandler_PublisherGroupGrant_ServerAdminOnly(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "acme", "Acme")
+	router := newGrantRouter()
+	g, _ := testDB.CreateGroup(context.Background(), store.CreateGroupParams{Slug: "team-a", Name: "Team A"})
+	u, _ := testDB.CreateUser(context.Background(), store.CreateUserParams{Email: "editor@acme.test"})
+
+	pubAdmin := func(r *http.Request) *http.Request {
+		return r.WithContext(auth.ContextWithPrincipal(r.Context(), &auth.Principal{UserID: "pa", Email: "pa@acme.test"}))
+	}
+	serverAdmin := func(r *http.Request) *http.Request {
+		return r.WithContext(auth.ContextWithPrincipal(r.Context(), &auth.Principal{UserID: "sa", Email: "sa@root.test", IsServerAdmin: true}))
+	}
+	groupGrant := `{"principal_type":"group","principal_id":"` + g.ID + `","role":"reviewer"}`
+
+	// Publisher Admin creating a group grant → 403.
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, pubAdmin(jsonReq(http.MethodPost, "/api/v1/publishers/acme/grants", groupGrant)))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("publisher Admin group grant: %d, want 403; %s", rec.Code, rec.Body.String())
+	}
+
+	// Publisher Admin creating a user grant → 201 (still allowed).
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, pubAdmin(jsonReq(http.MethodPost, "/api/v1/publishers/acme/grants",
+		`{"principal_type":"user","principal_id":"`+u.ID+`","role":"editor"}`)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("publisher Admin user grant: %d, want 201; %s", rec.Code, rec.Body.String())
+	}
+
+	// Server Admin creating the group grant → 201.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, serverAdmin(jsonReq(http.MethodPost, "/api/v1/publishers/acme/grants", groupGrant)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("server Admin group grant: %d, want 201; %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.NewDecoder(rec.Body).Decode(&created)
+
+	// Publisher Admin deleting that group grant → 403.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, pubAdmin(httptest.NewRequest(http.MethodDelete, "/api/v1/publishers/acme/grants/"+created.ID, nil)))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("publisher Admin delete group grant: %d, want 403; %s", rec.Code, rec.Body.String())
+	}
+
+	// Server Admin deleting it → 204.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, serverAdmin(httptest.NewRequest(http.MethodDelete, "/api/v1/publishers/acme/grants/"+created.ID, nil)))
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("server Admin delete group grant: %d, want 204; %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestGrantHandler_Validation(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "acme", "Acme")

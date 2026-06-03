@@ -41,6 +41,16 @@ type OIDCConfig struct {
 	// KC_HOSTNAME) so `iss` and the authorize URL match. Empty disables the split
 	// and every call uses the public Issuer (JWKSURLOverride still applies).
 	InternalURL string
+
+	// GroupsClaim is the (optionally dotted) id_token path the broker reads the
+	// user's group memberships from. Default "groups".
+	GroupsClaim string
+	// RolesClaim is the (optionally dotted) id_token path the broker reads
+	// realm/global roles from. Default "realm_access.roles".
+	RolesClaim string
+	// AdminRole is the role value within RolesClaim that grants the Server-Admin
+	// flag. Default "admin".
+	AdminRole string
 }
 
 // oidcDiscovery is the subset of the OIDC discovery document the broker uses.
@@ -57,10 +67,13 @@ type oidcDiscovery struct {
 // IdP JWKS and returns the claims; the token itself is never handed to the
 // browser.
 type OIDCBroker struct {
-	cfg    OIDCConfig
-	disco  oidcDiscovery
-	jwks   *JWKSCache
-	client *http.Client
+	cfg         OIDCConfig
+	disco       oidcDiscovery
+	jwks        *JWKSCache
+	client      *http.Client
+	groupsClaim string
+	rolesClaim  string
+	adminRole   string
 }
 
 // NewOIDCBroker fetches the IdP discovery document and builds the broker. It is
@@ -103,11 +116,26 @@ func NewOIDCBroker(ctx context.Context, cfg OIDCConfig) (*OIDCBroker, error) {
 			jwksURL = rewriteHost(jwksURL, cfg.InternalURL)
 		}
 	}
+	groupsClaim := cfg.GroupsClaim
+	if groupsClaim == "" {
+		groupsClaim = "groups"
+	}
+	rolesClaim := cfg.RolesClaim
+	if rolesClaim == "" {
+		rolesClaim = "realm_access.roles"
+	}
+	adminRole := cfg.AdminRole
+	if adminRole == "" {
+		adminRole = "admin"
+	}
 	return &OIDCBroker{
-		cfg:    cfg,
-		disco:  disco,
-		jwks:   NewJWKSCache(jwksURL, 0),
-		client: client,
+		cfg:         cfg,
+		disco:       disco,
+		jwks:        NewJWKSCache(jwksURL, 0),
+		client:      client,
+		groupsClaim: groupsClaim,
+		rolesClaim:  rolesClaim,
+		adminRole:   adminRole,
 	}, nil
 }
 
@@ -184,11 +212,22 @@ type tokenResponse struct {
 	ErrorDescription string `json:"error_description"`
 }
 
-// Exchange swaps an authorization code for tokens and returns the validated
-// id_token claims plus the raw id_token (kept as a logout hint). It enforces
-// PKCE (code_verifier), the issuer, the audience (== client id), expiry, and
-// that the id_token nonce matches the one bound to the login transaction.
-func (b *OIDCBroker) Exchange(ctx context.Context, code, codeVerifier, expectedNonce string) (*KeycloakClaims, string, error) {
+// BrokeredIdentity is the federated identity the broker resolves from a
+// validated id_token: the standard subject/email plus the group memberships and
+// Server-Admin flag mapped from the configurable claim paths.
+type BrokeredIdentity struct {
+	Subject       string
+	Email         string
+	EmailVerified bool
+	Groups        []string
+	IsAdmin       bool
+}
+
+// Exchange swaps an authorization code for tokens and returns the mapped
+// identity plus the raw id_token (kept as a logout hint). It enforces PKCE
+// (code_verifier), the issuer, the audience (== client id), expiry, and that the
+// id_token nonce matches the one bound to the login transaction.
+func (b *OIDCBroker) Exchange(ctx context.Context, code, codeVerifier, expectedNonce string) (*BrokeredIdentity, string, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -230,7 +269,22 @@ func (b *OIDCBroker) Exchange(ctx context.Context, code, codeVerifier, expectedN
 	if expectedNonce == "" || claims.Nonce != expectedNonce {
 		return nil, "", fmt.Errorf("oidc exchange: id_token nonce mismatch")
 	}
-	return claims, tr.IDToken, nil
+
+	// Map groups + Server-Admin from the configurable claim paths. The id_token
+	// was just signature-verified above, so re-reading its payload unverified is
+	// safe and avoids a second JWKS round-trip.
+	payload, err := unverifiedClaims(tr.IDToken)
+	if err != nil {
+		return nil, "", fmt.Errorf("oidc exchange: re-reading id_token claims: %w", err)
+	}
+	identity := &BrokeredIdentity{
+		Subject:       claims.Subject,
+		Email:         claims.Email,
+		EmailVerified: claims.EmailVerified,
+		Groups:        claimStringSlice(payload, b.groupsClaim),
+		IsAdmin:       claimHasValue(payload, b.rolesClaim, b.adminRole),
+	}
+	return identity, tr.IDToken, nil
 }
 
 // verifyIDToken validates the id_token signature (IdP JWKS), issuer, audience
@@ -252,6 +306,60 @@ func (b *OIDCBroker) verifyIDToken(ctx context.Context, idToken string) (*Keyclo
 		return nil, fmt.Errorf("oidc exchange: validating id_token: %w", err)
 	}
 	return claims, nil
+}
+
+// unverifiedClaims re-parses an already-signature-verified token's payload into
+// a claims map so configurable (dotted) claim paths can be read.
+func unverifiedClaims(token string) (map[string]any, error) {
+	mc := jwt.MapClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(token, mc); err != nil {
+		return nil, err
+	}
+	return map[string]any(mc), nil
+}
+
+// lookupClaim resolves a dotted path ("a.b.c") within a claims map.
+func lookupClaim(m map[string]any, path string) any {
+	cur := any(m)
+	for _, part := range strings.Split(path, ".") {
+		asMap, ok := cur.(map[string]any)
+		if !ok {
+			return nil
+		}
+		cur = asMap[part]
+	}
+	return cur
+}
+
+// claimStringSlice reads the value at path and coerces it to a string slice
+// (accepts a JSON array of strings or a single string).
+func claimStringSlice(m map[string]any, path string) []string {
+	switch v := lookupClaim(m, path).(type) {
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		return v
+	case string:
+		return []string{v}
+	default:
+		return nil
+	}
+}
+
+// claimHasValue reports whether the string slice at path contains want.
+func claimHasValue(m map[string]any, path, want string) bool {
+	for _, v := range claimStringSlice(m, path) {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
 
 // EndSessionURL returns the IdP's RP-initiated logout URL, or "" when the IdP
@@ -289,10 +397,4 @@ func GeneratePKCE() (verifier, challenge string, err error) {
 	sum := sha256.Sum256([]byte(verifier))
 	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
 	return verifier, challenge, nil
-}
-
-// RandomToken returns a 256-bit URL-safe random string, used for the OIDC
-// state and nonce.
-func RandomToken() (string, error) {
-	return newToken()
 }

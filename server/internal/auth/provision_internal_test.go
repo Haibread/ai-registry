@@ -5,8 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/golang-jwt/jwt/v5"
-
 	"github.com/haibread/ai-registry/internal/store"
 )
 
@@ -55,11 +53,11 @@ func (f *fakePrincipalStore) BindSubject(_ context.Context, userID, _ string) er
 	return nil
 }
 
-func claims(sub, email string, verified bool) *KeycloakClaims {
-	return &KeycloakClaims{
-		RegisteredClaims: jwt.RegisteredClaims{Subject: sub},
-		Email:            email,
-		EmailVerified:    verified,
+func claims(sub, email string, verified bool) *BrokeredIdentity {
+	return &BrokeredIdentity{
+		Subject:       sub,
+		Email:         email,
+		EmailVerified: verified,
 	}
 }
 

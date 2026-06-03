@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/haibread/ai-registry/internal/problem"
 )
@@ -14,89 +15,89 @@ const (
 	isAdminKey contextKey = "auth_is_admin"
 )
 
-// Authenticator resolves the registry session cookie into a Principal and
-// populates request context. It replaces the
-// old multi-issuer JWT Validator: the registry is now the single token
-// authority — OIDC is brokered server-side and both front doors end in a
-// session cookie. It never blocks an unauthenticated request; the guards
-// (RequireAdmin, RequirePublisherRole) gate writes.
+// Authenticator validates the registry-issued access token (a bearer JWT) and
+// populates the request context with the resolved Principal. The registry is the
+// single token authority: there is no cookie and no multi-issuer validation, and
+// verification is pure crypto (no DB) so it sits on the hot read path. It never
+// blocks an unauthenticated or stale-token request; the guards (RequireAdmin,
+// RequirePublisherRole) gate writes.
 type Authenticator struct {
-	sessions *SessionManager
-	store    PrincipalStore
+	tokens *TokenAuthority
 }
 
-// NewAuthenticator builds the session authenticator. A nil sessions or store
-// (e.g. route-walk tests that construct the router with no DB) makes
+// NewAuthenticator builds the bearer authenticator. A nil TokenAuthority (e.g.
+// route-walk tests that construct the router with no signing key) makes
 // Authenticate a pass-through.
-func NewAuthenticator(sessions *SessionManager, store PrincipalStore) *Authenticator {
-	return &Authenticator{sessions: sessions, store: store}
+func NewAuthenticator(tokens *TokenAuthority) *Authenticator {
+	return &Authenticator{tokens: tokens}
 }
 
-// Authenticate is chi middleware that resolves the session cookie when present.
-// An absent / stale cookie proceeds unauthenticated (the stale cookie is
-// cleared); a disabled account is refused with 403 on every request.
+// Authenticate is chi middleware that resolves a valid bearer token into a
+// Principal. A missing, malformed, expired, or otherwise invalid token proceeds
+// unauthenticated (public reads still work; the SPA refreshes on the resulting
+// 401 from a guarded route).
 func (a *Authenticator) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.sessions == nil || a.store == nil {
+		if a.tokens == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
-		token := a.sessions.TokenFromRequest(r)
-		if token == "" {
+		raw := bearerToken(r)
+		if raw == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		sess, err := a.sessions.Resolve(r.Context(), token)
+		claims, err := a.tokens.Verify(raw)
 		if err != nil {
-			// Expired / revoked / unknown: clear the stale cookie and proceed
-			// unauthenticated so the SPA falls back to the signed-out state.
-			http.SetCookie(w, a.sessions.ClearCookie())
+			// Invalid / expired token: proceed unauthenticated rather than 401,
+			// so the contract ("Authenticate never blocks") holds and the guards
+			// produce the 401 that drives the SPA's silent refresh.
 			next.ServeHTTP(w, r)
-			return
-		}
-		u, err := a.store.GetUserByID(r.Context(), sess.UserID)
-		if err != nil {
-			http.SetCookie(w, a.sessions.ClearCookie())
-			next.ServeHTTP(w, r)
-			return
-		}
-		if u.Disabled {
-			problem.Write(w, http.StatusForbidden, "forbidden",
-				"This account is disabled.", r.URL.Path)
 			return
 		}
 
 		princ := &Principal{
-			UserID:        u.ID,
-			Email:         u.Email,
-			ClaimGroups:   sess.ClaimGroups,
-			IsServerAdmin: sess.ClaimAdmin || u.IsServerAdmin,
-			AuthMethod:    sess.AuthMethod,
+			UserID:        claims.Subject,
+			Email:         claims.Email,
+			ClaimGroups:   claims.Groups,
+			IsServerAdmin: claims.SrvAdmin,
+			AuthMethod:    claims.AuthMethod,
 		}
-		// Synthesize minimal claims so the context helpers that predate the
-		// session model (ClaimsFromContext, IsServerAdminFromContext,
-		// IdentityFromContext) keep working unchanged.
-		claims := &KeycloakClaims{Email: u.Email, Groups: sess.ClaimGroups}
+		// Synthesize minimal claims so the context helpers that predate the token
+		// model (ClaimsFromContext, IsServerAdminFromContext, IdentityFromContext)
+		// keep working unchanged.
+		kc := &KeycloakClaims{Email: claims.Email, Groups: claims.Groups}
 		if princ.IsServerAdmin {
-			claims.RealmAccess.Roles = []string{"admin"}
+			kc.RealmAccess.Roles = []string{"admin"}
 		}
 		ctx := context.WithValue(r.Context(), principalKey, princ)
-		ctx = context.WithValue(ctx, claimsKey, claims)
+		ctx = context.WithValue(ctx, claimsKey, kc)
 		ctx = context.WithValue(ctx, isAdminKey, princ.IsServerAdmin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
+// bearerToken extracts the token from an `Authorization: Bearer <token>` header,
+// or "" when absent / malformed.
+func bearerToken(r *http.Request) string {
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	if len(h) <= len(prefix) || !strings.EqualFold(h[:len(prefix)], prefix) {
+		return ""
+	}
+	return strings.TrimSpace(h[len(prefix):])
+}
+
 // RequireAdmin is chi middleware that gates a route to Server Admins. It must be
-// chained after Authenticate. Server Admin is dual-sourced: the
-// snapshotted realm-admin claim OR the resolved principal's is_server_admin
-// flag, via IsServerAdminFromContext.
+// chained after Authenticate. Server Admin is dual-sourced: the snapshotted
+// claim flag OR the local is_server_admin flag (baked into the token at login),
+// via IsServerAdminFromContext.
 func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := ClaimsFromContext(r.Context())
 		if !ok || claims == nil {
 			problem.Write(w, http.StatusUnauthorized, "unauthorized",
-				"Missing or invalid session", r.URL.Path)
+				"Missing or invalid bearer token", r.URL.Path)
 			return
 		}
 		if !IsServerAdminFromContext(r.Context()) {
@@ -122,7 +123,7 @@ func IsAdminFromContext(ctx context.Context) bool {
 }
 
 // ContextWithClaims injects claims into a context. Used in tests to simulate an
-// authenticated caller without a real session.
+// authenticated caller without a real token.
 func ContextWithClaims(ctx context.Context, claims *KeycloakClaims) context.Context {
 	ctx = context.WithValue(ctx, claimsKey, claims)
 	ctx = context.WithValue(ctx, isAdminKey, claims.IsAdmin())

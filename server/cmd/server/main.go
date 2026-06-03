@@ -174,14 +174,23 @@ func run() error {
 		logger.Info("trusted proxy configured", slog.String("cidr", cidr))
 	}
 
-	// ── Sessions ────────────────────────────
-	// Both front doors end in a registry session behind an HttpOnly cookie.
-	sessions := authpkg.NewSessionManager(db, authpkg.SessionConfig{
-		CookieName: cfg.Auth.SessionCookieName,
-		TTL:        cfg.Auth.SessionTTL,
-		Secure:     cfg.Auth.SessionCookieSecure,
-		SameSite:   authpkg.ParseSameSite(cfg.Auth.SessionCookieSameSite),
-	})
+	// ── Token authority + refresh ───────────────────────────────────────────
+	// Both front doors mint a registry-issued access token (Ed25519 JWT) and a
+	// rotating refresh token. The registry is the single token authority — no
+	// cookie, no multi-issuer validation.
+	tokenIssuer := cfg.HTTP.PublicBaseURL
+	if tokenIssuer == "" {
+		tokenIssuer = "ai-registry"
+	}
+	tokenAuth, generatedKey, err := authpkg.NewTokenAuthority(
+		cfg.Auth.JWTSigningKey, cfg.Auth.JWTSigningSeed, tokenIssuer, cfg.Auth.AccessTokenTTL)
+	if err != nil {
+		return fmt.Errorf("initialising token authority: %w", err)
+	}
+	if generatedKey {
+		logger.Warn("no signing key configured; generated an ephemeral key — tokens will not survive a restart and cannot be verified by other replicas. Set JWT_SIGNING_KEY (PEM) or JWT_SIGNING_SEED (secret string) in any real deployment.")
+	}
+	refreshMgr := authpkg.NewRefreshManager(db, cfg.Auth.RefreshTokenTTL)
 	if cfg.Auth.LocalLoginEnabled {
 		logger.Info("local login enabled")
 	}
@@ -205,6 +214,9 @@ func run() error {
 			Scopes:          cfg.Auth.OIDCScopes,
 			JWKSURLOverride: cfg.Auth.OIDCJWKSUrl,
 			InternalURL:     cfg.Auth.OIDCInternalURL,
+			GroupsClaim:     cfg.Auth.GroupsClaim,
+			RolesClaim:      cfg.Auth.RolesClaim,
+			AdminRole:       cfg.Auth.AdminRole,
 		})
 		if err != nil {
 			return fmt.Errorf("initialising OIDC broker: %w", err)
@@ -222,7 +234,8 @@ func run() error {
 		TrustedProxy:       trustedProxy,
 		PublicRateLimitRPM: cfg.HTTP.PublicRateLimitRPM,
 		PublicBaseURL:      cfg.HTTP.PublicBaseURL,
-		Sessions:           sessions,
+		Tokens:             tokenAuth,
+		Refresh:            refreshMgr,
 		OIDC:               oidcBroker,
 		LocalLoginEnabled:  cfg.Auth.LocalLoginEnabled,
 		OIDCEnabled:        oidcEnabled,

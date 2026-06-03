@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuthClient } from '@/lib/api-client'
+import { usePublisher } from '@/auth/PublisherContext'
+import { usePermissions } from '@/auth/useMe'
+import { authFetch } from '@/auth/tokens'
 
 const AUTH_SCHEME_OPTIONS = [
   { value: 'Bearer', label: 'Bearer (JWT / OAuth 2.0 access token)' },
@@ -42,12 +45,12 @@ export default function AdminAgentNew() {
 
   const api = useAuthClient()
 
-  const { data: publishersData } = useQuery({
-    queryKey: ['publishers'],
-    queryFn: () => api.GET('/api/v1/publishers', { params: { query: { limit: 100 } } }).then(r => r.data),
-  })
-
-  const publishers = publishersData?.items ?? []
+  // Only offer publishers the caller can author on — derived from their grants
+  // (GET /api/v1/me, via PublisherContext) so the dropdown cannot drift from the
+  // server's RBAC. A Server Admin sees every publisher; a member only theirs.
+  const { publishers: scopedPublishers } = usePublisher()
+  const perms = usePermissions()
+  const publishers = scopedPublishers.filter((p) => perms.canEdit(p.slug))
 
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -96,9 +99,8 @@ export default function AdminAgentNew() {
       const defaultInputModes = MODE_VALUES.filter((v) => formData.get(`input_mode_${v}`) === 'on')
       const defaultOutputModes = MODE_VALUES.filter((v) => formData.get(`output_mode_${v}`) === 'on')
 
-      const versionRes = await fetch(`/api/v1/agents/${ns}/${slug}/versions`, {
+      const versionRes = await authFetch(`/api/v1/agents/${ns}/${slug}/versions`, {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -119,9 +121,8 @@ export default function AdminAgentNew() {
       }
 
       if (formData.get('publish') === 'on') {
-        await fetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
+        await authFetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
           method: 'POST',
-          credentials: 'include',
         })
       }
 
@@ -142,7 +143,7 @@ export default function AdminAgentNew() {
   }
 
   return (
-    <div className="space-y-6 max-w-lg mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto">
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Link to="/admin/agents" className="flex items-center gap-1 hover:text-foreground transition-colors">
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
@@ -188,7 +189,7 @@ export default function AdminAgentNew() {
                 </SelectTrigger>
                 <SelectContent>
                   {publishers.map((p) => (
-                    <SelectItem key={p.id} value={p.slug}>
+                    <SelectItem key={p.slug} value={p.slug}>
                       {p.slug} — {p.name}
                     </SelectItem>
                   ))}

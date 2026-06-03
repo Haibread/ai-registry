@@ -75,11 +75,14 @@ func TestAllWriteRoutesRequireAdmin(t *testing.T) {
 		// reports. List and Patch on /reports remain admin-only.
 		"POST /api/v1/reports": "public report submission",
 
-		// Auth front doors cannot themselves require a session.
-		// Login is rate-limited + lockout-protected; logout only
-		// clears the cookie.
-		"POST /api/v1/auth/login":  "public local login (opens a session)",
-		"POST /api/v1/auth/logout": "public logout (clears the session cookie)",
+		// Auth front doors cannot themselves require a token. Login is
+		// rate-limited + lockout-protected; refresh rotates a refresh token;
+		// exchange swaps the OIDC one-time handoff code; logout revokes a
+		// refresh token.
+		"POST /api/v1/auth/login":         "public local login (mints a token pair)",
+		"POST /api/v1/auth/refresh":       "public token refresh (rotates the refresh token)",
+		"POST /api/v1/auth/logout":        "public logout (revokes the refresh token)",
+		"POST /api/v1/auth/oidc/exchange": "public OIDC handoff-code exchange",
 	}
 
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
@@ -191,7 +194,9 @@ func TestPublicWriteRoutesBypassAdmin(t *testing.T) {
 		"POST /api/v1/agents/{namespace}/{slug}/copy",
 		"POST /api/v1/reports",
 		"POST /api/v1/auth/login",
+		"POST /api/v1/auth/refresh",
 		"POST /api/v1/auth/logout",
+		"POST /api/v1/auth/oidc/exchange",
 	}
 
 	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{

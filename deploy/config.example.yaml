@@ -82,19 +82,20 @@ auth:
   # pending changes on any publisher. Deprecated in favour of managing the
   # group + grant via the API.
   reviewer_group: "registry-reviewers"
-  # Local email+password login. Default true so the registry is
-  # usable without an IdP. Both front doors end in a registry session cookie —
-  # no token-signing key is involved. The bootstrap admin PASSWORD is a
-  # credential and is intentionally NOT settable here — supply it via
-  # AUTH_BOOTSTRAP_ADMIN_PASSWORD (env / secret only).
+  # OIDC id_token claim paths the broker maps groups + roles from, at login.
+  oidc_roles_claim: "realm_access.roles"
+  oidc_admin_role: "admin"
+  # Local email+password login. Default true so the registry is usable without an
+  # IdP. Both front doors mint a registry-issued token pair (no cookie). The
+  # bootstrap admin PASSWORD is a credential and is intentionally NOT settable
+  # here — supply it via AUTH_BOOTSTRAP_ADMIN_PASSWORD (env / secret only).
   local_login: true
   # Email of the bootstrap Server Admin seeded on first boot. The email is not
   # a secret; the matching AUTH_BOOTSTRAP_ADMIN_PASSWORD must be set via env.
   # Leave empty to skip bootstrap seeding.
   bootstrap_admin_email: ""
-  # Registry session cookie. Both front doors end in this
-  # HttpOnly cookie. session_secure must be false for local plain-HTTP dev.
-  session_cookie_name: "ai_registry_session"
-  session_ttl: "24h"
-  session_secure: true
-  session_samesite: "lax"
+  # Registry-issued bearer tokens. Both front doors mint a short access token and
+  # a rotating refresh token. The Ed25519 signing key (JWT_SIGNING_KEY) is a
+  # credential and is intentionally NOT settable here — supply it via env / secret.
+  access_token_ttl: "15m"
+  refresh_token_ttl: "12h"

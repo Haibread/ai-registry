@@ -1,14 +1,17 @@
 // AuthContext is the single source of auth *state* and the login/logout actions.
-// The browser holds no token — the registry
-// session is an HttpOnly cookie — so "am I signed in?" is answered by a
-// GET /api/v1/me fetch held here in state (not react-query), which keeps the
-// global <Header> off the query layer. `usePermissions` (admin role gating)
-// reads this `me`. OIDC is brokered server-side, so org sign-in is just a
-// redirect to /api/v1/auth/oidc/login.
+// Auth is a registry-issued bearer token (access + refresh): the SPA holds the
+// access token in memory and the refresh token in storage (see auth/tokens.ts),
+// and attaches `Authorization: Bearer …` on every API call. "Am I signed in?"
+// is answered by a GET /api/v1/me fetch held here in state (not react-query),
+// which keeps the global <Header> off the query layer. `usePermissions` (admin
+// role gating) reads this `me`. OIDC is brokered server-side: org sign-in is a
+// redirect to /api/v1/auth/oidc/login; the callback bounces back with a one-time
+// handoff code in the URL fragment, which we exchange for tokens on load.
 /* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { components } from '@/lib/schema'
+import { authFetch, clearTokens, getAccessToken, getRefreshToken, refreshAccessToken, setTokens } from '@/auth/tokens'
 
 export type Me = components['schemas']['Me']
 
@@ -33,16 +36,71 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null)
 
+// fetchMe resolves the caller's identity using the bearer token (authFetch
+// attaches it and refreshes once on a 401). Returns null when signed out.
 async function fetchMe(): Promise<Me | null> {
   try {
-    const res = await fetch('/api/v1/me', {
-      credentials: 'include',
-      headers: { accept: 'application/json' },
-    })
+    const res = await authFetch('/api/v1/me', { headers: { accept: 'application/json' } })
     if (!res.ok) return null
     return (await res.json()) as Me
   } catch {
     return null
+  }
+}
+
+// bootstrapAuth runs the one-time boot sequence (consume an OIDC handoff code,
+// else reuse/refresh the stored token) and resolves the caller's identity. It is
+// memoised into a single shared promise so React StrictMode's double-invoke of
+// the mount effect (and any remount) reuses the same in-flight work instead of
+// racing a second run. Without this, the first run consumes the single-use
+// handoff code but is cancelled, while the second run finds the code already
+// stripped, fetches /me with no token yet, and wins setMe(null) — leaving valid
+// tokens in storage but the UI signed out. Mirrors the refreshInFlight singleton
+// in auth/tokens.ts.
+let bootInFlight: Promise<Me | null> | null = null
+function bootstrapAuth(): Promise<Me | null> {
+  if (!bootInFlight) {
+    bootInFlight = (async () => {
+      try {
+        if (!(await consumeOIDCHandoff())) {
+          if (!getAccessToken() && getRefreshToken()) await refreshAccessToken()
+        }
+        return await fetchMe()
+      } finally {
+        // Reset once settled. StrictMode's two effect runs both grab this promise
+        // synchronously on mount, well before it resolves, so they still share one
+        // run; clearing it afterwards just lets a genuine remount re-resolve /me
+        // (the handoff code is already spent, so consumeOIDCHandoff is a no-op).
+        bootInFlight = null
+      }
+    })()
+  }
+  return bootInFlight
+}
+
+// consumeOIDCHandoff looks for the one-time code the OIDC callback left in the
+// URL fragment (`#code=…`), exchanges it for tokens, and strips it from the URL.
+// Returns true when a code was successfully exchanged.
+async function consumeOIDCHandoff(): Promise<boolean> {
+  if (!window.location.hash.startsWith('#')) return false
+  const params = new URLSearchParams(window.location.hash.slice(1))
+  const code = params.get('code')
+  if (!code) return false
+
+  // Strip the fragment regardless of outcome so a reload can't replay it.
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  try {
+    const res = await fetch('/api/v1/auth/oidc/exchange', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+    if (!res.ok) return false
+    const body = (await res.json()) as { accessToken: string; refreshToken: string }
+    setTokens(body.accessToken, body.refreshToken)
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -70,19 +128,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => {
         if (!cancelled) setConfigLoading(false)
       })
-    fetchMe().then((m) => {
+
+    // Bootstrap: consume an OIDC handoff code if present; otherwise reuse the
+    // stored access token (authFetch refreshes it on the first 401). Only spend
+    // the single-use refresh token up front when there is no access token at all
+    // — refreshing on every load would needlessly burn it. Memoised so the
+    // single-use handoff code survives StrictMode's double-invoke (see
+    // bootstrapAuth).
+    void bootstrapAuth().then((m) => {
       if (!cancelled) {
         setMe(m)
         setAuthLoading(false)
       }
     })
+
     return () => {
       cancelled = true
     }
   }, [])
 
-  // A 401 on any request (from useAuthClient) dispatches this; re-check the
-  // session so the UI flips to signed-out without a manual reload.
+  // A 401 on any request (from useAuthClient) dispatches this; re-check identity
+  // so the UI flips to signed-out without a manual reload.
   useEffect(() => {
     const onUnauthorized = () => {
       void refresh()
@@ -100,7 +166,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoginError(null)
       const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email, password }),
       })
@@ -115,19 +180,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         throw new Error(detail)
       }
+      const body = (await res.json()) as { accessToken: string; refreshToken: string }
+      setTokens(body.accessToken, body.refreshToken)
       await refresh()
     },
     [refresh],
   )
 
-  const logout = useCallback((): Promise<void> => {
-    // Full navigation (not a background fetch): the server revokes the registry
-    // session and, for an OIDC session, 302s through the IdP's RP-initiated
-    // logout so the Keycloak SSO session ends too — otherwise re-clicking
-    // "Sign in" would silently re-authenticate. A fetch could not follow that
-    // cross-origin redirect. Local sessions just land back on the SPA.
-    window.location.href = '/api/v1/auth/logout'
-    return Promise.resolve()
+  const logout = useCallback(async (): Promise<void> => {
+    // Revoke the refresh token server-side. For an OIDC session the server
+    // returns the IdP's RP-initiated logout URL so the upstream SSO session ends
+    // too — otherwise re-clicking "Sign in" would silently re-authenticate.
+    const refreshToken = getRefreshToken()
+    let oidcLogoutUrl = ''
+    try {
+      const res = await fetch('/api/v1/auth/logout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      })
+      if (res.ok) {
+        const body = (await res.json().catch(() => null)) as { oidcLogoutUrl?: string } | null
+        oidcLogoutUrl = body?.oidcLogoutUrl ?? ''
+      }
+    } catch {
+      /* best-effort: clear locally even if the revoke call fails */
+    }
+    clearTokens()
+    setMe(null)
+    if (oidcLogoutUrl) window.location.href = oidcLogoutUrl
   }, [])
 
   return (

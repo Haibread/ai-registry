@@ -9,18 +9,13 @@ import (
 // If allowedOrigins is empty, CORS headers are not set (defaults to deny).
 // Pass []string{"*"} only for fully public APIs; the registry uses an explicit list.
 //
-// Auth is a Secure; HttpOnly session cookie, and the SPA fetches with
-// credentials: 'include'. For a cross-origin SPA deployment to work, the browser
-// requires Access-Control-Allow-Credentials: true together with an exact
-// (non-wildcard) Allow-Origin echo. We therefore set Allow-Credentials only for
-// an explicitly allow-listed origin.
-//
-// A wildcard ("*") is incompatible with credentials by spec, so when "*" is
-// configured we emit "Allow-Origin: *" WITHOUT Allow-Credentials: caches can't
-// fingerprint per-origin responses and no credentialed (cookie) request can
-// succeed cross-origin — wildcard is for an unauthenticated public mirror only.
-// Cross-site state-changing requests are additionally blocked by
-// EnforceSameOrigin regardless of CORS.
+// Auth is a bearer token in the Authorization header (no cookie), so the SPA
+// does not need credentialed CORS. We still echo an exact (non-wildcard)
+// Allow-Origin for an allow-listed origin and set Allow-Credentials there for
+// compatibility; a wildcard ("*") emits "Allow-Origin: *" without
+// Allow-Credentials, suitable for an unauthenticated public mirror. Because the
+// bearer header is never sent ambiently, there is no CSRF surface to guard
+// beyond CORS and the JSON content-type requirement.
 func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	wildcard := slices.Contains(allowedOrigins, "*")
 	return func(next http.Handler) http.Handler {

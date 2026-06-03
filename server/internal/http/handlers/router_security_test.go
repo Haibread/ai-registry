@@ -17,23 +17,21 @@ import (
 )
 
 // buildSecureRouter builds the real production router backed by testDB plus a
-// session manager, and returns a helper that opens a session for a Server-Admin
-// or a plain (no-grants) user and returns the session cookie. Auth is the
-// session-cookie model — there are no bearer tokens.
-func buildSecureRouter(t *testing.T) (http.Handler, func(isAdmin bool) *http.Cookie) {
+// token authority, and returns a helper that mints a bearer access token for a
+// Server-Admin or a plain (no-grants) user. Auth is the bearer-token model —
+// there is no cookie.
+func buildSecureRouter(t *testing.T) (http.Handler, func(isAdmin bool) string) {
 	t.Helper()
-	sm := auth.NewSessionManager(testDB, auth.SessionConfig{
-		CookieName: "ai_registry_session",
-		TTL:        time.Hour,
-	})
+	ta := testAuthority(t)
 	router := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
 		Logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
 		DB:                testDB,
-		Sessions:          sm,
+		Tokens:            ta,
+		Refresh:           auth.NewRefreshManager(testDB, time.Hour),
 		LocalLoginEnabled: true,
 	})
 	ctx := context.Background()
-	cookieFor := func(isAdmin bool) *http.Cookie {
+	tokenFor := func(isAdmin bool) string {
 		prefix := "viewer-"
 		if isAdmin {
 			prefix = "admin-"
@@ -45,20 +43,22 @@ func buildSecureRouter(t *testing.T) (http.Handler, func(isAdmin bool) *http.Coo
 		if err != nil {
 			t.Fatalf("create user: %v", err)
 		}
-		token, err := sm.Issue(ctx, auth.IssueParams{UserID: u.ID, AuthMethod: "local"})
+		token, _, err := ta.Mint(auth.MintParams{
+			UserID: u.ID, Email: u.Email, SrvAdmin: isAdmin, AuthMethod: "local",
+		})
 		if err != nil {
-			t.Fatalf("issue session: %v", err)
+			t.Fatalf("mint token: %v", err)
 		}
-		return sm.Cookie(token)
+		return token
 	}
-	return router, cookieFor
+	return router, tokenFor
 }
 
-func fireSecure(router http.Handler, method, path string, cookie *http.Cookie) *httptest.ResponseRecorder {
+func fireSecure(router http.Handler, method, path, token string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, bytes.NewBufferString("{}"))
 	req.Header.Set("Content-Type", "application/json")
-	if cookie != nil {
-		req.AddCookie(cookie)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -74,7 +74,7 @@ func fireSecure(router http.Handler, method, path string, cookie *http.Cookie) *
 // per-handler role tests.
 func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 	resetTables(t)
-	router, cookieFor := buildSecureRouter(t)
+	router, tokenFor := buildSecureRouter(t)
 
 	routes := []struct{ method, path string }{
 		{http.MethodPost, "/api/v1/publishers"},
@@ -93,28 +93,28 @@ func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 	for _, route := range routes {
 		route := route
 		t.Run(route.method+" "+route.path, func(t *testing.T) {
-			// Case 1: No session → 401.
-			if rec := fireSecure(router, route.method, route.path, nil); rec.Code != http.StatusUnauthorized {
-				t.Errorf("no session: got %d, want 401\nbody: %s", rec.Code, rec.Body.String())
+			// Case 1: No token → 401.
+			if rec := fireSecure(router, route.method, route.path, ""); rec.Code != http.StatusUnauthorized {
+				t.Errorf("no token: got %d, want 401\nbody: %s", rec.Code, rec.Body.String())
 			}
-			// Case 2: Non-admin session → 403.
-			if rec := fireSecure(router, route.method, route.path, cookieFor(false)); rec.Code != http.StatusForbidden {
-				t.Errorf("non-admin session: got %d, want 403\nbody: %s", rec.Code, rec.Body.String())
+			// Case 2: Non-admin token → 403.
+			if rec := fireSecure(router, route.method, route.path, tokenFor(false)); rec.Code != http.StatusForbidden {
+				t.Errorf("non-admin token: got %d, want 403\nbody: %s", rec.Code, rec.Body.String())
 			}
-			// Case 3: Server-Admin session → neither 401 nor 403.
-			rec := fireSecure(router, route.method, route.path, cookieFor(true))
+			// Case 3: Server-Admin token → neither 401 nor 403.
+			rec := fireSecure(router, route.method, route.path, tokenFor(true))
 			if rec.Code == http.StatusUnauthorized || rec.Code == http.StatusForbidden {
-				t.Errorf("admin session: got %d, want neither 401 nor 403\nbody: %s", rec.Code, rec.Body.String())
+				t.Errorf("admin token: got %d, want neither 401 nor 403\nbody: %s", rec.Code, rec.Body.String())
 			}
 		})
 	}
 }
 
 // TestRouter_MetricsUnauthenticated verifies that /metrics is scrapeable
-// without a session. Prometheus scrapes it in-cluster via the ClusterIP
-// Service and cannot present the registry session cookie, so gating it behind
-// RequireAdmin (as it once was) silently broke metric collection on k8s. The
-// endpoint is not routed by the shipped Ingress, so it is not public.
+// without auth. Prometheus scrapes it in-cluster via the ClusterIP Service and
+// cannot present a bearer token, so gating it behind RequireAdmin (as it once
+// was) silently broke metric collection on k8s. The endpoint is not routed by
+// the shipped Ingress, so it is not public.
 func TestRouter_MetricsUnauthenticated(t *testing.T) {
 	resetTables(t)
 	router, _ := buildSecureRouter(t)

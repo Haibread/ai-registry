@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
-// Tests for the useAuthClient onResponse middleware: a 401
-// on any request other than /me dispatches `auth:unauthorized` so AuthContext
-// re-checks the session and the UI flips to signed-out. /me is skipped
-// (AuthContext owns that fetch). Auth rides in the session cookie — no header.
+// Tests for the useAuthClient onResponse middleware: a 401 on any request other
+// than /me dispatches `auth:unauthorized` so AuthContext re-checks identity and
+// the UI flips to signed-out. /me is skipped (AuthContext owns that fetch). Auth
+// rides in the Authorization bearer header (attached by authFetch).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'

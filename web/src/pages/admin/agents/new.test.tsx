@@ -10,6 +10,18 @@ vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token', clearSession: vi.fn() }),
 }))
 
+// The publisher dropdown is scoped to what the caller can author on: the list
+// comes from PublisherContext (derived from grants) and is filtered by
+// usePermissions().canEdit. Both are mocked so the page renders standalone.
+let mockPublishers: { slug: string; name: string; roles: string[] }[]
+let mockCanEdit: (slug: string | undefined) => boolean
+vi.mock('@/auth/PublisherContext', () => ({
+  usePublisher: () => ({ publishers: mockPublishers }),
+}))
+vi.mock('@/auth/useMe', () => ({
+  usePermissions: () => ({ canEdit: mockCanEdit }),
+}))
+
 const mockGET = vi.fn()
 const mockPOST = vi.fn()
 vi.mock('@/lib/api-client', () => ({
@@ -46,9 +58,8 @@ async function selectNamespace() {
 describe('AdminAgentNew', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGET.mockResolvedValue({
-      data: { items: [{ id: 'pub-1', slug: 'acme', name: 'Acme' }] },
-    })
+    mockPublishers = [{ slug: 'acme', name: 'Acme', roles: ['editor'] }]
+    mockCanEdit = () => true
     mockPOST.mockResolvedValue({ data: { id: 'agent-1' }, error: undefined })
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -73,7 +84,6 @@ describe('AdminAgentNew', () => {
 
   it('submits POST with expected body for create-agent flow', async () => {
     const { container } = renderPage()
-    await waitFor(() => expect(mockGET).toHaveBeenCalled())
 
     await selectNamespace()
 
@@ -103,7 +113,6 @@ describe('AdminAgentNew', () => {
 
   it('creates a version via fetch when version + endpoint_url are supplied', async () => {
     const { container } = renderPage()
-    await waitFor(() => expect(mockGET).toHaveBeenCalled())
 
     await selectNamespace()
     fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'a1' } })
@@ -125,7 +134,6 @@ describe('AdminAgentNew', () => {
   it('shows error alert when POST returns an error', async () => {
     mockPOST.mockResolvedValueOnce({ data: undefined, error: { title: 'Slug taken' } })
     const { container } = renderPage()
-    await waitFor(() => expect(mockGET).toHaveBeenCalled())
 
     await selectNamespace()
     fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'dup' } })
@@ -135,5 +143,23 @@ describe('AdminAgentNew', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/slug taken/i)
+  })
+
+  it('lists only publishers the caller can author on', async () => {
+    // Caller holds a grant on both publishers but can only author on acme
+    // (viewer-only on globex). The dropdown must hide globex.
+    mockPublishers = [
+      { slug: 'acme', name: 'Acme', roles: ['editor'] },
+      { slug: 'globex', name: 'Globex', roles: ['viewer'] },
+    ]
+    mockCanEdit = (slug) => slug === 'acme'
+    renderPage()
+
+    const trigger = screen.getByLabelText(/namespace/i)
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.click(trigger)
+
+    expect(await screen.findByRole('option', { name: /acme/i })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /globex/i })).not.toBeInTheDocument()
   })
 })

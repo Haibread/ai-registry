@@ -352,7 +352,7 @@ export default function MCPDetailPage() {
           </TabsContent>
 
           {/* ── Installation Tab ── */}
-          <TabsContent value="installation" className="mt-6 space-y-6 max-w-3xl">
+          <TabsContent value="installation" className="mt-6 space-y-6 max-w-3xl mx-auto">
             {lv?.packages && lv.packages.length > 0 ? (
               <>
                 <div className="space-y-3">

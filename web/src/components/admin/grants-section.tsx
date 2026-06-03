@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthClient } from '@/lib/api-client'
+import { usePermissions } from '@/auth/useMe'
 
 type PrincipalType = 'user' | 'group'
 type Role = 'viewer' | 'editor' | 'reviewer' | 'admin'
@@ -27,7 +28,14 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
   const queryClient = useQueryClient()
   const scopeKey = publisherSlug ?? 'global'
 
-  const [principalType, setPrincipalType] = useState<PrincipalType>('group')
+  // Group grants bind an IdP claim to a role, so the server reserves them for
+  // Server Admins; publisher Admins manage only per-user grants. Gate the UI to
+  // match — the server enforces the same rule regardless.
+  const { isServerAdmin } = usePermissions()
+  const canManageGroups = isServerAdmin
+
+  const [principalTypeState, setPrincipalType] = useState<PrincipalType>('group')
+  const principalType: PrincipalType = canManageGroups ? principalTypeState : 'user'
   const [principalId, setPrincipalId] = useState('')
   const [role, setRole] = useState<Role>('editor')
 
@@ -107,9 +115,10 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
             id="principal-type"
             className={selectClass}
             value={principalType}
+            disabled={!canManageGroups}
             onChange={(e) => { setPrincipalType(e.target.value as PrincipalType); setPrincipalId('') }}
           >
-            <option value="group">Group</option>
+            {canManageGroups && <option value="group">Group</option>}
             <option value="user">User</option>
           </select>
         </div>
@@ -141,6 +150,12 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
         </Button>
       </form>
 
+      {!canManageGroups && (
+        <p className="text-sm text-muted-foreground">
+          Group grants are managed by your instance admin.
+        </p>
+      )}
+
       {grants.length === 0 ? (
         <p className="text-sm text-muted-foreground py-2">No grants{publisherSlug ? ' on this publisher' : ''} yet.</p>
       ) : (
@@ -163,15 +178,17 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
                   {g.source === 'config' && <Badge variant="muted" className="ml-1">config</Badge>}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Revoke ${g.role} from ${g.principal_label || g.principal_id}`}
-                    disabled={deleteGrant.isPending}
-                    onClick={() => deleteGrant.mutate(g.id)}
-                  >
-                    <X className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  {(g.principal_type !== 'group' || canManageGroups) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Revoke ${g.role} from ${g.principal_label || g.principal_id}`}
+                      disabled={deleteGrant.isPending}
+                      onClick={() => deleteGrant.mutate(g.id)}
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
