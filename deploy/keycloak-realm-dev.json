@@ -36,6 +36,14 @@
     {
       "name": "registry-reviewers",
       "path": "/registry-reviewers"
+    },
+    {
+      "name": "genai-test-authors",
+      "path": "/genai-test-authors"
+    },
+    {
+      "name": "genai-test-reviewers",
+      "path": "/genai-test-reviewers"
     }
   ],
   "clients": [
@@ -274,6 +282,46 @@
       "realmRoles": [],
       "groups": [
         "/registry-reviewers"
+      ],
+      "clientRoles": {}
+    },
+    {
+      "username": "genai-author@example.com",
+      "email": "genai-author@example.com",
+      "firstName": "GenAI Test",
+      "lastName": "Author",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "genai-author",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [],
+      "groups": [
+        "/genai-test-authors"
+      ],
+      "clientRoles": {}
+    },
+    {
+      "username": "genai-reviewer@example.com",
+      "email": "genai-reviewer@example.com",
+      "firstName": "GenAI Test",
+      "lastName": "Reviewer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "genai-reviewer",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [],
+      "groups": [
+        "/genai-test-reviewers"
       ],
       "clientRoles": {}
     }
