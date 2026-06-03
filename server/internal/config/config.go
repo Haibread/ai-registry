@@ -134,7 +134,9 @@ type AuthConfig struct {
 	AccessTokenTTL time.Duration
 
 	// RefreshTokenTTL is how long a refresh token is valid before the user must
-	// re-authenticate. Default 720h (30 days).
+	// re-authenticate. Default 12h. Kept short because OIDC claim group
+	// memberships are snapshotted at login and only re-read on a fresh login,
+	// so this bounds how long a revoked group membership keeps conferring roles.
 	RefreshTokenTTL time.Duration
 }
 
@@ -276,7 +278,7 @@ func defaultFileConfig() fileConfig {
 			ReviewerGroup:   "registry-reviewers",
 			LocalLogin:      true,
 			AccessTokenTTL:  "15m",
-			RefreshTokenTTL: "720h",
+			RefreshTokenTTL: "12h",
 		},
 	}
 }
@@ -311,7 +313,7 @@ func Load(configFile string) (*Config, error) {
 	writeTimeout := parseDurationDefault(fc.HTTP.WriteTimeout, 30*time.Second)
 	idleTimeout := parseDurationDefault(fc.HTTP.IdleTimeout, 120*time.Second)
 	accessTokenTTL := parseDurationDefault(fc.Auth.AccessTokenTTL, 15*time.Minute)
-	refreshTokenTTL := parseDurationDefault(fc.Auth.RefreshTokenTTL, 720*time.Hour)
+	refreshTokenTTL := parseDurationDefault(fc.Auth.RefreshTokenTTL, 12*time.Hour)
 
 	// Build final config: env vars win over file values.
 	cfg := &Config{

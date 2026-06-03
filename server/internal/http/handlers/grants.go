@@ -6,10 +6,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
+
+// groupGrantMsg explains why a publisher Admin cannot mutate a group grant: a
+// group grant matches an IdP claim slug, so its membership is controlled outside
+// the registry. Only a Server Admin may wire a group (claim) to a role.
+const groupGrantMsg = "group grants are managed by a Server Admin; publisher Admins may only grant roles to individual users"
 
 // GrantHandlers serves the role-grant management endpoints.
 // Per-publisher grants are gated by publisher Admin (or Server Admin) at the

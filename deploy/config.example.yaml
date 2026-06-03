@@ -98,4 +98,4 @@ auth:
   # a rotating refresh token. The Ed25519 signing key (JWT_SIGNING_KEY) is a
   # credential and is intentionally NOT settable here — supply it via env / secret.
   access_token_ttl: "15m"
-  refresh_token_ttl: "720h"
+  refresh_token_ttl: "12h"

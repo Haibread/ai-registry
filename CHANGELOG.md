@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Changed
+
+- **Default `REFRESH_TOKEN_TTL` lowered from `720h` (30 days) to `12h`.** OIDC
+  claim group memberships are snapshotted at login and only re-read on a fresh
+  login, so the refresh-token lifetime bounds how long a group removed in the
+  IdP keeps conferring roles in the registry. A shorter default tightens that
+  revocation window. Operators who relied on long-lived sessions can restore the
+  old behaviour by setting `REFRESH_TOKEN_TTL=720h`.
+
 ## v0.4.0-rc1 — 2026-06-02
 
 ### 📡 OTLP export for all three signals (metrics + logs, not just traces)

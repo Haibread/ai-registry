@@ -23,10 +23,10 @@ type RefreshManager struct {
 }
 
 // NewRefreshManager builds a RefreshManager, defaulting a non-positive TTL to
-// 30 days.
+// 12h.
 func NewRefreshManager(s RefreshStore, ttl time.Duration) *RefreshManager {
 	if ttl <= 0 {
-		ttl = 720 * time.Hour
+		ttl = 12 * time.Hour
 	}
 	return &RefreshManager{store: s, ttl: ttl}
 }
