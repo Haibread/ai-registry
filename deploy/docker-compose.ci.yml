@@ -12,17 +12,22 @@ services:
   server:
     # E2E authenticates the fixture users (admin/author/reviewer/user) via the
     # brokered OIDC flow — they live in Keycloak — and exercises the local
-    # email+password front door for the local-login spec. Both end in the
-    # registry session cookie, which Playwright captures via storageState.
-    # No bearer token, no localStorage.
+    # email+password front door for the local-login spec. Both mint a registry
+    # token pair; Playwright stores the refresh token in localStorage via the
+    # global setup project.
     environment:
       # Local front door + a throwaway bootstrap admin for the local-login spec.
       AUTH_LOCAL_LOGIN_ENABLED: "true"
       AUTH_BOOTSTRAP_ADMIN_EMAIL: ${E2E_LOCAL_ADMIN_EMAIL}
       AUTH_BOOTSTRAP_ADMIN_PASSWORD: ${E2E_LOCAL_ADMIN_PASSWORD}
-      # Plain-HTTP CI: the session cookie must not be Secure or the browser
-      # drops it and every authenticated request looks signed-out.
-      AUTH_SESSION_SECURE: "false"
+      # A fixed signing seed keeps tokens stable across the run (CI value, not a
+      # secret).
+      JWT_SIGNING_SEED: ${E2E_JWT_SIGNING_SEED:-ci-e2e-signing-seed-do-not-use-in-prod-0001}
+      # The e2e suite shares one storageState (access token) across all specs.
+      # A long access TTL keeps it valid for the whole run so the SPA never has
+      # to spend the single-use refresh token (rotating it would revoke the
+      # lineage and break subsequent specs).
+      ACCESS_TOKEN_TTL: 24h
       # Server-side OIDC broker against the dev realm's confidential client.
       # The browser reaches Keycloak at localhost:8080 (front-channel); the
       # server reaches it at keycloak:8080 for discovery/token/JWKS.

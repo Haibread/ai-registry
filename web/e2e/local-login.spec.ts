@@ -5,8 +5,9 @@
  * the registry's own login path that does not involve the OIDC IdP. Drives
  * the /login form against the live stack, where the server is booted with
  * AUTH_LOCAL_LOGIN_ENABLED=true and a seeded bootstrap Server Admin (see
- * docker-compose.ci.yml + .github/workflows/e2e.yml). The form POST sets the
- * registry session cookie — there is no token, no signing key.
+ * docker-compose.ci.yml + .github/workflows/e2e.yml). The form POST mints a
+ * registry token pair; the SPA stores the refresh token and attaches the access
+ * token as a bearer header.
  *
  * Unlike the other admin specs this one does NOT use a stored session — it
  * authenticates through the local form itself, which is the whole point.
@@ -33,11 +34,11 @@ test.describe('Local email + password login', () => {
     await page.fill('#password', ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
 
-    // loginLocal sets the session cookie and navigates to /admin.
+    // loginLocal stores the token pair and navigates to /admin.
     await page.waitForURL(/\/admin(?:$|\/|\?)/, { timeout: 20_000 })
 
-    // Prove the session cookie actually authorizes an API-backed admin page:
-    // /admin/users fetches /api/v1/users. A rejected session would surface a
+    // Prove the bearer token actually authorizes an API-backed admin page:
+    // /admin/users fetches /api/v1/users. A rejected token would surface a
     // 401 (auth:unauthorized → signed-out) instead of the Users heading.
     await page.goto('/admin/users')
     await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible({ timeout: 15_000 })

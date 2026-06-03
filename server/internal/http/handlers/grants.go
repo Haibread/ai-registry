@@ -6,10 +6,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
+
+// groupGrantMsg explains why a publisher Admin cannot mutate a group grant: a
+// group grant matches an IdP claim slug, so its membership is controlled outside
+// the registry. Only a Server Admin may wire a group (claim) to a role.
+const groupGrantMsg = "group grants are managed by a Server Admin; publisher Admins may only grant roles to individual users"
 
 // GrantHandlers serves the role-grant management endpoints.
 // Per-publisher grants are gated by publisher Admin (or Server Admin) at the
@@ -128,6 +134,12 @@ func (h *GrantHandlers) CreatePublisherGrant(w http.ResponseWriter, r *http.Requ
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", msg, r.URL.Path)
 		return
 	}
+	// Group grants bind an IdP claim to a role; only a Server Admin may create
+	// them. A publisher Admin is limited to per-user grants on their publisher.
+	if domain.PrincipalType(body.PrincipalType) == domain.PrincipalGroup && !auth.IsServerAdminFromContext(r.Context()) {
+		problem.Write(w, http.StatusForbidden, "forbidden", groupGrantMsg, r.URL.Path)
+		return
+	}
 	ok, err := h.principalExists(r, body)
 	if err != nil {
 		internalError(w, r, err)
@@ -181,6 +193,12 @@ func (h *GrantHandlers) DeletePublisherGrant(w http.ResponseWriter, r *http.Requ
 	}
 	if err != nil {
 		internalError(w, r, err)
+		return
+	}
+	// A group grant maps an IdP claim to a role; only a Server Admin may remove
+	// it. Publisher Admins see group grants but cannot mutate them.
+	if grant.PrincipalType == domain.PrincipalGroup && !auth.IsServerAdminFromContext(r.Context()) {
+		problem.Write(w, http.StatusForbidden, "forbidden", groupGrantMsg, r.URL.Path)
 		return
 	}
 	if err := h.db.DeleteGrant(r.Context(), id); err != nil {

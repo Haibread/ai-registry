@@ -35,3 +35,47 @@ if (typeof Element !== 'undefined') {
     proto.scrollIntoView = () => {}
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// localStorage polyfill
+//
+// Node 22+ ships an experimental built-in `globalThis.localStorage` that, when
+// the runtime is started without a valid `--localstorage-file`, is a broken stub
+// whose methods are not functions. On our test runner (Node 25) it shadows
+// jsdom's Storage, so any code calling `localStorage.getItem/setItem/clear`
+// (PublisherContext, the auth token store, …) throws "is not a function".
+//
+// Install a clean in-memory Storage on both globalThis and window so bare
+// `localStorage` works deterministically regardless of the Node build. Force it
+// via defineProperty to override the read-only built-in / jsdom getter.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MemoryStorage implements Storage {
+  private store = new Map<string, string>()
+  get length(): number {
+    return this.store.size
+  }
+  clear(): void {
+    this.store.clear()
+  }
+  getItem(key: string): string | null {
+    return this.store.has(key) ? (this.store.get(key) as string) : null
+  }
+  key(index: number): string | null {
+    return Array.from(this.store.keys())[index] ?? null
+  }
+  removeItem(key: string): void {
+    this.store.delete(key)
+  }
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value))
+  }
+}
+
+{
+  const storage = new MemoryStorage()
+  Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true, writable: true })
+  if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'localStorage', { value: storage, configurable: true, writable: true })
+  }
+}

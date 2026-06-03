@@ -41,6 +41,10 @@ publishers:
     name: "Community"
     verified: false
 
+  - slug: "genai-test"
+    name: "GenAI Test"
+    verified: false
+
 # ── Groups ───────────────────────────────────────────────────────
 # Slugs MUST match the group names the IdP emits in the group-membership claim
 # (the dev Keycloak realm puts author@example.com in anthropic-core +
@@ -54,6 +58,14 @@ groups:
     name: "Anthropic Labs"
   - slug: "openai-platform"
     name: "OpenAI Platform"
+  # genai-test sandbox: separate author (Editor) and reviewer (Reviewer) groups
+  # on the genai-test publisher, so the change-approval flow can be exercised
+  # end-to-end. The dev Keycloak realm puts genai-author@example.com in
+  # genai-test-authors and genai-reviewer@example.com in genai-test-reviewers.
+  - slug: "genai-test-authors"
+    name: "GenAI Test Authors"
+  - slug: "genai-test-reviewers"
+    name: "GenAI Test Reviewers"
 
 # ── Grants ───────────────────────────────────────────────────────
 # Give the seeded groups roles on their publishers. author@example.com is in
@@ -69,6 +81,14 @@ grants:
   - group: "openai-platform"
     role: "editor"
     publisher: "openai"
+  # genai-author@example.com authors on genai-test; genai-reviewer@example.com
+  # approves. Separate groups keep the duties split (Reviewer is the sole approver).
+  - group: "genai-test-authors"
+    role: "editor"
+    publisher: "genai-test"
+  - group: "genai-test-reviewers"
+    role: "reviewer"
+    publisher: "genai-test"
 
 # ── MCP Servers ───────────────────────────────────────────────────────────────
 mcp_servers:
@@ -699,6 +719,71 @@ mcp_servers:
             transport:
               type: "http"
               url: "http://localhost:3000"
+
+  # genai-test/echo — published + public, so it shows under the genai-test
+  # publisher in the read-only browse UI.
+  - publisher: "genai-test"
+    slug: "echo"
+    name: "Echo MCP Server"
+    description: "Minimal sandbox server that echoes its input back — seed entry for the genai-test publisher."
+    repository_url: "https://github.com/genai-test/mcp-echo"
+    public: true
+    tags: ["sandbox", "example", "stdio"]
+    readme: |
+      # Echo MCP Server
+
+      A throwaway server living under the **genai-test** publisher so the
+      sandbox publisher has something to browse. Exposes a single `echo` tool.
+    versions:
+      - version: "1.0.0"
+        status: "published"
+        protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: false
+        tools:
+          - name: "echo"
+            description: "Return the input string unchanged."
+            input_schema:
+              type: "object"
+              properties:
+                text:
+                  type: "string"
+              required: ["text"]
+        packages:
+          - registry_type: "npm"
+            identifier: "@genai-test/mcp-echo"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+
+  # genai-test/scratch — draft, so genai-author can edit it and genai-reviewer
+  # can approve the first publish (exercises the change-approval flow).
+  - publisher: "genai-test"
+    slug: "scratch"
+    name: "Scratch MCP Server"
+    description: "Unpublished draft under genai-test — author edits it, reviewer approves the publish."
+    repository_url: "https://github.com/genai-test/mcp-scratch"
+    public: false
+    tags: ["sandbox", "draft"]
+    readme: |
+      # Scratch MCP Server (draft)
+
+      Sits in `draft` so a genai-test Editor can submit it and a genai-test
+      Reviewer can approve the first published version.
+    versions:
+      - version: "0.1.0"
+        status: "draft"
+        protocol_version: "2025-03-26"
+        capabilities:
+          tools:
+            listChanged: false
+        packages:
+          - registry_type: "npm"
+            identifier: "@genai-test/mcp-scratch"
+            version: "0.1.0"
+            transport:
+              type: "stdio"
 
 # ── Agents ────────────────────────────────────────────────────────────────────
 agents:

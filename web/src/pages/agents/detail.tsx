@@ -438,7 +438,7 @@ export default function AgentDetailPage() {
           </TabsContent>
 
           {/* ── Connect Tab ── */}
-          <TabsContent value="connect" className="mt-6 space-y-6 max-w-3xl">
+          <TabsContent value="connect" className="mt-6 space-y-6 max-w-3xl mx-auto">
             {lv?.authentication && lv.authentication.length > 0 && (
               <AuthGuide schemes={lv.authentication as Array<Record<string, string>>} />
             )}
