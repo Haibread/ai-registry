@@ -134,6 +134,12 @@ func (h *GrantHandlers) CreatePublisherGrant(w http.ResponseWriter, r *http.Requ
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", msg, r.URL.Path)
 		return
 	}
+	// Group grants bind an IdP claim to a role; only a Server Admin may create
+	// them. A publisher Admin is limited to per-user grants on their publisher.
+	if domain.PrincipalType(body.PrincipalType) == domain.PrincipalGroup && !auth.IsServerAdminFromContext(r.Context()) {
+		problem.Write(w, http.StatusForbidden, "forbidden", groupGrantMsg, r.URL.Path)
+		return
+	}
 	ok, err := h.principalExists(r, body)
 	if err != nil {
 		internalError(w, r, err)
@@ -187,6 +193,12 @@ func (h *GrantHandlers) DeletePublisherGrant(w http.ResponseWriter, r *http.Requ
 	}
 	if err != nil {
 		internalError(w, r, err)
+		return
+	}
+	// A group grant maps an IdP claim to a role; only a Server Admin may remove
+	// it. Publisher Admins see group grants but cannot mutate them.
+	if grant.PrincipalType == domain.PrincipalGroup && !auth.IsServerAdminFromContext(r.Context()) {
+		problem.Write(w, http.StatusForbidden, "forbidden", groupGrantMsg, r.URL.Path)
 		return
 	}
 	if err := h.db.DeleteGrant(r.Context(), id); err != nil {

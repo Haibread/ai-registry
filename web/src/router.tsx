@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { RequireAuth } from '@/auth/RequireAuth'
+import { RequireServerAdmin } from '@/auth/RequireServerAdmin'
 import HomePage from '@/pages/home'
 import ExplorePage from '@/pages/explore'
 import GettingStartedPage from '@/pages/getting-started'
@@ -90,20 +91,25 @@ export function AppRoutes() {
         <Route path="members" element={<AdminMembers />} />
         <Route path="activity" element={<AdminActivity />} />
         <Route path="settings" element={<AdminSettings />} />
-        <Route path="publishers" element={<AdminPublisherList />} />
-        <Route path="publishers/new" element={<AdminPublisherNew />} />
+        {/* Per-publisher detail is publisher-Admin scoped (not Server Admin) —
+            it hosts the publisher's own grants — so it stays outside the guard. */}
         <Route path="publishers/:slug" element={<AdminPublisherDetail />} />
-        <Route path="groups" element={<AdminGroupList />} />
-        <Route path="groups/new" element={<AdminGroupNew />} />
-        <Route path="groups/:slug" element={<AdminGroupDetail />} />
-        <Route path="users" element={<AdminUserList />} />
-        <Route path="users/new" element={<AdminUserNew />} />
-        <Route path="users/:id" element={<AdminUserDetail />} />
-        <Route path="grants" element={<AdminGrants />} />
-        <Route path="api-keys" element={<AdminApiKeys />} />
-        <Route path="reports" element={<AdminReports />} />
         <Route path="review" element={<AdminReviewQueue />} />
-        <Route path="audit" element={<AdminAudit />} />
+        {/* Cross-publisher management — Server Admin only. */}
+        <Route element={<RequireServerAdmin />}>
+          <Route path="publishers" element={<AdminPublisherList />} />
+          <Route path="publishers/new" element={<AdminPublisherNew />} />
+          <Route path="groups" element={<AdminGroupList />} />
+          <Route path="groups/new" element={<AdminGroupNew />} />
+          <Route path="groups/:slug" element={<AdminGroupDetail />} />
+          <Route path="users" element={<AdminUserList />} />
+          <Route path="users/new" element={<AdminUserNew />} />
+          <Route path="users/:id" element={<AdminUserDetail />} />
+          <Route path="grants" element={<AdminGrants />} />
+          <Route path="api-keys" element={<AdminApiKeys />} />
+          <Route path="reports" element={<AdminReports />} />
+          <Route path="audit" element={<AdminAudit />} />
+        </Route>
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

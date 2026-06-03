@@ -635,6 +635,11 @@ paths:
     post:
       operationId: createPublisherGrant
       summary: Grant a role on a publisher (publisher Admin or Server Admin)
+      description: >
+        A publisher Admin may grant roles to individual users
+        (`principal_type: user`). Granting to a group
+        (`principal_type: group`) binds an IdP claim to a role and is reserved
+        for Server Admins — a publisher Admin attempting it gets 403.
       tags: [rbac]
       security: [{ bearerAuth: [] }]
       requestBody:
@@ -658,6 +663,10 @@ paths:
     delete:
       operationId: deletePublisherGrant
       summary: Revoke a role grant on a publisher (publisher Admin or Server Admin)
+      description: >
+        A publisher Admin may revoke user grants. Revoking a group grant (which
+        binds an IdP claim to a role) is reserved for Server Admins — a publisher
+        Admin attempting it gets 403.
       tags: [rbac]
       security: [{ bearerAuth: [] }]
       parameters:

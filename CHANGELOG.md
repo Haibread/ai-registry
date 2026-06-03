@@ -4,8 +4,33 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Fixed
+
+- **The "New MCP server" / "New agent" publisher dropdowns now list only the
+  publishers the caller can author on.** Both create forms fetched the full
+  `GET /api/v1/publishers` list, so a non-admin author saw (and could select)
+  every publisher — the write then 403'd server-side. The dropdowns now derive
+  their options from the caller's grants (via `PublisherContext`) filtered to
+  publishers where they hold an authoring role; a Server Admin still sees all.
+
 ### Changed
 
+- **Group role grants are now Server-Admin-only.** A group grant binds an IdP
+  claim to a role, so its membership is controlled outside the registry. A
+  publisher Admin may still grant/revoke roles for individual **users** on their
+  publisher, but creating or deleting a **group** grant now requires Server Admin
+  (the server returns 403 otherwise). The grants UI hides the group option and
+  the revoke control on group rows for non-Server-Admins.
+
+### Security
+
+- **Server-Admin admin routes are now guarded in the SPA.** The cross-publisher
+  management surfaces (users, groups, publishers, global grants, reports, audit,
+  API keys) are wrapped in a `RequireServerAdmin` route guard, so a
+  non-Server-Admin navigating directly to one of those URLs is redirected to the
+  dashboard instead of rendering a shell that 403s on every request. The
+  per-publisher detail page stays accessible to publisher Admins. This is
+  defence-in-depth — the APIs were already enforced server-side.
 - **Default `REFRESH_TOKEN_TTL` lowered from `720h` (30 days) to `12h`.** OIDC
   claim group memberships are snapshotted at login and only re-read on a fresh
   login, so the refresh-token lifetime bounds how long a group removed in the
