@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuthClient } from '@/lib/api-client'
+import { authFetch } from '@/auth/tokens'
 
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'stdio (local process)' },
@@ -112,9 +113,8 @@ export default function AdminMCPNew() {
         }
       }
 
-      const versionRes = await fetch(`/api/v1/mcp/servers/${ns}/${slug}/versions`, {
+      const versionRes = await authFetch(`/api/v1/mcp/servers/${ns}/${slug}/versions`, {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -134,9 +134,8 @@ export default function AdminMCPNew() {
 
       // Step 3: Publish if requested
       if (formData.get('publish') === 'on') {
-        await fetch(`/api/v1/mcp/servers/${ns}/${slug}/versions/${version}/publish`, {
+        await authFetch(`/api/v1/mcp/servers/${ns}/${slug}/versions/${version}/publish`, {
           method: 'POST',
-          credentials: 'include',
         })
       }
 

@@ -23,9 +23,9 @@ spec:
       {{- include "ai-registry.server.selectorLabels" . | nindent 6 }}
   endpoints:
     # /metrics is unauthenticated and scraped over the in-cluster ClusterIP
-    # Service (the app's RequireAdmin gate needs a session cookie the operator
-    # cannot present). The shipped Ingress does not route /metrics externally;
-    # add a NetworkPolicy if you need to restrict pod-to-pod scraping.
+    # Service (it carries no bearer token the operator could present). The
+    # shipped Ingress does not route /metrics externally; add a NetworkPolicy if
+    # you need to restrict pod-to-pod scraping.
     - port: http
       path: {{ .Values.server.serviceMonitor.path | default "/metrics" }}
       interval: {{ .Values.server.serviceMonitor.interval | default "30s" }}

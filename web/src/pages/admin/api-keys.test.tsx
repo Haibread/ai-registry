@@ -33,9 +33,9 @@ describe('AdminApiKeys', () => {
     expect(screen.getByText(/hashed api keys/i)).toBeInTheDocument()
   })
 
-  it('explains there is no machine token yet (session-cookie auth)', () => {
+  it('explains there is no dedicated machine token yet', () => {
     renderPage()
-    expect(screen.getByText(/no machine token/i)).toBeInTheDocument()
+    expect(screen.getByText(/no dedicated machine token/i)).toBeInTheDocument()
   })
 
   // TODO: when Phase 5 ships, replace with tests for the create-key form

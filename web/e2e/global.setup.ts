@@ -1,10 +1,13 @@
 /**
  * global.setup.ts
  *
- * Authenticates each fixture user against Keycloak via the OIDC PKCE flow
- * and saves their storage state under e2e/.auth/<role>.json. Specs reuse
- * these states via `storageState` in playwright.config.ts (or per-describe
- * with `test.use({ storageState })`) so they never have to log in again.
+ * Authenticates each fixture user against Keycloak via the OIDC PKCE flow and
+ * saves their storage state under e2e/.auth/<role>.json. The brokered callback
+ * redirects back to the SPA with a one-time handoff code in the URL fragment,
+ * which the SPA exchanges for a registry token pair; the refresh token lands in
+ * localStorage, which storageState captures. Specs reuse these states via
+ * `storageState` so they never have to log in again — on load each spec's SPA
+ * refreshes the stored token into an in-memory access token.
  *
  * The four fixture users mirror the dev realm
  * (deploy/keycloak-realm-dev.json):
@@ -76,15 +79,18 @@ for (const fx of fixtures) {
   setup(`authenticate as ${fx.role}`, async ({ page }) => {
     await loginAs(page, fx.email, fx.password)
 
-    // The brokered OIDC callback sets the session cookie server-side and
-    // redirects back to the app; storageState then captures that cookie. For
-    // the no-roles `user` the sign-in still succeeds — the 403s arrive later,
-    // at the API layer when the test attempts a write. Either way wait for the
-    // redirect away from Keycloak to settle.
+    // The brokered OIDC callback redirects back to the app with a one-time
+    // handoff code in the fragment; the SPA exchanges it for a token pair. For
+    // the no-roles `user` the sign-in still succeeds — the 403s arrive later, at
+    // the API layer when the test attempts a write. Wait for the redirect away
+    // from Keycloak, then for the SPA to persist the refresh token.
     await page.waitForURL(url => !/\/realms\//.test(url.toString()), {
       timeout: 30_000,
     })
     await page.waitForLoadState('networkidle')
+    await page.waitForFunction(() => !!window.localStorage.getItem('ai_registry_access'), null, {
+      timeout: 30_000,
+    })
 
     const file = path.join(__dirname, `.auth/${fx.role}.json`)
     await page.context().storageState({ path: file })

@@ -38,9 +38,8 @@ func TestCORS_OriginInAllowList(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != origin {
 		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, origin)
 	}
-	// Auth is a credentialed cookie; a cross-origin SPA fetch with
-	// credentials: 'include' only works when an exact (non-wildcard) origin
-	// echo is paired with Allow-Credentials: true.
+	// An exact (non-wildcard) origin echo is paired with Allow-Credentials: true
+	// for an allow-listed origin; a wildcard never is.
 	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
 		t.Errorf("Access-Control-Allow-Credentials = %q, want \"true\" for an exact allowlisted origin", got)
 	}
@@ -150,10 +149,10 @@ func TestCORS_Wildcard(t *testing.T) {
 	}
 }
 
-// TestCORS_CredentialsOnlyForExactOrigin locks in the credentialed-cookie
-// invariant: Allow-Credentials is emitted ONLY for an exact allowlisted origin
-// echo, NEVER alongside the "*" wildcard (which the browser rejects with
-// credentials and which we reserve for an unauthenticated public mirror).
+// TestCORS_CredentialsOnlyForExactOrigin locks in the invariant:
+// Allow-Credentials is emitted ONLY for an exact allowlisted origin echo, NEVER
+// alongside the "*" wildcard (which the browser rejects with credentials and
+// which we reserve for an unauthenticated public mirror).
 func TestCORS_CredentialsOnlyForExactOrigin(t *testing.T) {
 	cases := []struct {
 		name     string

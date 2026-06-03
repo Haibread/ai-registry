@@ -20,9 +20,9 @@ export default function AdminApiKeys() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Until then, there is no machine token for automated operations: the registry uses a
-            server-side session cookie (no token reaches the browser), so admin changes go through
-            this UI with a signed-in session.
+            Until then, there is no dedicated machine token for automated operations: admin changes
+            authenticate with the same short-lived user access token this UI carries (a registry
+            session), not a long-lived, per-publisher key.
           </p>
         </CardContent>
       </Card>

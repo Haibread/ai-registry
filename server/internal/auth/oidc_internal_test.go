@@ -161,6 +161,94 @@ func TestOIDCBroker_Exchange(t *testing.T) {
 	}
 }
 
+// TestOIDCBroker_Exchange_ConfigurableClaimPaths verifies the point-4 feature:
+// groups and the admin role are read from operator-configured (and dotted) claim
+// paths, not hard-coded ones. The IdP emits roles nested under
+// resource_access.registry.roles and groups under team_groups; the broker is
+// configured to read exactly those, and a custom admin role value.
+func TestOIDCBroker_Exchange_ConfigurableClaimPaths(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa key: %v", err)
+	}
+	var issuer string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 issuer,
+			"authorization_endpoint": issuer + "/auth",
+			"token_endpoint":         issuer + "/token",
+			"jwks_uri":               issuer + "/jwks",
+		})
+	})
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
+		pub := key.Public().(*rsa.PublicKey)
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
+			"kty": "RSA", "kid": "k1", "use": "sig",
+			"n": base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
+			"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
+		}}})
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+			"iss": issuer, "aud": "cid", "exp": time.Now().Add(time.Hour).Unix(),
+			"iat": time.Now().Unix(), "sub": "sub-1", "email": "alice@example.com",
+			"email_verified": true, "nonce": "n1",
+			"team_groups": []string{"x", "y"},
+			"resource_access": map[string]any{
+				"registry": map[string]any{"roles": []string{"superadmin", "reader"}},
+			},
+		})
+		tok.Header["kid"] = "k1"
+		signed, _ := tok.SignedString(key)
+		_ = json.NewEncoder(w).Encode(map[string]string{"id_token": signed, "token_type": "Bearer"})
+	})
+	srv := httptest.NewServer(mux)
+	issuer = srv.URL
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	b, err := NewOIDCBroker(ctx, OIDCConfig{
+		Issuer: srv.URL, ClientID: "cid", ClientSecret: "secret", RedirectURL: "https://app/cb",
+		GroupsClaim: "team_groups",
+		RolesClaim:  "resource_access.registry.roles",
+		AdminRole:   "superadmin",
+	})
+	if err != nil {
+		t.Fatalf("NewOIDCBroker: %v", err)
+	}
+
+	id, _, err := b.Exchange(ctx, "code", "verifier", "n1")
+	if err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+	if !id.IsAdmin {
+		t.Error("the custom dotted roles path containing the custom admin role should set IsAdmin")
+	}
+	if len(id.Groups) != 2 || id.Groups[0] != "x" || id.Groups[1] != "y" {
+		t.Errorf("groups from the custom claim path = %v, want [x y]", id.Groups)
+	}
+
+	// Negative control: the same token under the DEFAULT paths maps to no admin
+	// and no groups — proving the mapping really followed the configured paths.
+	def, err := NewOIDCBroker(ctx, OIDCConfig{
+		Issuer: srv.URL, ClientID: "cid", ClientSecret: "secret", RedirectURL: "https://app/cb",
+	})
+	if err != nil {
+		t.Fatalf("NewOIDCBroker(default): %v", err)
+	}
+	idDef, _, err := def.Exchange(ctx, "code", "verifier", "n1")
+	if err != nil {
+		t.Fatalf("Exchange(default): %v", err)
+	}
+	if idDef.IsAdmin {
+		t.Error("default realm_access.roles path must NOT see the resource_access role")
+	}
+	if len(idDef.Groups) != 0 {
+		t.Errorf("default groups path should find nothing, got %v", idDef.Groups)
+	}
+}
+
 func TestRewriteHost(t *testing.T) {
 	cases := []struct{ endpoint, base, want string }{
 		{"https://pub.example/realms/r/token", "http://keycloak:8080", "http://keycloak:8080/realms/r/token"},

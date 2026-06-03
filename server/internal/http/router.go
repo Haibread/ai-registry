@@ -38,9 +38,12 @@ type RouterDeps struct {
 	// global agent-card). Empty triggers HTTP 500 in those handlers rather
 	// than silently advertising localhost.
 	PublicBaseURL string
-	// Sessions issues / resolves the registry session cookie. Nil only in
-	// route-walk tests.
-	Sessions *auth.SessionManager
+	// Tokens mints / verifies registry access tokens (Ed25519 JWTs). Nil only in
+	// route-walk tests, which makes Authenticate a pass-through.
+	Tokens *auth.TokenAuthority
+	// Refresh issues / rotates / revokes refresh tokens. Nil only in route-walk
+	// tests.
+	Refresh *auth.RefreshManager
 	// OIDC is the server-side OIDC broker (confidential client). Nil when OIDC
 	// login is not configured — then /api/v1/auth/oidc/* report 404.
 	OIDC *auth.OIDCBroker
@@ -76,20 +79,9 @@ func NewRouterForTest(deps RouterDeps) *chi.Mux {
 // buildMux constructs the chi router with middleware and routes. It is the
 // unwrapped inner of NewRouter, exported to tests via NewRouterForTest.
 func buildMux(deps RouterDeps) *chi.Mux {
-	// ── Session authenticator ───────────────────────────────────────────────
-	// Resolves the session cookie → Principal. Only attach
-	// a principal store when a real DB is present: a nil *store.DB would wrap a
-	// typed-nil in the interface, so route-walk tests (nil DB) must not get one.
-	var principalStore auth.PrincipalStore
-	if deps.DB != nil {
-		principalStore = deps.DB
-	}
-	authn := auth.NewAuthenticator(deps.Sessions, principalStore)
-
-	oidcCookieSecure := true
-	if deps.Sessions != nil {
-		oidcCookieSecure = deps.Sessions.CookieSecure()
-	}
+	// ── Bearer authenticator ────────────────────────────────────────────────
+	// Verifies the registry access token → Principal (pure crypto, no DB).
+	authn := auth.NewAuthenticator(deps.Tokens)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)
@@ -101,14 +93,19 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger, deps.PublicBaseURL)
 	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
-	authH := handlers.NewAuthHandlers(deps.Sessions, deps.DB, deps.LocalLoginEnabled)
-	// Post-logout the IdP redirects back to the SPA origin; derive it from the
-	// public base URL (falls back to "/" when unset).
+	authH := handlers.NewAuthHandlers(deps.Tokens, deps.Refresh, deps.DB, deps.LocalLoginEnabled)
+	// After login the IdP redirects to the callback, which then bounces the
+	// browser back to the SPA origin (carrying the one-time handoff code); the
+	// post-logout redirect lands there too. Derive both from the public base URL
+	// (falls back to "/" when unset).
+	postLoginRedirect := "/"
 	postLogoutRedirect := "/"
 	if deps.PublicBaseURL != "" {
-		postLogoutRedirect = strings.TrimRight(deps.PublicBaseURL, "/") + "/"
+		base := strings.TrimRight(deps.PublicBaseURL, "/") + "/"
+		postLoginRedirect = base
+		postLogoutRedirect = base
 	}
-	oidcH := handlers.NewOIDCAuthHandlers(deps.OIDC, deps.Sessions, deps.DB, oidcCookieSecure, "/", postLogoutRedirect)
+	oidcH := handlers.NewOIDCAuthHandlers(deps.OIDC, deps.Tokens, deps.Refresh, deps.DB, postLoginRedirect, postLogoutRedirect)
 	groupH := handlers.NewGroupHandlers(deps.DB, deps.DB)
 	userH := handlers.NewUserHandlers(deps.DB, deps.DB)
 	grantH := handlers.NewGrantHandlers(deps.DB, deps.DB)
@@ -148,23 +145,19 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r := chi.NewRouter()
 
 	// ── Core middleware ───────────────────────────────────────────────────────
-	// HSTS is emitted only when cookies are Secure (i.e. the deployment is
-	// served over HTTPS); a plain-HTTP dev setup must not advertise it.
-	hsts := false
-	if deps.Sessions != nil {
-		hsts = deps.Sessions.CookieSecure()
-	}
-	r.Use(middleware.SecurityHeaders(hsts))
+	// Defensive response headers (CSP, X-Frame-Options, …). TLS/HSTS is handled
+	// by the proxy / ingress in front of the app, not here.
+	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(deps.CORSOrigins))
-	// CSRF defense: reject cross-site state-changing requests (Fetch Metadata /
-	// Origin enforcement). Must run before any handler that mutates state.
-	r.Use(middleware.EnforceSameOrigin(deps.CORSOrigins))
+	// No CSRF middleware: auth is a bearer token in the Authorization header,
+	// never an ambient cookie, so cross-site requests cannot carry the caller's
+	// credentials. CORS plus the JSON-body content-type guard remain.
 	r.Use(middleware.Recover(deps.Logger))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(deps.Logger, deps.Metrics))
 	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MiB
 	r.Use(middleware.RequireJSONBody)
-	r.Use(authn.Authenticate) // resolve session cookie when present; never blocks
+	r.Use(authn.Authenticate) // resolve the bearer token when present; never blocks
 
 	// ── System endpoints ──────────────────────────────────────────────────────
 	r.Get("/healthz", handlers.Healthz)
@@ -182,6 +175,8 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	r.Get("/config.json", handlers.ConfigJSON(deps.OIDCEnabled, deps.LocalLoginEnabled))
 
 	// ── Well-known endpoints ──────────────────────────────────────────────────
+	// Registry JWKS: the Ed25519 public keys that verify registry access tokens.
+	r.Get("/.well-known/jwks.json", handlers.JWKS(deps.Tokens))
 	// Global registry agent card (makes the registry a first-class A2A citizen)
 	r.Get("/.well-known/agent-card.json", cardH.GlobalAgentCard)
 
@@ -196,17 +191,17 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	publicRL := middleware.RateLimit(publicRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 	r.Route("/api/v1", func(r chi.Router) {
 
-		// Auth front doors: local email+password login and
-		// logout, plus the brokered OIDC login/callback (confidential client,
+		// Auth front doors: local email+password login + token refresh, plus the
+		// brokered OIDC login/callback/exchange (confidential client,
 		// server-side). All unauthenticated by design; rate-limited and, for
-		// local login, lockout-protected. Each ends in a session cookie.
+		// local login, lockout-protected. Each mints a registry access + refresh
+		// token pair (no cookie). Logout revokes the presented refresh token.
 		r.With(publicRL).Post("/auth/login", authH.Login)
-		r.With(publicRL).Post("/auth/logout", authH.Logout)
-		// Browser logout: revokes the session and, for an OIDC session, bounces
-		// through the IdP's RP-initiated logout so the SSO session ends too.
-		r.With(publicRL).Get("/auth/logout", oidcH.Logout)
+		r.With(publicRL).Post("/auth/refresh", authH.Refresh)
+		r.With(publicRL).Post("/auth/logout", oidcH.Logout)
 		r.With(publicRL).Get("/auth/oidc/login", oidcH.Login)
 		r.With(publicRL).Get("/auth/oidc/callback", oidcH.Callback)
+		r.With(publicRL).Post("/auth/oidc/exchange", oidcH.Exchange)
 
 		// Resolved identity + effective role grants for the authenticated
 		// caller. Powers the SPA's role-gated admin UI. 401 when no

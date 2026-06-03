@@ -22,8 +22,8 @@ server:
 
   # ── Auth (OIDC, brokered server-side) ───────────────────────────────────
   # OIDC is brokered server-side: the registry is a single CONFIDENTIAL client
-  # that runs Authorization Code + PKCE and issues its own session cookie. The
-  # SPA is NOT an OIDC client.
+  # that runs Authorization Code + PKCE and mints its own registry access +
+  # refresh tokens (bearer, no cookie). The SPA is NOT an OIDC client.
   #
   # Master switch. Leave false to run local-login-only (see localLogin below) —
   # no IdP required. Set true to add the OIDC front door; the chart then
@@ -68,15 +68,48 @@ server:
   # server default ("groups"). Set this to the path your IdP emits (e.g.
   # "realm_access.groups" for Keycloak realm-mapper deployments).
   authGroupsClaim: ""
+  # OIDC id_token claim path the broker reads realm/global roles from, at login.
+  # Empty = server default ("realm_access.roles"). The Server-Admin flag is set
+  # when this list contains oidcAdminRole.
+  oidcRolesClaim: ""
+  # Role value within oidcRolesClaim that grants Server Admin. Empty = server
+  # default ("admin").
+  oidcAdminRole: ""
   # Reviewer group whose members can approve / reject pending changes
   # in the change-approval workflow. Empty = server default
   # ("registry-reviewers"). Must match a group emitted in the JWT
   # claim configured above.
   authReviewerGroup: ""
 
+  # ── Auth (registry tokens) ───────────────────────────────────────
+  # Both front doors mint a registry-issued access token (Ed25519 JWT, sent as a
+  # bearer header) plus a rotating refresh token. The signing key MUST be stable
+  # and shared across replicas — otherwise tokens minted by one pod fail to
+  # verify on another and do not survive a restart. When no source is provided
+  # the server generates an EPHEMERAL key at boot (single-replica / dev only).
+  #
+  # Provide the key one of two ways (the PEM key wins if both are set); for each,
+  # supply either an inline value (DEV/quickstart — rendered into a Secret, base64
+  # NOT encrypted) or the name of a pre-existing Secret (existingSecret wins). In
+  # production prefer existingSecret with external-secrets / sealed-secrets.
+  #
+  # 1) A PEM PKCS#8 Ed25519 private key. Generate: openssl genpkey -algorithm ed25519
+  #    (existing Secret must hold key JWT_SIGNING_KEY).
+  jwtSigningKey: ""
+  jwtSigningKeyExistingSecret: ""
+  # 2) A high-entropy secret STRING the key is derived from deterministically — a
+  #    simpler single-secret alternative to a PEM. Must be >= 32 chars. Generate:
+  #    openssl rand -hex 32 (existing Secret must hold key JWT_SIGNING_SEED).
+  jwtSigningSeed: ""
+  jwtSigningSeedExistingSecret: ""
+  # Token lifetimes. Empty = server defaults (access 15m, refresh 720h). Go
+  # duration strings.
+  accessTokenTtl: ""
+  refreshTokenTtl: ""
+
   # ── Auth (local accounts) ────────────────────────────────────────
-  # Local email + password login, ending in the same registry session cookie as
-  # OIDC. Enabled by default so a stock `helm install` is a working local-login
+  # Local email + password login, minting the same registry token pair as OIDC.
+  # Enabled by default so a stock `helm install` is a working local-login
   # registry with no external IdP (decision N). Set false to run OIDC-only — but
   # then oidcEnabled must be true, or the chart fails the render (no login
   # method). Seed an initial account via bootstrapAdmin below.

@@ -29,6 +29,9 @@ spec:
         {{- if and .Values.server.oidcEnabled .Values.server.oidcClientSecret (not .Values.server.oidcClientSecretExistingSecret) }}
         checksum/oidc-secret: {{ include (print $.Template.BasePath "/server/oidc-secret.yaml") . | sha256sum }}
         {{- end }}
+        {{- if or (and .Values.server.jwtSigningKey (not .Values.server.jwtSigningKeyExistingSecret)) (and .Values.server.jwtSigningSeed (not .Values.server.jwtSigningSeedExistingSecret)) }}
+        checksum/jwt-secret: {{ include (print $.Template.BasePath "/server/jwt-secret.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.server.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -116,6 +119,29 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.server.oidcClientSecretExistingSecret | default (printf "%s-oidc" (include "ai-registry.server.fullname" .)) }}
                   key: OIDC_CLIENT_SECRET
+            {{- end }}
+            {{- /*
+              Ed25519 access-token signing key: from the operator's existingSecret
+              when set, else the chart-rendered Secret. Optional — when neither is
+              provided the server generates an EPHEMERAL key at boot, which breaks
+              multi-replica verification and does not survive a restart. Set it for
+              any real deployment.
+            */}}
+            {{- if or .Values.server.jwtSigningKey .Values.server.jwtSigningKeyExistingSecret }}
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.jwtSigningKeyExistingSecret | default (printf "%s-jwt" (include "ai-registry.server.fullname" .)) }}
+                  key: JWT_SIGNING_KEY
+            {{- end }}
+            {{- /* Alternative to the PEM key: derive the key from a secret seed
+              string (the server prefers JWT_SIGNING_KEY when both are set). */}}
+            {{- if or .Values.server.jwtSigningSeed .Values.server.jwtSigningSeedExistingSecret }}
+            - name: JWT_SIGNING_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.jwtSigningSeedExistingSecret | default (printf "%s-jwt" (include "ai-registry.server.fullname" .)) }}
+                  key: JWT_SIGNING_SEED
             {{- end }}
             {{- with .Values.server.extraEnv }}
             {{- toYaml . | nindent 12 }}

@@ -85,10 +85,20 @@ type AuthConfig struct {
 	// via env + YAML + default per CLAUDE.md's configuration rule.
 	ReviewerGroup string
 
+	// RolesClaim is the JWT payload path the broker reads realm/global roles
+	// from when mapping an OIDC identity. Dotted paths address nested objects
+	// (e.g. "realm_access.roles"). Default "realm_access.roles". Configurable via
+	// env + YAML + default per CLAUDE.md.
+	RolesClaim string
+
+	// AdminRole is the role value that, when present in RolesClaim, grants the
+	// Server Admin flag snapshotted into the registry JWT at login. Default
+	// "admin".
+	AdminRole string
+
 	// LocalLoginEnabled turns the local email+password front door on or off
-	// Default true so the registry is usable without an
-	// external IdP. Both front doors end in a registry session cookie, so no
-	// token-signing key is needed.
+	// Default true so the registry is usable without an external IdP. Both front
+	// doors mint a registry-issued JWT (no cookie); see JWTSigningKey.
 	LocalLoginEnabled bool
 
 	// BootstrapAdminEmail is the email of the local Server Admin seeded on
@@ -103,22 +113,29 @@ type AuthConfig struct {
 	// is set.
 	BootstrapAdminPassword string
 
-	// SessionCookieName is the name of the HttpOnly session cookie set after a
-	// successful login. Default
-	// "ai_registry_session".
-	SessionCookieName string
+	// JWTSigningKey is the PEM-encoded Ed25519 private key (PKCS#8) the server
+	// signs registry access tokens with. CREDENTIAL — supply via env or a
+	// secrets manager, never a committed config file. Takes precedence over
+	// JWTSigningSeed. Empty (and no seed) triggers an ephemeral key generated at
+	// boot (dev only): tokens then do not survive a restart and cannot be
+	// verified by other replicas. Set one of the two in any real deployment.
+	JWTSigningKey string
 
-	// SessionTTL is how long a login session is valid. Fixed in v1 (no sliding
-	// / refresh), so users re-login at expiry. Default 24h.
-	SessionTTL time.Duration
+	// JWTSigningSeed is an arbitrary high-entropy secret string the server
+	// derives the Ed25519 signing key from deterministically (same seed → same
+	// key across replicas and restarts). A convenient alternative to managing a
+	// PEM: set one secret string. CREDENTIAL — env / secrets manager only.
+	// Ignored when JWTSigningKey is set. Must be high-entropy and is
+	// length-checked at boot (see auth.minSigningSeedLen).
+	JWTSigningSeed string
 
-	// SessionCookieSecure sets the cookie's Secure flag. Default true; set
-	// false only for local plain-HTTP development.
-	SessionCookieSecure bool
+	// AccessTokenTTL is how long a registry access token is valid. Short by
+	// design (the refresh token carries longevity). Default 15m.
+	AccessTokenTTL time.Duration
 
-	// SessionCookieSameSite is the cookie SameSite policy: "lax" (default),
-	// "strict", or "none".
-	SessionCookieSameSite string
+	// RefreshTokenTTL is how long a refresh token is valid before the user must
+	// re-authenticate. Default 720h (30 days).
+	RefreshTokenTTL time.Duration
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -208,16 +225,17 @@ type fileAuthConfig struct {
 	OIDCScopes      []string `yaml:"oidc_scopes"`
 	// oidc_client_secret is a credential — env / secret only, never the file.
 	GroupsClaim   string `yaml:"groups_claim"`
+	RolesClaim    string `yaml:"oidc_roles_claim"`
+	AdminRole     string `yaml:"oidc_admin_role"`
 	ReviewerGroup string `yaml:"reviewer_group"`
 	LocalLogin    bool   `yaml:"local_login"`
 	// The bootstrap admin password is a credential — env / secret only, never
 	// read from the config file (secrets conventions). The bootstrap admin
 	// EMAIL is not a secret, so it may be set in the file.
 	BootstrapAdminEmail string `yaml:"bootstrap_admin_email"`
-	SessionCookieName   string `yaml:"session_cookie_name"`
-	SessionTTL          string `yaml:"session_ttl"`
-	SessionSecure       bool   `yaml:"session_secure"`
-	SessionSameSite     string `yaml:"session_samesite"`
+	// jwt_signing_key is a credential — env / secret only, never the file.
+	AccessTokenTTL  string `yaml:"access_token_ttl"`
+	RefreshTokenTTL string `yaml:"refresh_token_ttl"`
 }
 
 type fileConfig struct {
@@ -252,13 +270,13 @@ func defaultFileConfig() fileConfig {
 			Level: "info",
 		},
 		Auth: fileAuthConfig{
-			GroupsClaim:       "groups",
-			ReviewerGroup:     "registry-reviewers",
-			LocalLogin:        true,
-			SessionCookieName: "ai_registry_session",
-			SessionTTL:        "24h",
-			SessionSecure:     true,
-			SessionSameSite:   "lax",
+			GroupsClaim:     "groups",
+			RolesClaim:      "realm_access.roles",
+			AdminRole:       "admin",
+			ReviewerGroup:   "registry-reviewers",
+			LocalLogin:      true,
+			AccessTokenTTL:  "15m",
+			RefreshTokenTTL: "720h",
 		},
 	}
 }
@@ -292,7 +310,8 @@ func Load(configFile string) (*Config, error) {
 	readTimeout := parseDurationDefault(fc.HTTP.ReadTimeout, 30*time.Second)
 	writeTimeout := parseDurationDefault(fc.HTTP.WriteTimeout, 30*time.Second)
 	idleTimeout := parseDurationDefault(fc.HTTP.IdleTimeout, 120*time.Second)
-	sessionTTL := parseDurationDefault(fc.Auth.SessionTTL, 24*time.Hour)
+	accessTokenTTL := parseDurationDefault(fc.Auth.AccessTokenTTL, 15*time.Minute)
+	refreshTokenTTL := parseDurationDefault(fc.Auth.RefreshTokenTTL, 720*time.Hour)
 
 	// Build final config: env vars win over file values.
 	cfg := &Config{
@@ -328,14 +347,16 @@ func Load(configFile string) (*Config, error) {
 			OIDCRedirectURL:        envString("OIDC_REDIRECT_URL", fc.Auth.OIDCRedirectURL),
 			OIDCScopes:             envStringSlice("OIDC_SCOPES", fc.Auth.OIDCScopes),
 			GroupsClaim:            envString("AUTH_GROUPS_CLAIM", fc.Auth.GroupsClaim),
+			RolesClaim:             envString("OIDC_ROLES_CLAIM", fc.Auth.RolesClaim),
+			AdminRole:              envString("OIDC_ADMIN_ROLE", fc.Auth.AdminRole),
 			ReviewerGroup:          envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
 			LocalLoginEnabled:      envBool("AUTH_LOCAL_LOGIN_ENABLED", fc.Auth.LocalLogin),
 			BootstrapAdminEmail:    envString("AUTH_BOOTSTRAP_ADMIN_EMAIL", fc.Auth.BootstrapAdminEmail),
 			BootstrapAdminPassword: envString("AUTH_BOOTSTRAP_ADMIN_PASSWORD", ""),
-			SessionCookieName:      envString("AUTH_SESSION_COOKIE_NAME", fc.Auth.SessionCookieName),
-			SessionTTL:             envDuration("AUTH_SESSION_TTL", sessionTTL),
-			SessionCookieSecure:    envBool("AUTH_SESSION_SECURE", fc.Auth.SessionSecure),
-			SessionCookieSameSite:  envString("AUTH_SESSION_SAMESITE", fc.Auth.SessionSameSite),
+			JWTSigningKey:          envString("JWT_SIGNING_KEY", ""),
+			JWTSigningSeed:         envString("JWT_SIGNING_SEED", ""),
+			AccessTokenTTL:         envDuration("ACCESS_TOKEN_TTL", accessTokenTTL),
+			RefreshTokenTTL:        envDuration("REFRESH_TOKEN_TTL", refreshTokenTTL),
 		},
 		BootstrapFile: envString("BOOTSTRAP_FILE", fc.BootstrapFile),
 	}

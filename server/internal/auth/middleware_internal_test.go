@@ -1,57 +1,52 @@
 package auth
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/haibread/ai-registry/internal/store"
+	"time"
 )
 
-func setCookieByName(rec *httptest.ResponseRecorder, name string) *http.Cookie {
-	for _, c := range rec.Result().Cookies() {
-		if c.Name == name {
-			return c
-		}
+func testAuthority(t *testing.T) *TokenAuthority {
+	t.Helper()
+	ta, _, err := NewTokenAuthority("", "", "test-issuer", time.Minute)
+	if err != nil {
+		t.Fatalf("NewTokenAuthority: %v", err)
 	}
-	return nil
+	return ta
 }
 
-func TestAuthenticate_NilDeps_PassThrough(t *testing.T) {
-	a := NewAuthenticator(nil, nil)
+func TestAuthenticate_NilAuthority_PassThrough(t *testing.T) {
+	a := NewAuthenticator(nil)
 	called := false
 	a.Authenticate(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })).
 		ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	if !called {
-		t.Fatal("nil sessions/store should pass through to the next handler")
+		t.Fatal("nil authority should pass through to the next handler")
 	}
 }
 
-func TestAuthenticate_NoCookie_Unauthenticated(t *testing.T) {
-	sm, _ := testManager()
-	a := NewAuthenticator(sm, newFakePrincipalStore())
+func TestAuthenticate_NoHeader_Unauthenticated(t *testing.T) {
+	a := NewAuthenticator(testAuthority(t))
 
 	var sawPrincipal bool
 	a.Authenticate(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		_, sawPrincipal = PrincipalFromContext(r.Context())
 	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	if sawPrincipal {
-		t.Fatal("no cookie should yield no principal")
+		t.Fatal("no Authorization header should yield no principal")
 	}
 }
 
-func TestAuthenticate_ValidSession_SetsPrincipal(t *testing.T) {
-	sm, _ := testManager()
-	ps := newFakePrincipalStore()
-	ps.byID["u1"] = &store.User{ID: "u1", Email: "a@b.com", IsServerAdmin: true}
-	a := NewAuthenticator(sm, ps)
+func TestAuthenticate_ValidToken_SetsPrincipal(t *testing.T) {
+	ta := testAuthority(t)
+	a := NewAuthenticator(ta)
 
-	token, err := sm.Issue(context.Background(), IssueParams{
-		UserID: "u1", AuthMethod: "oidc", ClaimGroups: []string{"g1"},
+	token, _, err := ta.Mint(MintParams{
+		UserID: "u1", Email: "a@b.com", Groups: []string{"g1"}, SrvAdmin: true, AuthMethod: "oidc",
 	})
 	if err != nil {
-		t.Fatalf("Issue: %v", err)
+		t.Fatalf("Mint: %v", err)
 	}
 
 	var princ *Principal
@@ -61,63 +56,48 @@ func TestAuthenticate_ValidSession_SetsPrincipal(t *testing.T) {
 		isAdmin = IsServerAdminFromContext(r.Context())
 	}))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: "sess", Value: token})
+	req.Header.Set("Authorization", "Bearer "+token)
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
 	if princ == nil || princ.UserID != "u1" || princ.Email != "a@b.com" || princ.AuthMethod != "oidc" {
 		t.Fatalf("principal not set correctly: %+v", princ)
 	}
 	if !princ.IsServerAdmin || !isAdmin {
-		t.Fatal("server-admin flag from the user row should reflect in the principal + context")
+		t.Fatal("server-admin flag from the token should reflect in the principal + context")
 	}
 	if len(princ.ClaimGroups) != 1 || princ.ClaimGroups[0] != "g1" {
 		t.Fatalf("claim groups not propagated: %+v", princ.ClaimGroups)
 	}
 }
 
-func TestAuthenticate_StaleCookie_ClearsAndProceeds(t *testing.T) {
-	sm, _ := testManager()
-	a := NewAuthenticator(sm, newFakePrincipalStore())
+func TestAuthenticate_InvalidToken_ProceedsUnauthenticated(t *testing.T) {
+	a := NewAuthenticator(testAuthority(t))
 
 	var sawPrincipal bool
 	h := a.Authenticate(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		_, sawPrincipal = PrincipalFromContext(r.Context())
 	}))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: "sess", Value: "no-such-token"})
+	req.Header.Set("Authorization", "Bearer not-a-valid-jwt")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
 	if sawPrincipal {
-		t.Fatal("an unknown session must not set a principal")
+		t.Fatal("an invalid token must not set a principal")
 	}
-	if c := setCookieByName(rec, "sess"); c == nil || c.MaxAge >= 0 {
-		t.Fatalf("stale cookie should be cleared, got %+v", c)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("invalid token should proceed unauthenticated (200), got %d", rec.Code)
 	}
 }
 
-func TestAuthenticate_DisabledUser_403(t *testing.T) {
-	sm, _ := testManager()
-	ps := newFakePrincipalStore()
-	ps.byID["u1"] = &store.User{ID: "u1", Email: "a@b.com", Disabled: true}
-	a := NewAuthenticator(sm, ps)
-
-	token, err := sm.Issue(context.Background(), IssueParams{UserID: "u1", AuthMethod: "local"})
+func TestAuthority_RejectsForeignToken(t *testing.T) {
+	// A token minted by a different authority (different key) must not verify.
+	other := testAuthority(t)
+	token, _, err := other.Mint(MintParams{UserID: "u1", AuthMethod: "local"})
 	if err != nil {
-		t.Fatalf("Issue: %v", err)
+		t.Fatalf("Mint: %v", err)
 	}
-
-	called := false
-	h := a.Authenticate(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: "sess", Value: token})
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("disabled account should get 403, got %d", rec.Code)
-	}
-	if called {
-		t.Fatal("next handler must not run for a disabled account")
+	if _, err := testAuthority(t).Verify(token); err == nil {
+		t.Fatal("a token signed by a foreign key must not verify")
 	}
 }

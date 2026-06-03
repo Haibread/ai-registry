@@ -118,6 +118,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/.well-known/jwks.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Registry JSON Web Key Set
+         * @description The registry's Ed25519 (OKP) public verification keys, so other services can validate registry-issued access tokens offline.
+         */
+        get: operations["jwks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -129,9 +149,29 @@ export interface paths {
         put?: never;
         /**
          * Local email + password login
-         * @description Verifies an email and password and opens a registry session, set as a Secure, HttpOnly cookie. Available only when local login is enabled.
+         * @description Verifies an email and password and mints a registry-issued access token (Ed25519 JWT) plus a rotating refresh token, returned in the response body. There is no cookie. Available only when local login is enabled.
          */
         post: operations["localLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a refresh token into a fresh token pair
+         * @description Consumes the presented refresh token (single use) and returns a new access + refresh token pair. Replaying an already-rotated refresh token is treated as theft and revokes the whole lineage. The Server-Admin flag and group snapshot are re-read here, so a changed role propagates within one access-token lifetime.
+         */
+        post: operations["refreshToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -145,15 +185,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Log out (browser) and end the IdP session
-         * @description Browser logout: revokes the registry session and clears the cookie, then redirects back to the app. For an OIDC session it first bounces the browser through the identity provider's RP-initiated logout (end_session_endpoint, with id_token_hint) so the IdP SSO session is terminated too; a local session redirects straight back to the app.
-         */
-        get: operations["logoutRedirect"];
+        get?: never;
         put?: never;
         /**
-         * Log out (revoke the current session)
-         * @description Revokes the caller's session and clears the session cookie. Idempotent — succeeds even with no active session. The no-redirect variant for programmatic callers; browsers should use GET (below) so an OIDC session is also ended at the identity provider.
+         * Log out (revoke a refresh token)
+         * @description Revokes the presented refresh token. Idempotent — succeeds even with an unknown or already-revoked token. For an OIDC session it returns the identity provider's RP-initiated logout URL (with id_token_hint) so the client can navigate there to end the upstream SSO session.
          */
         post: operations["logout"];
         delete?: never;
@@ -171,7 +207,7 @@ export interface paths {
         };
         /**
          * Begin OIDC login (server-side broker)
-         * @description Redirects the browser to the configured identity provider to begin the Authorization Code + PKCE flow. The registry is a confidential client; the IdP token never reaches the browser. 404 when OIDC login is not configured.
+         * @description Redirects the browser to the configured identity provider to begin the Authorization Code + PKCE flow. The registry is a confidential client; the IdP token never reaches the browser. The login transaction is held server-side (no cookie). 404 when OIDC login is not configured.
          */
         get: operations["oidcLogin"];
         put?: never;
@@ -191,11 +227,31 @@ export interface paths {
         };
         /**
          * OIDC redirect callback (server-side broker)
-         * @description Handles the identity-provider redirect: validates state, exchanges the code, maps the identity to a registry user, opens a session, and redirects to the app. 404 when OIDC login is not configured.
+         * @description Handles the identity-provider redirect: validates state, exchanges the code, maps the identity to a registry user, mints a token pair, and redirects to the app with a one-time handoff code in the URL fragment (`#code=...`). The SPA then calls /auth/oidc/exchange to obtain the tokens. 404 when OIDC login is not configured.
          */
         get: operations["oidcCallback"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oidc/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a one-time OIDC handoff code for tokens
+         * @description Swaps the single-use handoff code delivered by the OIDC callback for the minted access + refresh token pair. 404 when OIDC login is not configured.
+         */
+        post: operations["oidcExchange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1317,13 +1373,47 @@ export interface components {
             /** Format: password */
             password: string;
         };
-        LoginResponse: {
-            /** @description Registry-signed bearer token (RS256), verifiable via /.well-known/jwks.json. */
-            access_token: string;
+        TokenPair: {
+            /** @description Registry-signed access token (Ed25519 JWT), verifiable via /.well-known/jwks.json. Send it as `Authorization: Bearer <token>`. */
+            accessToken: string;
+            /** @description Single-use refresh token; exchange it at /auth/refresh for a new pair. */
+            refreshToken: string;
             /** @enum {string} */
-            token_type: "Bearer";
-            /** @description Token lifetime in seconds. */
-            expires_in: number;
+            tokenType: "Bearer";
+            /** @description Access token lifetime in seconds. */
+            expiresIn: number;
+        };
+        RefreshRequest: {
+            refreshToken: string;
+        };
+        LogoutRequest: {
+            /** @description The refresh token to revoke. Omit to no-op. */
+            refreshToken?: string;
+        };
+        LogoutResponse: {
+            /** @description For an OIDC session, the identity provider's RP-initiated logout URL to navigate to so the upstream SSO session ends too. Absent for local sessions. */
+            oidcLogoutUrl?: string;
+        };
+        ExchangeRequest: {
+            /** @description The one-time handoff code delivered by the OIDC callback. */
+            code: string;
+        };
+        JWKS: {
+            keys: components["schemas"]["JWK"][];
+        };
+        /** @description An Ed25519 (OKP) public key in JWK form. */
+        JWK: {
+            /** @enum {string} */
+            kty: "OKP";
+            /** @enum {string} */
+            crv: "Ed25519";
+            /** @description Base64url-encoded public key. */
+            x: string;
+            kid: string;
+            /** @enum {string} */
+            use: "sig";
+            /** @enum {string} */
+            alg: "EdDSA";
         };
         Group: {
             id: string;
@@ -2118,6 +2208,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description The service is not configured to serve this resource */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
     parameters: {
         SlugParam: string;
@@ -2266,6 +2365,27 @@ export interface operations {
             };
         };
     };
+    jwks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The JSON Web Key Set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JWKS"];
+                };
+            };
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     localLogin: {
         parameters: {
             query?: never;
@@ -2279,12 +2399,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Session opened; the session cookie is set via Set-Cookie. */
-            204: {
+            /** @description The access + refresh token pair. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -2301,22 +2423,31 @@ export interface operations {
             };
         };
     };
-    logoutRedirect: {
+    refreshToken: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
         responses: {
-            /** @description Redirect to the IdP's end-session endpoint (OIDC session) or directly back to the app (local session), with the session cookie cleared. */
-            302: {
+            /** @description The new access + refresh token pair. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationError"];
         };
     };
     logout: {
@@ -2326,14 +2457,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LogoutRequest"];
+            };
+        };
         responses: {
-            /** @description Session cleared. */
-            204: {
+            /** @description The refresh token was revoked. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LogoutResponse"];
+                };
             };
         };
     };
@@ -2368,7 +2505,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Redirect to the app with the session cookie set. */
+            /** @description Redirect to the app with a one-time handoff code in the fragment. */
             302: {
                 headers: {
                     [name: string]: unknown;
@@ -2386,6 +2523,33 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    oidcExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description The access + refresh token pair. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     getMe: {

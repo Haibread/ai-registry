@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuthClient } from '@/lib/api-client'
+import { authFetch } from '@/auth/tokens'
 
 const AUTH_SCHEME_OPTIONS = [
   { value: 'Bearer', label: 'Bearer (JWT / OAuth 2.0 access token)' },
@@ -96,9 +97,8 @@ export default function AdminAgentNew() {
       const defaultInputModes = MODE_VALUES.filter((v) => formData.get(`input_mode_${v}`) === 'on')
       const defaultOutputModes = MODE_VALUES.filter((v) => formData.get(`output_mode_${v}`) === 'on')
 
-      const versionRes = await fetch(`/api/v1/agents/${ns}/${slug}/versions`, {
+      const versionRes = await authFetch(`/api/v1/agents/${ns}/${slug}/versions`, {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -119,9 +119,8 @@ export default function AdminAgentNew() {
       }
 
       if (formData.get('publish') === 'on') {
-        await fetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
+        await authFetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
           method: 'POST',
-          credentials: 'include',
         })
       }
 
