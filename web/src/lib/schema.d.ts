@@ -460,7 +460,10 @@ export interface paths {
         /** List a publisher's role grants (publisher Admin or Server Admin) */
         get: operations["listPublisherGrants"];
         put?: never;
-        /** Grant a role on a publisher (publisher Admin or Server Admin) */
+        /**
+         * Grant a role on a publisher (publisher Admin or Server Admin)
+         * @description A publisher Admin may grant roles to individual users (`principal_type: user`). Granting to a group (`principal_type: group`) binds an IdP claim to a role and is reserved for Server Admins — a publisher Admin attempting it gets 403.
+         */
         post: operations["createPublisherGrant"];
         delete?: never;
         options?: never;
@@ -478,7 +481,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke a role grant on a publisher (publisher Admin or Server Admin) */
+        /**
+         * Revoke a role grant on a publisher (publisher Admin or Server Admin)
+         * @description A publisher Admin may revoke user grants. Revoking a group grant (which binds an IdP claim to a role) is reserved for Server Admins — a publisher Admin attempting it gets 403.
+         */
         delete: operations["deletePublisherGrant"];
         options?: never;
         head?: never;

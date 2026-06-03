@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+### Changed
+
+- **Auth reworked from BFF cookie sessions to registry-issued bearer tokens.**
+  The `Secure; HttpOnly` registry session cookie introduced in v0.4.0-rc1 is
+  gone. Both front doors (local email+password and brokered OIDC) now mint a
+  short-lived **Ed25519 access token** (a registry JWT sent as
+  `Authorization: Bearer <token>`, validated by signature alone and never
+  stored) plus a long-lived, **single-use rotating refresh token** (opaque;
+  only its SHA-256 hash is persisted, so a DB leak yields no usable token).
+  `POST /api/v1/auth/refresh` rotates the pair — replaying an already-rotated
+  token is treated as theft and revokes the whole lineage — and
+  `POST /api/v1/auth/logout` revokes the presented refresh token. The brokered
+  OIDC flow no longer relies on a transaction cookie: login-transaction state
+  lives server-side in `oidc_auth_requests`, and the callback hands minted
+  tokens to the SPA via a one-time code (`#code=...` fragment) exchanged at
+  `POST /api/v1/auth/oidc/exchange`, so tokens never appear in a URL. The SPA
+  holds its tokens in `tokens.ts` and attaches the bearer header in
+  `api-client.ts`; OIDC claim group membership and the Server-Admin flag are
+  still snapshotted at login (now into the refresh token). Server-side OIDC
+  brokering, PKCE, and the IdP token never reaching the browser are unchanged.
+
+  > **Breaking config change.** Migration `000016_bearer_auth` drops the
+  > `sessions` table and adds `refresh_tokens`, `oidc_auth_requests`, and
+  > `auth_handoff_codes`. The `AUTH_SESSION_*` knobs
+  > (`AUTH_SESSION_COOKIE_NAME`, `AUTH_SESSION_TTL`, `AUTH_SESSION_SECURE`,
+  > `AUTH_SESSION_SAMESITE`) are removed. New knobs (env + YAML + default per
+  > CLAUDE.md): `JWT_SIGNING_KEY` / `JWT_SIGNING_SEED` (the Ed25519 signing
+  > credential — supply via env/secret; an empty value generates an **ephemeral
+  > dev-only key** that does not survive a restart), `ACCESS_TOKEN_TTL`
+  > (default `15m`), `REFRESH_TOKEN_TTL` (default `12h`), `OIDC_ROLES_CLAIM`
+  > (default `realm_access.roles`), and `OIDC_ADMIN_ROLE`. The Helm chart adds a
+  > `jwt-secret` template wiring the signing key through a Kubernetes Secret.
+- **Group role grants are now Server-Admin-only.** A group grant binds an IdP
+  claim to a role, so its membership is controlled outside the registry. A
+  publisher Admin may still grant/revoke roles for individual **users** on their
+  publisher, but creating or deleting a **group** grant now requires Server Admin
+  (the server returns 403 otherwise). The grants UI hides the group option and
+  the revoke control on group rows for non-Server-Admins.
+
 ### Fixed
 
 - **The "New MCP server" / "New agent" publisher dropdowns now list only the
@@ -12,15 +51,12 @@ All notable changes to this project are documented here.
   every publisher — the write then 403'd server-side. The dropdowns now derive
   their options from the caller's grants (via `PublisherContext`) filtered to
   publishers where they hold an authoring role; a Server Admin still sees all.
-
-### Changed
-
-- **Group role grants are now Server-Admin-only.** A group grant binds an IdP
-  claim to a role, so its membership is controlled outside the registry. A
-  publisher Admin may still grant/revoke roles for individual **users** on their
-  publisher, but creating or deleting a **group** grant now requires Server Admin
-  (the server returns 403 otherwise). The grants UI hides the group option and
-  the revoke control on group rows for non-Server-Admins.
+- **No more logging in twice after a brokered OIDC sign-in.** The SPA exchanged
+  the one-time handoff code for tokens but did not refresh its auth state before
+  the first guarded navigation, so the user landed back on the login screen and
+  had to authenticate again. `AuthContext` now hydrates from the freshly
+  exchanged tokens immediately, so a single OIDC login lands the user in the
+  admin UI.
 
 ### Security
 
