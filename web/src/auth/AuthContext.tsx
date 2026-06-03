@@ -48,6 +48,36 @@ async function fetchMe(): Promise<Me | null> {
   }
 }
 
+// bootstrapAuth runs the one-time boot sequence (consume an OIDC handoff code,
+// else reuse/refresh the stored token) and resolves the caller's identity. It is
+// memoised into a single shared promise so React StrictMode's double-invoke of
+// the mount effect (and any remount) reuses the same in-flight work instead of
+// racing a second run. Without this, the first run consumes the single-use
+// handoff code but is cancelled, while the second run finds the code already
+// stripped, fetches /me with no token yet, and wins setMe(null) — leaving valid
+// tokens in storage but the UI signed out. Mirrors the refreshInFlight singleton
+// in auth/tokens.ts.
+let bootInFlight: Promise<Me | null> | null = null
+function bootstrapAuth(): Promise<Me | null> {
+  if (!bootInFlight) {
+    bootInFlight = (async () => {
+      try {
+        if (!(await consumeOIDCHandoff())) {
+          if (!getAccessToken() && getRefreshToken()) await refreshAccessToken()
+        }
+        return await fetchMe()
+      } finally {
+        // Reset once settled. StrictMode's two effect runs both grab this promise
+        // synchronously on mount, well before it resolves, so they still share one
+        // run; clearing it afterwards just lets a genuine remount re-resolve /me
+        // (the handoff code is already spent, so consumeOIDCHandoff is a no-op).
+        bootInFlight = null
+      }
+    })()
+  }
+  return bootInFlight
+}
+
 // consumeOIDCHandoff looks for the one-time code the OIDC callback left in the
 // URL fragment (`#code=…`), exchanges it for tokens, and strips it from the URL.
 // Returns true when a code was successfully exchanged.
@@ -102,17 +132,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Bootstrap: consume an OIDC handoff code if present; otherwise reuse the
     // stored access token (authFetch refreshes it on the first 401). Only spend
     // the single-use refresh token up front when there is no access token at all
-    // — refreshing on every load would needlessly burn it.
-    void (async () => {
-      if (!(await consumeOIDCHandoff())) {
-        if (!getAccessToken() && getRefreshToken()) await refreshAccessToken()
-      }
-      const m = await fetchMe()
+    // — refreshing on every load would needlessly burn it. Memoised so the
+    // single-use handoff code survives StrictMode's double-invoke (see
+    // bootstrapAuth).
+    void bootstrapAuth().then((m) => {
       if (!cancelled) {
         setMe(m)
         setAuthLoading(false)
       }
-    })()
+    })
 
     return () => {
       cancelled = true

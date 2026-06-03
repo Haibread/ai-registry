@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -142,6 +143,54 @@ describe('AuthProvider', () => {
     const exchangeCall = fetchMock.mock.calls.find((c) => c[0] === '/api/v1/auth/oidc/exchange')
     expect(exchangeCall).toBeTruthy()
     expect(JSON.parse((exchangeCall?.[1] as RequestInit).body as string)).toEqual({ code: 'handoff-xyz' })
+  })
+
+  it('consumes the single-use handoff code exactly once under StrictMode and ends signed in', async () => {
+    // Regression: StrictMode double-invokes the mount effect. The OIDC handoff
+    // code is single-use, so a naive bootstrap let the cancelled first run spend
+    // the code while the second run fetched /me with no token yet and won
+    // setMe(null) — leaving valid tokens stored but the UI signed out. The
+    // bootstrap is memoised so both runs share one exchange.
+    clearTokens()
+    window.location.hash = '#code=once-only'
+    let exchangeCount = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url === '/config.json') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ oidc_enabled: true, local_login_enabled: true }), { status: 200 }),
+        )
+      }
+      if (url === '/api/v1/auth/oidc/exchange') {
+        exchangeCount += 1
+        // Second use of a single-use code must fail, exactly as the server would.
+        if (exchangeCount > 1) return Promise.resolve(new Response(null, { status: 401 }))
+        return Promise.resolve(
+          new Response(JSON.stringify({ accessToken: 'acc', refreshToken: 'oidc-ref', expiresIn: 900 }), { status: 200 }),
+        )
+      }
+      if (url === '/api/v1/me') {
+        // /me only succeeds when the bearer token from the exchange is present.
+        return Promise.resolve(new Response(JSON.stringify({ authenticated: true, grants: [] }), { status: 200 }))
+      }
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <StrictMode>
+        <QueryClientProvider client={qc}>
+          <AuthProvider>
+            <Consumer />
+          </AuthProvider>
+        </QueryClientProvider>
+      </StrictMode>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('authed').textContent).toBe('true'))
+    expect(getRefreshToken()).toBe('oidc-ref')
+    expect(exchangeCount).toBe(1)
+    expect(window.location.hash).toBe('')
   })
 
   it('logout revokes the refresh token and clears local tokens', async () => {
