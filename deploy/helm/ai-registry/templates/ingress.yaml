@@ -1,4 +1,15 @@
 {{- if .Values.ingress.enabled -}}
+{{- /*
+Two routes only:
+  * /api → server, so the bulk API traffic reaches the backend directly.
+  * /    → web, where nginx serves the SPA AND proxies the remaining backend
+           paths (/.well-known/, the A2A agent card, /docs, /openapi.yaml,
+           /config.json, /healthz, /readyz, /metrics). Keeping that long tail in
+           nginx.conf avoids a second, drift-prone copy of the routing table here
+           — and avoids routing SPA routes such as /agents/{ns}/{slug} to the
+           backend. The nginx-ingress controller matches the longest prefix, so
+           /api wins over / for /api/* regardless of rule order.
+*/}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -6,16 +17,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ai-registry.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
   annotations:
-    {{- /*
-      nginx-specific annotations that route specific path prefixes to the
-      backend service and everything else to the web service.
-      Adjust if using a different ingress controller.
-    */}}
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
+  {{- end }}
 spec:
   {{- if .Values.ingress.className }}
   ingressClassName: {{ .Values.ingress.className }}
@@ -30,69 +35,20 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          # --- Backend routes ---
-          - path: /api(/|$)(.*)
-            pathType: ImplementationSpecific
+          # API straight to the server (bulk traffic skips the nginx hop).
+          - path: /api
+            pathType: Prefix
             backend:
               service:
-                name: {{ include "ai-registry.server.fullname" . }}
+                name: {{ include "ai-registry.api.fullname" . }}
                 port:
-                  number: {{ .Values.server.service.port }}
-          - path: /healthz
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "ai-registry.server.fullname" . }}
-                port:
-                  number: {{ .Values.server.service.port }}
-          - path: /readyz
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "ai-registry.server.fullname" . }}
-                port:
-                  number: {{ .Values.server.service.port }}
-          - path: /.well-known(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: {{ include "ai-registry.server.fullname" . }}
-                port:
-                  number: {{ .Values.server.service.port }}
-          - path: /agents(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: {{ include "ai-registry.server.fullname" . }}
-                port:
-                  number: {{ .Values.server.service.port }}
-          - path: /config.json
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "ai-registry.server.fullname" . }}
-                port:
-                  number: {{ .Values.server.service.port }}
-          - path: /openapi.yaml
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "ai-registry.server.fullname" . }}
-                port:
-                  number: {{ .Values.server.service.port }}
-          - path: /docs
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "ai-registry.server.fullname" . }}
-                port:
-                  number: {{ .Values.server.service.port }}
-          # --- Web (catch-all) ---
+                  number: {{ .Values.api.service.port }}
+          # Everything else to nginx: SPA + the remaining proxied backend paths.
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: {{ include "ai-registry.web.fullname" . }}
+                name: {{ include "ai-registry.webapp.fullname" . }}
                 port:
-                  number: {{ .Values.web.service.port }}
+                  number: {{ .Values.webapp.service.port }}
 {{- end }}

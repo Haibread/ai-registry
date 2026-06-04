@@ -7,7 +7,7 @@
 #   <clusterName>-superuser — superuser credentials (uri key contains the DSN)
 #   <clusterName>-app       — application user credentials
 #
-# The backend deployment references <clusterName>-superuser to construct
+# The server deployment references <clusterName>-superuser to construct
 # DATABASE_URL automatically when cnpg.enabled=true.
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -30,6 +30,11 @@ spec:
 
   storage:
     size: {{ .Values.cnpg.storageSize }}
+
+  # Per-instance resource requests/limits (CPU/memory/ephemeral-storage
+  # requests; memory/ephemeral-storage limits only — no CPU limit).
+  resources:
+    {{- toYaml .Values.cnpg.resources | nindent 4 }}
 
   # Use the official CNPG image for the specified Postgres major version.
   imageName: {{ printf "ghcr.io/cloudnative-pg/postgresql:%s" .Values.cnpg.postgresVersion }}

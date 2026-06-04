@@ -1,0 +1,22 @@
+# Patterns to ignore when building Helm packages.
+# Matches .gitignore syntax; one pattern per line.
+.DS_Store
+# Version control directories and files.
+.git/
+.gitignore
+.bzr/
+.hg/
+.hgignore
+.svn/
+# Common backup/editor/IDE clutter.
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.idea/
+.vscode/
+# CI / test artifacts.
+.helmignore
+# Placeholder values used only by `helm lint`, never part of the released chart.
+values-lint.yaml

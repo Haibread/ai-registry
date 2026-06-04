@@ -1,4 +1,4 @@
-{{- if .Values.server.serviceMonitor.enabled -}}
+{{- if .Values.api.serviceMonitor.enabled -}}
 # Prometheus Operator ServiceMonitor.
 # Rendered only when serviceMonitor.enabled=true. Requires the CRD from the
 # kube-prometheus-stack / Prometheus Operator to be installed in-cluster.
@@ -7,11 +7,11 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "ai-registry.server.fullname" . }}
-  namespace: {{ default .Release.Namespace .Values.server.serviceMonitor.namespace }}
+  name: {{ include "ai-registry.api.fullname" . }}
+  namespace: {{ default .Release.Namespace .Values.api.serviceMonitor.namespace }}
   labels:
-    {{- include "ai-registry.server.labels" . | nindent 4 }}
-    {{- with .Values.server.serviceMonitor.additionalLabels }}
+    {{- include "ai-registry.api.labels" . | nindent 4 }}
+    {{- with .Values.api.serviceMonitor.additionalLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
@@ -20,21 +20,21 @@ spec:
       - {{ .Release.Namespace }}
   selector:
     matchLabels:
-      {{- include "ai-registry.server.selectorLabels" . | nindent 6 }}
+      {{- include "ai-registry.api.selectorLabels" . | nindent 6 }}
   endpoints:
     # /metrics is unauthenticated and scraped over the in-cluster ClusterIP
     # Service (it carries no bearer token the operator could present). The
     # shipped Ingress does not route /metrics externally; add a NetworkPolicy if
     # you need to restrict pod-to-pod scraping.
     - port: http
-      path: {{ .Values.server.serviceMonitor.path | default "/metrics" }}
-      interval: {{ .Values.server.serviceMonitor.interval | default "30s" }}
-      scrapeTimeout: {{ .Values.server.serviceMonitor.scrapeTimeout | default "10s" }}
-      {{- with .Values.server.serviceMonitor.relabelings }}
+      path: {{ .Values.api.serviceMonitor.path | default "/metrics" }}
+      interval: {{ .Values.api.serviceMonitor.interval | default "30s" }}
+      scrapeTimeout: {{ .Values.api.serviceMonitor.scrapeTimeout | default "10s" }}
+      {{- with .Values.api.serviceMonitor.relabelings }}
       relabelings:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.server.serviceMonitor.metricRelabelings }}
+      {{- with .Values.api.serviceMonitor.metricRelabelings }}
       metricRelabelings:
         {{- toYaml . | nindent 8 }}
       {{- end }}

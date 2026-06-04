@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-registry.webapp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.webapp.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.webapp.service.type }}
+  ports:
+    - port: {{ .Values.webapp.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "ai-registry.webapp.selectorLabels" . | nindent 4 }}
