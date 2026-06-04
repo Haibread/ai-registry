@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { PublisherOption } from '@/auth/PublisherContext'
@@ -71,10 +72,21 @@ describe('PublisherOverview', () => {
     renderOverview()
     expect(await screen.findByText('12')).toBeInTheDocument() // MCP servers
     expect(screen.getByText('5')).toBeInTheDocument() // agents
-    expect(screen.getByText('8')).toBeInTheDocument() // members
+    expect(screen.queryByText('Members')).not.toBeInTheDocument()
+    expect(screen.getByText('2 draft · 9 published · 1 deprecated')).toBeInTheDocument() // MCP status caption
     expect(screen.getByText('editor')).toBeInTheDocument()
     expect(screen.getByText('reviewer')).toBeInTheDocument()
     expect(await screen.findByText('weather@1.4.0')).toBeInTheDocument()
+  })
+
+  it('offers create actions for both resource types behind the New menu (Editor)', async () => {
+    renderOverview()
+    await userEvent.click(await screen.findByRole('button', { name: /^new/i }))
+    expect(await screen.findByRole('menuitem', { name: /new mcp server/i })).toHaveAttribute(
+      'href',
+      '/admin/mcp/new',
+    )
+    expect(screen.getByRole('menuitem', { name: /new agent/i })).toHaveAttribute('href', '/admin/agents/new')
   })
 
   it('surfaces the attention tiles an Editor + Reviewer can act on', async () => {
@@ -89,6 +101,7 @@ describe('PublisherOverview', () => {
     await screen.findByText('12') // wait for stats to load
     expect(screen.queryByText(/awaiting your review/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/drafts in progress/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^new/i })).not.toBeInTheDocument()
   })
 
   it('shows an onboarding empty state when the publisher has no resources', async () => {

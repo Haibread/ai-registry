@@ -1,8 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Server, Bot, Users, ClipboardCheck, FilePen, ArrowRight, Activity, Plus } from 'lucide-react'
+import { Server, Bot, ClipboardCheck, FilePen, ArrowRight, Activity, Plus, ChevronDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ActivityTimeline } from '@/components/admin/activity-timeline'
@@ -14,19 +20,28 @@ import type { components } from '@/lib/schema'
 type StatusBreakdown = components['schemas']['StatusBreakdown']
 
 // StatusBar renders a thin draft/published/deprecated proportion bar under a
-// metric. Segments are omitted when zero so a single-status publisher reads as
-// one solid colour rather than a near-invisible sliver.
+// metric, with a text caption beneath it. Zero segments are omitted so a
+// single-status publisher reads as one solid colour rather than a near-invisible
+// sliver; the caption (e.g. "9 published · 2 draft") gives the bar a legible,
+// screen-reader-accessible meaning, so the bar itself stays decorative.
 function StatusBar({ b }: { b?: StatusBreakdown }) {
-  const draft = b?.draft ?? 0
-  const published = b?.published ?? 0
-  const deprecated = b?.deprecated ?? 0
-  if (draft + published + deprecated === 0) return null
+  const segments = [
+    { key: 'draft', count: b?.draft ?? 0, color: 'bg-amber-500' },
+    { key: 'published', count: b?.published ?? 0, color: 'bg-green-600' },
+    { key: 'deprecated', count: b?.deprecated ?? 0, color: 'bg-muted-foreground/50' },
+  ].filter((s) => s.count > 0)
+  if (segments.length === 0) return null
   return (
-    <div className="mt-2 flex h-1 overflow-hidden rounded-full" aria-hidden="true">
-      {draft > 0 && <span className="bg-muted-foreground/50" style={{ flex: draft }} />}
-      {published > 0 && <span className="bg-green-600" style={{ flex: published }} />}
-      {deprecated > 0 && <span className="bg-amber-500" style={{ flex: deprecated }} />}
-    </div>
+    <>
+      <div className="mt-2 flex h-1 overflow-hidden rounded-full" aria-hidden="true">
+        {segments.map((s) => (
+          <span key={s.key} className={s.color} style={{ flex: s.count }} />
+        ))}
+      </div>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">
+        {segments.map((s) => `${s.count} ${s.key}`).join(' · ')}
+      </p>
+    </>
   )
 }
 
@@ -102,16 +117,36 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold truncate">{option?.name ?? slug}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Everything happening in <span className="font-mono">{slug}</span>.
-          </p>
+          <p className="text-muted-foreground mt-1 text-sm">Everything happening in {option?.name ?? slug}.</p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           {option?.roles.map((r) => (
             <Badge key={r} variant="outline" className="capitalize">
               {r}
             </Badge>
           ))}
+          {canEdit && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="flex items-center gap-1.5">
+                  <Plus className="h-4 w-4" aria-hidden="true" /> New
+                  <ChevronDown className="h-4 w-4 opacity-70" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link to="/admin/mcp/new">
+                    <Server aria-hidden="true" /> New MCP server
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/admin/agents/new">
+                    <Bot aria-hidden="true" /> New agent
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -124,7 +159,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
               <Link
                 key={key}
                 to={to}
-                className={`flex flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-colors min-w-[220px] ${TILE_TONE[tone]}`}
+                className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-colors min-w-[220px] ${TILE_TONE[tone]}`}
               >
                 <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
                 <span className="flex-1 text-sm">
@@ -139,8 +174,8 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
 
       {/* Metric row */}
       {statsPending ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          {[0, 1, 2].map((i) => (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {[0, 1].map((i) => (
             <Skeleton key={i} className="h-24 rounded-lg" />
           ))}
         </div>
@@ -165,7 +200,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
         />
       ) : (
         stats && (
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Link to="/admin/mcp" className="rounded-lg bg-muted/50 p-4 transition-colors hover:bg-muted">
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Server className="h-3.5 w-3.5" aria-hidden="true" /> MCP servers
@@ -180,19 +215,6 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
               <p className="mt-1 text-2xl font-bold">{stats.agents}</p>
               <StatusBar b={stats.agent_status_breakdown} />
             </Link>
-            <div className="rounded-lg bg-muted/50 p-4">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Users className="h-3.5 w-3.5" aria-hidden="true" /> Members
-              </p>
-              <p className="mt-1 text-2xl font-bold">{stats.members}</p>
-              {stats.member_roles && (
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {stats.member_roles.editors} editor{stats.member_roles.editors === 1 ? '' : 's'} ·{' '}
-                  {stats.member_roles.reviewers} reviewer{stats.member_roles.reviewers === 1 ? '' : 's'} ·{' '}
-                  {stats.member_roles.viewers} viewer{stats.member_roles.viewers === 1 ? '' : 's'}
-                </p>
-              )}
-            </div>
           </div>
         )
       )}
