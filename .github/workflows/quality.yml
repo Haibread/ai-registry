@@ -1,0 +1,510 @@
+name: Quality
+
+# All correctness gates: Go build + unit/integration tests, the OpenAPI↔router
+# and A2A contract suites, web build + unit tests, Helm render validation, and
+# the Playwright + k6 end-to-end suite. Static analysis (gofmt/vet/eslint/tsc/
+# helm lint/...) lives in the separate Lint workflow via pre-commit.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Go server: build, unit + integration tests, coverage floor ───────────────
+  server:
+    name: Server (Go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: go build
+        working-directory: server
+        run: go build ./...
+
+      # testcontainers-go spins up Postgres automatically via the Docker daemon
+      # that GitHub-hosted runners provide out of the box.
+      - name: go test
+        working-directory: server
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      # Explicit conformance + contract suite run. Everything under this step
+      # already ran as part of `go test ./...` above — the repeat is deliberate
+      # so the CI log surfaces these tests by name. If the A2A Agent Card schema,
+      # OpenAPI↔router contract, or the admin-guard router contract are ever
+      # deleted or renamed without updating this step, CI fails loudly instead
+      # of silently passing.
+      - name: Contract & conformance suites (named)
+        working-directory: server
+        run: |
+          set -euo pipefail
+          go test -count=1 -v \
+            -run '^(TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
+            ./internal/http/handlers/...
+          go test -count=1 -v \
+            -run '^(TestOpenAPIContract_MatchesRouter$|TestAllWriteRoutesRequireAdmin$|TestPublicWriteRoutesBypassAdmin$)' \
+            ./internal/http/
+
+      # Coverage floor — catches silent test deletions that drop overall
+      # coverage without anything else noticing. The floor is intentionally
+      # below the current number so normal development doesn't bounce off it;
+      # the goal is to detect regressions, not to gate every PR on a moving
+      # target. Raise this value when the real number climbs.
+      - name: Coverage floor
+        working-directory: server
+        run: |
+          set -euo pipefail
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "total coverage: ${total}%"
+          floor=70.0
+          awk -v t="$total" -v f="$floor" 'BEGIN { exit (t+0 >= f+0) ? 0 : 1 }' || {
+            echo "::error::Go coverage ${total}% is below the floor of ${floor}%"
+            exit 1
+          }
+
+  # ── OpenAPI ↔ router contract ────────────────────────────────────────────────
+  # Dedicated, fast job that only runs the OpenAPI↔router and A2A Agent Card
+  # conformance suites. Duplicates what the server job covers, but surfaces the
+  # result as its own required check so a spec drift is obvious in the PR UI
+  # without digging into a long log.
+  contract:
+    name: API contract (OpenAPI + A2A)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Run contract & conformance tests
+        working-directory: server
+        run: |
+          set -euo pipefail
+          go test -count=1 -v \
+            -run '^(TestOpenAPIContract_MatchesRouter$|TestAllWriteRoutesRequireAdmin$|TestPublicWriteRoutesBypassAdmin$)' \
+            ./internal/http/
+          go test -count=1 -v \
+            -run '^(TestV0Conformance_|TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
+            ./internal/http/handlers/...
+
+  # ── Web: build/typecheck, OpenAPI sync, unit tests ───────────────────────────
+  web:
+    name: Web (Vite + React)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      # Regenerate the TS schema from openapi.yaml and fail the build if the
+      # committed file is out of sync. Catches edits to the OpenAPI spec that
+      # forget to `npm run generate`, and prevents anyone from hand-editing the
+      # generated file. Uses `git diff --quiet` (exits non-zero on diff) rather
+      # than `--exit-status` — the runner image doesn't recognise the latter.
+      - name: Generate OpenAPI types and check committed copy is in sync
+        working-directory: web
+        run: |
+          npm run generate
+          if ! git diff --quiet -- src/lib/schema.d.ts; then
+            echo "::error::src/lib/schema.d.ts is out of sync with ../server/api/openapi.yaml. Run \`npm run generate\` and commit." >&2
+            git --no-pager diff -- src/lib/schema.d.ts | head -40
+            exit 1
+          fi
+
+      # `npm run build` runs `tsc -b && vite build`; vitest doesn't typecheck,
+      # so the build step is the authoritative typecheck gate.
+      - name: Typecheck + build
+        working-directory: web
+        run: npm run build
+
+      - name: Unit tests
+        working-directory: web
+        run: npm test
+
+  # ── Helm chart: render validation + kubeconform ──────────────────────────────
+  # `helm lint` runs in the Lint workflow (pre-commit). This job renders the
+  # chart with default values and with each optional feature enabled, so template
+  # errors in opt-in paths fail CI, then schema-validates every rendered manifest
+  # against the Kubernetes (and CNPG/Prometheus) OpenAPI schemas with kubeconform.
+  helm:
+    name: Helm chart render
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # The stock chart is local-login-only (server.localLogin.enabled defaults
+    # true), so default renders need no OIDC config. The OIDC renders below opt
+    # in with server.oidcEnabled=true and supply a dummy issuer/client.
+    env:
+      ISSUER: https://idp.example.test/realms/ai-registry
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5
+        with:
+          version: latest
+
+      # Render with default values and with each optional feature enabled, so
+      # template errors in opt-in paths (httpRoute, cnpg, bootstrap, OIDC) fail CI.
+      - name: helm template (defaults — local-login-only)
+        run: helm template test deploy/helm/ai-registry
+
+      - name: helm template (httpRoute)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set httpRoute.enabled=true \
+            --set httpRoute.gatewayRef.name=test-gateway
+
+      - name: helm template (cnpg)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set cnpg.enabled=true
+
+      - name: helm template (bootstrap sample data)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set server.bootstrap.enabled=true \
+            --set server.bootstrap.sampleData=true
+
+      # Brokered-OIDC path: enabling OIDC with a confidential client id + inline
+      # client secret must render the OIDC Secret and the secretKeyRef env wiring.
+      - name: helm template (oidc broker)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set server.oidcEnabled=true \
+            --set server.oidcIssuer="$ISSUER" \
+            --set server.oidcClientId=ai-registry-server \
+            --set server.oidcClientSecret=render-test-secret \
+            | grep -q 'name: test-ai-registry-server-oidc'
+
+      # No-login-method guard: disabling local login without enabling OIDC must
+      # fail the render rather than ship a registry no one can log in to.
+      - name: helm template (no login method must fail)
+        run: |
+          if helm template test deploy/helm/ai-registry \
+               --set server.localLogin.enabled=false >/dev/null 2>&1; then
+            echo "::error::render should have failed when no login method is enabled" >&2
+            exit 1
+          fi
+
+      # Schema-validate the rendered Kubernetes manifests. helm lint catches
+      # chart-authoring issues but not bad spec fields; kubeconform checks every
+      # rendered manifest against the published Kubernetes OpenAPI schemas.
+      # Includes the CNPG and Prometheus Operator CRD schemas so opt-in paths
+      # validate too.
+      - name: Install kubeconform
+        run: |
+          curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xzf - kubeconform
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: kubeconform (defaults)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            | kubeconform -strict -summary -ignore-missing-schemas \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+      - name: kubeconform (all opt-ins)
+        run: |
+          helm template test deploy/helm/ai-registry \
+            --set server.oidcEnabled=true \
+            --set server.oidcIssuer="$ISSUER" \
+            --set server.oidcClientId=ai-registry-server \
+            --set server.oidcClientSecret=render-test-secret \
+            --set httpRoute.enabled=true \
+            --set httpRoute.gatewayRef.name=test-gateway \
+            --set cnpg.enabled=true \
+            --set server.bootstrap.enabled=true \
+            --set server.bootstrap.sampleData=true \
+            --set server.serviceMonitor.enabled=true \
+            --set server.podDisruptionBudget.enabled=true \
+            --set web.podDisruptionBudget.enabled=true \
+            | kubeconform -strict -summary -ignore-missing-schemas \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+  # ── End-to-end: Playwright + k6 smoke ────────────────────────────────────────
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # actions/upload-artifact@v5 still bundles Node.js 20. GitHub is force-cutting
+      # Node 20 runners on June 2, 2026; this env var opts the action into the
+      # Node 24 runner early.
+      # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      # Throwaway bootstrap Server Admin for the local-login e2e. The server seeds
+      # this account on boot (see the "Start server" step) and the local-login spec
+      # signs in with it. Not a real secret — it only exists for the lifetime of the
+      # CI run's ephemeral stack.
+      E2E_LOCAL_ADMIN_EMAIL: local-admin@example.com
+      E2E_LOCAL_ADMIN_PASSWORD: e2e-local-admin-pass
+      # A fixed signing seed keeps registry tokens stable across the run (CI value,
+      # not a secret). The e2e suite shares one storageState (access token) across
+      # all specs, so a long access TTL keeps it valid for the whole run.
+      E2E_JWT_SIGNING_SEED: ci-e2e-signing-seed-do-not-use-in-prod-0001
+
+    # Postgres runs as a native GitHub Actions service container: its image ships
+    # pg_isready, so an in-container health check works and the runner waits until
+    # it is healthy before any step runs.
+    #
+    # Keycloak is NOT a service container. Two limitations rule that out:
+    #   1. Service containers cannot override the image command, and the Keycloak
+    #      image's entrypoint (kc.sh) needs the `start-dev` argument — without it
+    #      kc.sh just prints usage and exits.
+    #   2. The image is based on ubi9-micro and ships neither curl nor wget, so no
+    #      in-container `--health-cmd` can ever pass.
+    # So Keycloak is started with `docker run` in a step (where we control the
+    # command) and its readiness is polled from the runner host (which has curl).
+    #
+    # The Go server and web SPA are also not service containers: their images are
+    # built from this repo and a service can only run an already-pullable image —
+    # so they run as native host processes.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: registry
+          POSTGRES_PASSWORD: registry
+          POSTGRES_DB: registry
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U registry -d registry"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Start Keycloak as a plain detached container (not a service container —
+      # see the note on the `services:` block above). Kicked off first so the
+      # slow JVM boot overlaps with the Node/Go setup and `npm ci` below; the
+      # "Wait for Keycloak" step gates on readiness before the realm import.
+      # KC_HOSTNAME pins the front-channel hostname so the issuer + authorize URL
+      # are stably http://localhost:8080 regardless of how Keycloak is reached.
+      - name: Start Keycloak
+        run: |
+          docker run -d --name keycloak \
+            -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            -e KC_HOSTNAME=http://localhost:8080 \
+            -e KC_HOSTNAME_STRICT=false \
+            quay.io/keycloak/keycloak:26.6 start-dev
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      # ── Keycloak readiness (polled from the host) ─────────────────────────
+      # Poll the master realm from the host — which has curl — until the HTTP
+      # listener answers. Keycloak is a JVM app and slow to boot, hence the
+      # generous budget.
+      - name: Wait for Keycloak
+        run: |
+          echo "Waiting for Keycloak..."
+          timeout 180 bash -c \
+            'until curl -sf http://localhost:8080/realms/master > /dev/null; do
+               echo "  not ready, retrying in 5 s..."; sleep 5
+             done'
+          echo "Keycloak ready."
+
+      # ── Keycloak realm import (admin REST API) ────────────────────────────
+      # Keycloak is now reachable (master realm answers). Mint an admin-cli
+      # token, then POST the dev realm representation to create the ai-registry
+      # realm with its clients, groups, and fixture users.
+      - name: Import Keycloak realm
+        run: |
+          set -euo pipefail
+          token=$(curl -sf -X POST http://localhost:8080/realms/master/protocol/openid-connect/token \
+            -d grant_type=password -d client_id=admin-cli \
+            -d username=admin -d password=admin | jq -r .access_token)
+          curl -sf -X POST http://localhost:8080/admin/realms \
+            -H "Authorization: Bearer ${token}" \
+            -H "Content-Type: application/json" \
+            --data-binary @deploy/keycloak-realm-dev.json
+          curl -sf http://localhost:8080/realms/ai-registry > /dev/null
+          echo "ai-registry realm imported."
+
+      # ── Server (native Go binary) ─────────────────────────────────────────
+      - name: Build server
+        working-directory: server
+        run: go build -o "${RUNNER_TEMP}/ai-registry-server" ./cmd/server
+
+      # E2E authenticates the fixture users (admin/author/reviewer/user) via the
+      # brokered OIDC flow — they live in Keycloak — and exercises the local
+      # email+password front door for the local-login spec. A long ACCESS_TOKEN_TTL
+      # keeps the shared storageState valid for the whole run (rotating the
+      # single-use refresh token would revoke the lineage and break later specs).
+      # The server, Keycloak, and Postgres are all reachable on localhost.
+      - name: Start server
+        env:
+          OIDC_ISSUER: http://localhost:8080/realms/ai-registry
+          OIDC_INTERNAL_URL: http://localhost:8080/realms/ai-registry
+          OIDC_JWKS_URL: http://localhost:8080/realms/ai-registry/protocol/openid-connect/certs
+          OIDC_CLIENT_ID: ai-registry-server
+          OIDC_CLIENT_SECRET: dev-broker-secret
+          AUTH_LOCAL_LOGIN_ENABLED: "true"
+          AUTH_BOOTSTRAP_ADMIN_EMAIL: ${{ env.E2E_LOCAL_ADMIN_EMAIL }}
+          AUTH_BOOTSTRAP_ADMIN_PASSWORD: ${{ env.E2E_LOCAL_ADMIN_PASSWORD }}
+          JWT_SIGNING_SEED: ${{ env.E2E_JWT_SIGNING_SEED }}
+          ACCESS_TOKEN_TTL: 24h
+          DATABASE_URL: postgres://registry:registry@localhost:5432/registry?sslmode=disable
+          CORS_ALLOWED_ORIGINS: http://localhost:3000
+          PUBLIC_BASE_URL: http://localhost:3000
+          BOOTSTRAP_FILE: ${{ github.workspace }}/deploy/bootstrap.example.yaml
+        run: |
+          nohup "${RUNNER_TEMP}/ai-registry-server" > "${RUNNER_TEMP}/server.log" 2>&1 &
+          echo "Server starting (pid $!)"
+
+      - name: Wait for Go server
+        run: |
+          echo "Waiting for Go server..."
+          timeout 60 bash -c \
+            'until curl -sf http://localhost:8081/readyz > /dev/null; do
+               echo "  not ready, retrying in 3 s..."; sleep 3
+             done'
+          echo "Server ready."
+
+      # ── Web (native Vite server) ──────────────────────────────────────────
+      # The Vite server binds :3000 and proxies /api, /config.json, and the A2A
+      # agent-card paths to the server on :8081 (see web/vite.config.ts), the
+      # same surface nginx serves in production.
+      #
+      # `--host 0.0.0.0` forces the dev server onto IPv4. Vite's default host is
+      # `localhost`, which Node resolves to a single address — on the runner that
+      # is `::1` (IPv6). curl falls back from 127.0.0.1 to ::1 so it still
+      # connects, but k6 only dials the IPv4 address and gets connection refused.
+      # Binding 0.0.0.0 makes 127.0.0.1 work for every host-side client; the
+      # browser flow keeps using localhost so the OIDC origin (PUBLIC_BASE_URL,
+      # CORS allow-list, Keycloak redirect URIs) stays http://localhost:3000.
+      - name: Start web
+        working-directory: web
+        env:
+          API_URL: http://localhost:8081
+        run: |
+          nohup npm run dev -- --host 0.0.0.0 > "${RUNNER_TEMP}/web.log" 2>&1 &
+          echo "Web starting (pid $!)"
+
+      - name: Wait for web
+        run: |
+          echo "Waiting for web..."
+          timeout 60 bash -c \
+            'until curl -sf http://localhost:3000/ > /dev/null; do
+               echo "  not ready, retrying in 3 s..."; sleep 3
+             done'
+          echo "Web ready."
+
+      # Fast smoke test against the public read surface — catches gross
+      # regressions (5xx, missing routes, latency spikes) before the slower
+      # Playwright suite runs. Uses Grafana's official setup action so we avoid
+      # the apt/gpg dance. Thresholds live in the script itself.
+      - name: Set up k6
+        uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1
+
+      - name: Run k6 smoke
+        uses: grafana/run-k6-action@de51a7390bdf0ac85a3bef493691bd71d4c7c158 # v1
+        env:
+          BASE_URL: http://localhost:3000
+        with:
+          path: test/load/smoke.js
+
+      # Only install Chromium — the tests target chromium-only projects.
+      - name: Install Playwright + Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: web
+        env:
+          E2E_BASE_URL: http://localhost:3000
+          # Fixture credentials match deploy/keycloak-realm-dev.json.
+          # admin / user predate group-based auth; author / reviewer were added
+          # alongside the RBAC + change-approval workflow.
+          E2E_ADMIN_EMAIL: admin@example.com
+          E2E_ADMIN_PASSWORD: admin
+          E2E_AUTHOR_EMAIL: author@example.com
+          E2E_AUTHOR_PASSWORD: author
+          E2E_REVIEWER_EMAIL: reviewer@example.com
+          E2E_REVIEWER_PASSWORD: reviewer
+          E2E_USER_EMAIL: user@example.com
+          E2E_USER_PASSWORD: user
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
+
+      # Dump every service's logs on failure to speed up debugging. Postgres is a
+      # service container and Keycloak a named container (docker logs); the server
+      # and web run as native processes (log files).
+      - name: Dump service logs
+        if: failure()
+        run: |
+          echo "::group::keycloak"
+          docker logs --timestamps --tail=500 keycloak 2>&1 || true
+          echo "::endgroup::"
+          echo "::group::postgres"
+          docker ps -a --filter "ancestor=postgres:18-alpine" -q \
+            | xargs -r -I{} docker logs --timestamps --tail=500 {} 2>&1 || true
+          echo "::endgroup::"
+          for svc in server web; do
+            echo "::group::${svc}"
+            tail -n 500 "${RUNNER_TEMP}/${svc}.log" 2>/dev/null || echo "no log"
+            echo "::endgroup::"
+          done
