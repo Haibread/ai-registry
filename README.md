@@ -57,7 +57,7 @@ A single place to publish, discover, and evaluate AI ecosystem building blocks. 
 - **Frontend** — Vite + React Router v7 + TanStack Query + TypeScript + shadcn/ui + Tailwind; Vitest and Playwright for tests. Exact versions: see `web/package.json`.
 - **Infra** — docker-compose for local/self-hosted, Helm chart (optional CNPG Postgres) for k8s, Keycloak for local OIDC, OTel Collector.
 
-The codebase splits into two top-level directories: `server/` (Go service) and `web/` (Vite + React SPA), with `deploy/` for compose profiles and the Helm chart.
+The codebase splits into two top-level directories: `server/` (Go service) and `web/` (Vite + React SPA), with a root `docker-compose.yml` (dev/prod profiles) and `deploy/` for the Helm chart and supporting config (realm import, bootstrap sample, OTel config).
 
 ---
 
@@ -69,9 +69,21 @@ Prerequisites: Docker + Docker Compose.
 git clone git@github.com:Haibread/ai-registry.git
 cd ai-registry
 
-# Brings up: Postgres, Keycloak (pre-seeded realm), OTel Collector, server, web
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml up -d --build
+# Brings up: Postgres, Keycloak (pre-seeded realm), server, and the web SPA
+# served by the Vite dev server (hot reload).
+docker compose --profile dev up -d --build
 ```
+
+The compose file at the repo root ships the web frontend in two mutually
+exclusive flavours, each behind a profile:
+
+```bash
+docker compose --profile dev  up -d --build   # Vite dev server, hot reload
+docker compose --profile prod up -d --build   # nginx image built from web/Dockerfile
+```
+
+Add `--profile observability` (alongside `dev` or `prod`) for the OTel
+Collector + Jaeger.
 
 Then open:
 
@@ -160,7 +172,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full set of non-negotiables.
 
 ## Roadmap
 
-The phased roadmap lives in [`PLAN.md`](./PLAN.md). Shipped: everything through publisher-scoped RBAC, local accounts, and the brokered-OIDC / registry-issued bearer-token (access + rotating refresh) rework (with the `/v0` surface removed). Also shipped: opt-in M2M auth via directly-presented IdP service-account tokens (`OIDC_AUDIENCE`). Remaining (tracked in `PLAN.md`): registry-native hashed per-publisher API keys, a Skills / Prompts registry, federation, webhooks, and a dedicated production `docker-compose.prod.yml` profile.
+The phased roadmap lives in [`PLAN.md`](./PLAN.md). Shipped: everything through publisher-scoped RBAC, local accounts, and the brokered-OIDC / registry-issued bearer-token (access + rotating refresh) rework (with the `/v0` surface removed). Also shipped: opt-in M2M auth via directly-presented IdP service-account tokens (`OIDC_AUDIENCE`). Remaining (tracked in `PLAN.md`): registry-native hashed per-publisher API keys, a Skills / Prompts registry, federation, and webhooks.
 
 ---
 

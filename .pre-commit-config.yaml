@@ -30,10 +30,9 @@ repos:
       - id: check-yaml
         args:
           - --allow-multiple-documents
-        # Helm templates are Go-templated; the dev compose overlay uses
-        # Compose's !reset / !override merge tags — neither is valid
-        # standalone YAML under PyYAML's safe loader.
-        exclude: ^(deploy/helm/.*/templates/|deploy/docker-compose\.dev\.yml$)
+        # Helm templates are Go-templated — not valid standalone YAML under
+        # PyYAML's safe loader.
+        exclude: ^deploy/helm/.*/templates/
       - id: check-added-large-files
       - id: check-merge-conflict
       - id: detect-private-key
@@ -121,6 +120,9 @@ repos:
       - id: actionlint
         name: actionlint
         description: Lint GitHub Actions workflow files.
-        entry: actionlint
+        # GitHub added `command`/`entrypoint` to service containers (June 2026);
+        # actionlint v1.7.12 (latest) doesn't know them yet and flags them as
+        # unexpected keys. Ignore that one message until a release catches up.
+        entry: actionlint -ignore 'unexpected key "(command|entrypoint)" for "services" section'
         language: system
         files: ^\.github/workflows/.*\.ya?ml$

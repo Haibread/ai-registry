@@ -81,16 +81,17 @@ trusted from the session. Wiring and per-route guards live in
 
 ### 1.3 Deployment Topology
 
-**Development (docker-compose)** — Postgres, Keycloak, the Go server (hot
-reload), the Vite dev server (HMR, proxying `/api/*` to the server), and the
-OTel collector + Jaeger. See `deploy/docker-compose.yml` +
-`deploy/docker-compose.dev.yml`.
+**Development (docker-compose `dev` profile)** — Postgres, Keycloak, the Go
+server, the Vite dev server (HMR, proxying `/api/*` to the server), and
+optionally the OTel collector + Jaeger (`observability` profile). See the root
+`docker-compose.yml`: `docker compose --profile dev up -d --build`.
 
-**Production (docker-compose)** — Postgres (managed or container with a
-volume), the server as a distroless image, the built SPA served by nginx (which
-also proxies `/api/*` and `/config.json` to the server), a reverse proxy for TLS
-termination, and an OTel collector exporting to external Prometheus / Grafana /
-Tempo.
+**Production-like (docker-compose `prod` profile)** — Postgres (managed or
+container with a volume), the server as a distroless image, and the built SPA
+served by nginx (image built from `web/Dockerfile`, which also proxies `/api/*`
+and `/config.json` to the server). Add a reverse proxy for TLS termination and an
+OTel collector exporting to external Prometheus / Grafana / Tempo. Run with
+`docker compose --profile prod up -d --build`.
 
 **Kubernetes (Helm chart)** — server and web Deployments (multiple replicas,
 HPA on the server), a Service + Ingress with cert-manager TLS, PodDisruption
