@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here.
 
+## v0.4.0-rc3 — 2026-06-04
+
+### Added
+
+- **Accept IdP-issued service-account access tokens for machine-to-machine
+  callers.** A deployment can now opt into honouring an IdP-minted (e.g.
+  Keycloak service-account, `client_credentials`) access token directly on the
+  API, for non-interactive clients that cannot run the browser login flow (a
+  Kubernetes operator, a CI job). A bearer that is not a registry token is
+  verified offline against the IdP JWKS and accepted **only** when its `aud`
+  claim contains the value configured in the new `OIDC_AUDIENCE` knob — a token
+  minted for another client in the same realm is never honoured, so the
+  audience pin is the security boundary (configure a Keycloak audience mapper so
+  the SA's tokens carry it). The realm-admin role (`OIDC_ADMIN_ROLE`) maps to
+  Server Admin and the groups claim drives publisher-scoped RBAC, exactly as a
+  brokered login. The path requires the OIDC broker to be configured
+  (`OIDC_CLIENT_ID` + `OIDC_CLIENT_SECRET`) and is **disabled by default**:
+  with `OIDC_AUDIENCE` empty, only registry-issued tokens are accepted, leaving
+  the IdP-less / break-glass deployment unchanged.
+- **Configurable email claim path (`AUTH_EMAIL_CLAIM`, default `email`).** The
+  broker reads the user's email from this `id_token` claim at login; dotted
+  paths address nested objects. Override it for IdPs that emit the email under a
+  different name (the email is required — `users.email` is `NOT NULL`).
+
 ## v0.4.0-rc2 — 2026-06-04
 
 ### Changed
