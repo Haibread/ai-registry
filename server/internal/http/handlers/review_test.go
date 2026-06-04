@@ -47,8 +47,8 @@ func newReviewRouter() *chi.Mux {
 	return r
 }
 
-// authedRequest builds a request whose context already carries admin
-// claims so the handler's audit logger sees a real actor.
+// authedRequest builds a request whose context already carries a Server Admin
+// principal so the handler's audit logger sees a real actor.
 func authedRequest(method, path string, body []byte) *http.Request {
 	var r *http.Request
 	if body == nil {
@@ -57,12 +57,11 @@ func authedRequest(method, path string, body []byte) *http.Request {
 		r = httptest.NewRequest(method, path, bytes.NewBuffer(body))
 		r.Header.Set("Content-Type", "application/json")
 	}
-	claims := &auth.KeycloakClaims{
-		Email:       "admin@example.com",
-		RealmAccess: auth.RealmAccess{Roles: []string{"admin"}},
-	}
-	claims.Subject = "admin-uuid"
-	return r.WithContext(auth.ContextWithClaims(r.Context(), claims))
+	return r.WithContext(auth.ContextWithPrincipal(r.Context(), &auth.Principal{
+		UserID:        "admin-uuid",
+		Email:         "admin@example.com",
+		IsServerAdmin: true,
+	}))
 }
 
 // seedDraftMCPServerVersion creates publisher + MCP server + a draft

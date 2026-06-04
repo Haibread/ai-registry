@@ -28,7 +28,7 @@ func TestIsAuthenticated(t *testing.T) {
 	if auth.IsAuthenticated(context.Background()) {
 		t.Error("empty context: IsAuthenticated = true, want false")
 	}
-	withClaims := auth.ContextWithClaims(context.Background(), &auth.KeycloakClaims{})
+	withClaims := auth.ContextWithClaims(context.Background(), &auth.OIDCClaims{})
 	if !auth.IsAuthenticated(withClaims) {
 		t.Error("claims context: IsAuthenticated = false, want true")
 	}
@@ -40,9 +40,7 @@ func TestIsAuthenticated(t *testing.T) {
 
 func TestCheckPublisherRole(t *testing.T) {
 	t.Run("server admin satisfies anything", func(t *testing.T) {
-		ctx := auth.ContextWithClaims(context.Background(), &auth.KeycloakClaims{
-			RealmAccess: auth.RealmAccess{Roles: []string{"admin"}},
-		})
+		ctx := auth.ContextWithPrincipal(context.Background(), &auth.Principal{UserID: "u1", IsServerAdmin: true})
 		ok, authed, err := auth.CheckPublisherRole(ctx, fakeRoleStore{}, "p1", domain.RoleEditor)
 		if err != nil || !ok || !authed {
 			t.Fatalf("ok=%v authed=%v err=%v, want ok+authed", ok, authed, err)

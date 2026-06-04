@@ -275,16 +275,16 @@ func TestUserHandler_SetPassword(t *testing.T) {
 	}
 
 	adminCtx := func(r *http.Request) *http.Request {
-		ctx := auth.ContextWithClaims(r.Context(), &auth.KeycloakClaims{RealmAccess: auth.RealmAccess{Roles: []string{"admin"}}})
+		ctx := auth.ContextWithPrincipal(r.Context(), &auth.Principal{IsServerAdmin: true})
 		return r.WithContext(ctx)
 	}
 	selfCtx := func(r *http.Request) *http.Request {
-		ctx := auth.ContextWithClaims(r.Context(), &auth.KeycloakClaims{})
+		ctx := auth.ContextWithClaims(r.Context(), &auth.OIDCClaims{})
 		ctx = auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: u.ID})
 		return r.WithContext(ctx)
 	}
 	otherCtx := func(r *http.Request) *http.Request {
-		ctx := auth.ContextWithClaims(r.Context(), &auth.KeycloakClaims{})
+		ctx := auth.ContextWithClaims(r.Context(), &auth.OIDCClaims{})
 		ctx = auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: "someone-else"})
 		return r.WithContext(ctx)
 	}

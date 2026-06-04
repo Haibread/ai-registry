@@ -153,6 +153,37 @@ func TestLoad_OIDCHalfConfigured_Error(t *testing.T) {
 	}
 }
 
+// OIDC_AUDIENCE accepts IdP service-account tokens, which the broker
+// verifies — so it is meaningless (and rejected) without OIDC enabled.
+func TestLoad_AudienceWithoutOIDC_Error(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "")
+	t.Setenv("OIDC_CLIENT_ID", "")
+	t.Setenv("OIDC_CLIENT_SECRET", "")
+	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "true")
+	t.Setenv("OIDC_AUDIENCE", "ai-registry")
+
+	if _, err := config.Load(""); err == nil {
+		t.Error("expected error when OIDC_AUDIENCE is set without OIDC enabled, got nil")
+	}
+}
+
+func TestLoad_AudienceWithOIDC_OK(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("OIDC_ISSUER", "https://auth.example.com/realms/test")
+	t.Setenv("OIDC_CLIENT_ID", "ai-registry-server")
+	t.Setenv("OIDC_CLIENT_SECRET", "s3cret")
+	t.Setenv("OIDC_AUDIENCE", "ai-registry")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.OIDCAudience != "ai-registry" {
+		t.Fatalf("OIDCAudience = %q, want ai-registry", cfg.Auth.OIDCAudience)
+	}
+}
+
 func TestLoad_ValidConfig(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
 	t.Setenv("OIDC_ISSUER", "https://auth.example.com/realms/test")

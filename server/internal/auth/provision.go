@@ -21,30 +21,30 @@ func ResolveOrProvisionFederated(ctx context.Context, st PrincipalStore, id *Bro
 	return u, nil
 }
 
-// provisionFederated handles a federated first login. With a verified email it
-// binds onto a pre-invited row (bind-once — never rebinds a row that already
-// has a subject, the account-takeover guard); otherwise it lazily creates a JIT
-// row. An email is required because users.email is NOT NULL.
+// provisionFederated handles a federated first login. It binds onto a
+// pre-invited local row matching the email (bind-once — it never rebinds a row
+// that already has a subject, the account-takeover guard), otherwise it lazily
+// creates a JIT row. The IdP is trusted to assert the email (the registry does
+// not require an email_verified claim); an email is required because
+// users.email is NOT NULL.
 func provisionFederated(ctx context.Context, st PrincipalStore, id *BrokeredIdentity) (*store.User, error) {
 	if id.Email == "" {
 		return nil, errNoEmail
 	}
-	if id.EmailVerified {
-		existing, err := st.GetUserByEmail(ctx, id.Email)
-		switch {
-		case err == nil && existing.Subject == "":
-			// Pre-invited row: bind this subject once.
-			if bindErr := st.BindSubject(ctx, existing.ID, id.Subject); bindErr != nil {
-				return nil, bindErr
-			}
-			existing.Subject = id.Subject
-			return existing, nil
-		case err == nil:
-			// Email already linked to a different identity — refuse to hijack.
-			return nil, errPrincipalUnresolved
-		case !errors.Is(err, store.ErrNotFound):
-			return nil, err
+	existing, err := st.GetUserByEmail(ctx, id.Email)
+	switch {
+	case err == nil && existing.Subject == "":
+		// Pre-invited row: bind this subject once.
+		if bindErr := st.BindSubject(ctx, existing.ID, id.Subject); bindErr != nil {
+			return nil, bindErr
 		}
+		existing.Subject = id.Subject
+		return existing, nil
+	case err == nil:
+		// Email already linked to a different identity — refuse to hijack.
+		return nil, errPrincipalUnresolved
+	case !errors.Is(err, store.ErrNotFound):
+		return nil, err
 	}
 	return st.CreateUser(ctx, store.CreateUserParams{
 		Email:   id.Email,

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,12 +46,22 @@ type OIDCConfig struct {
 	// GroupsClaim is the (optionally dotted) id_token path the broker reads the
 	// user's group memberships from. Default "groups".
 	GroupsClaim string
+	// EmailClaim is the (optionally dotted) id_token path the broker reads the
+	// user's email from. Default "email".
+	EmailClaim string
 	// RolesClaim is the (optionally dotted) id_token path the broker reads
 	// realm/global roles from. Default "realm_access.roles".
 	RolesClaim string
 	// AdminRole is the role value within RolesClaim that grants the Server-Admin
 	// flag. Default "admin".
 	AdminRole string
+
+	// Audience, when non-empty, enables VerifyServiceToken: an IdP-issued
+	// access token (e.g. a Keycloak service account via client_credentials)
+	// presented directly on the API is accepted only if its `aud` contains this
+	// value. Empty disables direct service-token acceptance. See
+	// config.AuthConfig.OIDCAudience.
+	Audience string
 }
 
 // oidcDiscovery is the subset of the OIDC discovery document the broker uses.
@@ -72,8 +83,10 @@ type OIDCBroker struct {
 	jwks        *JWKSCache
 	client      *http.Client
 	groupsClaim string
+	emailClaim  string
 	rolesClaim  string
 	adminRole   string
+	audience    string
 }
 
 // NewOIDCBroker fetches the IdP discovery document and builds the broker. It is
@@ -120,6 +133,10 @@ func NewOIDCBroker(ctx context.Context, cfg OIDCConfig) (*OIDCBroker, error) {
 	if groupsClaim == "" {
 		groupsClaim = "groups"
 	}
+	emailClaim := cfg.EmailClaim
+	if emailClaim == "" {
+		emailClaim = "email"
+	}
 	rolesClaim := cfg.RolesClaim
 	if rolesClaim == "" {
 		rolesClaim = "realm_access.roles"
@@ -134,8 +151,10 @@ func NewOIDCBroker(ctx context.Context, cfg OIDCConfig) (*OIDCBroker, error) {
 		jwks:        NewJWKSCache(jwksURL, 0),
 		client:      client,
 		groupsClaim: groupsClaim,
+		emailClaim:  emailClaim,
 		rolesClaim:  rolesClaim,
 		adminRole:   adminRole,
+		audience:    cfg.Audience,
 	}, nil
 }
 
@@ -216,11 +235,10 @@ type tokenResponse struct {
 // validated id_token: the standard subject/email plus the group memberships and
 // Server-Admin flag mapped from the configurable claim paths.
 type BrokeredIdentity struct {
-	Subject       string
-	Email         string
-	EmailVerified bool
-	Groups        []string
-	IsAdmin       bool
+	Subject string
+	Email   string
+	Groups  []string
+	IsAdmin bool
 }
 
 // Exchange swaps an authorization code for tokens and returns the mapped
@@ -278,19 +296,18 @@ func (b *OIDCBroker) Exchange(ctx context.Context, code, codeVerifier, expectedN
 		return nil, "", fmt.Errorf("oidc exchange: re-reading id_token claims: %w", err)
 	}
 	identity := &BrokeredIdentity{
-		Subject:       claims.Subject,
-		Email:         claims.Email,
-		EmailVerified: claims.EmailVerified,
-		Groups:        claimStringSlice(payload, b.groupsClaim),
-		IsAdmin:       claimHasValue(payload, b.rolesClaim, b.adminRole),
+		Subject: claims.Subject,
+		Email:   claimString(payload, b.emailClaim),
+		Groups:  claimStringSlice(payload, b.groupsClaim),
+		IsAdmin: claimHasValue(payload, b.rolesClaim, b.adminRole),
 	}
 	return identity, tr.IDToken, nil
 }
 
 // verifyIDToken validates the id_token signature (IdP JWKS), issuer, audience
 // (== client id), and expiry.
-func (b *OIDCBroker) verifyIDToken(ctx context.Context, idToken string) (*KeycloakClaims, error) {
-	claims := &KeycloakClaims{}
+func (b *OIDCBroker) verifyIDToken(ctx context.Context, idToken string) (*OIDCClaims, error) {
+	claims := &OIDCClaims{}
 	_, err := jwt.ParseWithClaims(idToken, claims, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, jwt.ErrSignatureInvalid
@@ -306,6 +323,75 @@ func (b *OIDCBroker) verifyIDToken(ctx context.Context, idToken string) (*Keyclo
 		return nil, fmt.Errorf("oidc exchange: validating id_token: %w", err)
 	}
 	return claims, nil
+}
+
+// ErrServiceTokensDisabled is returned by VerifyServiceToken when the broker was
+// built without an API audience (OIDC_AUDIENCE unset): direct acceptance of
+// IdP service-account tokens is off.
+var ErrServiceTokensDisabled = errors.New("oidc: service-account token acceptance disabled (set OIDC_AUDIENCE)")
+
+// ServiceIdentity is the identity resolved from an IdP-issued access token
+// presented directly on the API by a machine client (no browser, no brokered
+// login). It mirrors the brokered path's mapping: subject/email plus the group
+// memberships and Server-Admin flag read from the configurable claim paths.
+type ServiceIdentity struct {
+	Subject string
+	Email   string
+	Groups  []string
+	IsAdmin bool
+}
+
+// VerifyServiceToken validates an IdP-issued access token presented directly on
+// the API (machine-to-machine: a Keycloak service account via
+// client_credentials, a CI job). It is the M2M counterpart to the browser
+// Exchange flow and runs on the hot path, so it is pure offline crypto — the IdP
+// JWKS is cached, there is no network call per request once warm and no database
+// access.
+//
+// Acceptance is deliberately strict: the token must be signed by the IdP (RS256,
+// broker JWKS), carry the public issuer, be unexpired, AND list the configured
+// API audience in `aud`. The audience pin is the security boundary — without it
+// any token minted for any client in the same realm would be a registry
+// credential (a confused-deputy). Configure a Keycloak audience mapper so the
+// service account's tokens carry `aud: <OIDC_AUDIENCE>`.
+//
+// The issuer is checked up front against the raw (unverified) token, so a bearer
+// claiming a foreign issuer is rejected before the JWKS is consulted: a garbage
+// or third-party token cannot drive an unknown-kid JWKS refresh.
+func (b *OIDCBroker) VerifyServiceToken(ctx context.Context, accessToken string) (*ServiceIdentity, error) {
+	if b.audience == "" {
+		return nil, ErrServiceTokensDisabled
+	}
+	payload, err := unverifiedClaims(accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("oidc service token: not a JWT: %w", err)
+	}
+	if iss, _ := payload["iss"].(string); strings.TrimRight(iss, "/") != strings.TrimRight(b.cfg.Issuer, "/") {
+		return nil, fmt.Errorf("oidc service token: issuer mismatch")
+	}
+
+	claims := &OIDCClaims{}
+	_, err = jwt.ParseWithClaims(accessToken, claims, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		kid, _ := t.Header["kid"].(string)
+		return b.jwks.GetKey(ctx, kid)
+	},
+		jwt.WithIssuer(b.cfg.Issuer),
+		jwt.WithAudience(b.audience),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("oidc service token: %w", err)
+	}
+
+	return &ServiceIdentity{
+		Subject: claims.Subject,
+		Email:   claimString(payload, b.emailClaim),
+		Groups:  claimStringSlice(payload, b.groupsClaim),
+		IsAdmin: claimHasValue(payload, b.rolesClaim, b.adminRole),
+	}, nil
 }
 
 // unverifiedClaims re-parses an already-signature-verified token's payload into
@@ -329,6 +415,13 @@ func lookupClaim(m map[string]any, path string) any {
 		cur = asMap[part]
 	}
 	return cur
+}
+
+// claimString reads the value at path as a string, returning "" when the claim
+// is absent or not a string.
+func claimString(m map[string]any, path string) string {
+	s, _ := lookupClaim(m, path).(string)
+	return s
 }
 
 // claimStringSlice reads the value at path and coerces it to a string slice

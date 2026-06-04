@@ -114,7 +114,7 @@ func TestRequirePublisherRole_ClaimsFallback(t *testing.T) {
 	h := mw(okHandler())
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/acme/x", nil)
 	// Claims only — no Principal (the unprovisioned federated writer).
-	ctx := ContextWithClaims(r.Context(), &KeycloakClaims{Groups: []string{"anthropic-core"}})
+	ctx := ContextWithClaims(r.Context(), &OIDCClaims{Groups: []string{"anthropic-core"}})
 	r = r.WithContext(ctx)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
