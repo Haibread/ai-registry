@@ -24,9 +24,11 @@ clients (read-only user UI, authenticated admin UI).
 - **Observability**: OpenTelemetry for traces, metrics, and logs, exported via
   OTLP. Handlers are traced; DB calls produce child spans; structured logs
   carry `trace_id` / `span_id`.
-- **Dev infra**: docker-compose (`docker-compose.yml` baseline +
-  `docker-compose.dev.yml` overlay; `docker-compose.ci.yml` is CI-only).
-  Helm chart for k8s under `deploy/helm/`.
+- **Dev infra**: a single root `docker-compose.yml` with `dev` (Vite hot
+  reload) and `prod` (nginx built from `web/Dockerfile`) profiles, plus an
+  `observability` profile. CI runs no compose: Postgres and Keycloak are
+  GitHub Actions service containers; the server and web SPA run as native host
+  processes. Helm chart for k8s under `deploy/helm/`.
 
 ## Repository layout
 
