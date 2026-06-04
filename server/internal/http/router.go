@@ -80,8 +80,16 @@ func NewRouterForTest(deps RouterDeps) *chi.Mux {
 // unwrapped inner of NewRouter, exported to tests via NewRouterForTest.
 func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Bearer authenticator ────────────────────────────────────────────────
-	// Verifies the registry access token → Principal (pure crypto, no DB).
-	authn := auth.NewAuthenticator(deps.Tokens)
+	// Verifies the registry access token → Principal (pure crypto, no DB). When
+	// the OIDC broker is configured with an API audience, it doubles as the
+	// verifier for directly-presented IdP service-account tokens (M2M); a nil
+	// broker leaves that path off. A typed-nil *OIDCBroker must not be boxed into
+	// the interface (it would read as non-nil), so wire it only when present.
+	var svcVerifier auth.ServiceTokenVerifier
+	if deps.OIDC != nil {
+		svcVerifier = deps.OIDC
+	}
+	authn := auth.NewAuthenticator(deps.Tokens, svcVerifier)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)

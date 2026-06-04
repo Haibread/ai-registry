@@ -205,7 +205,7 @@ func TestVerify_EnforcesExpiryIssuerAudience(t *testing.T) {
 }
 
 func TestIsAdminFromContext(t *testing.T) {
-	admin := ContextWithClaims(t.Context(), &KeycloakClaims{RealmAccess: RealmAccess{Roles: []string{"admin"}}})
+	admin := ContextWithPrincipal(t.Context(), &Principal{IsServerAdmin: true})
 	if !IsAdminFromContext(admin) {
 		t.Fatal("expected admin context to report admin")
 	}

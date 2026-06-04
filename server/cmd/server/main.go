@@ -175,9 +175,11 @@ func run() error {
 	}
 
 	// ── Token authority + refresh ───────────────────────────────────────────
-	// Both front doors mint a registry-issued access token (Ed25519 JWT) and a
-	// rotating refresh token. The registry is the single token authority — no
-	// cookie, no multi-issuer validation.
+	// Both interactive front doors mint a registry-issued access token (Ed25519
+	// JWT) and a rotating refresh token (returned in the body — no cookie). The
+	// registry token is the primary credential; the only other accepted bearer is
+	// a directly-presented IdP service-account token, and only when
+	// OIDC_AUDIENCE is set (M2M; see the OIDC broker section below).
 	tokenIssuer := cfg.HTTP.PublicBaseURL
 	if tokenIssuer == "" {
 		tokenIssuer = "ai-registry"
@@ -215,8 +217,10 @@ func run() error {
 			JWKSURLOverride: cfg.Auth.OIDCJWKSUrl,
 			InternalURL:     cfg.Auth.OIDCInternalURL,
 			GroupsClaim:     cfg.Auth.GroupsClaim,
+			EmailClaim:      cfg.Auth.EmailClaim,
 			RolesClaim:      cfg.Auth.RolesClaim,
 			AdminRole:       cfg.Auth.AdminRole,
+			Audience:        cfg.Auth.OIDCAudience,
 		})
 		if err != nil {
 			return fmt.Errorf("initialising OIDC broker: %w", err)

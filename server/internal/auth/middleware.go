@@ -15,21 +15,34 @@ const (
 	isAdminKey contextKey = "auth_is_admin"
 )
 
-// Authenticator validates the registry-issued access token (a bearer JWT) and
-// populates the request context with the resolved Principal. The registry is the
-// single token authority: there is no cookie and no multi-issuer validation, and
-// verification is pure crypto (no DB) so it sits on the hot read path. It never
+// ServiceTokenVerifier validates an IdP-issued (e.g. Keycloak service-account)
+// access token presented directly on the API and maps it to identity plus the
+// authorization inputs (groups, Server-Admin flag). It is the M2M counterpart to
+// the brokered browser login. *OIDCBroker satisfies it; it is wired only when
+// OIDC_AUDIENCE is configured, so a nil verifier disables the path.
+type ServiceTokenVerifier interface {
+	VerifyServiceToken(ctx context.Context, accessToken string) (*ServiceIdentity, error)
+}
+
+// Authenticator validates a bearer token and populates the request context with
+// the resolved Principal. The primary, hot-path credential is a registry-issued
+// access token (verified by pure crypto, no DB). When an IdP service-token
+// verifier is configured, a bearer that is NOT a registry token is given a
+// second chance as a directly-presented IdP access token (machine-to-machine);
+// that path too is offline crypto against the cached IdP JWKS. Authenticate never
 // blocks an unauthenticated or stale-token request; the guards (RequireAdmin,
 // RequirePublisherRole) gate writes.
 type Authenticator struct {
 	tokens *TokenAuthority
+	idp    ServiceTokenVerifier
 }
 
 // NewAuthenticator builds the bearer authenticator. A nil TokenAuthority (e.g.
 // route-walk tests that construct the router with no signing key) makes
-// Authenticate a pass-through.
-func NewAuthenticator(tokens *TokenAuthority) *Authenticator {
-	return &Authenticator{tokens: tokens}
+// Authenticate a pass-through. A nil ServiceTokenVerifier disables direct
+// acceptance of IdP service-account tokens (the default).
+func NewAuthenticator(tokens *TokenAuthority, idp ServiceTokenVerifier) *Authenticator {
+	return &Authenticator{tokens: tokens, idp: idp}
 }
 
 // Authenticate is chi middleware that resolves a valid bearer token into a
@@ -49,6 +62,12 @@ func (a *Authenticator) Authenticate(next http.Handler) http.Handler {
 		}
 		claims, err := a.tokens.Verify(raw)
 		if err != nil {
+			// Not a registry token. When configured, give it a second chance as a
+			// directly-presented IdP service-account token (M2M).
+			if princ := a.serviceTokenPrincipal(r.Context(), raw); princ != nil {
+				next.ServeHTTP(w, r.WithContext(contextWithPrincipal(r.Context(), princ)))
+				return
+			}
 			// Invalid / expired token: proceed unauthenticated rather than 401,
 			// so the contract ("Authenticate never blocks") holds and the guards
 			// produce the 401 that drives the SPA's silent refresh.
@@ -63,18 +82,45 @@ func (a *Authenticator) Authenticate(next http.Handler) http.Handler {
 			IsServerAdmin: claims.SrvAdmin,
 			AuthMethod:    claims.AuthMethod,
 		}
-		// Synthesize minimal claims so the context helpers that predate the token
-		// model (ClaimsFromContext, IsServerAdminFromContext, IdentityFromContext)
-		// keep working unchanged.
-		kc := &KeycloakClaims{Email: claims.Email, Groups: claims.Groups}
-		if princ.IsServerAdmin {
-			kc.RealmAccess.Roles = []string{"admin"}
-		}
-		ctx := context.WithValue(r.Context(), principalKey, princ)
-		ctx = context.WithValue(ctx, claimsKey, kc)
-		ctx = context.WithValue(ctx, isAdminKey, princ.IsServerAdmin)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(contextWithPrincipal(r.Context(), princ)))
 	})
+}
+
+// serviceTokenPrincipal resolves a directly-presented IdP service-account token
+// into a Principal, or nil when no verifier is configured or the token is not a
+// valid service token. The principal carries no registry users row (its UserID
+// is the IdP subject): authorization runs off the claim groups and the
+// realm-admin flag, exactly like a federated group-writer with no provisioned
+// row (see IdentityFromContext).
+func (a *Authenticator) serviceTokenPrincipal(ctx context.Context, raw string) *Principal {
+	if a.idp == nil {
+		return nil
+	}
+	id, err := a.idp.VerifyServiceToken(ctx, raw)
+	if err != nil {
+		return nil
+	}
+	return &Principal{
+		UserID:        id.Subject,
+		Email:         id.Email,
+		ClaimGroups:   id.Groups,
+		IsServerAdmin: id.IsAdmin,
+		AuthMethod:    "oidc",
+	}
+}
+
+// contextWithPrincipal stores the resolved principal and the synthesized claims
+// the older context helpers (ClaimsFromContext, IsServerAdminFromContext,
+// IdentityFromContext, auditActor) read. Both the registry-token and the
+// service-token paths funnel through here so they expose an identical context
+// shape downstream.
+func contextWithPrincipal(ctx context.Context, princ *Principal) context.Context {
+	kc := &OIDCClaims{Email: princ.Email, Groups: princ.ClaimGroups}
+	kc.Subject = princ.UserID
+	ctx = context.WithValue(ctx, principalKey, princ)
+	ctx = context.WithValue(ctx, claimsKey, kc)
+	ctx = context.WithValue(ctx, isAdminKey, princ.IsServerAdmin)
+	return ctx
 }
 
 // bearerToken extracts the token from an `Authorization: Bearer <token>` header,
@@ -111,8 +157,8 @@ func RequireAdmin(next http.Handler) http.Handler {
 
 // ClaimsFromContext retrieves the synthesized claims for the authenticated
 // caller (nil/false when unauthenticated).
-func ClaimsFromContext(ctx context.Context) (*KeycloakClaims, bool) {
-	c, ok := ctx.Value(claimsKey).(*KeycloakClaims)
+func ClaimsFromContext(ctx context.Context) (*OIDCClaims, bool) {
+	c, ok := ctx.Value(claimsKey).(*OIDCClaims)
 	return c, ok
 }
 
@@ -122,10 +168,10 @@ func IsAdminFromContext(ctx context.Context) bool {
 	return v
 }
 
-// ContextWithClaims injects claims into a context. Used in tests to simulate an
-// authenticated caller without a real token.
-func ContextWithClaims(ctx context.Context, claims *KeycloakClaims) context.Context {
-	ctx = context.WithValue(ctx, claimsKey, claims)
-	ctx = context.WithValue(ctx, isAdminKey, claims.IsAdmin())
-	return ctx
+// ContextWithClaims injects decoded token claims into a context. Used in tests
+// to simulate an authenticated, group-bearing caller without a real token.
+// Claims never carry the Server-Admin decision (that lives on Principal), so
+// this does not mark the caller admin — use ContextWithPrincipal for that.
+func ContextWithClaims(ctx context.Context, claims *OIDCClaims) context.Context {
+	return context.WithValue(ctx, claimsKey, claims)
 }

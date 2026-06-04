@@ -143,8 +143,8 @@ func TestOIDCBroker_Exchange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
-	if claims.Email != "alice@example.com" || !claims.EmailVerified {
-		t.Fatalf("unexpected email claims: %+v", claims)
+	if claims.Email != "alice@example.com" {
+		t.Fatalf("unexpected email claim: %+v", claims)
 	}
 	if claims.Subject != "sub-1" {
 		t.Fatalf("subject = %q, want sub-1", claims.Subject)

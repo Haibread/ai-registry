@@ -29,7 +29,7 @@ func TestRequireAdmin_NonAdminClaims(t *testing.T) {
 	called := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
 
-	claims := &auth.KeycloakClaims{RealmAccess: auth.RealmAccess{Roles: []string{"viewer"}}}
+	claims := &auth.OIDCClaims{}
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req = req.WithContext(auth.ContextWithClaims(req.Context(), claims))
 	rec := httptest.NewRecorder()
@@ -51,9 +51,8 @@ func TestRequireAdmin_AdminClaims(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	claims := &auth.KeycloakClaims{RealmAccess: auth.RealmAccess{Roles: []string{"admin"}}}
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	req = req.WithContext(auth.ContextWithClaims(req.Context(), claims))
+	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), &auth.Principal{IsServerAdmin: true}))
 	rec := httptest.NewRecorder()
 
 	auth.RequireAdmin(next).ServeHTTP(rec, req)

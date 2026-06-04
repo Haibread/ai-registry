@@ -39,11 +39,9 @@ func newAgentRouter() *chi.Mux {
 	return r
 }
 
-// adminAgentCtx returns a context with admin claims for agent tests.
+// adminAgentCtx returns a context with a Server Admin principal for agent tests.
 func adminAgentCtx() context.Context {
-	return auth.ContextWithClaims(context.Background(), &auth.KeycloakClaims{
-		RealmAccess: auth.RealmAccess{Roles: []string{"admin"}},
-	})
+	return auth.ContextWithPrincipal(context.Background(), &auth.Principal{IsServerAdmin: true})
 }
 
 // seedAgent creates a publisher + agent row and returns the agent.
@@ -293,7 +291,7 @@ func TestAgentHandler_CreateAgent_ForbiddenWithoutEditor(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "ag-locked-ns", "Locked NS")
 
-	ctx := auth.ContextWithClaims(context.Background(), &auth.KeycloakClaims{
+	ctx := auth.ContextWithClaims(context.Background(), &auth.OIDCClaims{
 		Groups: []string{"randos"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents",

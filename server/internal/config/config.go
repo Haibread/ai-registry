@@ -77,6 +77,12 @@ type AuthConfig struct {
 	// under a different name.
 	GroupsClaim string
 
+	// EmailClaim is the JWT payload key the broker reads the user's email from.
+	// Default "email". The email claim name is not guaranteed across IdPs, so it
+	// is configurable via env + YAML + default per CLAUDE.md (mirrors
+	// GroupsClaim); dotted paths address nested objects.
+	EmailClaim string
+
 	// ReviewerGroup is the group seeded on boot with a global Reviewer
 	// grant. Retained for back-compat: on boot the server
 	// ensures a group of this name exists with a global (publisher_id NULL)
@@ -95,6 +101,20 @@ type AuthConfig struct {
 	// Server Admin flag snapshotted into the registry JWT at login. Default
 	// "admin".
 	AdminRole string
+
+	// OIDCAudience enables direct acceptance of IdP-issued (e.g. Keycloak
+	// service-account) access tokens on the API, for machine-to-machine callers
+	// that cannot run the interactive browser login (a Kubernetes operator, a CI
+	// job). When set, a bearer that is not a registry token is verified offline
+	// as an IdP JWT against the broker JWKS, and accepted only if its `aud`
+	// contains this exact value — so a token minted for another client in the
+	// same realm is never honoured (the audience pin is the security boundary).
+	// The mapped realm-admin role grants Server Admin and the `groups` claim
+	// drives publisher-scoped RBAC, exactly as a brokered login. Empty (the
+	// default) disables the path entirely: only registry-issued tokens are
+	// accepted, which keeps the IdP-less / break-glass deployment unchanged.
+	// Requires the OIDC broker to be configured (OIDC_CLIENT_ID/SECRET).
+	OIDCAudience string
 
 	// LocalLoginEnabled turns the local email+password front door on or off
 	// Default true so the registry is usable without an external IdP. Both front
@@ -227,8 +247,10 @@ type fileAuthConfig struct {
 	OIDCScopes      []string `yaml:"oidc_scopes"`
 	// oidc_client_secret is a credential — env / secret only, never the file.
 	GroupsClaim   string `yaml:"groups_claim"`
+	EmailClaim    string `yaml:"email_claim"`
 	RolesClaim    string `yaml:"oidc_roles_claim"`
 	AdminRole     string `yaml:"oidc_admin_role"`
+	OIDCAudience  string `yaml:"oidc_audience"`
 	ReviewerGroup string `yaml:"reviewer_group"`
 	LocalLogin    bool   `yaml:"local_login"`
 	// The bootstrap admin password is a credential — env / secret only, never
@@ -273,6 +295,7 @@ func defaultFileConfig() fileConfig {
 		},
 		Auth: fileAuthConfig{
 			GroupsClaim:     "groups",
+			EmailClaim:      "email",
 			RolesClaim:      "realm_access.roles",
 			AdminRole:       "admin",
 			ReviewerGroup:   "registry-reviewers",
@@ -349,8 +372,10 @@ func Load(configFile string) (*Config, error) {
 			OIDCRedirectURL:        envString("OIDC_REDIRECT_URL", fc.Auth.OIDCRedirectURL),
 			OIDCScopes:             envStringSlice("OIDC_SCOPES", fc.Auth.OIDCScopes),
 			GroupsClaim:            envString("AUTH_GROUPS_CLAIM", fc.Auth.GroupsClaim),
+			EmailClaim:             envString("AUTH_EMAIL_CLAIM", fc.Auth.EmailClaim),
 			RolesClaim:             envString("OIDC_ROLES_CLAIM", fc.Auth.RolesClaim),
 			AdminRole:              envString("OIDC_ADMIN_ROLE", fc.Auth.AdminRole),
+			OIDCAudience:           envString("OIDC_AUDIENCE", fc.Auth.OIDCAudience),
 			ReviewerGroup:          envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
 			LocalLoginEnabled:      envBool("AUTH_LOCAL_LOGIN_ENABLED", fc.Auth.LocalLogin),
 			BootstrapAdminEmail:    envString("AUTH_BOOTSTRAP_ADMIN_EMAIL", fc.Auth.BootstrapAdminEmail),
@@ -420,6 +445,12 @@ func (c *Config) validate() error {
 
 	if c.Auth.BootstrapAdminEmail != "" && c.Auth.BootstrapAdminPassword == "" {
 		return fmt.Errorf("AUTH_BOOTSTRAP_ADMIN_PASSWORD is required when AUTH_BOOTSTRAP_ADMIN_EMAIL is set")
+	}
+
+	// Accepting IdP service-account tokens requires the broker (its JWKS + issuer
+	// verify those tokens). An audience with no broker is a no-op misconfig.
+	if c.Auth.OIDCAudience != "" && !oidcEnabled {
+		return fmt.Errorf("OIDC_AUDIENCE requires OIDC to be enabled (set OIDC_CLIENT_ID and OIDC_CLIENT_SECRET)")
 	}
 	return nil
 }

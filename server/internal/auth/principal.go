@@ -49,21 +49,19 @@ func PrincipalFromContext(ctx context.Context) (*Principal, bool) {
 	return p, ok
 }
 
-// ContextWithPrincipal injects a principal into a context. Used in tests to
-// simulate an authenticated, resolved caller without a real session.
+// ContextWithPrincipal injects a resolved caller into a context with the same
+// shape the Authenticator produces (principal + synthesized claims + admin
+// flag). Used in tests to simulate an authenticated caller — including a Server
+// Admin, via &Principal{IsServerAdmin: true} — without a real token.
 func ContextWithPrincipal(ctx context.Context, p *Principal) context.Context {
-	return context.WithValue(ctx, principalKey, p)
+	return contextWithPrincipal(ctx, p)
 }
 
-// IsServerAdminFromContext reports whether the caller is a Server Admin, from
-// either source: the snapshotted realm-admin claim or the resolved principal's
-// is_server_admin flag (the local bootstrap-admin path).
+// IsServerAdminFromContext reports whether the caller is a Server Admin. The
+// flag is resolved once by the Authenticator and carried on the Principal
+// (snapshotted realm-admin role for tokens, live role mapping for IdP service
+// tokens, or the local is_server_admin bootstrap-admin path).
 func IsServerAdminFromContext(ctx context.Context) bool {
-	if p, ok := PrincipalFromContext(ctx); ok && p != nil && p.IsServerAdmin {
-		return true
-	}
-	if c, ok := ClaimsFromContext(ctx); ok && c != nil && c.IsAdmin() {
-		return true
-	}
-	return false
+	p, ok := PrincipalFromContext(ctx)
+	return ok && p != nil && p.IsServerAdmin
 }

@@ -42,26 +42,42 @@ A centralized registry for AI ecosystem artifacts:
 
 - **Server**: Go, `chi` router, PostgreSQL, `pgx` for DB access (no ORM,
   hand-written SQL), `golang-migrate` for schema migrations.
-- **Auth**: two login front doors, both ending in a **registry-issued session
-  behind a `Secure; HttpOnly` cookie** (BFF). OIDC is **brokered server-side** —
-  the registry is a single **confidential** client (Keycloak in dev): the
-  browser hits `/api/v1/auth/oidc/login`, the server runs Authorization Code +
-  PKCE, exchanges the code with its `client_secret`, and maps the identity to a
-  `users` row; the IdP token never reaches the browser. Local email+password
-  login sets the same cookie. The registry is the **single token authority** (no
-  multi-issuer validation, no MCP wall). Claim group membership + the claim
-  Server-Admin flag are **snapshotted into the session at login**.
+- **Auth**: two interactive login front doors, both minting a **registry-issued
+  access token (Ed25519 JWT) + rotating refresh token returned in the response
+  body** — there is **no cookie**; the SPA holds the access token and sends it as
+  `Authorization: Bearer`. OIDC is **brokered server-side** — the registry is a
+  single **confidential** client (Keycloak in dev): the browser hits
+  `/api/v1/auth/oidc/login`, the server runs Authorization Code + PKCE, exchanges
+  the code with its `client_secret`, and maps the identity to a `users` row; the
+  IdP token never reaches the browser. Local email+password login mints the same
+  token pair. The registry is the **single token authority** on the hot path —
+  every request verifies a registry token by pure crypto (no DB). **One
+  exception, opt-in for M2M**: when `OIDC_AUDIENCE` is set, a bearer that is
+  not a registry token is given a second chance as a **directly-presented IdP
+  service-account token** (e.g. a Kubernetes operator using a Keycloak service
+  account via `client_credentials`), verified offline against the broker JWKS and
+  accepted only if its `aud` contains `OIDC_AUDIENCE` (the audience pin is the
+  security boundary). The realm-admin role maps to Server Admin and the `groups`
+  claim drives RBAC, exactly as a brokered login; such a caller carries no `users`
+  row (authz runs off claims, like any federated group-writer). Empty audience
+  disables the path, so the IdP-less / break-glass deployment is unchanged. Claim
+  group membership + the claim Server-Admin flag are **snapshotted into the
+  registry token at login** (the directly-presented path reads them live).
   **Authorization** is publisher-scoped RBAC: users, groups, and grants live in
   the registry; claims carry group membership only. Server Admin comes from
   `realm_access.roles` **or** local `is_server_admin` (bootstrap admin).
-  Per-publisher API keys (M2M) remain planned (Decision B). The SPA is **not** an
-  OIDC client — no `oidc-client-ts`, no browser client secret, no NextAuth/Auth.js.
+  Hashed per-publisher API keys (a registry-native M2M credential) remain planned
+  (Decision B); the IdP-service-token path above is the supported M2M story today.
+  The SPA is **not** an OIDC client — no `oidc-client-ts`, no browser client
+  secret, no NextAuth/Auth.js.
 - **Frontend**: Vite + React Router v7 + TanStack Query v5 + TypeScript +
   shadcn/ui + Tailwind. A pure SPA served as static files from nginx. Public
   section for browsing; `/admin` section guarded by a `<RequireAuth>` wrapper.
-  Auth is a registry session (HttpOnly cookie): `login()` redirects to the
+  Auth is a registry-issued bearer token (no cookie): `login()` redirects to the
   server's `/api/v1/auth/oidc/login`, the local form POSTs `/api/v1/auth/login`,
-  and the SPA learns its identity + grants from `GET /api/v1/me`.
+  the SPA stores the returned access token and sends it as `Authorization:
+  Bearer`, refreshing at `/api/v1/auth/refresh`, and learns its identity + grants
+  from `GET /api/v1/me`.
   Theme switching via a local `ThemeProvider` (no next-themes). Pages live
   in `src/pages/`.
 - **OpenAPI**: hand-written OpenAPI 3.1 spec is the source of truth; server
@@ -134,12 +150,13 @@ Rules for implementors:
   owning publisher (Editor/Reviewer/Admin per the action) or global Server Admin
   (`realm_access.roles` contains `admin`, or local `is_server_admin`).
   Do not rely on the UI alone.
-- All write endpoints require an authenticated registry session (HttpOnly
-  cookie); read endpoints are public by default (configurable). State-changing
-  requests are CSRF-protected by `SameSite` cookies plus server-side same-origin
-  enforcement (`EnforceSameOrigin` middleware: Fetch-Metadata `Sec-Fetch-Site`
-  with an `Origin` allowlist fallback) and the `application/json` content-type
-  requirement on bodies.
+- All write endpoints require a valid bearer token in the `Authorization`
+  header (registry-issued, or an IdP service-account token when
+  `OIDC_AUDIENCE` is set); read endpoints are public by default
+  (configurable). There is **no CSRF middleware**: credentials live in the
+  `Authorization` header, never in an ambient cookie, so a cross-site request
+  cannot carry them. CORS plus the `application/json` content-type requirement
+  on bodies remain.
 - CORS: admin UI origin and user UI origin allow-listed via env.
 - Rate limit unauthenticated reads.
 - Never log tokens or full Authorization headers.
@@ -163,8 +180,8 @@ Rules for implementors:
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
-| A | Server Admin source | `realm_access.roles[]` contains `"admin"` (snapshotted into the session at login) **or** local `users.is_server_admin` | Keycloak default shape; local flag lets the bootstrap admin run with no IdP |
-| B | API-key auth | Deferred | Hashed per-publisher API keys parked for a later minor (see PLAN.md and README) |
+| A | Server Admin source | `realm_access.roles[]` contains `"admin"` (snapshotted into the registry token at login, or read live from a directly-presented IdP service token) **or** local `users.is_server_admin` | Keycloak default shape; local flag lets the bootstrap admin run with no IdP |
+| B | API-key auth | Deferred | Hashed per-publisher API keys parked for a later minor (see PLAN.md and README). M2M today uses Decision P |
 | C | `/v0/` wire format | **Removed** | The MCP-registry-spec surface is dropped; MCP servers are exposed only via `/api/v1` |
 | D | Integration test infra | testcontainers-go (postgres module) with snapshot isolation | No external dependency needed to run `go test` |
 | E | `packages` JSONB validation | Structural: each entry must have `registryType`, `identifier`, `version`, `transport.type` | Matches MCP server.json spec; strict schema deferred |
@@ -176,8 +193,9 @@ Rules for implementors:
 | K | `authentication` schemes allowlist | `Bearer`, `ApiKey`, `OAuth2`, `OpenIdConnect` | Arbitrary schemes can't be reliably introspected; add to allowlist explicitly |
 | L | Authorization model | Publisher-scoped RBAC — roles (Viewer/Editor/Reviewer/Admin) granted to users or groups; **Reviewer is the sole approver** — a publisher Admin can do everything *except* approve (Server Admin is the break-glass exception); making an entry public requires an approved (published) version | Self-managed in-registry; separation of duties by default |
 | M | Workspaces | **Removed** — resources are publisher-scoped again | Workspace layer didn't earn its keep |
-| N | Local accounts | Local email+password login alongside brokered OIDC; both set a registry session cookie | Run without an external IdP; bootstrap admin seeded from config |
+| N | Local accounts | Local email+password login alongside brokered OIDC; both mint a registry-issued bearer token pair (no cookie) | Run without an external IdP; bootstrap admin seeded from config |
 | O | Claim → authorization | Claims carry **group membership only**; roles are grants on users/groups | Only two principal types (user, group); no claim-to-role side channel |
+| P | M2M auth | Accept an IdP-issued (e.g. Keycloak service-account) access token presented directly, verified offline against the broker JWKS and gated by `aud == OIDC_AUDIENCE`; opt-in, off when the audience is unset | One machine identity reused across the platform (as with MLflow); the audience pin prevents a confused-deputy; keeps the hot path a single offline crypto check; break-glass local accounts unaffected |
 
 ## References
 

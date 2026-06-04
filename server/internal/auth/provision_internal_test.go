@@ -53,11 +53,10 @@ func (f *fakePrincipalStore) BindSubject(_ context.Context, userID, _ string) er
 	return nil
 }
 
-func claims(sub, email string, verified bool) *BrokeredIdentity {
+func claims(sub, email string) *BrokeredIdentity {
 	return &BrokeredIdentity{
-		Subject:       sub,
-		Email:         email,
-		EmailVerified: verified,
+		Subject: sub,
+		Email:   email,
 	}
 }
 
@@ -65,7 +64,7 @@ func TestResolveOrProvisionFederated_ExistingSubject(t *testing.T) {
 	st := newFakePrincipalStore()
 	st.bySubject["sub-1"] = &store.User{ID: "u1", Email: "a@b.com", Subject: "sub-1"}
 
-	u, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", "a@b.com", true))
+	u, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", "a@b.com"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +81,7 @@ func TestResolveOrProvisionFederated_BindsPreInvitedRow(t *testing.T) {
 	// Pre-invited local row: has the email, no subject yet.
 	st.byEmail["a@b.com"] = &store.User{ID: "u1", Email: "a@b.com", Subject: ""}
 
-	u, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", "a@b.com", true))
+	u, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", "a@b.com"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -100,7 +99,7 @@ func TestResolveOrProvisionFederated_BindsPreInvitedRow(t *testing.T) {
 func TestResolveOrProvisionFederated_JITCreatesWhenNoMatch(t *testing.T) {
 	st := newFakePrincipalStore()
 
-	u, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-9", "new@b.com", true))
+	u, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-9", "new@b.com"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,30 +111,12 @@ func TestResolveOrProvisionFederated_JITCreatesWhenNoMatch(t *testing.T) {
 	}
 }
 
-func TestResolveOrProvisionFederated_UnverifiedEmailSkipsBindAndCreates(t *testing.T) {
-	st := newFakePrincipalStore()
-	// A pre-invited row exists, but the token's email is unverified, so the
-	// bind-once path must be skipped and a fresh JIT row created instead.
-	st.byEmail["a@b.com"] = &store.User{ID: "u1", Email: "a@b.com", Subject: ""}
-
-	u, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", "a@b.com", false))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(st.binds) != 0 {
-		t.Fatalf("unverified email must not bind, got %v", st.binds)
-	}
-	if u.ID != "jit-sub-1" || len(st.created) != 1 {
-		t.Fatalf("expected a JIT create, got %+v / created=%d", u, len(st.created))
-	}
-}
-
 func TestResolveOrProvisionFederated_RefusesEmailHijack(t *testing.T) {
 	st := newFakePrincipalStore()
 	// Email already linked to a different identity.
 	st.byEmail["a@b.com"] = &store.User{ID: "u1", Email: "a@b.com", Subject: "other-sub"}
 
-	_, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", "a@b.com", true))
+	_, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", "a@b.com"))
 	if !errors.Is(err, errPrincipalUnresolved) {
 		t.Fatalf("expected errPrincipalUnresolved, got %v", err)
 	}
@@ -146,7 +127,7 @@ func TestResolveOrProvisionFederated_RefusesEmailHijack(t *testing.T) {
 
 func TestResolveOrProvisionFederated_NoEmailIsRejected(t *testing.T) {
 	st := newFakePrincipalStore()
-	_, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", "", true))
+	_, err := ResolveOrProvisionFederated(context.Background(), st, claims("sub-1", ""))
 	if !errors.Is(err, errNoEmail) {
 		t.Fatalf("expected errNoEmail, got %v", err)
 	}

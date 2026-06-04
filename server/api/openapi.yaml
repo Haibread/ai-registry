@@ -2343,9 +2343,20 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: >
-        Registry-issued access token (Ed25519 JWT) sent as
-        `Authorization: Bearer <token>`. Obtain it from /auth/login (local) or
-        the OIDC flow, and refresh it at /auth/refresh. There is no cookie.
+        Bearer access token sent as `Authorization: Bearer <token>`. There is no
+        cookie. The primary credential is a registry-issued access token (Ed25519
+        JWT) obtained from /auth/login (local) or the OIDC flow and refreshed at
+        /auth/refresh.
+
+
+        For machine-to-machine callers that cannot run the interactive browser
+        login (e.g. a Kubernetes operator using a Keycloak service account via
+        client_credentials), the deployment may also accept an IdP-issued access
+        token directly: it is verified offline against the IdP JWKS and accepted
+        only when its `aud` contains the value configured in `OIDC_AUDIENCE`.
+        The realm-admin role maps to Server Admin and the `groups` claim drives
+        publisher-scoped RBAC, exactly as a brokered login. This path is disabled
+        unless `OIDC_AUDIENCE` is set.
 
   parameters:
     SlugParam:

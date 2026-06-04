@@ -24,10 +24,10 @@ func (f fakeScopeStore) EffectivePublisherIDs(_ context.Context, _ string, _ []s
 // granted publishers, a grant-less author resolves to an empty set, and an
 // unauthenticated caller is reported as such (so the handler can 401).
 func TestMineScope(t *testing.T) {
-	adminClaims := &auth.KeycloakClaims{RealmAccess: auth.RealmAccess{Roles: []string{"admin"}}}
+	adminPrincipal := &auth.Principal{IsServerAdmin: true}
 
 	t.Run("server admin sees all", func(t *testing.T) {
-		ctx := auth.ContextWithClaims(context.Background(), adminClaims)
+		ctx := auth.ContextWithPrincipal(context.Background(), adminPrincipal)
 		ids, all, authed, err := mineScope(ctx, fakeScopeStore{ids: []string{"x"}})
 		if err != nil || !all || !authed || len(ids) != 0 {
 			t.Fatalf("got ids=%v all=%v authed=%v err=%v, want all+authed", ids, all, authed, err)
@@ -92,10 +92,10 @@ func (f fakePrivateStore) EffectiveRoles(_ context.Context, _ store.EffectiveRol
 // unknown publisher all fall back to public-only — so one publisher's private
 // data is never exposed to another's.
 func TestCanViewPrivate(t *testing.T) {
-	adminClaims := &auth.KeycloakClaims{RealmAccess: auth.RealmAccess{Roles: []string{"admin"}}}
+	adminPrincipal := &auth.Principal{IsServerAdmin: true}
 
 	t.Run("server admin sees private without consulting the store", func(t *testing.T) {
-		ctx := auth.ContextWithClaims(context.Background(), adminClaims)
+		ctx := auth.ContextWithPrincipal(context.Background(), adminPrincipal)
 		// pubErr would surface only if the store were consulted; it must not be.
 		if !canViewPrivate(ctx, fakePrivateStore{pubErr: errors.New("store must not be called")}, "acme") {
 			t.Fatal("server admin should see private")
@@ -159,10 +159,10 @@ func (f fakeReviewScopeStore) ListGrantsForPrincipal(_ context.Context, _ string
 // Reviewer approves); an Editor/Admin-only caller reviews nothing (→ 403); and
 // an unauthenticated caller is reported as such (→ 401).
 func TestReviewerScope(t *testing.T) {
-	adminClaims := &auth.KeycloakClaims{RealmAccess: auth.RealmAccess{Roles: []string{"admin"}}}
+	adminPrincipal := &auth.Principal{IsServerAdmin: true}
 
 	t.Run("server admin sees all", func(t *testing.T) {
-		ctx := auth.ContextWithClaims(context.Background(), adminClaims)
+		ctx := auth.ContextWithPrincipal(context.Background(), adminPrincipal)
 		ids, all, authed, err := reviewerScope(ctx, fakeReviewScopeStore{err: errors.New("store must not be called")})
 		if err != nil || !all || !authed || len(ids) != 0 {
 			t.Fatalf("got ids=%v all=%v authed=%v err=%v, want see-all", ids, all, authed, err)

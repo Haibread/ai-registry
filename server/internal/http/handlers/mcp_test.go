@@ -39,11 +39,9 @@ func newMCPRouter() *chi.Mux {
 	return r
 }
 
-// adminCtx returns a context pre-loaded with admin claims.
+// adminCtx returns a context pre-loaded with a Server Admin principal.
 func adminCtx() context.Context {
-	return auth.ContextWithClaims(context.Background(), &auth.KeycloakClaims{
-		RealmAccess: auth.RealmAccess{Roles: []string{"admin"}},
-	})
+	return auth.ContextWithPrincipal(context.Background(), &auth.Principal{IsServerAdmin: true})
 }
 
 // seedMCPServer creates a publisher + MCP server and returns the server slug/ns pair.
@@ -381,7 +379,7 @@ func TestMCPHandler_CreateServer_ForbiddenWithoutEditor(t *testing.T) {
 	seedPublisher(t, "locked-ns", "Locked NS")
 
 	// Authenticated (non-admin) claims carrying a group with no grant anywhere.
-	ctx := auth.ContextWithClaims(context.Background(), &auth.KeycloakClaims{
+	ctx := auth.ContextWithClaims(context.Background(), &auth.OIDCClaims{
 		Groups: []string{"randos"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
