@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here.
 
+## v0.4.0-rc4 — 2026-06-05
+
+### Changed
+
+- **Reworked CI into focused, parallel workflows.** The monolithic `ci.yml`,
+  `e2e.yml`, and `publish.yml` are split into `lint.yml`, `quality.yml` (build,
+  unit, integration, and Playwright e2e against native host processes with
+  Postgres/Keycloak service containers), `docker.yml`, `helm-publish.yml`, and
+  `release.yml` (#125, #127).
+- **Consolidated Docker Compose onto a single root `docker-compose.yml`.** The
+  separate `deploy/docker-compose.yml` and `docker-compose.ci.yml` are removed;
+  CI no longer runs compose at all (#125).
+- **Restructured the Helm chart for clarity.** Templates are grouped per
+  component (`api/`, `webapp/`) with per-kind files and split secrets, the
+  values layout is reorganised, and a `helm-docs`-generated chart `README.md` is
+  now published alongside it (#126).
+
 ## v0.4.0-rc3 — 2026-06-04
 
 ### Added
