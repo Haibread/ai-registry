@@ -256,20 +256,29 @@ test.describe('Admin: Agent CRUD', () => {
   })
 })
 
-// ── Publisher delete (must be last — publisher owns nothing after server/agent deleted) ──
+// ── Publisher delete (runs last; its MCP server and agent were deleted above,
+// so the cascade has nothing left to remove here) ──
 
 test.describe('Admin: Publisher delete', () => {
-  test('delete a publisher once its entries are gone', async ({ page }) => {
+  test('delete a publisher via the type-to-confirm panel', async ({ page }) => {
     await goTo(page, `/admin/publishers/${PUBLISHER_SLUG}`)
 
     // Wait for the publisher data to load before looking for the Delete button.
     // The query is gated on accessToken; auth hydration from storageState is async.
-    await expect(page.getByText(`${PUBLISHER_NAME} edited`, { exact: true })).toBeVisible({ timeout: 15_000 })
+    const publisherName = `${PUBLISHER_NAME} edited`
+    await expect(page.getByText(publisherName, { exact: true })).toBeVisible({ timeout: 15_000 })
 
-    page.on('dialog', dialog => dialog.accept())
+    // The delete is now an inline danger panel, not a window.confirm: open it,
+    // type the publisher's exact name to arm the button, then confirm.
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
 
+    const confirm = page.getByRole('button', { name: 'Delete publisher' })
+    await expect(confirm).toBeDisabled()
+    await page.locator('#confirm-delete-input').fill(publisherName)
+    await expect(confirm).toBeEnabled()
+    await confirm.click()
+
     await page.waitForURL(/\/admin\/publishers$/)
-    await expect(page.getByText(`${PUBLISHER_NAME} edited`, { exact: true })).not.toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(publisherName, { exact: true })).not.toBeVisible({ timeout: 10_000 })
   })
 })
