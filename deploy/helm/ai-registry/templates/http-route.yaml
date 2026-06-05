@@ -1,0 +1,69 @@
+{{- /*
+Gateway API HTTPRoute — alternative to the Ingress resource.
+Requires the Gateway API CRDs (gateway.networking.k8s.io/v1) and a compatible
+Gateway controller (e.g. Envoy Gateway, Cilium, Istio, Traefik, …) installed
+in the cluster.
+
+Two routes only:
+  * /api → server, so the bulk API traffic reaches the backend directly.
+  * /    → web, where nginx serves the SPA AND proxies the remaining backend
+           paths (/.well-known/, the A2A agent card, /docs, /openapi.yaml,
+           /config.json, /healthz, /readyz, /metrics). Keeping that long tail in
+           nginx.conf avoids a second, drift-prone copy of the routing table here
+           — and avoids routing SPA routes such as /agents/{ns}/{slug} to the
+           backend. Gateway API ranks PathPrefix matches by specificity, so /api
+           wins over / for /api/* regardless of rule order.
+
+TLS termination is configured on the Gateway listener, not here. Point your
+Gateway listener at the appropriate certificate and set httpRoute.host to the
+matching hostname.
+
+Both httpRoute and ingress can coexist, but enabling both for the same host
+with different controllers may cause conflicts. Enable only one per environment.
+*/}}
+{{- if .Values.httpRoute.enabled -}}
+{{- if not .Values.httpRoute.gatewayRef.name -}}
+{{- fail "httpRoute.gatewayRef.name is required when httpRoute.enabled is true" -}}
+{{- end -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "ai-registry.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.labels" . | nindent 4 }}
+  {{- with .Values.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: {{ .Values.httpRoute.gatewayRef.name | quote }}
+      # The Gateway is shared cluster infrastructure owned outside this chart;
+      # default to the release namespace when no namespace is given.
+      namespace: {{ .Values.httpRoute.gatewayRef.namespace | default .Release.Namespace | quote }}
+      {{- if .Values.httpRoute.gatewayRef.sectionName }}
+      sectionName: {{ .Values.httpRoute.gatewayRef.sectionName | quote }}
+      {{- end }}
+  {{- if .Values.httpRoute.host }}
+  hostnames:
+    - {{ .Values.httpRoute.host | quote }}
+  {{- end }}
+  rules:
+    # API straight to the server (bulk traffic skips the nginx hop).
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: {{ include "ai-registry.api.fullname" . }}
+          port: {{ .Values.api.service.port }}
+    # Everything else to nginx: SPA + the remaining proxied backend paths.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "ai-registry.webapp.fullname" . }}
+          port: {{ .Values.webapp.service.port }}
+{{- end }}

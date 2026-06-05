@@ -2,7 +2,7 @@
 Expand the name of the chart.
 */}}
 {{- define "ai-registry.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- default .Chart.Name .Values.global.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -11,10 +11,10 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this
 (by the DNS naming spec).
 */}}
 {{- define "ai-registry.fullname" -}}
-{{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- if .Values.global.fullnameOverride }}
+{{- .Values.global.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- $name := default .Chart.Name .Values.global.nameOverride }}
 {{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -51,7 +51,32 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/* -------------------------------------------------------------------------
-Backend (server) helpers
+Per-component value resolution.
+
+Every key in `.Values.global` is a default that a component block may override
+by re-declaring the same key. The merged view is `mergeOverwrite (deepCopy
+global) component`: the component wins on conflicts (deep-merged for maps,
+replaced for lists/scalars), and component-only keys are carried through.
+
+`ai-registry.componentValues` takes a dict {"global": ..., "component": ...}
+and returns the merged values as YAML; callers round-trip through `fromYaml`:
+
+    {{- $v := include "ai-registry.api.values" . | fromYaml }}
+------------------------------------------------------------------------- */}}
+{{- define "ai-registry.componentValues" -}}
+{{- mergeOverwrite (deepCopy .global) .component | toYaml -}}
+{{- end -}}
+
+{{- define "ai-registry.api.values" -}}
+{{- include "ai-registry.componentValues" (dict "global" .Values.global "component" .Values.api) -}}
+{{- end -}}
+
+{{- define "ai-registry.webapp.values" -}}
+{{- include "ai-registry.componentValues" (dict "global" .Values.global "component" .Values.webapp) -}}
+{{- end -}}
+
+{{/* -------------------------------------------------------------------------
+API (backend) helpers
 ------------------------------------------------------------------------- */}}
 
 {{/*
@@ -60,95 +85,95 @@ message rather than letting the pod crash-loop on boot. Mirrors the server's
 own validation (internal/config): at least one login method must be open, and
 an enabled OIDC broker needs an issuer, client ID, and a client-secret source.
 */}}
-{{- define "ai-registry.server.validateAuth" -}}
-{{- $s := .Values.server -}}
+{{- define "ai-registry.api.validateAuth" -}}
+{{- $s := .Values.api -}}
 {{- if and (not $s.oidcEnabled) (not $s.localLogin.enabled) -}}
-{{- fail "No login method enabled: set server.localLogin.enabled=true (local accounts) and/or server.oidcEnabled=true (OIDC)." -}}
+{{- fail "No login method enabled: set api.localLogin.enabled=true (local accounts) and/or api.oidcEnabled=true (OIDC)." -}}
 {{- end -}}
 {{- if $s.oidcEnabled -}}
 {{- if not $s.oidcIssuer -}}
-{{- fail "server.oidcEnabled=true requires server.oidcIssuer (the IdP issuer URL)." -}}
+{{- fail "api.oidcEnabled=true requires api.oidcIssuer (the IdP issuer URL)." -}}
 {{- end -}}
 {{- if not $s.oidcClientId -}}
-{{- fail "server.oidcEnabled=true requires server.oidcClientId (the confidential broker client ID)." -}}
+{{- fail "api.oidcEnabled=true requires api.oidcClientId (the confidential broker client ID)." -}}
 {{- end -}}
 {{- if and (not $s.oidcClientSecret) (not $s.oidcClientSecretExistingSecret) -}}
-{{- fail "server.oidcEnabled=true requires a client secret: set server.oidcClientSecret or server.oidcClientSecretExistingSecret." -}}
+{{- fail "api.oidcEnabled=true requires a client secret: set api.oidcClientSecret or api.oidcClientSecretExistingSecret." -}}
 {{- end -}}
 {{- end -}}
 {{- if and $s.oidcClientSecret $s.oidcClientSecretExistingSecret -}}
-{{- fail "Set only one of server.oidcClientSecret or server.oidcClientSecretExistingSecret, not both." -}}
+{{- fail "Set only one of api.oidcClientSecret or api.oidcClientSecretExistingSecret, not both." -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "ai-registry.server.fullname" -}}
-{{- printf "%s-server" (include "ai-registry.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- define "ai-registry.api.fullname" -}}
+{{- printf "%s-api" (include "ai-registry.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "ai-registry.server.labels" -}}
+{{- define "ai-registry.api.labels" -}}
 {{ include "ai-registry.labels" . }}
-app.kubernetes.io/component: server
+app.kubernetes.io/component: api
 {{- end }}
 
-{{- define "ai-registry.server.selectorLabels" -}}
+{{- define "ai-registry.api.selectorLabels" -}}
 {{ include "ai-registry.selectorLabels" . }}
-app.kubernetes.io/component: server
+app.kubernetes.io/component: api
 {{- end }}
 
 {{/*
 Backend service account name.
 */}}
-{{- define "ai-registry.server.serviceAccountName" -}}
-{{- if .Values.server.serviceAccount.create }}
-{{- default (include "ai-registry.server.fullname" .) .Values.server.serviceAccount.name }}
+{{- define "ai-registry.api.serviceAccountName" -}}
+{{- if .Values.api.serviceAccount.create }}
+{{- default (include "ai-registry.api.fullname" .) .Values.api.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.server.serviceAccount.name }}
+{{- default "default" .Values.api.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{/*
 Backend image reference (repository:tag).
 */}}
-{{- define "ai-registry.server.image" -}}
-{{- $tag := .Values.server.image.tag | default .Chart.AppVersion -}}
-{{- printf "%s:%s" .Values.server.image.repository $tag }}
+{{- define "ai-registry.api.image" -}}
+{{- $tag := .Values.api.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s:%s" .Values.api.image.repository $tag }}
 {{- end }}
 
 {{/* -------------------------------------------------------------------------
-Web helpers
+Webapp helpers
 ------------------------------------------------------------------------- */}}
 
-{{- define "ai-registry.web.fullname" -}}
-{{- printf "%s-web" (include "ai-registry.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- define "ai-registry.webapp.fullname" -}}
+{{- printf "%s-webapp" (include "ai-registry.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "ai-registry.web.labels" -}}
+{{- define "ai-registry.webapp.labels" -}}
 {{ include "ai-registry.labels" . }}
-app.kubernetes.io/component: web
+app.kubernetes.io/component: webapp
 {{- end }}
 
-{{- define "ai-registry.web.selectorLabels" -}}
+{{- define "ai-registry.webapp.selectorLabels" -}}
 {{ include "ai-registry.selectorLabels" . }}
-app.kubernetes.io/component: web
+app.kubernetes.io/component: webapp
 {{- end }}
 
 {{/*
 Web service account name.
 */}}
-{{- define "ai-registry.web.serviceAccountName" -}}
-{{- if .Values.web.serviceAccount.create }}
-{{- default (include "ai-registry.web.fullname" .) .Values.web.serviceAccount.name }}
+{{- define "ai-registry.webapp.serviceAccountName" -}}
+{{- if .Values.webapp.serviceAccount.create }}
+{{- default (include "ai-registry.webapp.fullname" .) .Values.webapp.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.web.serviceAccount.name }}
+{{- default "default" .Values.webapp.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{/*
 Web image reference (repository:tag).
 */}}
-{{- define "ai-registry.web.image" -}}
-{{- $tag := .Values.web.image.tag | default .Chart.AppVersion -}}
-{{- printf "%s:%s" .Values.web.image.repository $tag }}
+{{- define "ai-registry.webapp.image" -}}
+{{- $tag := .Values.webapp.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s:%s" .Values.webapp.image.repository $tag }}
 {{- end }}
 
 {{/* -------------------------------------------------------------------------

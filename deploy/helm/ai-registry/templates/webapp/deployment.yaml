@@ -1,0 +1,102 @@
+{{- $v := include "ai-registry.webapp.values" . | fromYaml -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-registry.webapp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.webapp.labels" . | nindent 4 }}
+spec:
+  {{- if not $v.autoscaling.enabled }}
+  replicas: {{ $v.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ai-registry.webapp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with $v.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "ai-registry.webapp.selectorLabels" . | nindent 8 }}
+        {{- with $v.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with $v.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ai-registry.webapp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml $v.podSecurityContext | nindent 8 }}
+      containers:
+        - name: webapp
+          securityContext:
+            {{- toYaml $v.securityContext | nindent 12 }}
+          image: {{ include "ai-registry.webapp.image" . }}
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $v.service.port }}
+              protocol: TCP
+          env:
+            {{- /*
+              API_URL: upstream nginx proxies /api/, /config.json, … to.
+              Defaults to the in-cluster server service URL derived from the
+              release name. Override with webapp.apiUrl if the server is reachable
+              via a different address.
+            */}}
+            - name: API_URL
+              value: {{ $v.apiUrl | default (printf "http://%s:%d" (include "ai-registry.api.fullname" .) (int .Values.api.service.port)) | quote }}
+            {{- with $v.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml $v.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $v.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: {{ $v.tmpDir }}
+            # Required by nginxinc/nginx-unprivileged with readOnlyRootFilesystem: true.
+            # nginx writes its PID and temp files to these paths at runtime.
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            # The entrypoint runs envsubst on /etc/nginx/templates/ and writes
+            # the result here; must be writable even with a read-only root fs.
+            - name: nginx-conf-d
+              mountPath: /etc/nginx/conf.d
+            {{- with $v.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-conf-d
+          emptyDir: {}
+        {{- with $v.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $v.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

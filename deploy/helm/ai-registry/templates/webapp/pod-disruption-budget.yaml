@@ -1,0 +1,15 @@
+{{- $v := include "ai-registry.webapp.values" . | fromYaml -}}
+{{- if $v.podDisruptionBudget.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ai-registry.webapp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.webapp.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ $v.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ai-registry.webapp.selectorLabels" . | nindent 6 }}
+{{- end }}

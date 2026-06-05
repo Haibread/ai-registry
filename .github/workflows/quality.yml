@@ -195,26 +195,26 @@ jobs:
       - name: helm template (bootstrap sample data)
         run: |
           helm template test deploy/helm/ai-registry \
-            --set server.bootstrap.enabled=true \
-            --set server.bootstrap.sampleData=true
+            --set api.bootstrap.enabled=true \
+            --set api.bootstrap.sampleData=true
 
       # Brokered-OIDC path: enabling OIDC with a confidential client id + inline
       # client secret must render the OIDC Secret and the secretKeyRef env wiring.
       - name: helm template (oidc broker)
         run: |
           helm template test deploy/helm/ai-registry \
-            --set server.oidcEnabled=true \
-            --set server.oidcIssuer="$ISSUER" \
-            --set server.oidcClientId=ai-registry-server \
-            --set server.oidcClientSecret=render-test-secret \
-            | grep -q 'name: test-ai-registry-server-oidc'
+            --set api.oidcEnabled=true \
+            --set api.oidcIssuer="$ISSUER" \
+            --set api.oidcClientId=ai-registry-server \
+            --set api.oidcClientSecret=render-test-secret \
+            | grep -q 'name: test-ai-registry-api-oidc'
 
       # No-login-method guard: disabling local login without enabling OIDC must
       # fail the render rather than ship a registry no one can log in to.
       - name: helm template (no login method must fail)
         run: |
           if helm template test deploy/helm/ai-registry \
-               --set server.localLogin.enabled=false >/dev/null 2>&1; then
+               --set api.localLogin.enabled=false >/dev/null 2>&1; then
             echo "::error::render should have failed when no login method is enabled" >&2
             exit 1
           fi
@@ -240,18 +240,18 @@ jobs:
       - name: kubeconform (all opt-ins)
         run: |
           helm template test deploy/helm/ai-registry \
-            --set server.oidcEnabled=true \
-            --set server.oidcIssuer="$ISSUER" \
-            --set server.oidcClientId=ai-registry-server \
-            --set server.oidcClientSecret=render-test-secret \
+            --set api.oidcEnabled=true \
+            --set api.oidcIssuer="$ISSUER" \
+            --set api.oidcClientId=ai-registry-server \
+            --set api.oidcClientSecret=render-test-secret \
             --set httpRoute.enabled=true \
             --set httpRoute.gatewayRef.name=test-gateway \
             --set cnpg.enabled=true \
-            --set server.bootstrap.enabled=true \
-            --set server.bootstrap.sampleData=true \
-            --set server.serviceMonitor.enabled=true \
-            --set server.podDisruptionBudget.enabled=true \
-            --set web.podDisruptionBudget.enabled=true \
+            --set api.bootstrap.enabled=true \
+            --set api.bootstrap.sampleData=true \
+            --set api.serviceMonitor.enabled=true \
+            --set api.podDisruptionBudget.enabled=true \
+            --set webapp.podDisruptionBudget.enabled=true \
             | kubeconform -strict -summary -ignore-missing-schemas \
                 -schema-location default \
                 -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'

@@ -1,0 +1,299 @@
+{{- $v := include "ai-registry.api.values" . | fromYaml -}}
+{{- include "ai-registry.api.validateAuth" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-registry.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.api.labels" . | nindent 4 }}
+spec:
+  {{- if not $v.autoscaling.enabled }}
+  replicas: {{ $v.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ai-registry.api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # Non-secret config is inlined as env below, so a config change already
+        # mutates the pod template and triggers a rollout. These checksums cover
+        # the out-of-pod-template sources (Secrets and the mounted bootstrap
+        # ConfigMap) that would otherwise change without restarting the pods.
+        {{- if and $v.database.url (not $v.database.existingSecret) (not .Values.cnpg.enabled) }}
+        checksum/secret-database: {{ include (print $.Template.BasePath "/api/secret/database.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if $v.bootstrap.enabled }}
+        checksum/configmap-bootstrap: {{ include (print $.Template.BasePath "/api/configmap-bootstrap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if and $v.localLogin.enabled $v.localLogin.bootstrapAdmin.password (not $v.localLogin.bootstrapAdmin.existingSecret) }}
+        checksum/secret-bootstrap-admin: {{ include (print $.Template.BasePath "/api/secret/bootstrap-admin.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if and $v.oidcEnabled $v.oidcClientSecret (not $v.oidcClientSecretExistingSecret) }}
+        checksum/secret-oidc: {{ include (print $.Template.BasePath "/api/secret/oidc.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if or (and $v.jwtSigningKey (not $v.jwtSigningKeyExistingSecret)) (and $v.jwtSigningSeed (not $v.jwtSigningSeedExistingSecret)) }}
+        checksum/secret-jwt: {{ include (print $.Template.BasePath "/api/secret/jwt.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with $v.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "ai-registry.api.selectorLabels" . | nindent 8 }}
+        {{- with $v.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with $v.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ai-registry.api.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml $v.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api
+          securityContext:
+            {{- toYaml $v.securityContext | nindent 12 }}
+          image: {{ include "ai-registry.api.image" . }}
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $v.service.port }}
+              protocol: TCP
+          env:
+            # ── HTTP ────────────────────────────────────────────────────────
+            # Bind address must match the containerPort above.
+            - name: HTTP_ADDR
+              value: ":{{ $v.service.port }}"
+            {{- with $v.corsAllowedOrigins }}
+            - name: CORS_ALLOWED_ORIGINS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.trustedProxyCIDR }}
+            - name: TRUSTED_PROXY_CIDR
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.publicBaseURL }}
+            - name: PUBLIC_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            # ── Database (pool sizing) ──────────────────────────────────────
+            - name: DATABASE_MAX_CONNS
+              value: {{ $v.database.maxConns | quote }}
+            - name: DATABASE_MIN_CONNS
+              value: {{ $v.database.minConns | quote }}
+            # ── Observability ───────────────────────────────────────────────
+            - name: LOG_LEVEL
+              value: {{ $v.logLevel | quote }}
+            {{- with $v.otlpEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- /*
+              Auth (OIDC, brokered server-side). Emitted only when oidcEnabled —
+              otherwise the server runs local-login-only and needs no OIDC_*.
+              validateAuth (invoked at the top of this file) has already verified
+              issuer + client id + secret are present when oidcEnabled, so a
+              misconfigured release fails at `helm install`. The client SECRET is
+              wired via secretKeyRef below, never inlined here.
+            */}}
+            {{- if $v.oidcEnabled }}
+            - name: OIDC_ISSUER
+              value: {{ $v.oidcIssuer | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ $v.oidcClientId | quote }}
+            {{- with $v.oidcInternalUrl }}
+            - name: OIDC_INTERNAL_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.oidcJwksUrl }}
+            - name: OIDC_JWKS_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.oidcRedirectUrl }}
+            - name: OIDC_REDIRECT_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.oidcScopes }}
+            # Server splits OIDC_SCOPES on commas.
+            - name: OIDC_SCOPES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- /*
+              AUTH_* / OIDC_*_CLAIM keys are optional — the server has built-in
+              defaults. Only emit when set so an unset value leaves the default
+              in place rather than overriding it with an empty string.
+            */}}
+            {{- with $v.authGroupsClaim }}
+            - name: AUTH_GROUPS_CLAIM
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.oidcRolesClaim }}
+            - name: OIDC_ROLES_CLAIM
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.oidcAdminRole }}
+            - name: OIDC_ADMIN_ROLE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.authReviewerGroup }}
+            - name: AUTH_REVIEWER_GROUP
+              value: {{ . | quote }}
+            {{- end }}
+            # ── Tokens ──────────────────────────────────────────────────────
+            {{- /* The Ed25519 signing key is a secret, wired via secretKeyRef
+               below — never inlined here. */}}
+            {{- with $v.accessTokenTtl }}
+            - name: ACCESS_TOKEN_TTL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.refreshTokenTtl }}
+            - name: REFRESH_TOKEN_TTL
+              value: {{ . | quote }}
+            {{- end }}
+            # ── Auth (local accounts) ───────────────────────────────────────
+            {{- /* The bootstrap admin PASSWORD is a secret, wired via
+               secretKeyRef below — never inlined here. */}}
+            {{- if $v.localLogin.enabled }}
+            - name: AUTH_LOCAL_LOGIN_ENABLED
+              value: "true"
+            {{- with $v.localLogin.bootstrapAdmin.email }}
+            - name: AUTH_BOOTSTRAP_ADMIN_EMAIL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            # ── Bootstrap ───────────────────────────────────────────────────
+            {{- if $v.bootstrap.enabled }}
+            - name: BOOTSTRAP_FILE
+              value: {{ printf "%s/bootstrap.yaml" $v.bootstrap.mountPath | quote }}
+            {{- end }}
+            # ── Secret-backed values (never inlined as plain env) ────────────
+            {{- /*
+              DATABASE_URL precedence (highest to lowest):
+              1. External secret referenced by database.existingSecret
+              2. CNPG-generated superuser secret (when cnpg.enabled)
+              3. Chart-rendered Secret holding the plain database.url (lowest)
+            */}}
+            {{- if $v.database.existingSecret }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $v.database.existingSecret }}
+                  key: DATABASE_URL
+            {{- else if .Values.cnpg.enabled }}
+            # CNPG's superuser secret.uri hardcodes dbname=*; rebuild the DSN
+            # so it targets the initdb database instead.
+            - name: _PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
+                  key: username
+            - name: _PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-registry.cnpg.superuserSecretName" . }}
+                  key: password
+            - name: DATABASE_URL
+              value: "postgres://$(_PG_USER):$(_PG_PASSWORD)@{{ include "ai-registry.cnpg.clusterName" . }}-rw.{{ .Release.Namespace }}.svc:5432/{{ .Values.cnpg.initdb.database }}?sslmode=require"
+            {{- else if $v.database.url }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-registry.api.fullname" . }}
+                  key: DATABASE_URL
+            {{- end }}
+            {{- /*
+              Local bootstrap-admin password: from the operator's
+              existingSecret when set, else the chart-rendered Secret. Omitted
+              entirely when local login is off or no password source is given.
+            */}}
+            {{- if and $v.localLogin.enabled (or $v.localLogin.bootstrapAdmin.password $v.localLogin.bootstrapAdmin.existingSecret) }}
+            - name: AUTH_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $v.localLogin.bootstrapAdmin.existingSecret | default (printf "%s-bootstrap-admin" (include "ai-registry.api.fullname" .)) }}
+                  key: AUTH_BOOTSTRAP_ADMIN_PASSWORD
+            {{- end }}
+            {{- /*
+              Confidential OIDC broker client secret: from the operator's
+              existingSecret when set, else the chart-rendered Secret. Only wired
+              when OIDC is enabled; local-login-only deployments omit it.
+            */}}
+            {{- if and $v.oidcEnabled (or $v.oidcClientSecret $v.oidcClientSecretExistingSecret) }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $v.oidcClientSecretExistingSecret | default (printf "%s-oidc" (include "ai-registry.api.fullname" .)) }}
+                  key: OIDC_CLIENT_SECRET
+            {{- end }}
+            {{- /*
+              Ed25519 access-token signing key: from the operator's existingSecret
+              when set, else the chart-rendered Secret. Optional — when neither is
+              provided the server generates an EPHEMERAL key at boot, which breaks
+              multi-replica verification and does not survive a restart. Set it for
+              any real deployment.
+            */}}
+            {{- if or $v.jwtSigningKey $v.jwtSigningKeyExistingSecret }}
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $v.jwtSigningKeyExistingSecret | default (printf "%s-jwt" (include "ai-registry.api.fullname" .)) }}
+                  key: JWT_SIGNING_KEY
+            {{- end }}
+            {{- /* Alternative to the PEM key: derive the key from a secret seed
+              string (the server prefers JWT_SIGNING_KEY when both are set). */}}
+            {{- if or $v.jwtSigningSeed $v.jwtSigningSeedExistingSecret }}
+            - name: JWT_SIGNING_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $v.jwtSigningSeedExistingSecret | default (printf "%s-jwt" (include "ai-registry.api.fullname" .)) }}
+                  key: JWT_SIGNING_SEED
+            {{- end }}
+            {{- with $v.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml $v.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $v.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml $v.startupProbe | nindent 12 }}
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: {{ $v.tmpDir }}
+            {{- if $v.bootstrap.enabled }}
+            - name: bootstrap
+              mountPath: {{ $v.bootstrap.mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- with $v.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $v.bootstrap.enabled }}
+        - name: bootstrap
+          configMap:
+            name: {{ include "ai-registry.api.fullname" . }}-bootstrap
+        {{- end }}
+        {{- with $v.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $v.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

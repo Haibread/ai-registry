@@ -1,477 +1,576 @@
 # Default values for ai-registry.
 # This is a YAML-formatted file.
+#
+# The file has exactly two kinds of top-level blocks:
+#   * `global:`      — knobs shared by more than one component. Every key here
+#                      is a default that ANY component block may override by
+#                      re-declaring the same key (resolved by a deep-merge
+#                      helper, so a component deviates without the value leaving
+#                      `global`).
+#   * `<component>:` — one block per component (`api`, `webapp`, `cnpg`,
+#                      `ingress`, `httpRoute`) holding that component's own
+#                      values.
 
-nameOverride: ""
-fullnameOverride: ""
-
-image:
-  pullPolicy: IfNotPresent
-
-imagePullSecrets: []
-
-# ----------------------------------------------------------------------------
-# Backend (Go HTTP service)
-# ----------------------------------------------------------------------------
-server:
-  replicaCount: 1
+# -- (object) Values shared by more than one component. Any key here can be
+# overridden inside a component block of the same name.
+global:
+  # -- (string) Override the chart name used in resource names and labels.
+  # Unset → the chart name (`ai-registry`).
+  nameOverride: ~
+  # -- (string) Override the fully-qualified release name used for every
+  # resource. Unset → `<release>-<chart>`.
+  fullnameOverride: ~
 
   image:
+    # -- Image pull policy applied to every workload container.
+    pullPolicy: IfNotPresent
+
+  # -- (list) Image pull secrets injected into every workload's pod spec.
+  imagePullSecrets: []
+
+  # -- Default replica count for every Deployment (ignored for a component once
+  # its autoscaling is enabled).
+  replicaCount: 1
+
+  # -- (object) Extra annotations merged into every workload's pod template.
+  podAnnotations: {}
+  # -- (object) Extra labels merged into every workload's pod template.
+  podLabels: {}
+
+  # -- (object) Node selector applied to every workload.
+  nodeSelector: {}
+  # -- (list) Tolerations applied to every workload.
+  tolerations: []
+  # -- (object) Affinity rules applied to every workload.
+  affinity: {}
+
+  # -- Pod-level security context applied to all workloads. Defaults to the
+  # Kubernetes Pod Security Standards "restricted" profile; components override
+  # `runAsUser`/`runAsGroup`/`fsGroup` to match their image's non-root user.
+  podSecurityContext:
+    # -- Forbid running any container as UID 0.
+    runAsNonRoot: true
+    # -- UID every container runs as.
+    runAsUser: 1000
+    # -- Primary GID every container runs as.
+    runAsGroup: 1000
+    # -- Supplemental GID owning mounted volumes.
+    fsGroup: 1000
+    seccompProfile:
+      # -- Use the runtime's default seccomp profile.
+      type: RuntimeDefault
+
+  # -- Container-level security context applied to all workload containers.
+  # Restricted profile: no privilege escalation, read-only root fs, all
+  # capabilities dropped.
+  securityContext:
+    # -- Block a process from gaining more privileges than its parent.
+    allowPrivilegeEscalation: false
+    # -- Mount the container root filesystem read-only.
+    readOnlyRootFilesystem: true
+    capabilities:
+      # -- Drop every Linux capability.
+      drop:
+        - ALL
+
+  # -- Default autoscaling policy. When `enabled`, an HPA manages the replica
+  # count and `replicaCount` is ignored for that component.
+  autoscaling:
+    # -- Create a HorizontalPodAutoscaler for the component.
+    enabled: false
+    # -- Lower replica bound enforced by the HPA.
+    minReplicas: 1
+    # -- Upper replica bound enforced by the HPA.
+    maxReplicas: 3
+    # -- Target average CPU utilisation (percentage of requests).
+    targetCPUUtilizationPercentage: 70
+    # -- (int) Target average memory utilisation (percentage of requests).
+    # Unset → no memory-based scaling metric.
+    targetMemoryUtilizationPercentage: ~
+
+  # -- Default PodDisruptionBudget policy. Only rendered when `enabled=true`;
+  # with a single replica a `minAvailable=1` PDB blocks node drains, so bump
+  # `replicaCount` or enable autoscaling before turning this on in production.
+  podDisruptionBudget:
+    # -- Create a PodDisruptionBudget for the component.
+    enabled: false
+    # -- Minimum number of pods that must stay available during a disruption.
+    minAvailable: 1
+
+  # -- Writable directory mounted as an `emptyDir` so the read-only-root
+  # filesystem container has a scratch `/tmp`.
+  tmpDir: /tmp
+
+  # -- (list) Extra environment variables injected into every workload
+  # container. Example:
+  # extraEnv:
+  #   - name: MY_FEATURE_FLAG
+  #     value: "true"
+  extraEnv: []
+  # -- (list) Extra volumes added to every workload's pod spec.
+  extraVolumes: []
+  # -- (list) Extra volume mounts added to every workload container.
+  extraVolumeMounts: []
+
+# ----------------------------------------------------------------------------
+# API — Go HTTP service.
+# ----------------------------------------------------------------------------
+# -- (object) Backend Go HTTP service. Inherits every `global.*` default and
+# may override any of them here.
+api:
+  image:
+    # -- Server image repository.
     repository: ghcr.io/haibread/ai-registry/server
-    # Defaults to .Chart.AppVersion when empty
-    tag: ""
+    # -- (string) Server image tag. Unset → `.Chart.AppVersion`.
+    tag: ~
 
   # ── Auth (OIDC, brokered server-side) ───────────────────────────────────
   # OIDC is brokered server-side: the registry is a single CONFIDENTIAL client
   # that runs Authorization Code + PKCE and mints its own registry access +
   # refresh tokens (bearer, no cookie). The SPA is NOT an OIDC client.
-  #
-  # Master switch. Leave false to run local-login-only (see localLogin below) —
-  # no IdP required. Set true to add the OIDC front door; the chart then
-  # requires oidcIssuer, oidcClientId, and a client-secret source, failing the
-  # render if any is missing rather than letting the pod crash-loop on boot.
-  # At least one of oidcEnabled / localLogin.enabled must be true.
+
+  # -- Master switch for the OIDC front door. Leave false to run
+  # local-login-only (no IdP required). When true the chart requires
+  # `oidcIssuer`, `oidcClientId`, and a client-secret source, failing the
+  # render if any is missing. At least one of `oidcEnabled` /
+  # `localLogin.enabled` must be true.
   oidcEnabled: false
-  # [REQUIRED when oidcEnabled] OIDC issuer URL — the BROWSER-facing issuer;
+  # -- (string) [REQUIRED when oidcEnabled] Browser-facing OIDC issuer URL;
   # must match the `iss` claim in issued tokens.
-  oidcIssuer: ""
-  # Base URL (scheme://host) the server uses to reach the IdP for back-channel
-  # calls (discovery / token exchange / JWKS) when the public issuer is not
-  # reachable from inside the cluster. Empty = use oidcIssuer for everything.
-  # Example: http://keycloak.identity.svc:8080/realms/ai-registry
-  oidcInternalUrl: ""
-  # Override the JWKS fetch URL for internal network resolution (e.g. when the
-  # server pod cannot reach the public issuer URL directly). Usually unset when
-  # oidcInternalUrl is provided.
-  # Example: http://keycloak:8080/realms/ai-registry/protocol/openid-connect/certs
-  oidcJwksUrl: ""
-  # [REQUIRED when oidcEnabled] Confidential broker client ID. This is the
-  # SERVER's OAuth client — it is NOT served to the browser.
-  # Example: ai-registry-server
-  oidcClientId: ""
-  # [REQUIRED when oidcEnabled] Confidential broker client secret. Provide exactly
-  # one source (existingSecret wins): an inline value (DEV/quickstart only —
-  # rendered into a Kubernetes
-  # Secret, base64 NOT encrypted), or the name of a pre-existing Secret holding
-  # the key OIDC_CLIENT_SECRET. In production prefer existingSecret with
-  # external-secrets / sealed-secrets.
-  oidcClientSecret: ""
-  oidcClientSecretExistingSecret: ""
-  # Callback URL the IdP redirects to after login. Empty = derived from
-  # publicBaseURL + /api/v1/auth/oidc/callback. Override only when the IdP must
-  # redirect to a different host than publicBaseURL.
-  oidcRedirectUrl: ""
-  # OAuth scopes requested at the authorize endpoint. Empty = server default
-  # (openid, profile, email). List form, e.g. ["openid", "profile", "groups"].
+  oidcIssuer: ~
+  # -- (string) Base URL (scheme://host) the server uses to reach the IdP for
+  # back-channel calls (discovery / token / JWKS) when the public issuer is not
+  # reachable in-cluster. Unset → use `oidcIssuer` for everything.
+  oidcInternalUrl: ~
+  # -- (string) Override the JWKS fetch URL for internal network resolution.
+  # Usually unset when `oidcInternalUrl` is provided.
+  oidcJwksUrl: ~
+  # -- (string) [REQUIRED when oidcEnabled] Confidential broker client ID — the
+  # SERVER's OAuth client, never served to the browser.
+  oidcClientId: ~
+  # -- (string) [REQUIRED when oidcEnabled] Inline confidential broker client
+  # secret (DEV/quickstart only — rendered into a Kubernetes Secret, base64 NOT
+  # encrypted). Mutually exclusive with `oidcClientSecretExistingSecret`.
+  oidcClientSecret: ~
+  # -- (string) Name of a pre-existing Secret holding key `OIDC_CLIENT_SECRET`.
+  # Preferred in production (use with external-secrets / sealed-secrets); wins
+  # over the inline value.
+  oidcClientSecretExistingSecret: ~
+  # -- (string) Callback URL the IdP redirects to after login. Unset → derived
+  # from `publicBaseURL` + `/api/v1/auth/oidc/callback`.
+  oidcRedirectUrl: ~
+  # -- (list) OAuth scopes requested at the authorize endpoint. Empty → server
+  # default (openid, profile, email).
   oidcScopes: []
-  # JWT claim path for the user's group memberships. Group membership
-  # resolves to publisher-scoped role grants for authorization. Empty =
-  # server default ("groups"). Set this to the path your IdP emits (e.g.
-  # "realm_access.groups" for Keycloak realm-mapper deployments).
-  authGroupsClaim: ""
-  # OIDC id_token claim path the broker reads realm/global roles from, at login.
-  # Empty = server default ("realm_access.roles"). The Server-Admin flag is set
-  # when this list contains oidcAdminRole.
-  oidcRolesClaim: ""
-  # Role value within oidcRolesClaim that grants Server Admin. Empty = server
-  # default ("admin").
-  oidcAdminRole: ""
-  # Reviewer group whose members can approve / reject pending changes
-  # in the change-approval workflow. Empty = server default
-  # ("registry-reviewers"). Must match a group emitted in the JWT
-  # claim configured above.
-  authReviewerGroup: ""
+  # -- (string) JWT claim path for the user's group memberships, resolved to
+  # publisher-scoped role grants. Unset → server default (`groups`).
+  authGroupsClaim: ~
+  # -- (string) OIDC id_token claim path the broker reads realm/global roles
+  # from at login. Unset → server default (`realm_access.roles`).
+  oidcRolesClaim: ~
+  # -- (string) Role value within `oidcRolesClaim` that grants Server Admin.
+  # Unset → server default (`admin`).
+  oidcAdminRole: ~
+  # -- (string) Reviewer group whose members can approve / reject pending
+  # changes. Unset → server default (`registry-reviewers`).
+  authReviewerGroup: ~
 
   # ── Auth (registry tokens) ───────────────────────────────────────
-  # Both front doors mint a registry-issued access token (Ed25519 JWT, sent as a
-  # bearer header) plus a rotating refresh token. The signing key MUST be stable
-  # and shared across replicas — otherwise tokens minted by one pod fail to
-  # verify on another and do not survive a restart. When no source is provided
-  # the server generates an EPHEMERAL key at boot (single-replica / dev only).
-  #
-  # Provide the key one of two ways (the PEM key wins if both are set); for each,
-  # supply either an inline value (DEV/quickstart — rendered into a Secret, base64
-  # NOT encrypted) or the name of a pre-existing Secret (existingSecret wins). In
-  # production prefer existingSecret with external-secrets / sealed-secrets.
-  #
-  # 1) A PEM PKCS#8 Ed25519 private key. Generate: openssl genpkey -algorithm ed25519
-  #    (existing Secret must hold key JWT_SIGNING_KEY).
-  jwtSigningKey: ""
-  jwtSigningKeyExistingSecret: ""
-  # 2) A high-entropy secret STRING the key is derived from deterministically — a
-  #    simpler single-secret alternative to a PEM. Must be >= 32 chars. Generate:
-  #    openssl rand -hex 32 (existing Secret must hold key JWT_SIGNING_SEED).
-  jwtSigningSeed: ""
-  jwtSigningSeedExistingSecret: ""
-  # Token lifetimes. Empty = server defaults (access 15m, refresh 12h). Go
-  # duration strings.
-  accessTokenTtl: ""
-  refreshTokenTtl: ""
+  # Both front doors mint a registry-issued Ed25519 JWT access token plus a
+  # rotating refresh token. The signing key MUST be stable and shared across
+  # replicas; with no source the server generates an EPHEMERAL key at boot
+  # (single-replica / dev only).
+
+  # -- (string) Inline PEM PKCS#8 Ed25519 private key (DEV/quickstart only —
+  # rendered into a Secret). Generate: `openssl genpkey -algorithm ed25519`.
+  # Wins over `jwtSigningSeed`.
+  jwtSigningKey: ~
+  # -- (string) Name of a pre-existing Secret holding key `JWT_SIGNING_KEY`.
+  # Preferred in production; wins over the inline key.
+  jwtSigningKeyExistingSecret: ~
+  # -- (string) Inline high-entropy seed (>= 32 chars) the key is derived from
+  # deterministically — a simpler single-secret alternative to a PEM. Generate:
+  # `openssl rand -hex 32`.
+  jwtSigningSeed: ~
+  # -- (string) Name of a pre-existing Secret holding key `JWT_SIGNING_SEED`.
+  jwtSigningSeedExistingSecret: ~
+  # -- (string) Access-token lifetime (Go duration). Unset → server default
+  # (15m).
+  accessTokenTtl: ~
+  # -- (string) Refresh-token lifetime (Go duration). Unset → server default
+  # (12h).
+  refreshTokenTtl: ~
 
   # ── Auth (local accounts) ────────────────────────────────────────
   # Local email + password login, minting the same registry token pair as OIDC.
-  # Enabled by default so a stock `helm install` is a working local-login
-  # registry with no external IdP (decision N). Set false to run OIDC-only — but
-  # then oidcEnabled must be true, or the chart fails the render (no login
-  # method). Seed an initial account via bootstrapAdmin below.
   localLogin:
+    # -- Enable local email + password login. A stock install is a working
+    # local-login registry with no external IdP. Set false to run OIDC-only
+    # (then `oidcEnabled` must be true).
     enabled: true
-    # Bootstrap Server Admin seeded on startup when local login is enabled.
-    # Idempotent: the account is upserted on each boot, never duplicated.
+    # Bootstrap Server Admin seeded idempotently on startup when local login is
+    # enabled.
     bootstrapAdmin:
-      # Login email for the bootstrap admin. Empty = no admin seeded.
-      email: ""
-      # Inline password (DEV/quickstart only) — rendered into a Kubernetes
-      # Secret (base64, NOT encrypted). Ignored when existingSecret is set.
-      # In production prefer existingSecret with external-secrets / sealed-secrets.
-      password: ""
-      # Name of a pre-existing Secret holding key AUTH_BOOTSTRAP_ADMIN_PASSWORD.
-      # Takes precedence over the inline password above.
-      existingSecret: ""
+      # -- (string) Login email for the bootstrap admin. Unset → no admin
+      # seeded.
+      email: ~
+      # -- (string) Inline password (DEV/quickstart only — rendered into a
+      # Secret). Ignored when `existingSecret` is set.
+      password: ~
+      # -- (string) Name of a pre-existing Secret holding key
+      # `AUTH_BOOTSTRAP_ADMIN_PASSWORD`. Wins over the inline password.
+      existingSecret: ~
 
   # ── Database ─────────────────────────────────────────────────────────────
-  # DATABASE_URL — provide exactly one of the following (highest wins):
-  #   databaseUrlSecret : name of a pre-existing Kubernetes Secret whose key
-  #                       "DATABASE_URL" holds the connection string (recommended)
-  #   databaseUrl       : plain-text value (not recommended for production)
-  #   cnpg.enabled      : use the CNPG-managed cluster (see cnpg section)
-  databaseUrl: ""
-  databaseUrlSecret: ""
-  # Connection pool sizes.
-  dbMaxConns: 25
-  dbMinConns: 5
+  # DATABASE_URL precedence (highest first): database.existingSecret →
+  # cnpg.enabled → database.url.
+  database:
+    # -- (string) Plain-text connection string (not recommended for
+    # production).
+    url: ~
+    # -- (string) Name of a pre-existing Secret whose key `DATABASE_URL` holds
+    # the connection string (recommended). Wins over `url` and CNPG.
+    existingSecret: ~
+    # -- Maximum size of the connection pool.
+    maxConns: 25
+    # -- Minimum number of idle connections kept in the pool.
+    minConns: 5
 
   # ── HTTP ─────────────────────────────────────────────────────────────────
-  # Comma-separated list of allowed CORS origins.
-  # Example: "https://registry.example.com,https://admin.example.com"
-  corsAllowedOrigins: ""
-  # CIDR of the trusted reverse proxy for real-IP extraction via X-Forwarded-For.
-  # Example: "10.0.0.0/8"
-  trustedProxyCIDR: ""
-  # [REQUIRED] Public-facing base URL of the deployment. Used by the A2A
-  # global agent card and OAuth protected-resource metadata. Must be the
-  # externally reachable URL (what clients use), not an in-cluster address.
-  # Example: "https://registry.example.com"
-  publicBaseURL: ""
+  # -- (string) Comma-separated list of allowed CORS origins, e.g.
+  # "https://registry.example.com,https://admin.example.com".
+  corsAllowedOrigins: ~
+  # -- (string) CIDR of the trusted reverse proxy for real-IP extraction via
+  # X-Forwarded-For, e.g. "10.0.0.0/8".
+  trustedProxyCIDR: ~
+  # -- (string) [REQUIRED] Public-facing base URL of the deployment (what
+  # clients use), e.g. "https://registry.example.com". Used by the A2A global
+  # agent card and OAuth protected-resource metadata.
+  publicBaseURL: ~
 
   # ── Observability ────────────────────────────────────────────────────────
-  # Structured log level: debug | info | warn | error
-  logLevel: "info"
-  # OTLP gRPC endpoint for traces/metrics export (leave empty to disable).
-  # Example: http://otel-collector:4317
-  otlpEndpoint: ""
+  # -- Structured log level: debug | info | warn | error.
+  logLevel: info
+  # -- (string) OTLP gRPC endpoint for traces/metrics export, e.g.
+  # "http://otel-collector:4317". Unset → export disabled.
+  otlpEndpoint: ~
 
   # ── Bootstrap ────────────────────────────────────────────────────────────
-  # When enabled, the server loads a bootstrap file on startup and upserts
-  # all publishers, MCP servers, and agents. Idempotent — safe to re-run.
+  # When enabled, the server loads a bootstrap file on startup and idempotently
+  # upserts all publishers, MCP servers, and agents.
   bootstrap:
+    # -- Load a bootstrap file on startup.
     enabled: false
-    # sampleData: load the built-in sample data bundled with the chart
-    # (publishers + MCP servers + agents). Ignored when content is set.
+    # -- Load the built-in sample data bundled with the chart. Ignored when
+    # `content` is set.
     sampleData: false
-    # content: inline YAML bootstrap file. Takes precedence over sampleData.
-    # Paste the full contents of a bootstrap.yaml here.
-    content: ""
-    # Directory where the bootstrap ConfigMap is mounted inside the container.
-    # The server reads <mountPath>/bootstrap.yaml (set via BOOTSTRAP_FILE env var).
+    # -- (string) Inline YAML bootstrap file. Takes precedence over
+    # `sampleData`.
+    content: ~
+    # -- Directory where the bootstrap ConfigMap is mounted inside the
+    # container. The server reads `<mountPath>/bootstrap.yaml`.
     mountPath: /etc/ai-registry
 
   service:
+    # -- Service type for the server.
     type: ClusterIP
+    # -- Service (and container) port the server listens on.
     port: 8080
 
-  # Conservative defaults sized for the registry workload: almost idle at
-  # rest, bursty under admin writes / migrations. Override before going to
-  # production with real traffic data. Requests must be set (not {}) so the
-  # HPA can compute target utilisation and the scheduler can bin-pack.
-  # Deliberately no CPU limit — CPU throttling under CFS quota degrades
-  # latency worse than the oversubscription it prevents. Memory IS limited
-  # so a leak can't take down the node.
+  # -- Resource requests/limits sized for the registry workload. Requests cover
+  # CPU, memory and ephemeral storage; limits cap memory and ephemeral storage
+  # only — no CPU limit, as CFS throttling degrades latency worse than the
+  # oversubscription it prevents.
   resources:
     requests:
+      # -- CPU request.
       cpu: 100m
+      # -- Memory request.
       memory: 128Mi
+      # -- Ephemeral-storage request.
+      ephemeral-storage: 64Mi
     limits:
+      # -- Memory limit (a leak cannot take down the node).
       memory: 256Mi
+      # -- Ephemeral-storage limit (an unbounded write cannot fill the node).
+      ephemeral-storage: 256Mi
 
-  podAnnotations: {}
-  podLabels: {}
-
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
+  # -- Pod-level security context overrides for the server. Merged over
+  # `global.podSecurityContext`; matches the distroless `nonroot` user
+  # (UID/GID 65532).
   podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 65532  # nonroot user in gcr.io/distroless/static-debian12:nonroot
+    # -- UID of the distroless `nonroot` user.
+    runAsUser: 65532
+    # -- GID of the distroless `nonroot` user.
     runAsGroup: 65532
+    # -- fsGroup matching the distroless `nonroot` user.
     fsGroup: 65532
-    seccompProfile:
-      type: RuntimeDefault
 
-  securityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL
-
-  # ── Probes ───────────────────────────────────────────────────────────────
-  # Full probe objects — override any field including httpGet.path/port,
-  # initialDelaySeconds, periodSeconds, timeoutSeconds, failureThreshold, etc.
+  # -- Liveness probe (full probe object — override any field).
   livenessProbe:
     httpGet:
+      # -- Path polled for liveness.
       path: /healthz
+      # -- Named container port polled for liveness.
       port: http
+    # -- Delay before the first liveness probe.
     initialDelaySeconds: 10
+    # -- Interval between liveness probes.
     periodSeconds: 15
+    # -- Per-probe timeout.
     timeoutSeconds: 5
+    # -- Consecutive failures before the container is restarted.
     failureThreshold: 3
 
+  # -- Readiness probe (full probe object — override any field).
   readinessProbe:
     httpGet:
+      # -- Path polled for readiness.
       path: /readyz
+      # -- Named container port polled for readiness.
       port: http
+    # -- Delay before the first readiness probe.
     initialDelaySeconds: 5
+    # -- Interval between readiness probes.
     periodSeconds: 10
+    # -- Per-probe timeout.
     timeoutSeconds: 3
+    # -- Consecutive failures before the pod is marked unready.
     failureThreshold: 3
 
+  # -- Startup probe (full probe object). 12 × 5s = 60s startup budget before
+  # liveness takes over.
   startupProbe:
     httpGet:
+      # -- Path polled during startup.
       path: /healthz
+      # -- Named container port polled during startup.
       port: http
+    # -- Delay before the first startup probe.
     initialDelaySeconds: 5
+    # -- Interval between startup probes.
     periodSeconds: 5
-    # 12 × 5 s = 60 s maximum startup budget before liveness kicks in.
+    # -- Consecutive failures before startup is considered failed.
     failureThreshold: 12
 
-  # ── Volume mount paths ───────────────────────────────────────────────────
-  # Writable /tmp directory for the read-only-root-filesystem container.
-  tmpDir: /tmp
-
-  # ── Autoscaling ──────────────────────────────────────────────────────────
-  # When enabled, an HPA manages the replica count; replicaCount is ignored.
-  autoscaling:
-    enabled: false
-    minReplicas: 1
-    maxReplicas: 3
-    targetCPUUtilizationPercentage: 70
-    # targetMemoryUtilizationPercentage: 80
-
-  # PDB is only rendered when enabled=true AND (replicaCount > 1 OR autoscaling
-  # is enabled). With a single replica, a minAvailable=1 PDB blocks node drains
-  # indefinitely — see https://kubernetes.io/docs/tasks/run-application/configure-pdb/.
-  # Bump replicaCount or enable autoscaling before enabling this in production.
-  podDisruptionBudget:
-    enabled: false
-    minAvailable: 1
-
   serviceAccount:
-    # Specifies whether a service account should be created
+    # -- Create a ServiceAccount for the server.
     create: true
-    # Annotations to add to the service account
+    # -- (object) Annotations added to the server ServiceAccount.
     annotations: {}
-    # Override the name (defaults to fullname-backend)
-    name: ""
+    # -- (string) Override the ServiceAccount name. Unset → `<fullname>-server`.
+    name: ~
 
   # ── Prometheus ServiceMonitor ────────────────────────────────────────────
-  # Opt-in resource for the Prometheus Operator. Leave disabled unless the
-  # operator (and its CRDs) is installed in the target cluster.
+  # Opt-in resource for the Prometheus Operator (requires its CRDs in-cluster).
   serviceMonitor:
+    # -- Create a ServiceMonitor for the server.
     enabled: false
-    # namespace: ""          # Defaults to the release namespace.
-    # path: /metrics
-    # interval: 30s
-    # scrapeTimeout: 10s
-    # additionalLabels: {}   # e.g. { release: kube-prometheus-stack }
-    # relabelings: []
-    # metricRelabelings: []
-
-  # ── Escape hatches ───────────────────────────────────────────────────────
-  # Extra environment variables injected into the server container.
-  extraEnv: []
-  # Example:
-  # extraEnv:
-  #   - name: MY_FEATURE_FLAG
-  #     value: "true"
-  #   - name: SECRET_FROM_K8S
-  #     valueFrom:
-  #       secretKeyRef:
-  #         name: my-secret
-  #         key: my-key
-
-  # Extra volumes and mounts (e.g. for custom TLS certs or config files).
-  extraVolumes: []
-  extraVolumeMounts: []
+    # -- (string) Namespace for the ServiceMonitor. Unset → release namespace.
+    namespace: ~
+    # -- Metrics path scraped by Prometheus.
+    path: /metrics
+    # -- Scrape interval.
+    interval: 30s
+    # -- Scrape timeout.
+    scrapeTimeout: 10s
+    # -- (object) Extra labels added to the ServiceMonitor (e.g. to match the
+    # Prometheus instance selector, `{ release: kube-prometheus-stack }`).
+    additionalLabels: {}
+    # -- (list) Prometheus `relabelings` applied before scraping.
+    relabelings: []
+    # -- (list) Prometheus `metricRelabelings` applied after scraping.
+    metricRelabelings: []
 
 # ----------------------------------------------------------------------------
-# Web (Vite + React SPA served by nginx)
+# Webapp — Vite + React SPA served by nginx-unprivileged.
 # ----------------------------------------------------------------------------
-web:
-  replicaCount: 1
-
+# -- (object) Frontend SPA served by nginx. Inherits every `global.*` default
+# and may override any of them here.
+webapp:
   image:
+    # -- Web image repository.
     repository: ghcr.io/haibread/ai-registry/web
-    # Defaults to .Chart.AppVersion when empty
-    tag: ""
+    # -- (string) Web image tag. Unset → `.Chart.AppVersion`.
+    tag: ~
 
-  # Non-sensitive environment variables
-  # Internal URL for the SPA's API proxy (server-side only).
-  # Falls back to the in-cluster backend service URL when empty.
-  apiUrl: ""
+  # -- (string) Internal URL nginx proxies `/api/`, `/config.json`, … to. Unset
+  # → the in-cluster server service URL derived from the release name.
+  apiUrl: ~
 
   service:
+    # -- Service type for the web SPA.
     type: ClusterIP
-    port: 8080  # nginx-unprivileged listens on 8080 (non-root cannot bind < 1024)
+    # -- Service (and container) port. nginx-unprivileged listens on 8080
+    # (non-root cannot bind < 1024).
+    port: 8080
 
-  # nginx serving static SPA assets + proxying a few endpoints — tiny footprint.
-  # See server.resources for why CPU limits are intentionally omitted.
+  # -- Resource requests/limits for the nginx SPA server (tiny footprint). See
+  # `api.resources` for the no-CPU-limit rationale.
   resources:
     requests:
+      # -- CPU request.
       cpu: 50m
+      # -- Memory request.
       memory: 64Mi
+      # -- Ephemeral-storage request.
+      ephemeral-storage: 32Mi
     limits:
+      # -- Memory limit.
       memory: 128Mi
+      # -- Ephemeral-storage limit.
+      ephemeral-storage: 128Mi
 
-  podAnnotations: {}
-  podLabels: {}
-
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
+  # -- Pod-level security context overrides for the web SPA. Merged over
+  # `global.podSecurityContext`; matches the `nginx` user (UID/GID 101) in
+  # nginxinc/nginx-unprivileged.
   podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 101   # nginx user in nginxinc/nginx-unprivileged
+    # -- UID of the nginx-unprivileged `nginx` user.
+    runAsUser: 101
+    # -- GID of the nginx-unprivileged `nginx` user.
     runAsGroup: 101
+    # -- fsGroup matching the nginx-unprivileged `nginx` user.
     fsGroup: 101
-    seccompProfile:
-      type: RuntimeDefault
 
-  securityContext:
-    allowPrivilegeEscalation: false
-    # /var/cache/nginx, /var/run, and /etc/nginx/conf.d are mounted as emptyDir
-    # so nginx can write to them; the root filesystem is otherwise read-only.
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL
-
-  # ── Probes ───────────────────────────────────────────────────────────────
+  # -- Liveness probe (full probe object — override any field).
   livenessProbe:
     httpGet:
+      # -- Path polled for liveness.
       path: /
+      # -- Named container port polled for liveness.
       port: http
+    # -- Delay before the first liveness probe.
     initialDelaySeconds: 15
+    # -- Interval between liveness probes.
     periodSeconds: 20
+    # -- Per-probe timeout.
     timeoutSeconds: 5
+    # -- Consecutive failures before the container is restarted.
     failureThreshold: 3
 
+  # -- Readiness probe (full probe object — override any field).
   readinessProbe:
     httpGet:
+      # -- Path polled for readiness.
       path: /
+      # -- Named container port polled for readiness.
       port: http
+    # -- Delay before the first readiness probe.
     initialDelaySeconds: 10
+    # -- Interval between readiness probes.
     periodSeconds: 10
+    # -- Per-probe timeout.
     timeoutSeconds: 3
+    # -- Consecutive failures before the pod is marked unready.
     failureThreshold: 3
 
-  # ── Volume mount paths ───────────────────────────────────────────────────
-  # Writable /tmp directory (used by nginx for temp files and the envsubst config).
-  tmpDir: /tmp
-
-  # ── Autoscaling ──────────────────────────────────────────────────────────
-  autoscaling:
-    enabled: false
-    minReplicas: 1
-    maxReplicas: 3
-    targetCPUUtilizationPercentage: 70
-    # targetMemoryUtilizationPercentage: 80
-
-  # See note on server.podDisruptionBudget above.
-  podDisruptionBudget:
-    enabled: false
-    minAvailable: 1
-
   serviceAccount:
+    # -- Create a ServiceAccount for the web SPA.
     create: true
+    # -- (object) Annotations added to the web ServiceAccount.
     annotations: {}
-    name: ""
-
-  # ── Escape hatches ───────────────────────────────────────────────────────
-  extraEnv: []
-  extraVolumes: []
-  extraVolumeMounts: []
+    # -- (string) Override the ServiceAccount name. Unset → `<fullname>-web`.
+    name: ~
 
 # ----------------------------------------------------------------------------
-# Ingress (nginx / classic)
+# Ingress — classic networking.k8s.io Ingress (nginx by default).
 # ----------------------------------------------------------------------------
+# -- (object) Classic Ingress routing API paths to the server and everything
+# else to the web SPA.
 ingress:
+  # -- Create an Ingress routing API paths to the server and everything else to
+  # the web SPA.
   enabled: false
+  # -- (string) IngressClass name. Unset → the cluster default IngressClass.
   className: nginx
+  # -- (object) Extra annotations for the Ingress, e.g. cert-manager issuer or
+  # proxy-body-size for nginx.
   annotations: {}
-  # Example annotations for cert-manager + nginx:
-  # annotations:
-  #   cert-manager.io/cluster-issuer: letsencrypt-prod
-  #   nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  # -- Hostname the Ingress matches.
   host: ai-registry.example.com
   tls:
+    # -- Terminate TLS at the Ingress for `host`.
     enabled: false
-    secretName: ""
+    # -- (string) Name of the TLS Secret. Unset → `<fullname>-tls`.
+    secretName: ~
 
 # ----------------------------------------------------------------------------
-# Gateway API HTTPRoute
-# An alternative to the Ingress resource for clusters running a Gateway API
-# controller (Envoy Gateway, Cilium, Istio, Traefik v3, …).
-#
-# TLS is configured on the Gateway listener — not here. If your Gateway
-# listener already terminates TLS for the hostname, the SPA and API will be
-# served over HTTPS automatically without any change to this section.
-#
-# Both httpRoute and ingress can be enabled at the same time (e.g. during a
-# migration), but enabling both for the same host with different controllers
-# may cause conflicts. Enable only one per production environment.
+# httpRoute — Gateway API HTTPRoute, an alternative to the Ingress resource.
+# Attaches to a PRE-EXISTING Gateway (this chart never creates the Gateway or
+# GatewayClass — those are shared cluster infrastructure). TLS is configured on
+# the Gateway listener, not here.
 # ----------------------------------------------------------------------------
+# -- (object) Gateway API HTTPRoute attached to a pre-existing Gateway.
 httpRoute:
+  # -- Create a Gateway API HTTPRoute attached to an existing Gateway.
   enabled: false
 
-  # [REQUIRED when enabled] Reference to the Gateway this route attaches to.
   gatewayRef:
-    name: ""          # Name of the Gateway resource
-    namespace: ""     # Namespace of the Gateway (empty = same namespace as this release)
-    sectionName: ""   # Optional: specific listener section (e.g. "https")
+    # -- (string) [REQUIRED when enabled] Name of the existing Gateway this
+    # route attaches to.
+    name: ~
+    # -- (string) Namespace of the Gateway. Unset → the release namespace.
+    namespace: ~
+    # -- (string) Specific Gateway listener section (e.g. "https"). Unset → all
+    # listeners.
+    sectionName: ~
 
-  # Hostname the route matches. Should align with the Gateway listener's hostname.
+  # -- Hostname the route matches. Should align with the Gateway listener's
+  # hostname.
   host: ai-registry.example.com
 
+  # -- (object) Extra annotations added to the HTTPRoute.
   annotations: {}
 
 # ----------------------------------------------------------------------------
-# CloudNativePG (CNPG) managed Postgres cluster
-# Set cnpg.enabled=true to provision a Postgres cluster inside the namespace.
-# Requires the CNPG operator to be installed in the cluster.
+# cnpg — optional CloudNativePG-managed Postgres cluster. Requires the CNPG
+# operator to be installed in the cluster.
 # ----------------------------------------------------------------------------
+# -- (object) Optional CloudNativePG-managed Postgres cluster.
 cnpg:
+  # -- Provision a CloudNativePG Cluster in the release namespace and wire its
+  # superuser secret into the server's DATABASE_URL.
   enabled: false
+  # -- Number of Postgres instances (1 primary + N replicas).
   instances: 1
+  # -- Persistent volume size for each instance.
   storageSize: 5Gi
-  # Major version of the CNPG postgres image. Bumped to "18" to match the
-  # docker-compose stack (postgres:18-alpine, see PR #41); CNPG publishes
-  # ghcr.io/cloudnative-pg/postgresql:18 images.
+  # -- Major version of the CNPG Postgres image (matches the docker-compose
+  # stack, postgres:18).
   postgresVersion: "18"
 
-  # Database and owner created by the initdb bootstrap.
   initdb:
+    # -- Name of the database created by the initdb bootstrap.
     database: ai_registry
+    # -- Owner role created by the initdb bootstrap.
     owner: ai_registry
 
-  # PostgreSQL server parameters (free-form map — add any GUC you need).
   postgresql:
+    # -- (object) Free-form PostgreSQL server parameters (any GUC).
     parameters:
+      # -- Maximum number of concurrent connections.
       max_connections: "200"
-      shared_buffers: "256MB"
+      # -- Shared memory buffer size.
+      shared_buffers: 256MB
 
-  # Allow the CNPG operator to connect as the superuser (needed for migrations).
-  # CNPG auto-creates "<clusterName>-superuser" which the backend deployment
+  # -- Allow the CNPG operator to connect as superuser (needed for migrations).
+  # CNPG then auto-creates `<clusterName>-superuser`, which the server
   # references to build DATABASE_URL.
   enableSuperuserAccess: true
+
+  # -- Resource requests/limits for each Postgres instance pod. Requests cover
+  # CPU, memory and ephemeral storage; limits cap memory and ephemeral storage
+  # only (no CPU limit).
+  resources:
+    requests:
+      # -- CPU request.
+      cpu: 100m
+      # -- Memory request.
+      memory: 256Mi
+      # -- Ephemeral-storage request.
+      ephemeral-storage: 128Mi
+    limits:
+      # -- Memory limit.
+      memory: 512Mi
+      # -- Ephemeral-storage limit.
+      ephemeral-storage: 512Mi
