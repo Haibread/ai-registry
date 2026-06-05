@@ -265,8 +265,10 @@ test.describe('Admin: Publisher delete', () => {
 
     // Wait for the publisher data to load before looking for the Delete button.
     // The query is gated on accessToken; auth hydration from storageState is async.
+    // Target the heading specifically: the confirm panel below also renders the
+    // name (twice), so a plain getByText would match multiple elements.
     const publisherName = `${PUBLISHER_NAME} edited`
-    await expect(page.getByText(publisherName, { exact: true })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: publisherName, exact: true })).toBeVisible({ timeout: 15_000 })
 
     // The delete is now an inline danger panel, not a window.confirm: open it,
     // type the publisher's exact name to arm the button, then confirm.
@@ -278,7 +280,8 @@ test.describe('Admin: Publisher delete', () => {
     await expect(confirm).toBeEnabled()
     await confirm.click()
 
+    // The cascade delete redirects back to the list; the publisher is gone.
     await page.waitForURL(/\/admin\/publishers$/)
-    await expect(page.getByText(publisherName, { exact: true })).not.toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole('heading', { name: publisherName, exact: true })).toHaveCount(0)
   })
 })
