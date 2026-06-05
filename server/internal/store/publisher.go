@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/haibread/ai-registry/internal/domain"
 )
@@ -194,14 +195,18 @@ func (db *DB) UpdatePublisher(ctx context.Context, publisherID string, p UpdateP
 	return &pub, nil
 }
 
-// DeletePublisher hard-deletes a publisher. Returns ErrConflict if the
-// publisher still owns any active MCP servers or agents (status != 'deleted').
+// DeletePublisher hard-deletes a publisher and cascades the deletion to every
+// resource it owns: all MCP servers and agents (whatever their status), their
+// version rows, and any community reports filed against them. Role grants
+// scoped to the publisher are removed automatically by their ON DELETE CASCADE
+// foreign key.
 //
-// Soft-deleted (tombstoned) child rows are purged in the same transaction so
-// that the ON DELETE RESTRICT foreign key does not block the publisher delete.
-// The intent of soft-deletion is to hide an entry from listings without
-// silently breaking caches mid-run; once the owning publisher itself is being
-// removed, there is nothing left to protect and the tombstones can go.
+// The whole cascade runs in one transaction, so the publisher and all of its
+// dependents disappear together or not at all. The entry and version tables use
+// ON DELETE RESTRICT, so children are deleted bottom-up — versions before their
+// parent mcp_server/agent rows, and those before the publisher itself — rather
+// than relying on the database to cascade. A delete on a publisher with no
+// resources is just the final DELETE with nothing to sweep.
 func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 	ctx, span := startSpan(ctx, "DeletePublisher")
 	defer span.End()
@@ -213,70 +218,48 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op after commit
 
-	// Check for dependent active resources. Tombstoned rows do not count —
-	// they are purged below before the publisher delete runs.
-	var mcpCount, agentCount int
-	if err := tx.QueryRow(ctx,
-		`SELECT COUNT(*) FROM mcp_servers
-		  WHERE publisher_id=$1
-		    AND status != 'deleted'`,
-		publisherID).Scan(&mcpCount); err != nil {
+	// Reports reference resources by (resource_type, resource_id) with no
+	// foreign key, so they neither block the delete nor cascade automatically —
+	// purge them explicitly before the resources they point at vanish, leaving
+	// no dangling reports behind.
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM reports
+		  WHERE (resource_type='mcp_server'
+		         AND resource_id IN (SELECT id FROM mcp_servers WHERE publisher_id=$1))
+		     OR (resource_type='agent'
+		         AND resource_id IN (SELECT id FROM agents      WHERE publisher_id=$1))`,
+		publisherID); err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("counting mcp servers: %w", err)
-	}
-	if err := tx.QueryRow(ctx,
-		`SELECT COUNT(*) FROM agents
-		  WHERE publisher_id=$1
-		    AND status != 'deleted'`,
-		publisherID).Scan(&agentCount); err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("counting agents: %w", err)
-	}
-	if mcpCount > 0 || agentCount > 0 {
-		recordErr(span, ErrConflict)
-		return ErrConflict
+		return fmt.Errorf("deleting resource reports: %w", err)
 	}
 
-	// Purge tombstoned children so the ON DELETE RESTRICT FK will not fire.
-	// Version tables also use ON DELETE RESTRICT, so delete version rows
-	// first, then the parent mcp_server/agent rows.
+	// Version tables use ON DELETE RESTRICT, so delete version rows before the
+	// parent mcp_server/agent rows.
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM mcp_server_versions
-		 WHERE server_id IN (
-		     SELECT id FROM mcp_servers
-		      WHERE publisher_id=$1
-		        AND status='deleted'
-		 )`,
+		  WHERE server_id IN (SELECT id FROM mcp_servers WHERE publisher_id=$1)`,
 		publisherID); err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("purging tombstoned mcp versions: %w", err)
+		return fmt.Errorf("deleting mcp versions: %w", err)
 	}
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM mcp_servers
-		  WHERE publisher_id=$1
-		    AND status='deleted'`,
-		publisherID); err != nil {
+	mcpTag, err := tx.Exec(ctx,
+		`DELETE FROM mcp_servers WHERE publisher_id=$1`, publisherID)
+	if err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("purging tombstoned mcp servers: %w", err)
+		return fmt.Errorf("deleting mcp servers: %w", err)
 	}
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM agent_versions
-		 WHERE agent_id IN (
-		     SELECT id FROM agents
-		      WHERE publisher_id=$1
-		        AND status='deleted'
-		 )`,
+		  WHERE agent_id IN (SELECT id FROM agents WHERE publisher_id=$1)`,
 		publisherID); err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("purging tombstoned agent versions: %w", err)
+		return fmt.Errorf("deleting agent versions: %w", err)
 	}
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM agents
-		  WHERE publisher_id=$1
-		    AND status='deleted'`,
-		publisherID); err != nil {
+	agentTag, err := tx.Exec(ctx,
+		`DELETE FROM agents WHERE publisher_id=$1`, publisherID)
+	if err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("purging tombstoned agents: %w", err)
+		return fmt.Errorf("deleting agents: %w", err)
 	}
 
 	tag, err := tx.Exec(ctx, `DELETE FROM publishers WHERE id=$1`, publisherID)
@@ -288,6 +271,11 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
+
+	span.SetAttributes(
+		attribute.Int64("registry.cascade.mcp_servers_deleted", mcpTag.RowsAffected()),
+		attribute.Int64("registry.cascade.agents_deleted", agentTag.RowsAffected()),
+	)
 
 	if err := tx.Commit(ctx); err != nil {
 		recordErr(span, err)

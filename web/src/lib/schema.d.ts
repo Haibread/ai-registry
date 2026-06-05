@@ -542,7 +542,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a publisher (admin only)
-         * @description Hard-deletes the publisher. Returns 409 if the publisher still owns active MCP servers or agents.
+         * @description Hard-deletes the publisher and cascades the deletion to every resource it owns — all MCP servers and agents, their versions, and any reports filed against them — in a single transaction. Owned resources never block the delete.
          */
         delete: operations["deletePublisher"];
         options?: never;
@@ -3182,7 +3182,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Publisher deleted */
+            /** @description Publisher and all owned resources deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3192,7 +3192,6 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
         };
     };
     patchPublisher: {

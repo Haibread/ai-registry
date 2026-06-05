@@ -338,9 +338,9 @@ func TestPublisherHandler_Delete_NotFound(t *testing.T) {
 	}
 }
 
-func TestPublisherHandler_Delete_ConflictWithActiveEntries(t *testing.T) {
+func TestPublisherHandler_Delete_CascadesActiveEntries(t *testing.T) {
 	resetTables(t)
-	// Create publisher with an MCP server.
+	// Create publisher with an active MCP server.
 	pubID := seedPublisher(t, "busy-pub", "Busy")
 	if _, err := testDB.CreateMCPServer(t.Context(), store.CreateMCPServerParams{
 		PublisherID: pubID,
@@ -353,8 +353,18 @@ func TestPublisherHandler_Delete_ConflictWithActiveEntries(t *testing.T) {
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/publishers/busy-pub", nil)
 	rec := httptest.NewRecorder()
 	newPublisherRouter().ServeHTTP(rec, req)
-	if rec.Code != http.StatusConflict {
-		t.Errorf("status = %d, want 409", rec.Code)
+	// Owned resources are cascaded, not a 409 — the delete succeeds.
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want 204", rec.Code)
+	}
+
+	var n int
+	if err := testDB.Pool.QueryRow(t.Context(),
+		`SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1`, pubID).Scan(&n); err != nil {
+		t.Fatalf("count servers: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected owned servers cascaded, got %d", n)
 	}
 }
 
