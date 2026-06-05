@@ -1,0 +1,91 @@
+name: Lint
+
+# Single static-analysis gate: runs the repo's full pre-commit hook set on
+# every pull request (and on demand). Everything that used to live in its own
+# CI job is a pre-commit hook, so one `pre-commit run --all-files` with no SKIP
+# now covers them all:
+#   gitleaks (secret scan), gofmt, go vet, golangci-lint, eslint, tsc,
+#   helm lint, helm-docs, hadolint, actionlint, plus the hygiene hooks.
+# The tooling those system hooks shell out to is installed below before the run.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref — a new push to a PR supersedes the
+# previous run, saving runner minutes and avoiding stale statuses.
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # gitleaks scans the full working tree; a complete checkout lets it
+          # see every tracked file.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5
+        with:
+          version: latest
+
+      # web-eslint and web-tsc shell into web/node_modules, so the deps must be
+      # installed before pre-commit runs.
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      # golangci-lint and actionlint are language: system hooks — their binaries
+      # must be on PATH. Versions are pinned to match local dev tooling.
+      - name: Install Go-based linters
+        run: |
+          set -euo pipefail
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # helm-docs regenerates the chart README; the hook fails if it drifts.
+      - name: Install helm-docs
+        run: |
+          set -euo pipefail
+          version=1.14.2
+          curl -sSfL "https://github.com/norwoodj/helm-docs/releases/download/v${version}/helm-docs_${version}_Linux_x86_64.tar.gz" \
+            | tar -xzf - helm-docs
+          sudo install -m 0755 helm-docs /usr/local/bin/helm-docs
+          rm -f helm-docs
+
+      - name: Install hadolint
+        run: |
+          set -euo pipefail
+          version=2.12.0
+          curl -sSfL "https://github.com/hadolint/hadolint/releases/download/v${version}/hadolint-Linux-x86_64" -o /tmp/hadolint
+          sudo install -m 0755 /tmp/hadolint /usr/local/bin/hadolint
+
+      - name: Install pre-commit
+        run: pipx install pre-commit
+
+      # No SKIP: the dedicated jobs that used to mirror these hooks are gone, so
+      # the full hook set runs here.
+      - name: Run hooks
+        run: pre-commit run --all-files --show-diff-on-failure --color always

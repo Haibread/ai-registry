@@ -1,0 +1,242 @@
+name: Docker
+
+# Builds the server and web images. On a pull request or a manual run the images
+# are built only (no push) as a build-health gate. On a push they are published
+# to GHCR and scanned with Trivy:
+#   push to main  → :latest + :main-<short-sha>
+#   push of v* tag → :<semver> + :<major>.<minor>   (this is what cuts a release —
+#                    the Release workflow runs via workflow_run once this succeeds)
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+# Serialise publishes per ref so two pushes to the same ref don't race to
+# overwrite a moving tag (:latest). PR builds are throwaway, so cancel the
+# in-progress run when a newer commit arrives.
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  # OCI registry paths must be all-lowercase; lowercasing is applied per-job via
+  # a dedicated step that overwrites IMAGE_PREFIX in $GITHUB_ENV.
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/ai-registry
+  # docker/build-push-action, docker/login-action, and docker/metadata-action
+  # still bundle Node.js 20. GitHub is force-cutting Node 20 runners on
+  # June 2, 2026; this env var opts those actions into the Node 24 runner early.
+  # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  # ── Server image ─────────────────────────────────────────────────────────────
+  build-server:
+    name: Build & push server image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Lowercase IMAGE_PREFIX
+        run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
+      # Only authenticate when we are going to push (push events). PR / manual
+      # builds don't touch the registry.
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/server
+          tags: |
+            # On semver tag: v1.2.3 → 1.2.3 and 1.2
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # On main branch: :latest + :main-<short-sha>
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=main-,enable={{is_default_branch}},format=short
+
+      - name: Compute build metadata
+        id: bmeta
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VER="${{ github.ref_name }}"
+            VER="${VER#v}"
+          else
+            VER="main-$(echo "${{ github.sha }}" | cut -c1-7)"
+          fi
+          {
+            echo "version=${VER}"
+            echo "commit=${{ github.sha }}"
+            echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push server image
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: ./server
+          file: ./server/Dockerfile
+          # Push only on push events (main / v* tag); PR and manual runs build only.
+          push: ${{ github.event_name == 'push' }}
+          # Multi-arch: the Dockerfile pins the builder to $BUILDPLATFORM and
+          # cross-compiles the Go binary (GOARCH=$TARGETARCH), so arm64 builds
+          # natively without QEMU emulation.
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.bmeta.outputs.version }}
+            COMMIT=${{ steps.bmeta.outputs.commit }}
+            BUILD_TIME=${{ steps.bmeta.outputs.build_time }}
+          # Supply-chain attestations: SBOM + max-mode provenance, pushed to GHCR
+          # alongside the image manifest.
+          sbom: true
+          provenance: mode=max
+          # BuildKit layer cache via GitHub Actions cache backend.
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+
+  # ── Web image ─────────────────────────────────────────────────────────────────
+  build-web:
+    name: Build & push web image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Lowercase IMAGE_PREFIX
+        run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/web
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=main-,enable={{is_default_branch}},format=short
+
+      - name: Build and push web image
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          # Build context is the repo root so the Dockerfile can access both web/
+          # and server/ (for the OpenAPI spec used by type generation).
+          context: .
+          file: ./web/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          # Multi-arch: the Vite build runs on $BUILDPLATFORM (its output is
+          # arch-independent static files) and only the runtime nginx layer is
+          # per-arch, so arm64 builds without QEMU emulation.
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  # ── Image vulnerability scan ─────────────────────────────────────────────────
+  # Runs Trivy against both images after they are pushed. Results are uploaded to
+  # GitHub's Code Scanning dashboard as SARIF so CVEs show up in the Security tab
+  # and on PRs. Failures do not block the publish (continue-on-error) — this is a
+  # detection gate, not a deploy gate. Only runs on push events, since PR/manual
+  # runs don't push an image for Trivy to pull. Tighten later by dropping the flag
+  # once the baseline CVE count is at zero.
+  scan-images:
+    name: Scan images (Trivy)
+    runs-on: ubuntu-latest
+    needs: [build-server, build-web]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [server, web]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Lowercase IMAGE_PREFIX
+        run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image reference
+        id: ref
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+            TAG="${TAG#v}"
+          else
+            TAG="latest"
+          fi
+          echo "image=${IMAGE_PREFIX}/${{ matrix.image }}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
