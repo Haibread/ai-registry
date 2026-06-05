@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, Server, Bot } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, Server, Bot, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/ui/badge'
-import { DeleteButton } from '@/components/admin/delete-button'
+import { ConfirmDeletePanel } from '@/components/admin/confirm-delete-panel'
 import { GrantsSection } from '@/components/admin/grants-section'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
@@ -19,6 +19,7 @@ export default function AdminPublisherDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const api = useAuthClient()
 
@@ -80,6 +81,11 @@ export default function AdminPublisherDetail() {
 
   const mcpServers = mcpData?.items ?? []
   const agents = agentsData?.items ?? []
+
+  // Prefer the server-reported totals over the (page-capped) item counts so
+  // the delete confirmation reflects every resource the cascade will remove.
+  const mcpCount = mcpData?.total_count ?? mcpServers.length
+  const agentCount = agentsData?.total_count ?? agents.length
 
   if (isPending) return <p className="text-muted-foreground">Loading…</p>
   if (isError || !publisher) return (
@@ -178,16 +184,51 @@ export default function AdminPublisherDetail() {
           <Button variant="outline" size="sm" onClick={() => setEditOpen(v => !v)}>
             {editOpen ? 'Cancel edit' : 'Edit'}
           </Button>
-          <DeleteButton
-            onDelete={() => deleteMutation.mutate()}
-            entityName={publisher.name}
-            isPending={deleteMutation.isPending}
-          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
+            onClick={() => setDeleteOpen(v => !v)}
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Delete
+          </Button>
         </div>
-        {deleteMutation.isError && (
-          <p role="alert" className="text-sm text-destructive">
-            Delete failed — publisher may still have active entries.
-          </p>
+        {deleteOpen && (
+          <ConfirmDeletePanel
+            entityLabel="publisher"
+            confirmText={publisher.name}
+            isPending={deleteMutation.isPending}
+            error={deleteMutation.isError ? 'Delete failed — please try again.' : undefined}
+            onCancel={() => setDeleteOpen(false)}
+            onConfirm={() => deleteMutation.mutate()}
+            summary={
+              <div className="space-y-2 text-sm">
+                <p className="text-muted-foreground">
+                  This permanently deletes <span className="font-medium text-foreground">{publisher.name}</span> and
+                  cannot be undone.
+                </p>
+                {(mcpCount > 0 || agentCount > 0) ? (
+                  <p className="text-muted-foreground">
+                    It also removes everything this publisher owns:
+                    {' '}
+                    <span className="font-medium text-foreground">
+                      {mcpCount} MCP {mcpCount === 1 ? 'server' : 'servers'}
+                    </span>
+                    {' and '}
+                    <span className="font-medium text-foreground">
+                      {agentCount} {agentCount === 1 ? 'agent' : 'agents'}
+                    </span>
+                    , along with all of their versions.
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">
+                    This publisher currently owns no MCP servers or agents.
+                  </p>
+                )}
+              </div>
+            }
+          />
         )}
       </div>
 

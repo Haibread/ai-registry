@@ -393,7 +393,10 @@ func TestDeletePublisher_SweepsTombstonedChildren(t *testing.T) {
 	}
 }
 
-func TestDeletePublisher_ConflictWithActiveEntries(t *testing.T) {
+// TestDeletePublisher_CascadesActiveResources verifies that deleting a
+// publisher cascades to its active MCP servers and agents (and their versions),
+// plus any reports filed against them — rather than failing with ErrConflict.
+func TestDeletePublisher_CascadesActiveResources(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 
@@ -403,17 +406,67 @@ func TestDeletePublisher_ConflictWithActiveEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePublisher: %v", err)
 	}
-	// Add an active MCP server.
-	if _, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
-		PublisherID: pub.ID,
-		Slug:        "active-srv",
-		Name:        "Active Server",
-	}); err != nil {
+
+	// An active MCP server with a version, and a report filed against it.
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pub.ID, Slug: "active-srv", Name: "Active Server",
+	})
+	if err != nil {
 		t.Fatalf("CreateMCPServer: %v", err)
 	}
+	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
+		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
+		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersion: "2025-03-26",
+	}); err != nil {
+		t.Fatalf("CreateMCPServerVersion: %v", err)
+	}
+	if _, err := sharedDB.CreateReport(ctx, store.CreateReportParams{
+		ResourceType: "mcp_server", ResourceID: srv.ID,
+		IssueType: "spam", Description: "junk",
+	}); err != nil {
+		t.Fatalf("CreateReport: %v", err)
+	}
 
-	err = sharedDB.DeletePublisher(ctx, pub.ID)
-	if !errors.Is(err, store.ErrConflict) {
-		t.Errorf("expected ErrConflict, got %v", err)
+	// An active agent with a version.
+	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pub.ID, Slug: "active-agent", Name: "Active Agent",
+	})
+	if err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+	if _, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
+		AgentID: ag.ID, Version: "1.0.0",
+		EndpointURL: "https://agents.example/active", Skills: []byte(`[]`),
+		ProtocolVersion: "0.3.0",
+	}); err != nil {
+		t.Fatalf("CreateAgentVersion: %v", err)
+	}
+
+	// The delete must succeed (no ErrConflict) and cascade everything away.
+	if err := sharedDB.DeletePublisher(ctx, pub.ID); err != nil {
+		t.Fatalf("DeletePublisher: %v", err)
+	}
+	if _, err := sharedDB.GetPublisher(ctx, "busy-pub"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("expected publisher gone, got %v", err)
+	}
+
+	for _, c := range []struct {
+		name  string
+		query string
+		arg   string
+	}{
+		{"mcp_servers", `SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1`, pub.ID},
+		{"agents", `SELECT COUNT(*) FROM agents WHERE publisher_id=$1`, pub.ID},
+		{"mcp_server_versions", `SELECT COUNT(*) FROM mcp_server_versions WHERE server_id=$1`, srv.ID},
+		{"agent_versions", `SELECT COUNT(*) FROM agent_versions WHERE agent_id=$1`, ag.ID},
+		{"reports", `SELECT COUNT(*) FROM reports WHERE resource_id=$1`, srv.ID},
+	} {
+		var n int
+		if err := sharedDB.Pool.QueryRow(ctx, c.query, c.arg).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", c.name, err)
+		}
+		if n != 0 {
+			t.Errorf("expected 0 %s after cascade, got %d", c.name, n)
+		}
 	}
 }

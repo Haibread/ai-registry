@@ -817,7 +817,11 @@ paths:
     delete:
       operationId: deletePublisher
       summary: Delete a publisher (admin only)
-      description: Hard-deletes the publisher. Returns 409 if the publisher still owns active MCP servers or agents.
+      description: >
+        Hard-deletes the publisher and cascades the deletion to every resource
+        it owns — all MCP servers and agents, their versions, and any reports
+        filed against them — in a single transaction. Owned resources never
+        block the delete.
       tags: [publishers]
       security:
         - bearerAuth: []
@@ -825,15 +829,13 @@ paths:
         - $ref: "#/components/parameters/SlugParam"
       responses:
         "204":
-          description: Publisher deleted
+          description: Publisher and all owned resources deleted
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
 
   /api/v1/publishers/{slug}/stats:
     get:

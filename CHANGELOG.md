@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Changed
+
+- **Deleting a publisher now cascades to all of its resources.** `DELETE
+  /api/v1/publishers/{slug}` removes every MCP server and agent the publisher
+  owns (regardless of status), their versions, and any reports filed against
+  them, in a single transaction — instead of returning `409 Conflict` when the
+  publisher still owned active entries. The endpoint no longer responds with
+  `409`.
+- **Admin publisher deletion now requires an explicit, type-to-confirm step.**
+  Because the delete is irreversible and cascades, the admin UI replaces the
+  plain confirm dialog with a danger panel that spells out how many MCP servers
+  and agents will be removed and keeps the delete button disabled until the
+  operator types the publisher's exact name.
+
 ## v0.4.0-rc4 — 2026-06-05
 
 ### Changed

@@ -297,11 +297,10 @@ func (h *PublisherHandlers) DeletePublisher(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.db.DeletePublisher(r.Context(), pub.ID); errors.Is(err, store.ErrConflict) {
-		problem.Write(w, http.StatusConflict, "conflict",
-			fmt.Sprintf("publisher '%s' still has active entries", slug), r.URL.Path)
-		return
-	} else if errors.Is(err, store.ErrNotFound) {
+	// Deleting a publisher cascades to all of its MCP servers, agents, their
+	// versions, and any reports filed against them (see store.DeletePublisher);
+	// owned resources never block the delete, so there is no 409 path here.
+	if err := h.db.DeletePublisher(r.Context(), pub.ID); errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusNotFound, "not-found",
 			fmt.Sprintf("publisher '%s' does not exist", slug), r.URL.Path)
 		return

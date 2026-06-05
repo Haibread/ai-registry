@@ -67,8 +67,8 @@ describe('AdminPublisherDetail', () => {
     vi.clearAllMocks()
     mockGET.mockImplementation((path: string) => {
       if (path === '/api/v1/publishers/{slug}') return Promise.resolve({ data: samplePublisher })
-      if (path === '/api/v1/mcp/servers') return Promise.resolve({ data: { items: sampleMcp } })
-      if (path === '/api/v1/agents') return Promise.resolve({ data: { items: sampleAgents } })
+      if (path === '/api/v1/mcp/servers') return Promise.resolve({ data: { items: sampleMcp, total_count: 3 } })
+      if (path === '/api/v1/agents') return Promise.resolve({ data: { items: sampleAgents, total_count: 2 } })
       return Promise.resolve({ data: {} })
     })
     mockPATCH.mockResolvedValue({})
@@ -115,17 +115,49 @@ describe('AdminPublisherDetail', () => {
     })
   })
 
-  it('calls DELETE when confirming the delete dialog', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('reveals a confirmation panel with the cascade resource counts', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Acme Corp' })
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    // Uses the server-reported totals (3 / 2), not the page-capped item lists.
+    expect(await screen.findByText(/3 MCP servers/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 agents/i)).toBeInTheDocument()
+  })
+
+  it('gates DELETE behind typing the exact publisher name', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Acme Corp' })
+    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    const submit = await screen.findByRole('button', { name: /delete publisher/i })
+    expect(submit).toBeDisabled()
+
+    const input = screen.getByLabelText(/to confirm/i)
+    fireEvent.change(input, { target: { value: 'Acme' } })
+    expect(submit).toBeDisabled()
+
+    fireEvent.change(input, { target: { value: 'Acme Corp' } })
+    expect(submit).toBeEnabled()
+
+    fireEvent.click(submit)
     await waitFor(() => {
       expect(mockDELETE).toHaveBeenCalledWith('/api/v1/publishers/{slug}', {
         params: { path: { slug: 'acme' } },
       })
     })
-    confirmSpy.mockRestore()
+  })
+
+  it('does not call DELETE while the typed name does not match', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Acme Corp' })
+    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    const input = await screen.findByLabelText(/to confirm/i)
+    fireEvent.change(input, { target: { value: 'wrong name' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+
+    expect(mockDELETE).not.toHaveBeenCalled()
   })
 
   it('shows a not-found state when the publisher query errors', async () => {
