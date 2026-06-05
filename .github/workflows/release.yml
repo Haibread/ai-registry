@@ -1,0 +1,80 @@
+name: Release
+
+# Cuts the GitHub Release for a v* tag, with its body taken from the matching
+# CHANGELOG section. Runs via workflow_run after the Docker workflow finishes, so
+# a release is never announced for images that failed to build/publish. The
+# guard below restricts it to successful runs triggered by a v* tag push.
+on:
+  workflow_run:
+    workflows: [Docker]
+    types: [completed]
+
+# One release per tag; never cancel a release mid-flight.
+concurrency:
+  group: release-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  github-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    # workflow_run.head_branch carries the tag name for a tag push. Only fire for
+    # a successful Docker run that was triggered by pushing a v* tag.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # workflow_run runs against the default branch by default; check out the
+          # tag that triggered the upstream Docker run so the CHANGELOG and the
+          # --verify-tag below match the released ref.
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      # Pull the CHANGELOG section between "## <tag>" and the next "## " header.
+      # The startswith + trailing-char check matches both "## v0.3.2" (header at
+      # EOL) and "## v0.3.3 — 2026-05-25" (header followed by a space) without
+      # matching a longer version such as "## v0.3.30".
+      - name: Extract release notes from CHANGELOG
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          awk -v tag="$TAG" '
+            BEGIN { head = "## " tag }
+            substr($0, 1, length(head)) == head {
+              rest = substr($0, length(head) + 1)
+              if (rest == "" || rest ~ /^[ \t]/) { flag = 1; next }
+            }
+            /^## / && flag { exit }
+            flag { print }
+          ' CHANGELOG.md > /tmp/relnotes.md
+          if [[ ! -s /tmp/relnotes.md ]]; then
+            printf 'Release %s. See CHANGELOG.md for details.\n' "$TAG" > /tmp/relnotes.md
+          fi
+
+      # Omitting --latest lets gh decide by semver, so a backport patch release
+      # doesn't wrongly steal "Latest" from a higher version.
+      - name: Create or refresh the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          # A pre-release tag carries a hyphenated SemVer identifier
+          # (e.g. v0.4.0-rc0). gh ranks "Latest" by SemVer, and 0.4.0-rc0
+          # outranks 0.3.3 — so without --prerelease an rc would wrongly be
+          # published as the Latest release. Mark hyphenated tags pre-release so
+          # they stay out of "Latest"; stable tags keep the default.
+          args=(--notes-file /tmp/relnotes.md --verify-tag)
+          if [[ "$TAG" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" "${args[@]}"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" "${args[@]}"
+          fi

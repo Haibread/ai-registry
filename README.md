@@ -2,9 +2,9 @@
 
 > A centralized, spec-compatible registry for AI ecosystem artifacts — **MCP servers** and **A2A agents** — with a clean public browse UI, an admin CRUD console, and a first-class HTTP API.
 
-[![CI](https://github.com/Haibread/ai-registry/actions/workflows/ci.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/ci.yml)
-[![E2E](https://github.com/Haibread/ai-registry/actions/workflows/e2e.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/e2e.yml)
-[![Publish](https://github.com/Haibread/ai-registry/actions/workflows/publish.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/publish.yml)
+[![Lint](https://github.com/Haibread/ai-registry/actions/workflows/lint.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/lint.yml)
+[![Quality](https://github.com/Haibread/ai-registry/actions/workflows/quality.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/quality.yml)
+[![Docker](https://github.com/Haibread/ai-registry/actions/workflows/docker.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/docker.yml)
 
 A single place to publish, discover, and evaluate AI ecosystem building blocks. Every entry is:
 
@@ -166,7 +166,24 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full set of non-negotiables.
 
 ### Pre-commit hooks
 
-[pre-commit](https://pre-commit.com) runs formatters, linters, and secret scanners before each commit; the same hooks run in CI. Install with `pre-commit install`; see [`.pre-commit-config.yaml`](.pre-commit-config.yaml) for the hooks and the tools they shell out to.
+[pre-commit](https://pre-commit.com) runs formatters, linters, and secret scanners before each commit; the same hooks run in CI (the **Lint** workflow is exactly `pre-commit run --all-files`). Install with `pre-commit install`; see [`.pre-commit-config.yaml`](.pre-commit-config.yaml) for the hooks and the tools they shell out to.
+
+### Continuous integration & releases
+
+Five workflows live in [`.github/workflows/`](.github/workflows/), each with a single responsibility and a manual `workflow_dispatch` trigger:
+
+| Workflow | Triggers | Does |
+| --- | --- | --- |
+| **Lint** ([`lint.yml`](.github/workflows/lint.yml)) | every PR + manual | runs the full pre-commit hook set (gitleaks, gofmt/vet/golangci-lint, eslint, tsc, helm lint, hadolint, actionlint, …) |
+| **Quality** ([`quality.yml`](.github/workflows/quality.yml)) | every PR + manual | Go build + unit/integration tests + coverage floor, OpenAPI↔router & A2A contract suites, web build + unit tests, Helm render + kubeconform, Playwright + k6 e2e |
+| **Docker** ([`docker.yml`](.github/workflows/docker.yml)) | every PR + manual (build only); push to `main` and `v*.*.*` tags (build + push + Trivy scan) | multi-arch server/web images to GHCR — `:latest`/`:main-<sha>` on `main`, `:<semver>` on a `v*` tag |
+| **Helm publish** ([`helm-publish.yml`](.github/workflows/helm-publish.yml)) | push to `main` (dev version) and `chart-*` tags (release) | packages and pushes the chart to GHCR as an OCI artifact |
+| **Release** ([`release.yml`](.github/workflows/release.yml)) | after a successful **Docker** run for a `v*` tag | cuts the GitHub Release with notes from the matching `CHANGELOG.md` section |
+
+Tag conventions, decoupled so app images and the chart version independently:
+
+- **`v1.2.3`** — publishes the server/web images at that version, then cuts the GitHub Release.
+- **`chart-1.2.3`** — publishes the Helm chart at that version (its `appVersion` is whatever is committed in `Chart.yaml`).
 
 ---
 

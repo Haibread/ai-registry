@@ -1,0 +1,96 @@
+name: Helm publish
+
+# Packages and publishes the ai-registry Helm chart to GHCR as an OCI artifact.
+#
+# Triggers:
+#   push of chart-* tag → chart version <tag-without-chart-> ; appVersion is the
+#                         value committed in Chart.yaml (chart and app images are
+#                         versioned independently — images ship on v* tags).
+#   push to main        → dev chart version 0.0.0-main.g<short-sha> for testing
+on:
+  push:
+    branches: [main]
+    tags: ['chart-*']
+
+# Serialise publishes per ref so two pushes don't race to overwrite a moving
+# dev chart version.
+concurrency:
+  group: helm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-chart:
+    name: Publish Helm chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5
+        with:
+          version: latest
+
+      - name: Log in to GHCR (Helm OCI)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
+
+      - name: Compute chart and app versions
+        id: versions
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # Strip the leading 'chart-': Helm requires a bare SemVer version.
+            CHART_VERSION="${{ github.ref_name }}"
+            CHART_VERSION="${CHART_VERSION#chart-}"
+            # The chart is versioned independently of the app images (which ship
+            # on v* tags), so the appVersion stays whatever is committed in
+            # Chart.yaml — the maintainer pins the image version there.
+            APP_VERSION=$(awk -F'"' '/^appVersion:/ {print $2}' deploy/helm/ai-registry/Chart.yaml)
+          else
+            BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-')
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            # 0.0.0 is a neutral SemVer base for non-release builds; the
+            # pre-release segment carries the build identity. The short SHA is
+            # prefixed with 'g' (git-describe convention) so the identifier is
+            # never all-numeric: SemVer forbids leading zeros on numeric
+            # pre-release identifiers, so an all-digit SHA such as "0659112"
+            # would otherwise make `helm package` fail validation.
+            CHART_VERSION="0.0.0-${BRANCH}.g${SHORT_SHA}"
+            # appVersion mirrors the image tag (:main-<short-sha>); Helm does not
+            # SemVer-validate it, so it keeps the bare SHA for parity.
+            APP_VERSION="${BRANCH}-${SHORT_SHA}"
+          fi
+
+          echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "app_version=${APP_VERSION}"     >> "$GITHUB_OUTPUT"
+
+      # Rewrite Chart.yaml in place before packaging so that the tarball's
+      # Chart.yaml reflects the real build version. `helm package` already
+      # overrides these fields via --version / --app-version, but writing the
+      # file too keeps `helm inspect` / `helm show chart` honest downstream and
+      # avoids a stale version shipping inside the tarball.
+      - name: Stamp Chart.yaml
+        run: |
+          sed -i -E \
+            -e "s/^version:.*/version: ${{ steps.versions.outputs.chart_version }}/" \
+            -e "s/^appVersion:.*/appVersion: \"${{ steps.versions.outputs.app_version }}\"/" \
+            deploy/helm/ai-registry/Chart.yaml
+          grep -E '^(version|appVersion):' deploy/helm/ai-registry/Chart.yaml
+
+      - name: Package chart
+        run: |
+          helm package deploy/helm/ai-registry \
+            --version     "${{ steps.versions.outputs.chart_version }}" \
+            --app-version "${{ steps.versions.outputs.app_version }}" \
+            --destination /tmp/chart
+
+      - name: Push chart to GHCR
+        run: |
+          helm push /tmp/chart/*.tgz \
+            "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ai-registry/charts"
