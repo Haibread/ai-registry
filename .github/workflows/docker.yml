@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Lowercase IMAGE_PREFIX
         run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
@@ -129,7 +129,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Lowercase IMAGE_PREFIX
         run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
@@ -200,7 +200,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Lowercase IMAGE_PREFIX
         run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
@@ -235,7 +235,7 @@ jobs:
           exit-code: '0'
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         if: always()
         with:
           sarif_file: trivy-${{ matrix.image }}.sarif
