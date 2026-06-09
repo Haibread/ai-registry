@@ -191,5 +191,30 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /publisher-home\.spec\.ts/,
     },
+    // User-journey scenarios: full create/edit/patch/delete lifecycles plus
+    // the switcher-scoping, create-form pre-select, "Load more" pagination,
+    // rich version fields, read-only settings, and bulk-confirm UX. Switches
+    // identity per-test (admin + author) via browser.newContext, so it has no
+    // project-level storageState — like phase7-flows.
+    {
+      name: "user-journeys",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      dependencies: ["setup"],
+      testMatch: /user-journeys\.spec\.ts/,
+    },
+    // Failure-path + permission-gating coverage. Uses request interception to
+    // force deterministic API 500s so the UI error handling is exercised, and
+    // drives the author (editor) session for role gating. No project-level
+    // storageState — identity is switched per-test via browser.newContext.
+    {
+      name: "ux-edge-cases",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      dependencies: ["setup"],
+      testMatch: /ux-edge-cases\.spec\.ts/,
+    },
   ],
 })

@@ -21,8 +21,11 @@
 
 import { test, expect } from '@playwright/test'
 
-const ADMIN_EMAIL = process.env.E2E_LOCAL_ADMIN_EMAIL ?? 'local-admin@example.com'
-const ADMIN_PASSWORD = process.env.E2E_LOCAL_ADMIN_PASSWORD ?? 'e2e-local-admin-pass'
+// Defaults match the bootstrap Server Admin the dev docker-compose stack seeds
+// (AUTH_BOOTSTRAP_ADMIN_EMAIL / _PASSWORD), so `npm run test:e2e` works out of
+// the box locally. CI overrides both via env to match its own seeded account.
+const ADMIN_EMAIL = process.env.E2E_LOCAL_ADMIN_EMAIL ?? 'admin@example.com'
+const ADMIN_PASSWORD = process.env.E2E_LOCAL_ADMIN_PASSWORD ?? 'devadmin12345'
 
 test.describe('Local email + password login', () => {
   test('signs in via the local form and reaches an authenticated admin page', async ({ page }) => {
