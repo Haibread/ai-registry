@@ -3,15 +3,22 @@ import { Link } from 'react-router-dom'
 import { Plus, CheckCircle2, Circle, Building2, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableSkeleton } from '@/components/ui/table-skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
 import { useAuthClient } from '@/lib/api-client'
-import { formatDate } from '@/lib/utils'
+import { formatDate, problemMessage } from '@/lib/utils'
 
 export default function AdminPublisherList() {
   const api = useAuthClient()
 
-  const { data } = useQuery({
+  const { data, isPending, isError } = useQuery({
     queryKey: ['admin-publishers'],
-    queryFn: () => api.GET('/api/v1/publishers', { params: { query: { limit: 100 } } }).then(r => r.data),
+    queryFn: async () => {
+      const { data, error } = await api.GET('/api/v1/publishers', { params: { query: { limit: 100 } } })
+      if (error) throw new Error(problemMessage(error, 'Failed to load publishers.'))
+      return data
+    },
     enabled: true,
   })
 
@@ -33,15 +40,21 @@ export default function AdminPublisherList() {
         </Button>
       </div>
 
-      {publishers.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <Building2 className="h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
-          <p className="text-muted-foreground font-medium">No publishers yet.</p>
-          <p className="text-sm text-muted-foreground">Publishers are namespaces for MCP servers and agents.</p>
-          <Button asChild size="sm">
-            <Link to="/admin/publishers/new">Create your first publisher</Link>
-          </Button>
-        </div>
+      {isPending ? (
+        <TableSkeleton rows={6} cols={6} />
+      ) : isError ? (
+        <ErrorState message="Failed to load publishers." />
+      ) : publishers.length === 0 ? (
+        <EmptyState
+          icon={<Building2 className="h-10 w-10" aria-hidden="true" />}
+          title="No publishers yet."
+          description="Publishers own MCP servers and agents and define their namespace."
+          action={
+            <Button asChild size="sm">
+              <Link to="/admin/publishers/new">Create your first publisher</Link>
+            </Button>
+          }
+        />
       ) : (
         <Table>
           <TableHeader>

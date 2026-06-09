@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { ArrowLeft, Cpu, Shield, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, StatusBadge, VisibilityBadge } from '@/components/ui/badge'
@@ -15,7 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
 import { useAuthClient } from '@/lib/api-client'
-import { formatDate } from '@/lib/utils'
+import { formatDate, problemMessage } from '@/lib/utils'
 import { usePermissions } from '@/auth/useMe'
 import type { components } from '@/lib/schema'
 
@@ -44,31 +45,37 @@ export default function AdminAgentDetail() {
 
   const visibilityMutation = useMutation({
     mutationFn: async (newVisibility: 'public' | 'private') => {
-      await api.POST('/api/v1/agents/{namespace}/{slug}/visibility', {
+      const { error } = await api.POST('/api/v1/agents/{namespace}/{slug}/visibility', {
         params: { path: { namespace: ns!, slug: slug! } },
         body: { visibility: newVisibility },
       })
+      if (error) throw new Error(problemMessage(error, 'Failed to change visibility.'))
+      return newVisibility
     },
-    onSuccess: invalidate,
+    onSuccess: (v) => { invalidate(); toast.success(`Now ${v}`) },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const deprecateMutation = useMutation({
     mutationFn: async () => {
-      await api.POST('/api/v1/agents/{namespace}/{slug}/deprecate', {
+      const { error } = await api.POST('/api/v1/agents/{namespace}/{slug}/deprecate', {
         params: { path: { namespace: ns!, slug: slug! } },
       })
+      if (error) throw new Error(problemMessage(error, 'Failed to deprecate.'))
     },
-    onSuccess: invalidate,
+    onSuccess: () => { invalidate(); toast.success('Agent deprecated') },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const editMutation = useMutation({
     mutationFn: async (body: { name: string; description: string }) => {
-      await api.PATCH('/api/v1/agents/{namespace}/{slug}', {
+      const { error } = await api.PATCH('/api/v1/agents/{namespace}/{slug}', {
         params: { path: { namespace: ns!, slug: slug! } },
         body,
       })
+      if (error) throw new Error(problemMessage(error, 'Update failed.'))
     },
-    onSuccess: () => { invalidate(); setEditOpen(false) },
+    onSuccess: () => { invalidate(); setEditOpen(false); toast.success('Agent updated') },
   })
 
   const deleteMutation = useMutation({
@@ -76,12 +83,14 @@ export default function AdminAgentDetail() {
       const { error } = await api.DELETE('/api/v1/agents/{namespace}/{slug}', {
         params: { path: { namespace: ns!, slug: slug! } },
       })
-      if (error) throw new Error((error as { title?: string }).title ?? 'Delete failed')
+      if (error) throw new Error(problemMessage(error, 'Delete failed.'))
     },
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: ['admin-agents'] })
+      toast.success('Agent deleted')
       navigate('/admin/agents')
     },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   if (isPending) return <p className="text-muted-foreground">Loading…</p>
@@ -272,7 +281,9 @@ export default function AdminAgentDetail() {
             </div>
           </div>
           {editMutation.isError && (
-            <p className="text-sm text-destructive">Update failed. Please try again.</p>
+            <p role="alert" className="text-sm text-destructive">
+              {editMutation.error.message || 'Update failed. Please try again.'}
+            </p>
           )}
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={editMutation.isPending}>
@@ -344,9 +355,6 @@ export default function AdminAgentDetail() {
               />
             )}
           </div>
-          {(visibilityMutation.isError || deprecateMutation.isError || deleteMutation.isError) && (
-            <p className="text-sm text-destructive">Action failed. Please try again.</p>
-          )}
         </div>
       )}
 

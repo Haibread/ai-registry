@@ -8,6 +8,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * Extract a human-readable message from an API error, preferring the RFC 7807
+ * problem fields (`detail`, then `title`) the server returns, and falling back
+ * to a caller-supplied default. Centralizes the `detail ?? title ?? fallback`
+ * pattern so error surfaces stay consistent across the admin UI.
+ */
+export function problemMessage(error: unknown, fallback: string): string {
+  const e = error as { detail?: string; title?: string } | null | undefined
+  return e?.detail ?? e?.title ?? fallback
+}
+
 /** Format an ISO date string into a human-readable date. */
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {

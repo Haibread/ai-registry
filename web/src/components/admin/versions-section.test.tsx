@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 vi.mock('@/auth/AuthContext', () => ({
@@ -37,7 +38,9 @@ function renderSection(kind: 'mcp' | 'agent' = 'mcp') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <VersionsSection kind={kind} namespace="acme" slug="weather" />
+      <MemoryRouter>
+        <VersionsSection kind={kind} namespace="acme" slug="weather" />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -164,6 +167,31 @@ describe('VersionsSection', () => {
         { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } } },
       )
     })
+  })
+
+  it('Publish on an unpublished version posts to the publish endpoint after confirm', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderSection('mcp')
+    // publishedV0 (0.9.0) is already published, so the first Publish button
+    // belongs to the first unpublished row (draftV1, 1.0.0).
+    const publishButtons = await screen.findAllByRole('button', { name: /^publish$/i })
+    fireEvent.click(publishButtons[0])
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish',
+        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } } },
+      )
+    })
+    confirmSpy.mockRestore()
+  })
+
+  it('does not show Publish on an already-published version', async () => {
+    renderSection('mcp')
+    await screen.findByText('v0.9.0')
+    // Three unpublished rows (draft, pending, rejected) → three Publish buttons,
+    // never four — the published row must not offer Publish.
+    const publishButtons = screen.getAllByRole('button', { name: /^publish$/i })
+    expect(publishButtons).toHaveLength(3)
   })
 
   it('surfaces a friendly error on review-revision-mismatch', async () => {

@@ -13,6 +13,26 @@ All notable changes to this project are documented here.
   (publisher Editor / Server Admin only) that opens an inline form to author a
   new draft version; submitting it for review stays on the existing Submit
   button / review queue.
+- **Publish a version directly from the Versions section.** Reviewers (and
+  Server Admins) get a **Publish** button on any unpublished version — the
+  go-live action previously existed only as a "publish on create" checkbox, so
+  an approved/draft version had no UI to publish.
+- **Richer version-authoring fields.** The New version form now exposes fields
+  the API already accepted but no UI did: MCP `capabilities` (JSON) and
+  package `registryBaseUrl`; agent `capabilities` (JSON), `provider`,
+  `documentation_url`, `icon_url`, and skill `examples`.
+- **End-to-end user-journey coverage** (`web/e2e/user-journeys.spec.ts`): full
+  MCP create → publish → edit → second-version → publish → deprecate → delete
+  lifecycle, switcher-scoped lists, create-form publisher pre-select, "Load
+  more" append, the filtered empty state, agent rich-field round-trips,
+  read-only Settings for a non-admin member, the bulk-deprecate confirmation,
+  and the review workflow's separation of duties (an Editor submits but cannot
+  approve — UI and API 403 — while a distinct Reviewer approves from the queue)
+  — run against the live Docker stack.
+- **End-to-end failure-path + RBAC coverage** (`web/e2e/ux-edge-cases.spec.ts`):
+  uses request interception to force API 500s and assert the list error state,
+  the New-version JSON validation, a detail-action error toast, bulk
+  partial-failure reporting, and editor-vs-Server-Admin action gating.
 
 ### Changed
 
@@ -23,11 +43,52 @@ All notable changes to this project are documented here.
   All-publishers view stays unscoped.
 - **The create-resource forms pre-select the current publisher.** The "New
   Server" / "New Agent" publisher dropdown defaults to the publisher the admin
-  area is scoped to (when the caller can author on it).
+  area is scoped to (when the caller can author on it). The field is now
+  labelled "Publisher" consistently (was "Namespace (publisher)").
 - **Publisher Settings is viewable read-only by members.** Non-admin publisher
   members previously hit an "Admin access required" wall; they can now open
   Settings in a read-only view, while editing remains gated on the Admin role
   (and the write endpoint is authorized server-side regardless).
+- **List pages show skeletons while loading and a clear error on failure.** The
+  publishers/users/groups/MCP/agents lists previously flashed their empty state
+  during load and had no error surface; they now use a table skeleton, a shared
+  error state, and the standard `EmptyState` (with a create CTA).
+
+### Fixed
+
+- **"Load more" no longer hides earlier rows.** The MCP and Agent admin lists
+  paginated by pushing a cursor into the URL, which *replaced* the visible rows
+  with the next page. They now use an infinite query that appends pages.
+- **Detail-page actions report the real error and no longer silently succeed.**
+  The MCP/agent visibility and deprecate mutations ignored the API's
+  `{ error }` result (so failures still ran `onSuccess`); they now surface the
+  server's RFC 7807 detail via a toast, as do edit/delete. Edit forms show the
+  specific message instead of a generic "Update failed".
+- **Publisher delete no longer understates its blast radius.** If the owned-
+  resource counts failed to load, the delete confirmation claimed the publisher
+  "owns no MCP servers or agents"; it now warns that the impact is unknown.
+- **Bulk actions run concurrently and tolerate partial failure**, reporting
+  "N of M succeeded" instead of aborting the batch on the first error; bulk
+  deprecate now asks for confirmation like the single-item action.
+- **API errors on list / delete-cascade / bulk paths are no longer swallowed.**
+  `openapi-fetch` resolves (rather than rejects) on a non-2xx, so `queryFn`s
+  that returned `r.data` and bulk callbacks that ignored the result treated 5xx
+  as success — meaning the list error state, the publisher delete-cascade
+  "impact unknown" warning, and bulk partial-failure reporting never actually
+  fired. Those paths now throw on `error`, so the error UI works as intended.
+- **Create-form publisher pre-select now works for a Server Admin.** The
+  publisher list loads asynchronously for a Server Admin, so the one-shot
+  default missed it; the selection is now derived (and ignores Radix's spurious
+  empty-value callback) so the trigger reliably shows the scoped publisher.
+- **Dev stack starts again: the Keycloak healthcheck used `curl`,** which the
+  `keycloak:26.6` image doesn't ship — so the container was perpetually
+  `unhealthy` and the `server` (which `depends_on` it) never started under
+  `docker compose --profile dev up`. The healthcheck now uses a bash `/dev/tcp`
+  probe.
+- **Smaller consistency fixes:** success toasts on create/edit; set-password
+  refreshes the user; internal links use the SPA router (no full reloads); the
+  audit page title reads "Audit log"; the bulk action bar no longer overflows
+  narrow screens; the dashboard stats error no longer leaks internal details.
 
 ## v0.4.0-rc6 — 2026-06-09
 

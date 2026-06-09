@@ -49,7 +49,8 @@ export default function AdminUserDetail() {
       })
       if (error) throw new Error((error as { detail?: string; title?: string })?.detail ?? 'Failed to set password.')
     },
-    onSuccess: () => toast.success('Password set'),
+    // Refresh the user so the "Local password" row reflects the new state.
+    onSuccess: () => { invalidate(); toast.success('Password set') },
     onError: (e: Error) => toast.error(e.message),
   })
 

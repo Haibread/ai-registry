@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +37,7 @@ export default function AdminPublisherNew() {
       }
     },
     onSuccess: () => {
+      toast.success('Publisher created')
       navigate('/admin/publishers')
     },
     onError: (err: Error) => {

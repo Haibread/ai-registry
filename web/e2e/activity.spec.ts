@@ -94,7 +94,7 @@ test.describe('Activity feed + admin audit', () => {
 
   test('admin /audit page renders events with actor identity', async ({ page }) => {
     await goTo(page, '/admin/audit')
-    await expect(page.getByRole('heading', { name: /activity/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /audit log/i })).toBeVisible({
       timeout: 15_000,
     })
 
@@ -117,7 +117,7 @@ test.describe('Activity feed + admin audit', () => {
 
   test('admin audit filter by resource type narrows the list', async ({ page }) => {
     await goTo(page, '/admin/audit')
-    await expect(page.getByRole('heading', { name: /activity/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /audit log/i })).toBeVisible({
       timeout: 15_000,
     })
 

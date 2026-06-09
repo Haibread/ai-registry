@@ -43,6 +43,11 @@ const AUTH_SCHEME_OPTIONS = [
 
 const MODE_VALUES = ['text/plain', 'application/json', 'image/png', 'text/csv'] as const
 
+// Shared styling for the monospace JSON textareas (tools / capabilities).
+const jsonTextareaClass =
+  'w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono shadow-xs ' +
+  'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y'
+
 interface NewVersionFormProps {
   kind: Kind
   namespace: string
@@ -62,6 +67,22 @@ async function problemTitle(res: Response, fallback: string): Promise<string> {
     /* body not JSON — keep fallback */
   }
   return `${fallback} (HTTP ${res.status})`
+}
+
+/** Parse an optional JSON-object field; throws a friendly error on malformed input. */
+function parseJsonObject(raw: string, label: string): Record<string, unknown> | undefined {
+  const t = raw.trim()
+  if (t === '') return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(t)
+  } catch {
+    throw new Error(`${label} must be valid JSON.`)
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON object.`)
+  }
+  return parsed as Record<string, unknown>
 }
 
 // NewVersionForm authors a new DRAFT version of an existing resource and POSTs
@@ -85,6 +106,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
         const pkgIdentifier = (fd.get('pkg_identifier') as string).trim()
         const pkgVersion = (fd.get('pkg_version') as string).trim()
         const pkgUrl = (fd.get('pkg_url') as string).trim()
+        const pkgRegistryBaseUrl = (fd.get('pkg_registry_base_url') as string).trim()
         const packages =
           pkgIdentifier && pkgVersion
             ? [
@@ -92,6 +114,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
                   registryType: pkgRegistryType,
                   identifier: pkgIdentifier,
                   version: pkgVersion,
+                  ...(pkgRegistryBaseUrl ? { registryBaseUrl: pkgRegistryBaseUrl } : {}),
                   transport: { type: runtime, ...(pkgUrl ? { url: pkgUrl } : {}) },
                 },
               ]
@@ -110,6 +133,8 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
           if (!Array.isArray(tools)) throw new Error('Tools field must be a JSON array.')
         }
 
+        const capabilities = parseJsonObject((fd.get('capabilities') as string) ?? '', 'Capabilities')
+
         const res = await authFetch(`/api/v1/mcp/servers/${namespace}/${slug}/versions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -119,6 +144,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             protocol_version: protocolVersion || '2025-03-26',
             ...(packages.length > 0 ? { packages } : {}),
             ...(tools !== undefined ? { tools } : {}),
+            ...(capabilities ? { capabilities } : {}),
           }),
         })
         if (!res.ok) throw new Error(await problemTitle(res, 'Failed to create version.'))
@@ -136,14 +162,39 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
       const skillTags = skillTagsRaw
         ? skillTagsRaw.split(',').map((t) => t.trim()).filter(Boolean)
         : []
+      const skillExamplesRaw = (fd.get('skill_examples') as string).trim()
+      const skillExamples = skillExamplesRaw
+        ? skillExamplesRaw.split('\n').map((s) => s.trim()).filter(Boolean)
+        : []
       const skills =
         skillId && skillName && skillDescription
-          ? [{ id: skillId, name: skillName, description: skillDescription, tags: skillTags }]
+          ? [
+              {
+                id: skillId,
+                name: skillName,
+                description: skillDescription,
+                tags: skillTags,
+                ...(skillExamples.length > 0 ? { examples: skillExamples } : {}),
+              },
+            ]
           : []
 
       const authentication = authScheme && authScheme !== '_none' ? [{ scheme: authScheme }] : []
       const defaultInputModes = MODE_VALUES.filter((v) => fd.get(`input_mode_${v}`) === 'on')
       const defaultOutputModes = MODE_VALUES.filter((v) => fd.get(`output_mode_${v}`) === 'on')
+
+      const documentationUrl = (fd.get('documentation_url') as string).trim()
+      const iconUrl = (fd.get('icon_url') as string).trim()
+      const providerOrg = (fd.get('provider_organization') as string).trim()
+      const providerUrl = (fd.get('provider_url') as string).trim()
+      const provider =
+        providerOrg || providerUrl
+          ? {
+              ...(providerOrg ? { organization: providerOrg } : {}),
+              ...(providerUrl ? { url: providerUrl } : {}),
+            }
+          : undefined
+      const capabilities = parseJsonObject((fd.get('capabilities') as string) ?? '', 'Capabilities')
 
       const res = await authFetch(`/api/v1/agents/${namespace}/${slug}/versions`, {
         method: 'POST',
@@ -156,6 +207,10 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
           ...(authentication.length > 0 ? { authentication } : {}),
           ...(defaultInputModes.length > 0 ? { default_input_modes: defaultInputModes } : {}),
           ...(defaultOutputModes.length > 0 ? { default_output_modes: defaultOutputModes } : {}),
+          ...(provider ? { provider } : {}),
+          ...(documentationUrl ? { documentation_url: documentationUrl } : {}),
+          ...(iconUrl ? { icon_url: iconUrl } : {}),
+          ...(capabilities ? { capabilities } : {}),
         }),
       })
       if (!res.ok) throw new Error(await problemTitle(res, 'Failed to create version.'))
@@ -193,7 +248,14 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
           <Label htmlFor="version">
             Version <span className="text-destructive" aria-hidden="true">*</span>
           </Label>
-          <Input id="version" name="version" placeholder="1.0.0" required />
+          <Input
+            id="version"
+            name="version"
+            placeholder="1.0.0"
+            required
+            pattern="^\d+\.\d+\.\d+.*"
+            title="Semantic version, e.g. 1.0.0"
+          />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="protocol_version">Protocol version</Label>
@@ -252,9 +314,20 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
                 <Input id="pkg_version" name="pkg_version" placeholder="1.0.0 or latest" />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="pkg_url">Package URL</Label>
-              <Input id="pkg_url" name="pkg_url" type="url" placeholder="https://…" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="pkg_url">Package URL</Label>
+                <Input id="pkg_url" name="pkg_url" type="url" placeholder="https://…" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pkg_registry_base_url">Registry base URL</Label>
+                <Input
+                  id="pkg_registry_base_url"
+                  name="pkg_registry_base_url"
+                  type="url"
+                  placeholder="https://registry.npmjs.org"
+                />
+              </div>
             </div>
           </fieldset>
 
@@ -268,7 +341,21 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
               rows={6}
               spellCheck={false}
               placeholder={'[\n  {\n    "name": "read_file",\n    "description": "Read a file from disk",\n    "input_schema": { "type": "object" }\n  }\n]'}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+              className={jsonTextareaClass}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="capabilities" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Capabilities (optional, JSON)
+            </Label>
+            <textarea
+              id="capabilities"
+              name="capabilities"
+              rows={4}
+              spellCheck={false}
+              placeholder={'{\n  "tools": { "listChanged": true }\n}'}
+              className={jsonTextareaClass}
             />
           </div>
         </>
@@ -308,6 +395,17 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             <div className="space-y-1.5">
               <Label htmlFor="skill_tags">Skill tags (comma-separated)</Label>
               <Input id="skill_tags" name="skill_tags" placeholder="text, nlp" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="skill_examples">Skill examples (one per line)</Label>
+              <textarea
+                id="skill_examples"
+                name="skill_examples"
+                rows={3}
+                spellCheck={false}
+                placeholder={'Summarize this article\nGive me a TL;DR of the docs'}
+                className={jsonTextareaClass}
+              />
             </div>
           </fieldset>
 
@@ -359,6 +457,46 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
                 </label>
               ))}
             </fieldset>
+          </div>
+
+          <fieldset className="space-y-3 rounded-md border p-3">
+            <legend className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Provider &amp; metadata (optional)
+            </legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="provider_organization">Provider organization</Label>
+                <Input id="provider_organization" name="provider_organization" placeholder="Acme Inc." />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="provider_url">Provider URL</Label>
+                <Input id="provider_url" name="provider_url" type="url" placeholder="https://acme.example.com" />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="documentation_url">Documentation URL</Label>
+                <Input id="documentation_url" name="documentation_url" type="url" placeholder="https://docs.example.com" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="icon_url">Icon URL</Label>
+                <Input id="icon_url" name="icon_url" type="url" placeholder="https://…/icon.png" />
+              </div>
+            </div>
+          </fieldset>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="capabilities" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Capabilities (optional, JSON)
+            </Label>
+            <textarea
+              id="capabilities"
+              name="capabilities"
+              rows={4}
+              spellCheck={false}
+              placeholder={'{\n  "streaming": true,\n  "pushNotifications": false\n}'}
+              className={jsonTextareaClass}
+            />
           </div>
         </>
       )}

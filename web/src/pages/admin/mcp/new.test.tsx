@@ -49,7 +49,7 @@ function renderPage() {
 
 async function selectNamespace() {
   // shadcn Select in jsdom: click trigger, then click the option by role
-  const trigger = screen.getByLabelText(/namespace/i)
+  const trigger = screen.getByLabelText(/publisher/i)
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
   fireEvent.click(trigger)
   const option = await screen.findByRole('option', { name: /acme/i })
@@ -269,7 +269,7 @@ describe('AdminMCPNew', () => {
     mockCanEdit = (slug) => slug === 'acme'
     renderPage()
 
-    const trigger = screen.getByLabelText(/namespace/i)
+    const trigger = screen.getByLabelText(/publisher/i)
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
     fireEvent.click(trigger)
 

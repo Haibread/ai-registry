@@ -7,6 +7,9 @@ vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token' }),
 }))
 
+const { mockToast } = vi.hoisted(() => ({ mockToast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: mockToast }))
+
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -243,13 +246,13 @@ describe('AdminMCPDetail', () => {
     confirmSpy.mockRestore()
   })
 
-  it('surfaces an "Action failed" message when visibility mutation rejects', async () => {
-    mockPOST.mockRejectedValueOnce(new Error('boom'))
+  it('surfaces a toast error when the visibility mutation rejects', async () => {
+    mockPOST.mockResolvedValueOnce({ error: { detail: 'boom' } })
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
 
     fireEvent.click(screen.getByRole('button', { name: /make private/i }))
 
-    expect(await screen.findByText(/action failed/i)).toBeInTheDocument()
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith('boom'))
   })
 })

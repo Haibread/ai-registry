@@ -7,6 +7,19 @@ vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token' }),
 }))
 
+// The list scopes to the selected publisher; default to the All-publishers
+// (null) scope so URL filters drive the query unchanged.
+vi.mock('@/auth/PublisherContext', () => ({
+  usePublisher: () => ({
+    currentSlug: null,
+    current: null,
+    publishers: [],
+    isServerAdmin: true,
+    setCurrent: () => {},
+    isLoading: false,
+  }),
+}))
+
 const mockGET = vi.fn()
 const mockPOST = vi.fn()
 const mockDELETE = vi.fn()
@@ -83,8 +96,10 @@ describe('AdminMCPList', () => {
   })
 
   it('calls GET with params derived from the URL', async () => {
+    // cursor is no longer read from the URL — it is the infinite-query page
+    // param, so the first page sends cursor: undefined.
     renderPage([
-      '/admin/mcp?q=file&namespace=acme&status=published&visibility=public&cursor=c1',
+      '/admin/mcp?q=file&namespace=acme&status=published&visibility=public',
     ])
     await waitFor(() => {
       expect(mockGET).toHaveBeenCalledWith('/api/v1/mcp/servers', {
@@ -94,7 +109,7 @@ describe('AdminMCPList', () => {
             mine: true,
             q: 'file',
             namespace: 'acme',
-            cursor: 'c1',
+            cursor: undefined,
             status: 'published',
             visibility: 'public',
           },
@@ -138,14 +153,23 @@ describe('AdminMCPList', () => {
     confirmSpy.mockRestore()
   })
 
-  it('renders a Load more link when next_cursor is set', async () => {
+  it('shows a Load more button and fetches the next page on click', async () => {
     mockGET.mockResolvedValue({
       data: { items: sampleServers, next_cursor: 'next-c' },
     })
     renderPage(['/admin/mcp?q=file'])
-    const loadMore = await screen.findByRole('link', { name: /load more/i })
-    expect(loadMore.getAttribute('href')).toMatch(/\/admin\/mcp\?/)
-    expect(loadMore.getAttribute('href')).toMatch(/cursor=next-c/)
-    expect(loadMore.getAttribute('href')).toMatch(/q=file/)
+    const loadMore = await screen.findByRole('button', { name: /load more/i })
+    fireEvent.click(loadMore)
+    // The next page request carries the cursor returned by the first page.
+    await waitFor(() => {
+      expect(mockGET).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers',
+        expect.objectContaining({
+          params: expect.objectContaining({
+            query: expect.objectContaining({ cursor: 'next-c', q: 'file' }),
+          }),
+        }),
+      )
+    })
   })
 })

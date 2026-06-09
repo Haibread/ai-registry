@@ -111,7 +111,19 @@ test.describe('Admin: MCP Server CRUD', () => {
     await page.getByRole('button', { name: 'Create version' }).click()
 
     // The new draft appears in the versions table.
-    await expect(page.getByText('v0.0.1')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole('cell', { name: /v0\.0\.1/ })).toBeVisible({ timeout: 10_000 })
+  })
+
+  test('publish a draft version via the UI Publish button', async ({ page }) => {
+    await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
+
+    // The admin (Server Admin) can publish directly. Accept the confirm dialog.
+    page.on('dialog', (dialog) => dialog.accept())
+    // `exact` avoids matching the LifecycleStepper's "Published" stage button.
+    await page.getByRole('button', { name: 'Publish', exact: true }).first().click()
+
+    // The version's published badge appears once the table refetches.
+    await expect(page.getByText('published').first()).toBeVisible({ timeout: 10_000 })
   })
 
   test('toggle MCP server visibility to public', async ({ page }) => {
@@ -242,7 +254,7 @@ test.describe('Admin: Agent CRUD', () => {
     // Skill + auth + modes carry sensible defaults; leave them as-is.
     await page.getByRole('button', { name: 'Create version' }).click()
 
-    await expect(page.getByText('v0.0.1')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole('cell', { name: /v0\.0\.1/ })).toBeVisible({ timeout: 10_000 })
   })
 
   test('toggle agent visibility to public', async ({ page }) => {
