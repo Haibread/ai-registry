@@ -24,6 +24,11 @@ All notable changes to this project are documented here.
   and the single-row getters and view/copy-count updates filter out deleted
   rows so a lookup resolves to the live entry rather than a shadowing
   tombstone.
+- **The admin list refreshes after creating a server/agent.** The create flows
+  navigated to the new detail page without invalidating the cached admin list,
+  so (with the 30s query `staleTime`) the new entry was missing from the list
+  until a hard refresh. Both create mutations now invalidate the `['admin-mcp']`
+  / `['admin-agents']` list cache on success.
 
 ### Changed
 

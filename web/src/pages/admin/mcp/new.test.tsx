@@ -114,6 +114,30 @@ describe('AdminMCPNew', () => {
     })
   })
 
+  it('invalidates the admin list cache on successful create', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <AdminMCPNew />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await selectNamespace()
+    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
+    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
+    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '' } })
+    fireEvent.click(container.querySelector('#publish') as HTMLInputElement)
+
+    fireEvent.submit(container.querySelector('form')!)
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin-mcp'] })
+    })
+  })
+
   it('calls publish endpoint via fetch when publish checkbox is checked', async () => {
     const { container } = renderPage()
 

@@ -111,6 +111,30 @@ describe('AdminAgentNew', () => {
     })
   })
 
+  it('invalidates the admin list cache on successful create', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <AdminAgentNew />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await selectNamespace()
+    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-agent' } })
+    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Agent' } })
+    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '' } })
+    fireEvent.click(container.querySelector('#publish') as HTMLInputElement)
+
+    fireEvent.submit(container.querySelector('form')!)
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin-agents'] })
+    })
+  })
+
   it('creates a version via fetch when version + endpoint_url are supplied', async () => {
     const { container } = renderPage()
 

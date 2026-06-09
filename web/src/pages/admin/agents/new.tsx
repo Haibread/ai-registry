@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +38,7 @@ type CreateError = { step?: string; message: string }
 
 export default function AdminAgentNew() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const [namespace, setNamespace] = useState('')
   const [authScheme, setAuthScheme] = useState('_none')
@@ -129,6 +130,9 @@ export default function AdminAgentNew() {
       return { namespace: ns, slug }
     },
     onSuccess: ({ namespace: ns, slug }) => {
+      // Drop the cached admin list so the new agent appears immediately on
+      // return; the 30s staleTime would otherwise hide it until a refetch.
+      queryClient.invalidateQueries({ queryKey: ['admin-agents'] })
       navigate(`/admin/agents/${ns}/${slug}`)
     },
     onError: (err: CreateError) => {
