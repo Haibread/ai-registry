@@ -203,7 +203,7 @@ export default function AdminAuditPage() {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Activity className="h-6 w-6 text-muted-foreground" />
-        <h1 className="text-2xl font-bold">Activity</h1>
+        <h1 className="text-2xl font-bold">Audit log</h1>
         <Badge variant="outline" className="text-xs">Admin</Badge>
       </div>
       <p className="text-sm text-muted-foreground max-w-3xl">

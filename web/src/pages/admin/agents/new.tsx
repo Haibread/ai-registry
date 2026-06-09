@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,11 +52,18 @@ export default function AdminAgentNew() {
 
   // Pre-select the publisher the admin area is currently scoped to, when the
   // caller can author on it — so creating from a publisher's context lands on
-  // that publisher. Falls back to empty (a Server Admin's All-publishers view,
-  // or no edit rights) which keeps the submit gate until one is chosen.
-  const [namespace, setNamespace] = useState(() =>
-    currentSlug && publishers.some((p) => p.slug === currentSlug) ? currentSlug : '',
-  )
+  // that publisher. Derived (not synced via an effect) so it tracks the
+  // editable list as it loads asynchronously for a Server Admin; an explicit
+  // pick always wins. Empty when scoped to All-publishers / no edit rights,
+  // which keeps the submit gate until one is chosen.
+  const [picked, setPicked] = useState<string | null>(null)
+  const defaultNamespace =
+    currentSlug && publishers.some((p) => p.slug === currentSlug) ? currentSlug : ''
+  const namespace = picked ?? defaultNamespace
+  // Radix only learns an item's label once its content has been opened, so a
+  // programmatically pre-selected value would otherwise render as the
+  // placeholder. Drive the trigger label ourselves from the chosen publisher.
+  const selectedPublisher = publishers.find((p) => p.slug === namespace)
   const [authScheme, setAuthScheme] = useState('_none')
   const [formError, setFormError] = useState<CreateError | null>(null)
 
@@ -83,9 +91,18 @@ export default function AdminAgentNew() {
         throw { step: undefined, message: msg }
       }
 
-      // Step 2: Create version (optional)
+      // Step 2: Create version (optional). Version + endpoint are paired: you
+      // either provide both (to author an initial version) or neither. Filling
+      // only one is almost always a mistake, so surface it instead of silently
+      // skipping version creation.
       const version = (formData.get('version') as string).trim()
       const endpointUrl = (formData.get('endpoint_url') as string).trim()
+      if ((version && !endpointUrl) || (!version && endpointUrl)) {
+        throw {
+          step: 'version',
+          message: 'Provide both a version and an endpoint URL to create a version, or leave both blank.',
+        }
+      }
       if (!version || !endpointUrl) {
         return { namespace: ns, slug }
       }
@@ -139,6 +156,7 @@ export default function AdminAgentNew() {
       // Drop the cached admin list so the new agent appears immediately on
       // return; the 30s staleTime would otherwise hide it until a refetch.
       queryClient.invalidateQueries({ queryKey: ['admin-agents'] })
+      toast.success('Agent created')
       navigate(`/admin/agents/${ns}/${slug}`)
     },
     onError: (err: CreateError) => {
@@ -187,15 +205,22 @@ export default function AdminAgentNew() {
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="namespace-select">
-                Namespace (publisher) <span className="text-destructive" aria-hidden="true">*</span>
+                Publisher <span className="text-destructive" aria-hidden="true">*</span>
               </Label>
               <Select
                 value={namespace}
-                onValueChange={setNamespace}
+                // Ignore Radix's spurious empty-value callback (fired when the
+                // controlled value has no mounted item yet) so it can't clobber
+                // the pre-selected default; a real pick is always a slug.
+                onValueChange={(v) => { if (v) setPicked(v) }}
                 required
               >
                 <SelectTrigger id="namespace-select" aria-required="true">
-                  <SelectValue placeholder="Select publisher…" />
+                  <SelectValue placeholder="Select publisher…">
+                    {selectedPublisher
+                      ? `${selectedPublisher.slug} — ${selectedPublisher.name}`
+                      : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {publishers.map((p) => (

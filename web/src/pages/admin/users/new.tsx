@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,7 +35,7 @@ export default function AdminUserNew() {
         throw new Error(msg ?? 'Failed to create user. The email may already be in use.')
       }
     },
-    onSuccess: () => navigate('/admin/users'),
+    onSuccess: () => { toast.success('User created'); navigate('/admin/users') },
     onError: (err: Error) => setErrorMsg(err.message),
   })
 

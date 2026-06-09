@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,7 +33,7 @@ export default function AdminGroupNew() {
         throw new Error(msg ?? 'Failed to create group. The slug may already be in use.')
       }
     },
-    onSuccess: () => navigate('/admin/groups'),
+    onSuccess: () => { toast.success('Group created'); navigate('/admin/groups') },
     onError: (err: Error) => setErrorMsg(err.message),
   })
 

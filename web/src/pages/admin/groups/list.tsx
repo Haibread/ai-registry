@@ -3,15 +3,22 @@ import { Link } from 'react-router-dom'
 import { Plus, UsersRound, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableSkeleton } from '@/components/ui/table-skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
 import { useAuthClient } from '@/lib/api-client'
-import { formatDate } from '@/lib/utils'
+import { formatDate, problemMessage } from '@/lib/utils'
 
 export default function AdminGroupList() {
   const api = useAuthClient()
 
-  const { data } = useQuery({
+  const { data, isPending, isError } = useQuery({
     queryKey: ['admin-groups'],
-    queryFn: () => api.GET('/api/v1/groups', { params: { query: { limit: 100 } } }).then(r => r.data),
+    queryFn: async () => {
+      const r = await api.GET('/api/v1/groups', { params: { query: { limit: 100 } } })
+      if (r.error) throw new Error(problemMessage(r.error, 'Failed to load groups.'))
+      return r.data
+    },
     enabled: true,
   })
 
@@ -39,14 +46,20 @@ export default function AdminGroupList() {
         federated user named in the claim inherits the group's grants.
       </p>
 
-      {groups.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <UsersRound className="h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
-          <p className="text-muted-foreground font-medium">No groups yet.</p>
-          <Button asChild size="sm">
-            <Link to="/admin/groups/new">Create your first group</Link>
-          </Button>
-        </div>
+      {isPending ? (
+        <TableSkeleton rows={6} cols={5} />
+      ) : isError ? (
+        <ErrorState message="Failed to load groups." />
+      ) : groups.length === 0 ? (
+        <EmptyState
+          icon={<UsersRound className="h-10 w-10" aria-hidden="true" />}
+          title="No groups yet."
+          action={
+            <Button asChild size="sm">
+              <Link to="/admin/groups/new">Create your first group</Link>
+            </Button>
+          }
+        />
       ) : (
         <Table>
           <TableHeader>

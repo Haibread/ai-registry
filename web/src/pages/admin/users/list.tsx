@@ -4,15 +4,22 @@ import { Plus, UserCog, ArrowRight, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableSkeleton } from '@/components/ui/table-skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
 import { useAuthClient } from '@/lib/api-client'
-import { formatDate } from '@/lib/utils'
+import { formatDate, problemMessage } from '@/lib/utils'
 
 export default function AdminUserList() {
   const api = useAuthClient()
 
-  const { data } = useQuery({
+  const { data, isPending, isError } = useQuery({
     queryKey: ['admin-users'],
-    queryFn: () => api.GET('/api/v1/users', { params: { query: { limit: 100 } } }).then(r => r.data),
+    queryFn: async () => {
+      const r = await api.GET('/api/v1/users', { params: { query: { limit: 100 } } })
+      if (r.error) throw new Error(problemMessage(r.error, 'Failed to load users.'))
+      return r.data
+    },
     enabled: true,
   })
 
@@ -39,14 +46,20 @@ export default function AdminUserList() {
         invited (no credential yet). Role grants attach to users or groups.
       </p>
 
-      {users.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <UserCog className="h-10 w-10 text-muted-foreground/40" aria-hidden="true" />
-          <p className="text-muted-foreground font-medium">No users yet.</p>
-          <Button asChild size="sm">
-            <Link to="/admin/users/new">Create a user</Link>
-          </Button>
-        </div>
+      {isPending ? (
+        <TableSkeleton rows={6} cols={5} />
+      ) : isError ? (
+        <ErrorState message="Failed to load users." />
+      ) : users.length === 0 ? (
+        <EmptyState
+          icon={<UserCog className="h-10 w-10" aria-hidden="true" />}
+          title="No users yet."
+          action={
+            <Button asChild size="sm">
+              <Link to="/admin/users/new">Create a user</Link>
+            </Button>
+          }
+        />
       ) : (
         <Table>
           <TableHeader>

@@ -38,7 +38,7 @@ export function BulkActionBar({
     <div
       role="toolbar"
       aria-label="Bulk actions"
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full border bg-background/95 backdrop-blur-sm px-3 py-2 shadow-lg"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full border bg-background/95 backdrop-blur-sm px-3 py-2 shadow-lg max-w-[calc(100vw-1.5rem)] overflow-x-auto"
     >
       <Button variant="ghost" size="sm" onClick={onClear} aria-label="Clear selection">
         <X className="h-4 w-4" />

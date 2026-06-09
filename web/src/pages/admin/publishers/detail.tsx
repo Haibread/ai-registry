@@ -31,25 +31,38 @@ export default function AdminPublisherDetail() {
     enabled: !!slug && true,
   })
 
-  const { data: mcpData } = useQuery({
+  const { data: mcpData, isError: mcpError } = useQuery({
     queryKey: ['admin-publisher-mcp', slug],
-    queryFn: () => api.GET('/api/v1/mcp/servers', {
-      params: { query: { namespace: slug, limit: 50 } },
-    }).then(r => r.data),
+    queryFn: async () => {
+      const r = await api.GET('/api/v1/mcp/servers', {
+        params: { query: { namespace: slug, limit: 50 } },
+      })
+      // Throw on error so isError (→ the delete-cascade warning) actually fires;
+      // openapi-fetch otherwise resolves with undefined data on a 5xx.
+      if (r.error) throw new Error('Failed to load MCP servers')
+      return r.data
+    },
     enabled: !!slug && true,
   })
 
-  const { data: agentsData } = useQuery({
+  const { data: agentsData, isError: agentsError } = useQuery({
     queryKey: ['admin-publisher-agents', slug],
-    queryFn: () => api.GET('/api/v1/agents', {
-      params: { query: { namespace: slug, limit: 50 } },
-    }).then(r => r.data),
+    queryFn: async () => {
+      const r = await api.GET('/api/v1/agents', {
+        params: { query: { namespace: slug, limit: 50 } },
+      })
+      if (r.error) throw new Error('Failed to load agents')
+      return r.data
+    },
     enabled: !!slug && true,
   })
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-publisher', slug] })
     queryClient.invalidateQueries({ queryKey: ['admin-publishers'] })
+    // Keep the overview's stats card name in sync after an edit (settings.tsx
+    // invalidates this too).
+    queryClient.invalidateQueries({ queryKey: ['publisher-stats', slug] })
   }
 
   const editMutation = useMutation({
@@ -86,6 +99,9 @@ export default function AdminPublisherDetail() {
   // the delete confirmation reflects every resource the cascade will remove.
   const mcpCount = mcpData?.total_count ?? mcpServers.length
   const agentCount = agentsData?.total_count ?? agents.length
+  // If either count failed to load, we can't honestly say "owns nothing" — the
+  // delete cascade summary must warn rather than understate the blast radius.
+  const countsUnknown = mcpError || agentsError
 
   if (isPending) return <p className="text-muted-foreground">Loading…</p>
   if (isError || !publisher) return (
@@ -208,7 +224,13 @@ export default function AdminPublisherDetail() {
                   This permanently deletes <span className="font-medium text-foreground">{publisher.name}</span> and
                   cannot be undone.
                 </p>
-                {(mcpCount > 0 || agentCount > 0) ? (
+                {countsUnknown ? (
+                  <p className="text-destructive">
+                    Could not load this publisher's owned resources, so the full
+                    impact can't be shown. Any MCP servers and agents it owns —
+                    and all their versions — will still be permanently removed.
+                  </p>
+                ) : (mcpCount > 0 || agentCount > 0) ? (
                   <p className="text-muted-foreground">
                     It also removes everything this publisher owns:
                     {' '}

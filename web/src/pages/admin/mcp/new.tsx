@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,11 +51,18 @@ export default function AdminMCPNew() {
 
   // Pre-select the publisher the admin area is currently scoped to, when the
   // caller can author on it — so creating from a publisher's context lands on
-  // that publisher. Falls back to empty (a Server Admin's All-publishers view,
-  // or no edit rights) which keeps the submit gate until one is chosen.
-  const [namespace, setNamespace] = useState(() =>
-    currentSlug && publishers.some((p) => p.slug === currentSlug) ? currentSlug : '',
-  )
+  // that publisher. Derived (not synced via an effect) so it tracks the
+  // editable list as it loads asynchronously for a Server Admin; an explicit
+  // pick always wins. Empty when scoped to All-publishers / no edit rights,
+  // which keeps the submit gate until one is chosen.
+  const [picked, setPicked] = useState<string | null>(null)
+  const defaultNamespace =
+    currentSlug && publishers.some((p) => p.slug === currentSlug) ? currentSlug : ''
+  const namespace = picked ?? defaultNamespace
+  // Radix only learns an item's label once its content has been opened, so a
+  // programmatically pre-selected value would otherwise render as the
+  // placeholder. Drive the trigger label ourselves from the chosen publisher.
+  const selectedPublisher = publishers.find((p) => p.slug === namespace)
   const [runtime, setRuntime] = useState('stdio')
   const [pkgRegistryType, setPkgRegistryType] = useState('npm')
   const [formError, setFormError] = useState<CreateError | null>(null)
@@ -154,6 +162,7 @@ export default function AdminMCPNew() {
       // Drop the cached admin list so the new server appears immediately on
       // return; the 30s staleTime would otherwise hide it until a refetch.
       queryClient.invalidateQueries({ queryKey: ['admin-mcp'] })
+      toast.success('MCP server created')
       navigate(`/admin/mcp/${ns}/${slug}`)
     },
     onError: (err: CreateError) => {
@@ -202,15 +211,22 @@ export default function AdminMCPNew() {
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="namespace-select">
-                Namespace (publisher) <span className="text-destructive" aria-hidden="true">*</span>
+                Publisher <span className="text-destructive" aria-hidden="true">*</span>
               </Label>
               <Select
                 required
                 value={namespace}
-                onValueChange={setNamespace}
+                // Ignore Radix's spurious empty-value callback (fired when the
+                // controlled value has no mounted item yet) so it can't clobber
+                // the pre-selected default; a real pick is always a slug.
+                onValueChange={(v) => { if (v) setPicked(v) }}
               >
                 <SelectTrigger id="namespace-select" aria-required="true">
-                  <SelectValue placeholder="Select publisher…" />
+                  <SelectValue placeholder="Select publisher…">
+                    {selectedPublisher
+                      ? `${selectedPublisher.slug} — ${selectedPublisher.name}`
+                      : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {publishers.map((p) => (

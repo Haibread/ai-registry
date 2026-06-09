@@ -72,7 +72,7 @@ describe('AdminAudit page', () => {
 
   it('renders the page heading', async () => {
     renderPage()
-    expect(screen.getByRole('heading', { name: /activity/i })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /audit log/i })).toBeInTheDocument()
   })
 
   it('fetches /api/v1/audit on mount with default limit', async () => {

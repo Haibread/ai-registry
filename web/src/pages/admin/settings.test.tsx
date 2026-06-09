@@ -57,10 +57,13 @@ describe('AdminSettings', () => {
     expect(screen.getByText(/select a publisher/i)).toBeInTheDocument()
   })
 
-  it('blocks a non-admin member', () => {
+  it('shows a read-only view to a non-admin member (no Save button, inputs disabled)', async () => {
     mockPerms = { canAdmin: () => false }
     renderPage()
-    expect(screen.getByText(/admin access required/i)).toBeInTheDocument()
+    const name = await screen.findByLabelText(/name/i)
+    expect(name).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /save changes/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/need the admin role/i)).toBeInTheDocument()
   })
 
   it('prefills the form from the loaded publisher and keeps the slug read-only', async () => {

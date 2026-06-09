@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Flag, CheckCircle2, XCircle, Clock, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -60,13 +61,13 @@ export default function AdminReports() {
     onError: (err: Error) => setActionError(err.message || 'Action failed'),
   })
 
-  function linkFor(resourceType: string, resourceId: string) {
+  function linkFor(resourceType: string, resourceId: string): string | null {
     // The admin detail pages take ns/slug, not IDs. Without a lookup we can
-    // only point at the list pages filtered by ID-ish text. For now, link to
-    // the admin list with a query so the reviewer can click through.
+    // only point at the list pages filtered by ID-ish text so the reviewer can
+    // click through. Unknown resource types get no link (rendered as plain text).
     if (resourceType === 'mcp_server') return `/admin/mcp?q=${encodeURIComponent(resourceId)}`
     if (resourceType === 'agent') return `/admin/agents?q=${encodeURIComponent(resourceId)}`
-    return '#'
+    return null
   }
 
   return (
@@ -137,12 +138,16 @@ export default function AdminReports() {
                   {r.status}
                 </Badge>
                 <span className="text-xs text-muted-foreground">{formatDate(r.created_at)}</span>
-                <a
-                  href={linkFor(r.resource_type, r.resource_id)}
-                  className="text-xs text-primary hover:underline font-mono ml-auto"
-                >
-                  {r.resource_id}
-                </a>
+                {(() => {
+                  const to = linkFor(r.resource_type, r.resource_id)
+                  return to ? (
+                    <Link to={to} className="text-xs text-primary hover:underline font-mono ml-auto">
+                      {r.resource_id}
+                    </Link>
+                  ) : (
+                    <span className="text-xs text-muted-foreground font-mono ml-auto">{r.resource_id}</span>
+                  )
+                })()}
               </div>
               <p className="whitespace-pre-wrap text-sm">{r.description}</p>
               {(r.reporter_ip || r.reviewed_by) && (

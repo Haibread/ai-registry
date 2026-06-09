@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { GitPullRequestArrow, CheckCircle2, AlertCircle, Send, Undo2, Plus } from 'lucide-react'
+import { GitPullRequestArrow, CheckCircle2, AlertCircle, Send, Undo2, Plus, Rocket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -59,9 +60,11 @@ function friendlyProblem(error: unknown, fallback: string): string {
 
 export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps) {
   const perms = usePermissions()
-  // Submit/withdraw are publisher Editor actions. Approve/reject are
-  // Reviewer actions and live on the review queue, not here.
+  // Submit/withdraw are publisher Editor actions. Approve/reject of a submitted
+  // version live on the review queue; the direct Publish below is the Reviewer's
+  // break-glass "take it live now" path (bypasses the submit→approve round-trip).
   const canEdit = perms.canEdit(namespace)
+  const canReview = perms.canReview(namespace)
   const api = useAuthClient()
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -145,6 +148,34 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
     onError: (err: Error) => setActionError(err.message),
   })
 
+  // Publish takes a draft live directly (Reviewer / Server-Admin only). This is
+  // the standalone "go live now" path; the create form also offers publish-on-
+  // create, but an existing draft had no UI to publish before this.
+  const publishMutation = useMutation({
+    mutationFn: async (version: string) => {
+      setActionError(null)
+      const result =
+        kind === 'mcp'
+          ? await api.POST(
+              '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish',
+              { params: { path: { namespace, slug, version } } },
+            )
+          : await api.POST(
+              '/api/v1/agents/{namespace}/{slug}/versions/{version}/publish',
+              { params: { path: { namespace, slug, version } } },
+            )
+      if (result.error) throw new Error(friendlyProblem(result.error, 'Publish failed.'))
+      return version
+    },
+    onSuccess: (version) => {
+      toast.success(`v${version} published`)
+      invalidate()
+      queryClient.invalidateQueries({ queryKey: [detailKey, namespace, slug] })
+      queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
+    },
+    onError: (err: Error) => setActionError(err.message),
+  })
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -163,9 +194,9 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
       <p className="text-sm text-muted-foreground">
         Drafts are authored here and sent for reviewer approval.
         Approve and reject happen on the{' '}
-        <a href="/admin/review" className="text-primary hover:underline">
+        <Link to="/admin/review" className="text-primary hover:underline">
           review queue
-        </a>
+        </Link>
         .
       </p>
 
@@ -298,6 +329,19 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                         >
                           <Undo2 className="h-4 w-4" />
                           <span className="ml-1.5">Withdraw</span>
+                        </Button>
+                      )}
+                      {canReview && !v.published_at && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (window.confirm(`Publish v${v.version}? This takes it live immediately.`))
+                              publishMutation.mutate(v.version)
+                          }}
+                          disabled={publishMutation.isPending}
+                        >
+                          <Rocket className="h-4 w-4" />
+                          <span className="ml-1.5">Publish</span>
                         </Button>
                       )}
                     </div>

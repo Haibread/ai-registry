@@ -48,7 +48,7 @@ function renderPage() {
 }
 
 async function selectNamespace() {
-  const trigger = screen.getByLabelText(/namespace/i)
+  const trigger = screen.getByLabelText(/publisher/i)
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
   fireEvent.click(trigger)
   const option = await screen.findByRole('option', { name: /acme/i })
@@ -179,7 +179,7 @@ describe('AdminAgentNew', () => {
     mockCanEdit = (slug) => slug === 'acme'
     renderPage()
 
-    const trigger = screen.getByLabelText(/namespace/i)
+    const trigger = screen.getByLabelText(/publisher/i)
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
     fireEvent.click(trigger)
 
