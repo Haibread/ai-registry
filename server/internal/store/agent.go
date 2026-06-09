@@ -321,7 +321,7 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 		    ORDER BY av.published_at DESC
 		    LIMIT 1
 		) lav ON true
-		WHERE pub.slug = $1 AND a.slug = $2`
+		WHERE pub.slug = $1 AND a.slug = $2 AND a.status != 'deleted'`
 	args := []any{namespace, slug}
 	if publicOnly {
 		q += " AND a.visibility = 'public'"
@@ -928,7 +928,7 @@ func (db *DB) IncrementAgentViewCount(ctx context.Context, namespace, slug strin
 		SET view_count = view_count + 1
 		FROM publishers pub
 		WHERE pub.id = a.publisher_id
-		  AND pub.slug = $1 AND a.slug = $2`,
+		  AND pub.slug = $1 AND a.slug = $2 AND a.status != 'deleted'`,
 		namespace, slug,
 	)
 	if err != nil {
@@ -952,7 +952,7 @@ func (db *DB) IncrementAgentCopyCount(ctx context.Context, namespace, slug strin
 		SET copy_count = copy_count + 1
 		FROM publishers pub
 		WHERE pub.id = a.publisher_id
-		  AND pub.slug = $1 AND a.slug = $2`,
+		  AND pub.slug = $1 AND a.slug = $2 AND a.status != 'deleted'`,
 		namespace, slug,
 	)
 	if err != nil {

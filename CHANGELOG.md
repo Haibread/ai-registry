@@ -16,6 +16,14 @@ All notable changes to this project are documented here.
   the field's structure only when entries are supplied, and the store defaults
   an empty `packages`/`skills` to `[]` (matching `capabilities`, `tools`, and
   `authentication`).
+- **A deleted MCP server / agent slug can be reused.** Deletion is a soft
+  delete (the row is kept for audit), but the table-level `UNIQUE
+  (publisher_id, slug)` covered deleted rows, so re-creating a previously
+  deleted slug failed with a duplicate/conflict error. The constraint is now a
+  partial unique index over live (non-deleted) rows only (migration `000017`),
+  and the single-row getters and view/copy-count updates filter out deleted
+  rows so a lookup resolves to the live entry rather than a shadowing
+  tombstone.
 
 ### Changed
 

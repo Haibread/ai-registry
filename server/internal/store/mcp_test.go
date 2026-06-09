@@ -791,6 +791,51 @@ func TestDeleteMCPServer(t *testing.T) {
 	}
 }
 
+// TestCreateMCPServer_SlugReuseAfterDelete verifies that once a server is
+// soft-deleted its slug is freed: re-creating the same (publisher, slug)
+// succeeds with a fresh row, and the getter resolves to the live row rather
+// than the retained deleted one.
+func TestCreateMCPServer_SlugReuseAfterDelete(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "reuse-pub", "Reuse Pub")
+
+	first, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "reuse-srv", Name: "First",
+	})
+	if err != nil {
+		t.Fatalf("first CreateMCPServer: %v", err)
+	}
+	if err := sharedDB.DeleteMCPServer(ctx, first.ID); err != nil {
+		t.Fatalf("DeleteMCPServer: %v", err)
+	}
+
+	// The deleted server must no longer be resolvable by (namespace, slug).
+	if _, err := sharedDB.GetMCPServer(ctx, "reuse-pub", "reuse-srv", false); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("GetMCPServer after delete: expected ErrNotFound, got %v", err)
+	}
+
+	// Re-creating the same slug must succeed with a distinct row.
+	second, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID, Slug: "reuse-srv", Name: "Second",
+	})
+	if err != nil {
+		t.Fatalf("re-create after delete: %v", err)
+	}
+	if second.ID == first.ID {
+		t.Error("re-created server reused the deleted row's ID")
+	}
+
+	// The getter must now resolve to the live (second) row.
+	got, err := sharedDB.GetMCPServer(ctx, "reuse-pub", "reuse-srv", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer after re-create: %v", err)
+	}
+	if got.ID != second.ID {
+		t.Errorf("getter resolved to %q, want live row %q", got.ID, second.ID)
+	}
+}
+
 func TestDeleteMCPServer_NotFound(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

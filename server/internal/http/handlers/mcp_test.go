@@ -1090,6 +1090,40 @@ func TestMCPHandler_DeleteServer_Success(t *testing.T) {
 	}
 }
 
+// TestMCPHandler_CreateAfterDelete_SameSlug reproduces the reported flow:
+// create a server, delete it, then create it again with the same slug. The
+// second create must succeed (201) rather than fail with a duplicate conflict.
+func TestMCPHandler_CreateAfterDelete_SameSlug(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "cad-ns", "CAD NS")
+
+	create := func() int {
+		payload := `{"namespace":"cad-ns","slug":"cad-srv","name":"Server"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers",
+			bytes.NewBufferString(payload)).WithContext(adminCtx())
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newMCPRouter().ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := create(); code != http.StatusCreated {
+		t.Fatalf("first create: status = %d, want 201", code)
+	}
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/mcp/servers/cad-ns/cad-srv", nil).
+		WithContext(adminCtx())
+	delRec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusNoContent {
+		t.Fatalf("delete: status = %d, want 204; body: %s", delRec.Code, delRec.Body.String())
+	}
+
+	if code := create(); code != http.StatusCreated {
+		t.Fatalf("re-create after delete: status = %d, want 201", code)
+	}
+}
+
 func TestMCPHandler_DeleteServer_NotFound(t *testing.T) {
 	resetTables(t)
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/mcp/servers/ns/missing", nil)

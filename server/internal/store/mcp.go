@@ -399,7 +399,7 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 		    ORDER BY v.published_at DESC
 		    LIMIT 1
 		) lv ON true
-		WHERE pub.slug = $1 AND s.slug = $2`
+		WHERE pub.slug = $1 AND s.slug = $2 AND s.status != 'deleted'`
 	args := []any{namespace, slug}
 	if publicOnly {
 		q += " AND s.visibility = 'public'"
@@ -1060,7 +1060,7 @@ func (db *DB) IncrementMCPServerViewCount(ctx context.Context, namespace, slug s
 		SET view_count = view_count + 1
 		FROM publishers pub
 		WHERE pub.id = s.publisher_id
-		  AND pub.slug = $1 AND s.slug = $2`,
+		  AND pub.slug = $1 AND s.slug = $2 AND s.status != 'deleted'`,
 		namespace, slug,
 	)
 	if err != nil {
@@ -1084,7 +1084,7 @@ func (db *DB) IncrementMCPServerCopyCount(ctx context.Context, namespace, slug s
 		SET copy_count = copy_count + 1
 		FROM publishers pub
 		WHERE pub.id = s.publisher_id
-		  AND pub.slug = $1 AND s.slug = $2`,
+		  AND pub.slug = $1 AND s.slug = $2 AND s.status != 'deleted'`,
 		namespace, slug,
 	)
 	if err != nil {

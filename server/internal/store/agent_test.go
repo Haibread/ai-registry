@@ -698,6 +698,47 @@ func TestDeleteAgent(t *testing.T) {
 	}
 }
 
+// TestCreateAgent_SlugReuseAfterDelete verifies that once an agent is
+// soft-deleted its slug is freed: re-creating the same (publisher, slug)
+// succeeds with a fresh row, and the getter resolves to the live row.
+func TestCreateAgent_SlugReuseAfterDelete(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	pubID := insertPublisher(t, "ag-reuse-pub", "Reuse Pub")
+
+	first, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: "reuse-agent", Name: "First",
+	})
+	if err != nil {
+		t.Fatalf("first CreateAgent: %v", err)
+	}
+	if err := sharedDB.DeleteAgent(ctx, first.ID); err != nil {
+		t.Fatalf("DeleteAgent: %v", err)
+	}
+
+	if _, err := sharedDB.GetAgent(ctx, "ag-reuse-pub", "reuse-agent", false); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("GetAgent after delete: expected ErrNotFound, got %v", err)
+	}
+
+	second, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
+		PublisherID: pubID, Slug: "reuse-agent", Name: "Second",
+	})
+	if err != nil {
+		t.Fatalf("re-create after delete: %v", err)
+	}
+	if second.ID == first.ID {
+		t.Error("re-created agent reused the deleted row's ID")
+	}
+
+	got, err := sharedDB.GetAgent(ctx, "ag-reuse-pub", "reuse-agent", false)
+	if err != nil {
+		t.Fatalf("GetAgent after re-create: %v", err)
+	}
+	if got.ID != second.ID {
+		t.Errorf("getter resolved to %q, want live row %q", got.ID, second.ID)
+	}
+}
+
 func TestDeleteAgent_NotFound(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
