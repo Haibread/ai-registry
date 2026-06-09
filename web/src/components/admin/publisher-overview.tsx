@@ -116,15 +116,17 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold truncate">{option?.name ?? slug}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold truncate">{option?.name ?? slug}</h1>
+            {option?.roles.map((r) => (
+              <Badge key={r} variant="outline" className="capitalize">
+                {r}
+              </Badge>
+            ))}
+          </div>
           <p className="text-muted-foreground mt-1 text-sm">Everything happening in {option?.name ?? slug}.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {option?.roles.map((r) => (
-            <Badge key={r} variant="outline" className="capitalize">
-              {r}
-            </Badge>
-          ))}
           {canEdit && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
