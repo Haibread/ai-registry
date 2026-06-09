@@ -39,19 +39,25 @@ export default function AdminMCPNew() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const [namespace, setNamespace] = useState('')
-  const [runtime, setRuntime] = useState('stdio')
-  const [pkgRegistryType, setPkgRegistryType] = useState('npm')
-  const [formError, setFormError] = useState<CreateError | null>(null)
-
   const api = useAuthClient()
 
   // Only offer publishers the caller can author on — derived from their grants
   // (GET /api/v1/me, via PublisherContext) so the dropdown cannot drift from the
   // server's RBAC. A Server Admin sees every publisher; a member only theirs.
-  const { publishers: scopedPublishers } = usePublisher()
+  const { publishers: scopedPublishers, currentSlug } = usePublisher()
   const perms = usePermissions()
   const publishers = scopedPublishers.filter((p) => perms.canEdit(p.slug))
+
+  // Pre-select the publisher the admin area is currently scoped to, when the
+  // caller can author on it — so creating from a publisher's context lands on
+  // that publisher. Falls back to empty (a Server Admin's All-publishers view,
+  // or no edit rights) which keeps the submit gate until one is chosen.
+  const [namespace, setNamespace] = useState(() =>
+    currentSlug && publishers.some((p) => p.slug === currentSlug) ? currentSlug : '',
+  )
+  const [runtime, setRuntime] = useState('stdio')
+  const [pkgRegistryType, setPkgRegistryType] = useState('npm')
+  const [formError, setFormError] = useState<CreateError | null>(null)
 
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {

@@ -102,6 +102,18 @@ test.describe('Admin: MCP Server CRUD', () => {
     await expect(page.getByText('MIT')).toBeVisible({ timeout: 10_000 })
   })
 
+  test('create a new draft version via the UI form', async ({ page }) => {
+    await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
+
+    await page.getByRole('button', { name: 'New version' }).click()
+    await page.fill('input[name="version"]', '0.0.1')
+    // Transport defaults to stdio; package + tools are optional.
+    await page.getByRole('button', { name: 'Create version' }).click()
+
+    // The new draft appears in the versions table.
+    await expect(page.getByText('v0.0.1')).toBeVisible({ timeout: 10_000 })
+  })
+
   test('toggle MCP server visibility to public', async ({ page }) => {
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
 
@@ -219,6 +231,18 @@ test.describe('Admin: Agent CRUD', () => {
     await page.click('button:has-text("Save changes")')
 
     await expect(page.getByText(`${AGENT_NAME} edited`)).toBeVisible({ timeout: 10_000 })
+  })
+
+  test('create a new draft version via the UI form', async ({ page }) => {
+    await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
+
+    await page.getByRole('button', { name: 'New version' }).click()
+    await page.fill('input[name="version"]', '0.0.1')
+    await page.fill('input[name="endpoint_url"]', 'https://example.com/agent-ui')
+    // Skill + auth + modes carry sensible defaults; leave them as-is.
+    await page.getByRole('button', { name: 'Create version' }).click()
+
+    await expect(page.getByText('v0.0.1')).toBeVisible({ timeout: 10_000 })
   })
 
   test('toggle agent visibility to public', async ({ page }) => {

@@ -34,7 +34,9 @@ const publisherNav: NavItem[] = [
   { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review', requires: 'reviewer' },
   { to: '/admin/activity', label: 'Activity', icon: Activity, requires: 'publisherMember' },
   { to: '/admin/members', label: 'Members', icon: Users, requires: 'publisherAdmin' },
-  { to: '/admin/settings', label: 'Settings', icon: Settings, requires: 'publisherAdmin' },
+  // Visible to any publisher member; non-admins see it read-only (the page
+  // gates editing on canAdmin), so members can review name/contact/slug.
+  { to: '/admin/settings', label: 'Settings', icon: Settings, requires: 'publisherMember' },
 ]
 
 // Server-Admin management surfaces: global, cross-publisher administration,

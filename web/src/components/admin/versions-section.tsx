@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { GitPullRequestArrow, CheckCircle2, AlertCircle, Send, Undo2 } from 'lucide-react'
+import { GitPullRequestArrow, CheckCircle2, AlertCircle, Send, Undo2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { TableSkeleton } from '@/components/ui/table-skeleton'
+import { NewVersionForm } from '@/components/admin/new-version-form'
 import { useAuthClient } from '@/lib/api-client'
 import { usePermissions } from '@/auth/useMe'
 import { formatDate } from '@/lib/utils'
@@ -64,8 +65,12 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
   const api = useAuthClient()
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
 
   const queryKey = ['admin-versions', kind, namespace, slug]
+  // The resource detail page caches the entry (incl. latest_version); refresh
+  // it too so a freshly created version is reflected there immediately.
+  const detailKey = kind === 'mcp' ? 'admin-mcp-detail' : 'admin-agent-detail'
 
   const { data, isPending, isError } = useQuery<{ items?: AnyVersion[] }>({
     queryKey,
@@ -142,12 +147,18 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <GitPullRequestArrow className="h-4 w-4" aria-hidden="true" />
           Versions
           <span className="text-sm font-normal text-muted-foreground">({items.length})</span>
         </h2>
+        {canEdit && !creating && (
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" />
+            <span className="ml-1.5">New version</span>
+          </Button>
+        )}
       </div>
       <p className="text-sm text-muted-foreground">
         Drafts are authored here and sent for reviewer approval.
@@ -162,6 +173,20 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
         <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {actionError}
         </div>
+      )}
+
+      {canEdit && creating && (
+        <NewVersionForm
+          kind={kind}
+          namespace={namespace}
+          slug={slug}
+          onCreated={() => {
+            setCreating(false)
+            invalidate()
+            queryClient.invalidateQueries({ queryKey: [detailKey, namespace, slug] })
+          }}
+          onCancel={() => setCreating(false)}
+        />
       )}
 
       {isPending ? (

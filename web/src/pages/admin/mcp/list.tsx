@@ -11,20 +11,26 @@ import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import { usePermissions } from '@/auth/useMe'
+import { usePublisher } from '@/auth/PublisherContext'
 
 const PAGE_LIMIT = 50
 
 export default function AdminMCPList() {
   const perms = usePermissions()
   const api = useAuthClient()
+  const { currentSlug } = usePublisher()
   const [searchParams] = useSearchParams()
   const q = searchParams.get('q') ?? undefined
   const namespace = searchParams.get('namespace') ?? undefined
   const status = searchParams.get('status') ?? undefined
   const visibility = searchParams.get('visibility') ?? undefined
   const cursor = searchParams.get('cursor') ?? undefined
+  // Scope the list to the publisher the admin area is currently focused on.
+  // An explicit FilterBar publisher filter wins; a Server Admin's
+  // All-publishers view (currentSlug = null) leaves the list unscoped.
+  const effectiveNamespace = namespace ?? currentSlug ?? undefined
   const { data } = useQuery({
-    queryKey: ['admin-mcp', { q, namespace, status, visibility, cursor }],
+    queryKey: ['admin-mcp', { q, namespace: effectiveNamespace, status, visibility, cursor }],
     queryFn: () => api.GET('/api/v1/mcp/servers', {
       params: {
         query: {
@@ -34,7 +40,7 @@ export default function AdminMCPList() {
           // their own resources (incl. private drafts).
           mine: true,
           q,
-          namespace,
+          namespace: effectiveNamespace,
           cursor,
           status: status as 'draft' | 'published' | 'deprecated' | undefined,
           visibility: visibility as 'public' | 'private' | undefined,

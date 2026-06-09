@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Create a new version of an existing MCP server / agent from the admin UI.**
+  Previously a subsequent version could only be created at resource-creation
+  time or via the API directly — the detail page's Versions section listed
+  versions but offered no way to add one. It now has a **New version** button
+  (publisher Editor / Server Admin only) that opens an inline form to author a
+  new draft version; submitting it for review stays on the existing Submit
+  button / review queue.
+
+### Changed
+
+- **Admin resource lists respect the selected publisher.** The MCP and Agent
+  admin lists were scoped only by `mine=true` (every publisher the caller
+  manages); they now also scope to the publisher chosen in the switcher, while
+  an explicit publisher filter still takes precedence and a Server Admin's
+  All-publishers view stays unscoped.
+- **The create-resource forms pre-select the current publisher.** The "New
+  Server" / "New Agent" publisher dropdown defaults to the publisher the admin
+  area is scoped to (when the caller can author on it).
+- **Publisher Settings is viewable read-only by members.** Non-admin publisher
+  members previously hit an "Admin access required" wall; they can now open
+  Settings in a read-only view, while editing remains gated on the Admin role
+  (and the write endpoint is authorized server-side regardless).
+
 ## v0.4.0-rc6 — 2026-06-09
 
 ### Fixed

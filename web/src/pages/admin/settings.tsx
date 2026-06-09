@@ -10,11 +10,12 @@ import { useAuthClient } from '@/lib/api-client'
 import { usePublisher } from '@/auth/PublisherContext'
 import { usePermissions } from '@/auth/useMe'
 
-// AdminSettings edits the currently selected publisher's metadata (name +
+// AdminSettings shows the currently selected publisher's metadata (name +
 // contact). Scoped via the publisher switcher like the rest of the admin
-// shell, and reachable only by a publisher Admin (or Server Admin) — the nav
-// hides it otherwise; this guard also covers a deep link. Deleting a publisher
-// stays a Server-Admin action on the global Publishers page.
+// shell. Any publisher member can view it; only a publisher Admin (or Server
+// Admin) can edit — non-admins get a read-only view (the write endpoint is
+// authorized server-side regardless). Deleting a publisher stays a
+// Server-Admin action on the global Publishers page.
 export default function AdminSettings() {
   const { currentSlug, current } = usePublisher()
   const perms = usePermissions()
@@ -22,6 +23,7 @@ export default function AdminSettings() {
   const queryClient = useQueryClient()
 
   const slug = currentSlug ?? ''
+  const canEdit = perms.canAdmin(currentSlug ?? undefined)
 
   const { data: publisher, isPending } = useQuery({
     queryKey: ['admin-publisher', slug],
@@ -62,25 +64,22 @@ export default function AdminSettings() {
     )
   }
 
-  if (!perms.canAdmin(currentSlug)) {
-    return (
-      <div className="max-w-3xl mx-auto">
-        <EmptyState
-          icon={<SettingsIcon className="h-10 w-10" />}
-          title="Admin access required"
-          description={`You need the Admin role on ${current?.name ?? currentSlug} to edit its settings.`}
-        />
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6 max-w-xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Edit the name and contact for <span className="font-mono">{currentSlug}</span>. The slug
-          is permanent.
+          {canEdit ? (
+            <>
+              Edit the name and contact for <span className="font-mono">{currentSlug}</span>. The
+              slug is permanent.
+            </>
+          ) : (
+            <>
+              Name and contact for <span className="font-mono">{currentSlug}</span>. You need the
+              Admin role on {current?.name ?? currentSlug} to make changes.
+            </>
+          )}
         </p>
       </div>
 
@@ -101,6 +100,9 @@ export default function AdminSettings() {
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault()
+            // Editing is Admin-only; ignore submits in the read-only view as a
+            // belt-and-braces guard (the Save button is hidden anyway).
+            if (!canEdit) return
             const fd = new FormData(e.currentTarget)
             save.mutate({
               name: (fd.get('name') as string).trim(),
@@ -114,9 +116,16 @@ export default function AdminSettings() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="name">
-              Name <span className="text-destructive">*</span>
+              Name {canEdit && <span className="text-destructive">*</span>}
             </Label>
-            <Input id="name" name="name" defaultValue={publisher.name} required />
+            <Input
+              id="name"
+              name="name"
+              defaultValue={publisher.name}
+              required={canEdit}
+              readOnly={!canEdit}
+              disabled={!canEdit}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="contact">Contact</Label>
@@ -125,11 +134,15 @@ export default function AdminSettings() {
               name="contact"
               defaultValue={publisher.contact ?? ''}
               placeholder="ops@example.com"
+              readOnly={!canEdit}
+              disabled={!canEdit}
             />
           </div>
-          <Button type="submit" disabled={save.isPending}>
-            {save.isPending ? 'Saving…' : 'Save changes'}
-          </Button>
+          {canEdit && (
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Save changes'}
+            </Button>
+          )}
         </form>
       )}
     </div>
