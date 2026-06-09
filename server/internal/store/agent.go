@@ -555,6 +555,9 @@ func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams
 	ctx, span := startSpan(ctx, "CreateAgentVersion")
 	defer span.End()
 
+	if len(p.Skills) == 0 {
+		p.Skills = json.RawMessage("[]")
+	}
 	if len(p.Capabilities) == 0 {
 		p.Capabilities = json.RawMessage("{}")
 	}

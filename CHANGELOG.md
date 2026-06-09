@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Fixed
+
+- **Creating a version without its optional list field no longer fails.** Both
+  `POST /api/v1/mcp/servers/{namespace}/{slug}/versions` (with no `packages`)
+  and `POST /api/v1/agents/{namespace}/{slug}/versions` (with no `skills`)
+  rejected the absent — but OpenAPI-optional — field with `422 Unprocessable
+  Entity` ("packages/skills must not be empty"), so the admin "New Server" /
+  "New Agent" forms surfaced "… created, but version creation failed" whenever
+  the optional package/skill section was left blank. Each handler now validates
+  the field's structure only when entries are supplied, and the store defaults
+  an empty `packages`/`skills` to `[]` (matching `capabilities`, `tools`, and
+  `authentication`).
+
+### Changed
+
+- **Access logs now identify the authenticated caller.** Every `http request`
+  log line carries a `user_email` field — the email of the bearer-token
+  principal, or `anonymous` for unauthenticated (public) requests. Combined with
+  the existing `path`, `method`, and `status` fields this answers "which user
+  accessed which path" directly from `docker logs` / the OTLP log stream. The
+  `Authenticate` middleware now runs ahead of the request logger so the resolved
+  principal is on the request context when the line is emitted; tokens are never
+  logged.
+
 ## v0.4.0-rc5 — 2026-06-05
 
 ### Changed

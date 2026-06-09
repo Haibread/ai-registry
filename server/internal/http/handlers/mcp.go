@@ -367,9 +367,14 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 			"version, runtime, and protocol_version are required", r.URL.Path)
 		return
 	}
-	if err := domain.ValidatePackages(body.Packages); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
-		return
+	// packages is optional (see CreateMCPServerVersionRequest in openapi.yaml);
+	// only validate its structure when the caller actually supplied entries,
+	// mirroring how capabilities and tools treat absent input as valid.
+	if len(body.Packages) > 0 {
+		if err := domain.ValidatePackages(body.Packages); err != nil {
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+			return
+		}
 	}
 	if err := domain.ValidateCapabilities(body.Capabilities); err != nil {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)

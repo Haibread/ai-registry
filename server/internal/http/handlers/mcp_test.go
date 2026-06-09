@@ -561,6 +561,32 @@ func TestMCPHandler_CreateVersion_Valid(t *testing.T) {
 	}
 }
 
+// TestMCPHandler_CreateVersion_NoPackages verifies that packages is optional:
+// a version created without any package entries (e.g. via the admin "new server"
+// form with the package section left blank) succeeds rather than failing 422.
+// Regression test for the "Server created, but version creation failed" bug.
+func TestMCPHandler_CreateVersion_NoPackages(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "ns-cvnp", "srv-cvnp")
+
+	body := map[string]any{
+		"version":          "1.0.0",
+		"runtime":          "stdio",
+		"protocol_version": "2025-01-01",
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvnp/srv-cvnp/versions",
+		bytes.NewBuffer(b))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMCPHandler_CreateVersion_MissingFields(t *testing.T) {
 	resetTables(t)
 	seedMCPServer(t, "ns-cvmf", "srv-cvmf")

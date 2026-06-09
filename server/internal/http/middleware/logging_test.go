@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/http/middleware"
 )
 
@@ -94,6 +95,48 @@ func TestRequestLogger_LogsByteCount(t *testing.T) {
 	// The byte count for "hello world" = 11
 	if !strings.Contains(logged, "11") {
 		t.Errorf("log line missing byte count 11: %s", logged)
+	}
+}
+
+func TestRequestLogger_LogsAuthenticatedUserEmail(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	// Simulate Authenticate having resolved a principal upstream by injecting it
+	// onto the request context before RequestLogger runs.
+	handler := middleware.RequestLogger(logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/secure-path", nil)
+	ctx := auth.ContextWithPrincipal(req.Context(), &auth.Principal{
+		UserID: "01HSOMEULID",
+		Email:  "alice@example.com",
+	})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req.WithContext(ctx))
+
+	logged := buf.String()
+	if !strings.Contains(logged, "alice@example.com") {
+		t.Errorf("log line missing authenticated user email: %s", logged)
+	}
+}
+
+func TestRequestLogger_LogsAnonymousWhenUnauthenticated(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	handler := middleware.RequestLogger(logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/public-path", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	logged := buf.String()
+	if !strings.Contains(logged, "user_email=anonymous") {
+		t.Errorf("expected anonymous user_email for unauthenticated request: %s", logged)
 	}
 }
 

@@ -443,6 +443,31 @@ func TestAgentHandler_CreateVersion_Valid(t *testing.T) {
 	}
 }
 
+// TestAgentHandler_CreateVersion_NoSkills verifies that skills is optional:
+// a version created without any skill entries (e.g. via the admin "new agent"
+// form with the skill section left blank) succeeds rather than failing 422.
+// Regression test for the "Agent created, but version creation failed" bug.
+func TestAgentHandler_CreateVersion_NoSkills(t *testing.T) {
+	resetTables(t)
+	seedAgent(t, "ag-cvns", "ag-cvns")
+
+	body := map[string]any{
+		"version":      "1.0.0",
+		"endpoint_url": "https://example.com/agent",
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/ag-cvns/ag-cvns/versions",
+		bytes.NewBuffer(b))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminAgentCtx())
+	rec := httptest.NewRecorder()
+	newAgentRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAgentHandler_CreateVersion_MissingFields(t *testing.T) {
 	resetTables(t)
 	seedAgent(t, "ag-cvmf", "ag-cvmf")

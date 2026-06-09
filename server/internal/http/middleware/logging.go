@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/observability"
 )
 
@@ -81,9 +82,20 @@ func RequestLogger(logger *slog.Logger, metrics *observability.Metrics) func(htt
 				}
 			}
 
+			// Identify the authenticated caller when the bearer token resolved.
+			// This relies on Authenticate running ahead of RequestLogger in the
+			// chain so the principal is on r's context (context flows down only).
+			// Public / unauthenticated reads carry no principal — the field is
+			// then "anonymous". We log the email, never the token.
+			userEmail := "anonymous"
+			if p, ok := auth.PrincipalFromContext(r.Context()); ok && p != nil && p.Email != "" {
+				userEmail = p.Email
+			}
+
 			logger.InfoContext(r.Context(), "http request",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
+				slog.String("user_email", userEmail),
 				slog.String("remote_addr", r.RemoteAddr),
 				slog.String("request_id", FromContext(r.Context())),
 				slog.Int("status", status),

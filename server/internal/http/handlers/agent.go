@@ -353,9 +353,14 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 	if body.ProtocolVersion == "" {
 		body.ProtocolVersion = domain.A2AProtocolVersion
 	}
-	if err := domain.ValidateSkills(body.Skills); err != nil {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
-		return
+	// skills is optional (see CreateAgentVersionRequest in openapi.yaml); only
+	// validate its structure when the caller actually supplied entries, mirroring
+	// how capabilities and authentication treat absent input as valid.
+	if len(body.Skills) > 0 {
+		if err := domain.ValidateSkills(body.Skills); err != nil {
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+			return
+		}
 	}
 	if err := domain.ValidateAuthentication(body.Authentication); err != nil {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)

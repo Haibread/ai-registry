@@ -698,6 +698,9 @@ func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersi
 	ctx, span := startSpan(ctx, "CreateMCPServerVersion")
 	defer span.End()
 
+	if len(p.Packages) == 0 {
+		p.Packages = json.RawMessage("[]")
+	}
 	if len(p.Capabilities) == 0 {
 		p.Capabilities = json.RawMessage("{}")
 	}

@@ -162,10 +162,15 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	// credentials. CORS plus the JSON-body content-type guard remain.
 	r.Use(middleware.Recover(deps.Logger))
 	r.Use(middleware.RequestID)
+	// Authenticate runs ahead of the access logger so the resolved principal is
+	// on the request context when RequestLogger emits its line — context flows
+	// down the chain only, so a logger above Authenticate would never see it. It
+	// resolves the bearer token when present and never blocks an unauthenticated
+	// request; the route guards produce any 401/403.
+	r.Use(authn.Authenticate)
 	r.Use(middleware.RequestLogger(deps.Logger, deps.Metrics))
 	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MiB
 	r.Use(middleware.RequireJSONBody)
-	r.Use(authn.Authenticate) // resolve the bearer token when present; never blocks
 
 	// ── System endpoints ──────────────────────────────────────────────────────
 	r.Get("/healthz", handlers.Healthz)
