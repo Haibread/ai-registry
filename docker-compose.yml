@@ -60,7 +60,11 @@ services:
       - "9000:9000"
     healthcheck:
       # Keycloak is a JVM app — it can take 60-120 s to boot on a cold runner.
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/ai-registry || exit 1"]
+      # The image ships neither curl nor wget, so probe readiness with a bash
+      # /dev/tcp connection: Quarkus opens :8080 only after the realm import
+      # completes ("Listening on" is the last boot line), so an accepted
+      # connection is a sound readiness signal.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
       interval: 10s
       timeout: 5s
       retries: 20
