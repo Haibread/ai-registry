@@ -127,6 +127,18 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /change-approval\.spec\.ts/,
     },
+    // Entry-change review queue: visibility / deprecate / metadata edits route
+    // through the queue for Editors (202 → approve) while Server Admins keep the
+    // immediate path. Switches identity per-step (admin + author) via
+    // browser.newContext, so no project-level storageState — like phase7-flows.
+    {
+      name: "entry-change",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      dependencies: ["setup"],
+      testMatch: /entry-change\.spec\.ts/,
+    },
     // Review-queue / version-section / request-deletion UI flows.
     // Drives the actual browser DOM (the change-approval project goes
     // through the API directly), so this catches handler/UI contract

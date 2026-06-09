@@ -1059,17 +1059,27 @@ paths:
                   type: string
       responses:
         "200":
-          description: Updated MCP server
+          description: Updated MCP server immediately (Server Admin escape hatch)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MCPServer"
+        "202":
+          description: Metadata edit enqueued for review (non-admin Editor)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: a change is already pending review on this entry
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
         "422":
           $ref: "#/components/responses/ValidationError"
     delete:
@@ -1122,7 +1132,7 @@ paths:
               $ref: "#/components/schemas/SetVisibilityRequest"
       responses:
         "200":
-          description: Visibility updated
+          description: Visibility updated immediately (Server Admin escape hatch)
           content:
             application/json:
               schema:
@@ -1131,6 +1141,13 @@ paths:
                   visibility:
                     type: string
                     enum: [public, private]
+        "202":
+          description: >
+            Visibility change enqueued for review (non-admin Editor). The entry
+            is unchanged until a Reviewer approves the pending change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1138,7 +1155,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Cannot make public — the entry has no approved (published) version yet
+          description: >
+            Cannot make public — the entry has no approved (published) version
+            yet; or a change is already pending review on this entry.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1148,7 +1167,7 @@ paths:
   /api/v1/mcp/servers/{namespace}/{slug}/deprecate:
     post:
       operationId: deprecateMCPServer
-      summary: Deprecate an MCP server (admin only)
+      summary: Deprecate an MCP server (Editor enqueues, Server Admin immediate)
       tags: [mcp]
       security:
         - bearerAuth: []
@@ -1157,7 +1176,7 @@ paths:
         - $ref: "#/components/parameters/SlugParam"
       responses:
         "200":
-          description: Server deprecated
+          description: Server deprecated immediately (Server Admin escape hatch)
           content:
             application/json:
               schema:
@@ -1165,6 +1184,11 @@ paths:
                 properties:
                   status:
                     type: string
+        "202":
+          description: Deprecation enqueued for review (non-admin Editor)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1472,6 +1496,82 @@ paths:
               schema: { $ref: "#/components/schemas/ReviewProblem" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  /api/v1/mcp/servers/{namespace}/{slug}/change-request/approve:
+    post:
+      operationId: approveMCPChange
+      summary: Approve a pending MCP entry change (reviewer)
+      description: >
+        Applies the pending entry-change request (visibility / deprecation /
+        metadata edit) on the entry. Requires the Reviewer role on the owning
+        publisher.
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveEntryChangeRequest" }
+      responses:
+        "204": { description: change applied }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending change, stale revision, or change no longer applicable
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/mcp/servers/{namespace}/{slug}/change-request/reject:
+    post:
+      operationId: rejectMCPChange
+      summary: Reject a pending MCP entry change with a reason (reviewer)
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectEntryChangeRequest" }
+      responses:
+        "204": { description: change rejected }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending change to reject, or stale revision
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/mcp/servers/{namespace}/{slug}/change-request/withdraw:
+    post:
+      operationId: withdrawMCPChange
+      summary: Withdraw the entry's pending change (Editor)
+      tags: [mcp, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204": { description: change withdrawn }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending change to withdraw
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+
   /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish:
     post:
       operationId: publishMCPServerVersion
@@ -1654,17 +1754,27 @@ paths:
                   type: string
       responses:
         "200":
-          description: Updated agent
+          description: Updated agent immediately (Server Admin escape hatch)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Agent"
+        "202":
+          description: Metadata edit enqueued for review (non-admin Editor)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: a change is already pending review on this entry
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
         "422":
           $ref: "#/components/responses/ValidationError"
     delete:
@@ -1716,7 +1826,7 @@ paths:
               $ref: "#/components/schemas/SetVisibilityRequest"
       responses:
         "200":
-          description: Visibility updated
+          description: Visibility updated immediately (Server Admin escape hatch)
           content:
             application/json:
               schema:
@@ -1725,6 +1835,11 @@ paths:
                   visibility:
                     type: string
                     enum: [public, private]
+        "202":
+          description: Visibility change enqueued for review (non-admin Editor)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1732,7 +1847,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Cannot make public — the entry has no approved (published) version yet
+          description: >
+            Cannot make public — the entry has no approved (published) version
+            yet; or a change is already pending review on this entry.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1742,7 +1859,7 @@ paths:
   /api/v1/agents/{namespace}/{slug}/deprecate:
     post:
       operationId: deprecateAgent
-      summary: Deprecate an agent (admin only)
+      summary: Deprecate an agent (Editor enqueues, Server Admin immediate)
       tags: [agents]
       security:
         - bearerAuth: []
@@ -1751,7 +1868,7 @@ paths:
         - $ref: "#/components/parameters/SlugParam"
       responses:
         "200":
-          description: Agent deprecated
+          description: Agent deprecated immediately (Server Admin escape hatch)
           content:
             application/json:
               schema:
@@ -1759,6 +1876,11 @@ paths:
                 properties:
                   status:
                     type: string
+        "202":
+          description: Deprecation enqueued for review (non-admin Editor)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2055,6 +2177,82 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/ReviewProblem" }
         "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/agents/{namespace}/{slug}/change-request/approve:
+    post:
+      operationId: approveAgentChange
+      summary: Approve a pending agent entry change (reviewer)
+      description: >
+        Applies the pending entry-change request (visibility / deprecation /
+        metadata edit) on the agent. Requires the Reviewer role on the owning
+        publisher.
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveEntryChangeRequest" }
+      responses:
+        "204": { description: change applied }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending change, stale revision, or change no longer applicable
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/agents/{namespace}/{slug}/change-request/reject:
+    post:
+      operationId: rejectAgentChange
+      summary: Reject a pending agent entry change with a reason (reviewer)
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectEntryChangeRequest" }
+      responses:
+        "204": { description: change rejected }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending change to reject, or stale revision
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/agents/{namespace}/{slug}/change-request/withdraw:
+    post:
+      operationId: withdrawAgentChange
+      summary: Withdraw the agent's pending change (Editor)
+      tags: [agents, review]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "204": { description: change withdrawn }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: no pending change to withdraw
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ReviewProblem" }
 
   /api/v1/agents/{namespace}/{slug}/versions/{version}/publish:
     post:
@@ -2842,24 +3040,77 @@ components:
             entry's `deletion_requested_*` columns are cleared on
             success; the reason is captured in the audit log.
 
+    ApproveEntryChangeRequest:
+      type: object
+      required: [revision]
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+          description: |
+            Optimistic-concurrency token from the queue item; the approve fails
+            with 409 review-revision-mismatch if it no longer matches.
+
+    RejectEntryChangeRequest:
+      type: object
+      required: [revision, reason]
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          description: Free-text reason, captured in the audit log.
+
+    EntryChangeAccepted:
+      type: object
+      required: [status, change_id]
+      properties:
+        status:
+          type: string
+          enum: [pending_review]
+        change_id:
+          type: string
+          description: ULID of the created entry-change request.
+
+    PendingEntryChange:
+      type: object
+      required: [change_id, action, revision, submitted_at]
+      description: |
+        Summary of an entry's single pending change, attached to the detail
+        response for callers who can view private detail.
+      properties:
+        change_id: { type: string }
+        action:
+          type: string
+          enum: [visibility, deprecation, metadata_edit]
+        revision: { type: integer }
+        submitted_at: { type: string, format: date-time }
+        submitted_by_email: { type: string }
+        payload:
+          type: object
+          additionalProperties: true
+
     ReviewQueueItem:
       type: object
       required: [kind, publisher_slug, entry_slug, entry_id, submitted_at]
       properties:
         kind:
           type: string
-          enum: [mcp_version, agent_version, mcp_deletion, agent_deletion]
+          enum: [mcp_version, agent_version, mcp_deletion, agent_deletion, mcp_change, agent_change]
         publisher_slug: { type: string }
         entry_slug: { type: string }
         entry_id: { type: string, description: ULID of the entry }
         version:
           type: string
           description: |
-            Present on `*_version` items, absent on `*_deletion` items.
+            Present on `*_version` items, absent on `*_deletion` / `*_change` items.
         revision:
           type: integer
           description: |
-            Present on `*_version` items only.
+            Present on `*_version` and `*_change` items (the optimistic-
+            concurrency token passed back on approve/reject).
         submitted_at: { type: string, format: date-time }
         submitted_by:
           type: string
@@ -2867,6 +3118,22 @@ components:
         submitted_by_email:
           type: string
           description: Email captured at submission time.
+        change_id:
+          type: string
+          description: |
+            Present on `*_change` items only — the entry-change-request ULID.
+        action:
+          type: string
+          enum: [visibility, deprecation, metadata_edit]
+          description: |
+            Present on `*_change` items only — the entry-level mutation the
+            request will apply on approval.
+        payload:
+          type: object
+          additionalProperties: true
+          description: |
+            Present on `*_change` items only — the proposed mutation (e.g. the
+            new visibility, or the edited metadata fields) for diff display.
 
     ReviewQueueList:
       type: object
@@ -2887,6 +3154,8 @@ components:
           .../errors/review-revision-mismatch        (409)
           .../errors/review-already-pending          (409)
           .../errors/already-published               (409)
+          .../errors/change-already-pending          (409)
+          .../errors/change-not-applicable           (409)
       type: object
       required: [type, title, status]
       properties:
@@ -2994,6 +3263,8 @@ components:
           type: string
         description:
           type: string
+        pending_change:
+          $ref: "#/components/schemas/PendingEntryChange"
         homepage_url:
           type: string
         repo_url:
@@ -3259,6 +3530,8 @@ components:
           type: string
         description:
           type: string
+        pending_change:
+          $ref: "#/components/schemas/PendingEntryChange"
         visibility:
           type: string
           enum: [private, public]

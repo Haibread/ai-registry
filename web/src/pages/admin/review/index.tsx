@@ -7,6 +7,9 @@ import {
   XCircle,
   GitPullRequestArrow,
   Trash2,
+  Eye,
+  Archive,
+  Pencil,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,15 +22,44 @@ import type { components } from '@/lib/schema'
 
 type Item = components['schemas']['ReviewQueueItem']
 
-// The four discriminator values returned by the server. Keep in sync with
-// the OpenAPI ReviewQueueItem.kind enum.
-type Kind = 'mcp_version' | 'agent_version' | 'mcp_deletion' | 'agent_deletion'
+// The discriminator values returned by the server. Keep in sync with the
+// OpenAPI ReviewQueueItem.kind enum.
+type Kind =
+  | 'mcp_version'
+  | 'agent_version'
+  | 'mcp_deletion'
+  | 'agent_deletion'
+  | 'mcp_change'
+  | 'agent_change'
 
 function isVersion(kind: Kind): boolean {
   return kind === 'mcp_version' || kind === 'agent_version'
 }
 
-function kindLabel(kind: Kind): string {
+function isChange(kind: Kind): boolean {
+  return kind === 'mcp_change' || kind === 'agent_change'
+}
+
+function isMCP(kind: Kind): boolean {
+  return kind.startsWith('mcp')
+}
+
+// Friendly label for an entry-change action.
+function actionLabel(action?: string): string {
+  switch (action) {
+    case 'visibility':
+      return 'Visibility change'
+    case 'deprecation':
+      return 'Deprecation'
+    case 'metadata_edit':
+      return 'Metadata edit'
+    default:
+      return 'Entry change'
+  }
+}
+
+function kindLabel(it: Item): string {
+  const kind = it.kind as Kind
   switch (kind) {
     case 'mcp_version':
       return 'MCP version'
@@ -37,11 +69,59 @@ function kindLabel(kind: Kind): string {
       return 'MCP deletion'
     case 'agent_deletion':
       return 'Agent deletion'
+    case 'mcp_change':
+      return `MCP · ${actionLabel(it.action)}`
+    case 'agent_change':
+      return `Agent · ${actionLabel(it.action)}`
   }
 }
 
-function kindIcon(kind: Kind) {
-  return isVersion(kind) ? GitPullRequestArrow : Trash2
+function kindIcon(it: Item) {
+  const kind = it.kind as Kind
+  if (isVersion(kind)) return GitPullRequestArrow
+  if (kind === 'mcp_deletion' || kind === 'agent_deletion') return Trash2
+  switch (it.action) {
+    case 'visibility':
+      return Eye
+    case 'deprecation':
+      return Archive
+    default:
+      return Pencil
+  }
+}
+
+// Render the proposed mutation of an entry-change item so the reviewer sees
+// exactly what they're approving.
+function ChangeDetails({ it }: { it: Item }) {
+  const payload = (it.payload ?? {}) as Record<string, unknown>
+  if (it.action === 'visibility') {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Set visibility to{' '}
+        <span className="font-mono">{String(payload.visibility ?? '?')}</span>
+      </p>
+    )
+  }
+  if (it.action === 'deprecation') {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Mark this entry as <span className="font-mono">deprecated</span>
+      </p>
+    )
+  }
+  // metadata_edit: list the proposed fields.
+  const entries = Object.entries(payload).filter(([, v]) => v !== '' && v != null)
+  if (entries.length === 0) return null
+  return (
+    <dl className="text-xs text-muted-foreground grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5">
+      {entries.map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="font-mono">{k}</dt>
+          <dd className="font-mono truncate">{String(v)}</dd>
+        </div>
+      ))}
+    </dl>
+  )
 }
 
 // 409 problem-type suffix → friendly message. Anything we don't recognise
@@ -49,13 +129,17 @@ function kindIcon(kind: Kind) {
 function friendlyProblem(type?: string, detail?: string): string {
   if (!type) return detail ?? 'Action failed'
   if (type.endsWith('review-revision-mismatch'))
-    return 'The version was edited since this queue page loaded. Refresh to review the latest revision.'
+    return 'The item was edited since this queue page loaded. Refresh to review the latest revision.'
   if (type.endsWith('review-state-mismatch'))
-    return 'The version is no longer pending review (already approved, rejected, or withdrawn).'
+    return 'The item is no longer pending review (already approved, rejected, or withdrawn).'
   if (type.endsWith('already-published'))
     return 'The version is already published.'
   if (type.endsWith('review-already-pending'))
     return 'Another item on this entry is already pending review.'
+  if (type.endsWith('change-already-pending'))
+    return 'Another change on this entry is already pending review.'
+  if (type.endsWith('change-not-applicable'))
+    return 'The entry is no longer in a state where this change can be applied. Reject this request.'
   return detail ?? 'Action failed'
 }
 
@@ -78,99 +162,125 @@ export default function AdminReviewQueue() {
   const items = (data?.items ?? []) as Item[]
 
   function rowKey(it: Item): string {
-    // Versions are uniquely identified by entry + version; deletions by
-    // entry alone. Suffix the kind so a version and a deletion on the
-    // same entry never collide.
+    // Versions are uniquely identified by entry + version; deletions by entry
+    // alone; changes by entry + action. Suffix the kind + action so two items
+    // on the same entry never collide.
     return [
       it.kind,
       it.publisher_slug,
       it.entry_slug,
       it.version ?? '',
+      it.action ?? '',
     ].join('|')
   }
 
-  // The four URL builders below correspond to the four endpoint families
-  // exposed by the workflow. They return the path + the body shape; the
-  // mutation wires them through openapi-fetch.
+  // The URL builders below correspond to the endpoint families exposed by the
+  // workflow. They return the path + body shape; the mutation wires them
+  // through openapi-fetch.
   async function approveItem(it: Item) {
     const ns = it.publisher_slug
     const slug = it.entry_slug
-    const ver = it.version!
     const rev = it.revision!
-    if (it.kind === 'mcp_version') {
-      return api.POST(
-        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/approve',
-        { params: { path: { namespace: ns, slug, version: ver } }, body: { revision: rev } },
-      )
+    switch (it.kind as Kind) {
+      case 'mcp_version':
+        return api.POST(
+          '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/approve',
+          { params: { path: { namespace: ns, slug, version: it.version! } }, body: { revision: rev } },
+        )
+      case 'agent_version':
+        return api.POST(
+          '/api/v1/agents/{namespace}/{slug}/versions/{version}/approve',
+          { params: { path: { namespace: ns, slug, version: it.version! } }, body: { revision: rev } },
+        )
+      case 'mcp_deletion':
+        return api.POST(
+          '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request/approve',
+          { params: { path: { namespace: ns, slug } } },
+        )
+      case 'agent_deletion':
+        return api.POST(
+          '/api/v1/agents/{namespace}/{slug}/deletion-request/approve',
+          { params: { path: { namespace: ns, slug } } },
+        )
+      case 'mcp_change':
+        return api.POST(
+          '/api/v1/mcp/servers/{namespace}/{slug}/change-request/approve',
+          { params: { path: { namespace: ns, slug } }, body: { revision: rev } },
+        )
+      case 'agent_change':
+        return api.POST(
+          '/api/v1/agents/{namespace}/{slug}/change-request/approve',
+          { params: { path: { namespace: ns, slug } }, body: { revision: rev } },
+        )
     }
-    if (it.kind === 'agent_version') {
-      return api.POST(
-        '/api/v1/agents/{namespace}/{slug}/versions/{version}/approve',
-        { params: { path: { namespace: ns, slug, version: ver } }, body: { revision: rev } },
-      )
-    }
-    if (it.kind === 'mcp_deletion') {
-      return api.POST(
-        '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request/approve',
-        { params: { path: { namespace: ns, slug } } },
-      )
-    }
-    return api.POST(
-      '/api/v1/agents/{namespace}/{slug}/deletion-request/approve',
-      { params: { path: { namespace: ns, slug } } },
-    )
   }
 
   async function rejectItem(it: Item, reason: string) {
     const ns = it.publisher_slug
     const slug = it.entry_slug
-    if (it.kind === 'mcp_version') {
-      return api.POST(
-        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/reject',
-        {
-          params: { path: { namespace: ns, slug, version: it.version! } },
-          body: { revision: it.revision!, reason },
-        },
-      )
+    const rev = it.revision!
+    switch (it.kind as Kind) {
+      case 'mcp_version':
+        return api.POST(
+          '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/reject',
+          { params: { path: { namespace: ns, slug, version: it.version! } }, body: { revision: rev, reason } },
+        )
+      case 'agent_version':
+        return api.POST(
+          '/api/v1/agents/{namespace}/{slug}/versions/{version}/reject',
+          { params: { path: { namespace: ns, slug, version: it.version! } }, body: { revision: rev, reason } },
+        )
+      case 'mcp_deletion':
+        return api.POST(
+          '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request/reject',
+          { params: { path: { namespace: ns, slug } }, body: { reason } },
+        )
+      case 'agent_deletion':
+        return api.POST(
+          '/api/v1/agents/{namespace}/{slug}/deletion-request/reject',
+          { params: { path: { namespace: ns, slug } }, body: { reason } },
+        )
+      case 'mcp_change':
+        return api.POST(
+          '/api/v1/mcp/servers/{namespace}/{slug}/change-request/reject',
+          { params: { path: { namespace: ns, slug } }, body: { revision: rev, reason } },
+        )
+      case 'agent_change':
+        return api.POST(
+          '/api/v1/agents/{namespace}/{slug}/change-request/reject',
+          { params: { path: { namespace: ns, slug } }, body: { revision: rev, reason } },
+        )
     }
-    if (it.kind === 'agent_version') {
-      return api.POST(
-        '/api/v1/agents/{namespace}/{slug}/versions/{version}/reject',
-        {
-          params: { path: { namespace: ns, slug, version: it.version! } },
-          body: { revision: it.revision!, reason },
-        },
-      )
-    }
-    if (it.kind === 'mcp_deletion') {
-      return api.POST(
-        '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request/reject',
-        { params: { path: { namespace: ns, slug } }, body: { reason } },
-      )
-    }
-    return api.POST(
-      '/api/v1/agents/{namespace}/{slug}/deletion-request/reject',
-      { params: { path: { namespace: ns, slug } }, body: { reason } },
-    )
+  }
+
+  function approveToast(it: Item): string {
+    const ref = `${it.publisher_slug}/${it.entry_slug}`
+    const kind = it.kind as Kind
+    if (isVersion(kind)) return `Approved ${ref} v${it.version}`
+    if (isChange(kind)) return `Applied ${actionLabel(it.action).toLowerCase()} on ${ref}`
+    return `Confirmed deletion of ${ref}`
+  }
+
+  function rejectToast(it: Item): string {
+    const ref = `${it.publisher_slug}/${it.entry_slug}`
+    const kind = it.kind as Kind
+    if (isVersion(kind)) return `Rejected ${ref} v${it.version}`
+    if (isChange(kind)) return `Rejected ${actionLabel(it.action).toLowerCase()} on ${ref}`
+    return `Cancelled deletion of ${ref}`
   }
 
   const approveMutation = useMutation({
     mutationFn: async (it: Item) => {
       setActionError(null)
-      const { error } = await approveItem(it)
-      if (error) {
-        const e = error as { type?: string; detail?: string }
+      const res = await approveItem(it)
+      if (res?.error) {
+        const e = res.error as { type?: string; detail?: string }
         throw new Error(friendlyProblem(e.type, e.detail))
       }
       return it
     },
     onSuccess: (it: Item) => {
-      const isVer = isVersion(it.kind as Kind)
-      toast.success(
-        isVer
-          ? `Approved ${it.publisher_slug}/${it.entry_slug} v${it.version}`
-          : `Confirmed deletion of ${it.publisher_slug}/${it.entry_slug}`,
-      )
+      toast.success(approveToast(it))
       queryClient.invalidateQueries({ queryKey: ['admin-review-queue'] })
       queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
     },
@@ -180,20 +290,15 @@ export default function AdminReviewQueue() {
   const rejectMutation = useMutation({
     mutationFn: async ({ item, reason }: { item: Item; reason: string }) => {
       setActionError(null)
-      const { error } = await rejectItem(item, reason)
-      if (error) {
-        const e = error as { type?: string; detail?: string }
+      const res = await rejectItem(item, reason)
+      if (res?.error) {
+        const e = res.error as { type?: string; detail?: string }
         throw new Error(friendlyProblem(e.type, e.detail))
       }
       return item
     },
     onSuccess: (item: Item) => {
-      const isVer = isVersion(item.kind as Kind)
-      toast.success(
-        isVer
-          ? `Rejected ${item.publisher_slug}/${item.entry_slug} v${item.version}`
-          : `Cancelled deletion of ${item.publisher_slug}/${item.entry_slug}`,
-      )
+      toast.success(rejectToast(item))
       setRejectingKey(null)
       setRejectReason('')
       queryClient.invalidateQueries({ queryKey: ['admin-review-queue'] })
@@ -218,9 +323,9 @@ export default function AdminReviewQueue() {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Pending change-approval entries and deletion requests across the
-        registry, newest first. Approve sends the item live; reject returns
-        it to draft (with the supplied reason recorded on the version).
+        Pending versions, entry changes (visibility, deprecation, metadata), and
+        deletion requests across the registry, newest first. Approve applies the
+        change; reject records the supplied reason.
       </p>
 
       {actionError && (
@@ -252,24 +357,22 @@ export default function AdminReviewQueue() {
         <EmptyState
           icon={<ClipboardCheck className="h-10 w-10" />}
           title="Queue is empty"
-          description="Nothing is currently pending review. Submitted versions and deletion requests will show up here."
+          description="Nothing is currently pending review. Submitted versions, entry changes, and deletion requests will show up here."
         />
       ) : (
         <ul className="divide-y rounded-md border">
           {items.map((it) => {
             const kind = it.kind as Kind
-            const Icon = kindIcon(kind)
+            const Icon = kindIcon(it)
             const key = rowKey(it)
             const isRejecting = rejectingKey === key
-            const detailHref = isVersion(kind)
-              ? `/admin/${kind === 'mcp_version' ? 'mcp' : 'agents'}/${it.publisher_slug}/${it.entry_slug}`
-              : `/admin/${kind === 'mcp_deletion' ? 'mcp' : 'agents'}/${it.publisher_slug}/${it.entry_slug}`
+            const detailHref = `/admin/${isMCP(kind) ? 'mcp' : 'agents'}/${it.publisher_slug}/${it.entry_slug}`
             return (
               <li key={key} className="p-4 space-y-2">
                 <div className="flex items-start gap-3 flex-wrap">
                   <Badge variant="outline" className="text-xs flex items-center gap-1.5">
                     <Icon className="h-3 w-3" />
-                    {kindLabel(kind)}
+                    {kindLabel(it)}
                   </Badge>
                   <a
                     href={detailHref}
@@ -291,6 +394,7 @@ export default function AdminReviewQueue() {
                     {formatDate(it.submitted_at)}
                   </span>
                 </div>
+                {isChange(kind) && <ChangeDetails it={it} />}
                 {it.submitted_by_email && (
                   <p className="text-xs text-muted-foreground">
                     Submitted by{' '}

@@ -176,7 +176,15 @@ func (h *MCPHandlers) GetServer(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, serverToResponse(srv))
+	resp := serverToResponse(srv)
+	// Surface a pending entry-change to callers who can see private detail, so
+	// the admin UI can show a "pending review" banner and disable the controls.
+	if !publicOnly {
+		if pc, ok := pendingChangeInfo(r.Context(), h.db, domain.EntryResourceMCPServer, srv.ID); ok {
+			resp["pending_change"] = pc
+		}
+	}
+	writeJSON(w, r, http.StatusOK, resp)
 }
 
 // ── POST /api/v1/mcp/servers ──────────────────────────────────────────────
@@ -472,6 +480,20 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only a published entry can be deprecated; fail fast on both paths.
+	if srv.Status != domain.StatusPublished {
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("server '%s/%s' is not in published status", ns, slug), r.URL.Path)
+		return
+	}
+
+	// Editors enqueue the deprecation for review; Server Admins apply immediately.
+	if !auth.IsServerAdminFromContext(r.Context()) {
+		enqueueEntryChange(w, r, h.db, h.audit, domain.EntryResourceMCPServer, srv.ID, ns, slug,
+			domain.EntryChangeDeprecation, map[string]any{}, domain.ActionMCPChangeRequested)
+		return
+	}
+
 	if err := h.db.DeprecateMCPServer(r.Context(), srv.ID); errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusConflict, "conflict",
 			fmt.Sprintf("server '%s/%s' is not in published status", ns, slug), r.URL.Path)
@@ -544,6 +566,13 @@ func (h *MCPHandlers) PatchServer(w http.ResponseWriter, r *http.Request) {
 	if p.Name == "" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"name is required", r.URL.Path)
+		return
+	}
+
+	// Editors enqueue the metadata edit for review; Server Admins apply now.
+	if !auth.IsServerAdminFromContext(r.Context()) {
+		enqueueEntryChange(w, r, h.db, h.audit, domain.EntryResourceMCPServer, srv.ID, ns, slug,
+			domain.EntryChangeMetadataEdit, p, domain.ActionMCPChangeRequested)
 		return
 	}
 

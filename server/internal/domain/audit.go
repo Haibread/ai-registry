@@ -50,6 +50,22 @@ const (
 	ActionAgentDeletionApproved  AuditAction = "agent.deletion_approved"
 	ActionAgentDeletionRejected  AuditAction = "agent.deletion_rejected"
 
+	// Entry-change workflow actions. An Editor's visibility / deprecate /
+	// metadata-edit request is now queued instead of applied immediately; a
+	// Reviewer approves or rejects it. The concrete action and payload live in
+	// the event metadata so "what was changed" is answerable from the log.
+	// (Server Admins keep the immediate path, which still fires the concrete
+	// ActionMCPServerVisibility / ...Deprecated / ...Updated events.)
+	ActionMCPChangeRequested AuditAction = "mcp_server.change_requested"
+	ActionMCPChangeApproved  AuditAction = "mcp_server.change_approved"
+	ActionMCPChangeRejected  AuditAction = "mcp_server.change_rejected"
+	ActionMCPChangeWithdrawn AuditAction = "mcp_server.change_withdrawn"
+
+	ActionAgentChangeRequested AuditAction = "agent.change_requested"
+	ActionAgentChangeApproved  AuditAction = "agent.change_approved"
+	ActionAgentChangeRejected  AuditAction = "agent.change_rejected"
+	ActionAgentChangeWithdrawn AuditAction = "agent.change_withdrawn"
+
 	// RBAC actions. The security-sensitive mutations capture the
 	// target principal / grant in the event metadata so "who granted whom what,
 	// and when" is answerable from the log.

@@ -242,6 +242,42 @@ queue, scoped to the entry rather than a single version.
 
 Agents mirror MCP servers exactly, including this change-approval column set.
 
+**Entry-change axis** (visibility / deprecate / metadata edit)
+
+Beyond version content and deletion, the three remaining entry-level mutations
+also pass through the review queue. Rather than bespoke columns per action (as
+the deletion flow uses), they share one generic `entry_change_requests` table:
+a pending row carries the proposed mutation as a JSONB `payload`, and the
+approve path dispatches on `(resource_type, action)` to apply it inside the
+same transaction (`server/internal/store/entrychange.go`).
+
+```
+   Editor: POST /visibility | /deprecate | PATCH /{slug}
+              │
+              ▼
+        pending_review ──: change-request/approve (Reviewer) ──▶ applied
+              │                                                  (visibility flipped,
+              │ : change-request/withdraw (Editor)               status deprecated,
+              │ : change-request/reject (Reviewer)               or metadata updated)
+              ▼
+        withdrawn / rejected
+```
+
+- **One pending change per entry** (any action), enforced by a partial unique
+  index — independent of the one-pending-version and pending-deletion
+  constraints, exactly as those two already coexist. An entry can therefore
+  have a pending version, a pending deletion, and a pending entry-change at
+  once, but only one entry-change at a time.
+- **Server Admin escape hatch.** Non-admin Editors enqueue (HTTP 202); a Server
+  Admin keeps the immediate path (HTTP 200), consistent with the reviewer
+  direct-publish and admin force-delete hatches. Approving an entry-change logs
+  `*.change_approved` (with the concrete action in metadata); the admin
+  immediate path still logs the concrete `*.visibility_changed` /
+  `*.deprecated` / `*.updated` event.
+- **Three channels, one queue.** `ListReviewQueue` unions version-review,
+  deletion-request, and entry-change rows; the `kind` discriminator gained
+  `mcp_change` / `agent_change`, carrying `action` + `payload` for diff display.
+
 State-machine implementation and the discriminated `409` error types: see
 `server/internal/domain/` and `server/internal/http/handlers/review.go`. Error
 responses follow RFC 7807; the full catalogue is in `server/api/openapi.yaml`.

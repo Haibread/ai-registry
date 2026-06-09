@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
@@ -46,6 +47,15 @@ func (h *MCPHandlers) SetVisibility(w http.ResponseWriter, r *http.Request) {
 	if body.Visibility == "public" && srv.Status != domain.StatusPublished && srv.Status != domain.StatusDeprecated {
 		problem.Write(w, http.StatusConflict, "visibility-requires-approval",
 			"This entry has no approved version yet; submit it and have a Reviewer approve it before making it public.", r.URL.Path)
+		return
+	}
+
+	// Editors enqueue the change for review; Server Admins keep the immediate
+	// path as a break-glass escape hatch.
+	if !auth.IsServerAdminFromContext(r.Context()) {
+		enqueueEntryChange(w, r, h.db, h.audit, domain.EntryResourceMCPServer, srv.ID, ns, slug,
+			domain.EntryChangeVisibility, map[string]string{"visibility": body.Visibility},
+			domain.ActionMCPChangeRequested)
 		return
 	}
 
@@ -102,6 +112,13 @@ func (h *AgentHandlers) SetVisibility(w http.ResponseWriter, r *http.Request) {
 	if body.Visibility == "public" && agent.Status != domain.StatusPublished && agent.Status != domain.StatusDeprecated {
 		problem.Write(w, http.StatusConflict, "visibility-requires-approval",
 			"This entry has no approved version yet; submit it and have a Reviewer approve it before making it public.", r.URL.Path)
+		return
+	}
+
+	if !auth.IsServerAdminFromContext(r.Context()) {
+		enqueueEntryChange(w, r, h.db, h.audit, domain.EntryResourceAgent, agent.ID, ns, slug,
+			domain.EntryChangeVisibility, map[string]string{"visibility": body.Visibility},
+			domain.ActionAgentChangeRequested)
 		return
 	}
 

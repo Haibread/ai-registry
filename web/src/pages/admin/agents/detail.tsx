@@ -41,7 +41,12 @@ export default function AdminAgentDetail() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-agent-detail', ns, slug] })
     queryClient.invalidateQueries({ queryKey: ['admin-agents'] })
+    queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
   }
+
+  // Editors enqueue these actions for review; Server Admins apply immediately.
+  const submitToast = (appliedMsg: string) =>
+    perms.isServerAdmin ? appliedMsg : 'Submitted for review'
 
   const visibilityMutation = useMutation({
     mutationFn: async (newVisibility: 'public' | 'private') => {
@@ -52,7 +57,7 @@ export default function AdminAgentDetail() {
       if (error) throw new Error(problemMessage(error, 'Failed to change visibility.'))
       return newVisibility
     },
-    onSuccess: (v) => { invalidate(); toast.success(`Now ${v}`) },
+    onSuccess: (v) => { invalidate(); toast.success(submitToast(`Now ${v}`)) },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -63,7 +68,7 @@ export default function AdminAgentDetail() {
       })
       if (error) throw new Error(problemMessage(error, 'Failed to deprecate.'))
     },
-    onSuccess: () => { invalidate(); toast.success('Agent deprecated') },
+    onSuccess: () => { invalidate(); toast.success(submitToast('Agent deprecated')) },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -75,7 +80,18 @@ export default function AdminAgentDetail() {
       })
       if (error) throw new Error(problemMessage(error, 'Update failed.'))
     },
-    onSuccess: () => { invalidate(); setEditOpen(false); toast.success('Agent updated') },
+    onSuccess: () => { invalidate(); setEditOpen(false); toast.success(submitToast('Agent updated')) },
+  })
+
+  const withdrawChangeMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await api.POST('/api/v1/agents/{namespace}/{slug}/change-request/withdraw', {
+        params: { path: { namespace: ns!, slug: slug! } },
+      })
+      if (error) throw new Error(problemMessage(error, 'Failed to withdraw change.'))
+    },
+    onSuccess: () => { invalidate(); toast.success('Change withdrawn') },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const deleteMutation = useMutation({
@@ -102,6 +118,13 @@ export default function AdminAgentDetail() {
   )
 
   const lv = data.latest_version
+  const pendingChange = data.pending_change
+  const changePending = !!pendingChange && !perms.isServerAdmin
+  const changeActionLabel: Record<string, string> = {
+    visibility: 'Visibility change',
+    deprecation: 'Deprecation',
+    metadata_edit: 'Metadata edit',
+  }
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -129,6 +152,34 @@ export default function AdminAgentDetail() {
           if (target === 'deprecated') deprecateMutation.mutate()
         }}
       />
+
+      {pendingChange && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+        >
+          <span>
+            <span className="font-medium">
+              {changeActionLabel[pendingChange.action] ?? 'Change'}
+            </span>{' '}
+            pending review
+            {pendingChange.submitted_by_email && (
+              <> — submitted by <span className="font-mono">{pendingChange.submitted_by_email}</span></>
+            )}
+          </span>
+          {perms.canEdit(ns) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              disabled={withdrawChangeMutation.isPending}
+              onClick={() => withdrawChangeMutation.mutate()}
+            >
+              Withdraw
+            </Button>
+          )}
+        </div>
+      )}
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted-foreground">Namespace / Slug</dt>
@@ -307,6 +358,8 @@ export default function AdminAgentDetail() {
               <Button
                 variant="outline"
                 size="sm"
+                disabled={changePending && !editOpen}
+                title={changePending ? 'A change is already pending review' : undefined}
                 onClick={() => setEditOpen(v => !v)}
               >
                 {editOpen ? 'Cancel edit' : 'Edit'}
@@ -323,8 +376,14 @@ export default function AdminAgentDetail() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={visibilityMutation.isPending || blocked}
-                  title={blocked ? 'Approve a published version before making this public' : undefined}
+                  disabled={visibilityMutation.isPending || blocked || changePending}
+                  title={
+                    changePending
+                      ? 'A change is already pending review'
+                      : blocked
+                        ? 'Approve a published version before making this public'
+                        : undefined
+                  }
                   onClick={() => visibilityMutation.mutate(data.visibility === 'public' ? 'private' : 'public')}
                 >
                   Make {data.visibility === 'public' ? 'private' : 'public'}
@@ -332,7 +391,7 @@ export default function AdminAgentDetail() {
               )
             })()}
 
-            {perms.canEdit(ns) && data.status === 'published' && (
+            {perms.canEdit(ns) && data.status === 'published' && !changePending && (
               <DeprecateButton
                 onDeprecate={() => deprecateMutation.mutate()}
                 entityName={data.name}

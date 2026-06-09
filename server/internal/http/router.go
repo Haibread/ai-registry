@@ -332,6 +332,12 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				r.With(requireMCPServerNS).Post("/deletion-request", revH.RequestMCPDeletion)
 				r.With(requireReviewerNS).Post("/deletion-request/approve", revH.ApproveMCPDeletion)
 				r.With(requireReviewerNS).Post("/deletion-request/reject", revH.RejectMCPDeletion)
+				// Entry-change review flow (visibility / deprecate / metadata edit).
+				// The submit step is the POST /visibility, /deprecate, and PATCH /
+				// endpoints above, which now enqueue for non-admin Editors.
+				r.With(requireMCPServerNS).Post("/change-request/withdraw", revH.WithdrawMCPChange)
+				r.With(requireReviewerNS).Post("/change-request/approve", revH.ApproveMCPChange)
+				r.With(requireReviewerNS).Post("/change-request/reject", revH.RejectMCPChange)
 			})
 		})
 
@@ -371,6 +377,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				r.With(requireAgentNS).Post("/deletion-request", revH.RequestAgentDeletion)
 				r.With(requireReviewerNS).Post("/deletion-request/approve", revH.ApproveAgentDeletion)
 				r.With(requireReviewerNS).Post("/deletion-request/reject", revH.RejectAgentDeletion)
+				// Entry-change review flow (visibility / deprecate / metadata edit).
+				r.With(requireAgentNS).Post("/change-request/withdraw", revH.WithdrawAgentChange)
+				r.With(requireReviewerNS).Post("/change-request/approve", revH.ApproveAgentChange)
+				r.With(requireReviewerNS).Post("/change-request/reject", revH.RejectAgentChange)
 			})
 		})
 
