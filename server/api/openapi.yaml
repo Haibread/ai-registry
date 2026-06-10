@@ -1399,12 +1399,23 @@ paths:
     post:
       operationId: submitMCPVersion
       summary: Submit an MCP server version for review
+      description: >
+        The optional body carries the author's release intent: with
+        `request_public: true`, approving this submission also flips the
+        owning entry's visibility to public (atomically with the approval).
+        Withdrawing the submission drops the request; a resubmission states
+        it afresh.
       tags: [mcp, review]
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
         - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitVersionRequest" }
       responses:
         "204": { description: submitted }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1444,6 +1455,10 @@ paths:
     post:
       operationId: approveMCPVersion
       summary: Approve a pending MCP server version (reviewer)
+      description: >
+        Publishes the version. When the submission carried
+        `request_public: true`, the owning entry's visibility flips to
+        public in the same transaction.
       tags: [mcp, review]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -2130,12 +2145,23 @@ paths:
     post:
       operationId: submitAgentVersion
       summary: Submit an agent version for review
+      description: >
+        The optional body carries the author's release intent: with
+        `request_public: true`, approving this submission also flips the
+        owning entry's visibility to public (atomically with the approval).
+        Withdrawing the submission drops the request; a resubmission states
+        it afresh.
       tags: [agents, review]
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
         - $ref: "#/components/parameters/VersionParam"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitVersionRequest" }
       responses:
         "204": { description: submitted }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2172,6 +2198,10 @@ paths:
     post:
       operationId: approveAgentVersion
       summary: Approve a pending agent version (reviewer)
+      description: >
+        Publishes the version. When the submission carried
+        `request_public: true`, the owning entry's visibility flips to
+        public in the same transaction.
       tags: [agents, review]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -3150,6 +3180,19 @@ components:
 
     # ── Change-approval workflow ────────────────────────────────────────
 
+    SubmitVersionRequest:
+      type: object
+      description: >
+        Optional submit-for-review body. Omitting the body (or the field)
+        means no public-release request.
+      properties:
+        request_public:
+          type: boolean
+          description: >
+            Ask for the owning entry to be made public when this submission
+            is approved. Ignored (no-op) if the entry is already public by
+            approval time.
+
     ApproveRequest:
       type: object
       required: [revision]
@@ -3257,6 +3300,11 @@ components:
           description: |
             Present on `*_version` and `*_change` items (the optimistic-
             concurrency token passed back on approve/reject).
+        request_public:
+          type: boolean
+          description: |
+            Present on `*_version` items only — the author asked for the
+            entry to be made public when this submission is approved.
         submitted_at: { type: string, format: date-time }
         submitted_by:
           type: string
@@ -3566,6 +3614,12 @@ components:
         rejection_reason:
           type: string
           description: Free-text reason persisted on the rejected version row.
+        request_public:
+          type: boolean
+          description: >
+            Author's release intent for the in-flight submission — approval
+            also makes the owning entry public. Set on submit, cleared on
+            withdraw.
         created_at:
           type: string
           format: date-time
@@ -3821,6 +3875,12 @@ components:
           enum: [approved, rejected]
         rejection_reason:
           type: string
+        request_public:
+          type: boolean
+          description: >
+            Author's release intent for the in-flight submission — approval
+            also makes the owning entry public. Set on submit, cleared on
+            withdraw.
         created_at:
           type: string
           format: date-time

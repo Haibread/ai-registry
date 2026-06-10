@@ -403,6 +403,7 @@ test.describe('Review workflow honors separation of duties', () => {
     await author.goto(`/admin/mcp/${pub.slug}/${slug}`)
     const row = author.locator('tr', { hasText: '1.0.0' })
     await row.getByRole('button', { name: /^submit$/i }).click()
+    await confirmDialog(author, /^submit for review$/i)
     await expect(row.getByText(/pending review/i)).toBeVisible({ timeout: 10_000 })
 
     // The editor has no approve affordance anywhere on the entry page…
@@ -453,6 +454,7 @@ test.describe('Review workflow — withdraw, conflict, and cross-role reject', (
     await author.goto(`/admin/mcp/${pub.slug}/${slug}`)
     const row = author.locator('tr', { hasText: 'v1.0.0' })
     await row.getByRole('button', { name: /^submit$/i }).click()
+    await confirmDialog(author, /^submit for review$/i)
     await expect(row.getByText(/pending review/i)).toBeVisible({ timeout: 10_000 })
 
     // Withdraw returns it to draft: the Withdraw button gives way to Submit.
@@ -477,10 +479,12 @@ test.describe('Review workflow — withdraw, conflict, and cross-role reject', (
     await author.goto(`/admin/mcp/${pub.slug}/${slug}`)
     // Submit the first version → pending.
     await author.locator('tr', { hasText: 'v1.0.0' }).getByRole('button', { name: /^submit$/i }).click()
+    await confirmDialog(author, /^submit for review$/i)
     await expect(author.locator('tr', { hasText: 'v1.0.0' }).getByText(/pending review/i)).toBeVisible({ timeout: 10_000 })
     // Only one version may be pending per entry, so submitting the second one
     // surfaces the friendly conflict message (mapped from review-already-pending).
     await author.locator('tr', { hasText: 'v2.0.0' }).getByRole('button', { name: /^submit$/i }).click()
+    await confirmDialog(author, /^submit for review$/i)
     await expect(author.getByText(/already pending review/i)).toBeVisible({ timeout: 10_000 })
 
     // Clean up: withdraw the pending version so it doesn't linger in the shared
@@ -500,6 +504,7 @@ test.describe('Review workflow — withdraw, conflict, and cross-role reject', (
     const author = await pageAs(browser, 'author')
     await author.goto(`/admin/mcp/${pub.slug}/${slug}`)
     await author.locator('tr', { hasText: 'v1.0.0' }).getByRole('button', { name: /^submit$/i }).click()
+    await confirmDialog(author, /^submit for review$/i)
     await expect(author.locator('tr', { hasText: 'v1.0.0' }).getByText(/pending review/i)).toBeVisible({ timeout: 10_000 })
 
     // Reviewer rejects from the queue with a reason.

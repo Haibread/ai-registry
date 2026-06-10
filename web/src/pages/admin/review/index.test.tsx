@@ -102,6 +102,18 @@ describe('AdminReviewQueue', () => {
     expect(screen.getByText('Agent deletion')).toBeInTheDocument()
   })
 
+  it('flags a version that will go public on approval, in the row and the confirm', async () => {
+    mockGET.mockResolvedValue({
+      data: { items: [{ ...mcpVersionItem, request_public: true }] },
+    })
+    renderPage()
+    // The row badge announces the author's release intent.
+    expect(await screen.findByText(/public on approval/i)).toBeInTheDocument()
+    // The approve confirm spells out the bigger blast radius.
+    fireEvent.click(screen.getByRole('button', { name: /^approve$/i }))
+    expect(screen.getByText(/makes the entry public/i)).toBeInTheDocument()
+  })
+
   it('renders an empty state when nothing is pending', async () => {
     mockGET.mockResolvedValue({ data: { items: [] } })
     renderPage()

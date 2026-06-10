@@ -247,5 +247,13 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /user-access\.spec\.ts/,
     },
+    {
+      name: "request-public",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      dependencies: ["setup"],
+      testMatch: /request-public\.spec\.ts/,
+    },
   ],
 })

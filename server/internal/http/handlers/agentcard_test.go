@@ -191,7 +191,7 @@ func TestAgentCardHandler_PerAgentCard_HidesPendingVersion(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateAgentVersion 1.1.0: %v", err)
 	}
-	if err := testDB.SubmitAgentVersion(context.Background(), ag.ID, "1.1.0", store.Actor{Subject: "a", Email: "a@x"}); err != nil {
+	if err := testDB.SubmitAgentVersion(context.Background(), ag.ID, "1.1.0", false, store.Actor{Subject: "a", Email: "a@x"}); err != nil {
 		t.Fatalf("SubmitAgentVersion: %v", err)
 	}
 

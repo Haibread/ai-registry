@@ -746,6 +746,14 @@ implement; no UI-only features).
 3. **Reviewer-first review queue.** P2.4 fixes the landing; a deeper investment (filters,
    diffs, batch decisions) is a roadmap question.
 
+> ✅ **RESOLVED (2026-06-10, follow-up): the J1 "approved but invisible" gap.**
+> Owner decision: the release intent belongs to the **author**, not the
+> reviewer. Submit-for-review now takes an optional `request_public` flag
+> ("create and ask for publish") — offered in the submit dialog and create
+> forms while the entry is private. Approval publishes the version and makes
+> the entry public atomically; the queue row and the approve confirm both
+> announce the bigger blast radius; withdraw/reject leave the entry private.
+
 ---
 
 ## 7. Constraints for whoever implements this

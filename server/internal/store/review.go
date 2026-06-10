@@ -45,8 +45,10 @@ type Actor struct {
 // SubmitMCPVersion transitions a Draft or Rejected version to
 // PendingReview. The partial unique index `mcp_server_versions_one_pending_idx`
 // rejects the submission with ErrConflict if another version on the same
-// server is already in PendingReview.
-func (db *DB) SubmitMCPVersion(ctx context.Context, serverID, version string, a Actor) error {
+// server is already in PendingReview. requestPublic records the author's
+// release intent: approval also flips the owning entry's visibility to
+// public. Written on every submit so a resubmission states it afresh.
+func (db *DB) SubmitMCPVersion(ctx context.Context, serverID, version string, requestPublic bool, a Actor) error {
 	ctx, span := startSpan(ctx, "SubmitMCPVersion")
 	defer span.End()
 
@@ -57,12 +59,13 @@ func (db *DB) SubmitMCPVersion(ctx context.Context, serverID, version string, a 
 		    submitted_by       = $3,
 		    submitted_by_email = $4,
 		    rejection_reason   = NULL,
+		    request_public     = $5,
 		    updated_at         = NOW()
 		WHERE server_id = $1
 		  AND version   = $2
 		  AND review_state IN ('none', 'rejected')
 		  AND published_at IS NULL`,
-		serverID, version, a.Subject, a.Email)
+		serverID, version, a.Subject, a.Email, requestPublic)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -92,6 +95,7 @@ func (db *DB) WithdrawMCPVersion(ctx context.Context, serverID, version string, 
 		    submitted_at       = NULL,
 		    submitted_by       = NULL,
 		    submitted_by_email = NULL,
+		    request_public     = false,
 		    updated_at         = NOW()
 		WHERE server_id = $1
 		  AND version   = $2
@@ -109,21 +113,26 @@ func (db *DB) WithdrawMCPVersion(ctx context.Context, serverID, version string, 
 
 // ApproveMCPVersion transitions a PendingReview version to published:
 // review_state='none', published_at=NOW() (if not already set), and the
-// parent server's status flips to 'published' when it was 'draft'. The
-// revision check closes the two-reviewers-approving-simultaneously race —
-// the conditional UPDATE matches at most one row.
-func (db *DB) ApproveMCPVersion(ctx context.Context, serverID, version string, expectedRevision int, a Actor) error {
+// parent server's status flips to 'published' when it was 'draft'. When the
+// submission requested a public release (request_public), the entry's
+// visibility flips to public in the same transaction — madePublic reports
+// whether that actually changed anything (false for an already-public
+// entry or a submission without the request). The revision check closes
+// the two-reviewers-approving-simultaneously race — the conditional UPDATE
+// matches at most one row.
+func (db *DB) ApproveMCPVersion(ctx context.Context, serverID, version string, expectedRevision int, a Actor) (madePublic bool, err error) {
 	ctx, span := startSpan(ctx, "ApproveMCPVersion")
 	defer span.End()
 
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("begin tx: %w", err)
+		return false, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	tag, err := tx.Exec(ctx, `
+	var requestPublic bool
+	err = tx.QueryRow(ctx, `
 		UPDATE mcp_server_versions
 		SET review_state      = 'none',
 		    reviewed_at       = NOW(),
@@ -135,21 +144,22 @@ func (db *DB) ApproveMCPVersion(ctx context.Context, serverID, version string, e
 		WHERE server_id    = $1
 		  AND version      = $2
 		  AND review_state = 'pending_review'
-		  AND revision     = $5`,
-		serverID, version, a.Subject, a.Email, expectedRevision)
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("approving version: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
+		  AND revision     = $5
+		RETURNING request_public`,
+		serverID, version, a.Subject, a.Email, expectedRevision).Scan(&requestPublic)
+	if errors.Is(err, pgx.ErrNoRows) {
 		// Fall back to a discriminating SELECT so the caller can map the
 		// failure to the correct 409 type (or 404).
 		if err := diagnoseMCPApproveMissTx(ctx, tx, serverID, version, expectedRevision); err != nil {
 			recordErr(span, err)
-			return err
+			return false, err
 		}
 		// Defensive: should not reach here.
-		return ErrReviewStateMismatch
+		return false, ErrReviewStateMismatch
+	}
+	if err != nil {
+		recordErr(span, err)
+		return false, fmt.Errorf("approving version: %w", err)
 	}
 
 	// Promote the parent entry from draft → published once the first
@@ -158,14 +168,28 @@ func (db *DB) ApproveMCPVersion(ctx context.Context, serverID, version string, e
 		`UPDATE mcp_servers SET status='published', updated_at=NOW() WHERE id=$1 AND status='draft'`,
 		serverID); err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("promoting server status: %w", err)
+		return false, fmt.Errorf("promoting server status: %w", err)
+	}
+
+	// Apply the author's requested public release atomically with the
+	// approval. Conditional on 'private' so an already-public entry is a
+	// no-op and madePublic stays honest.
+	if requestPublic {
+		tag, err := tx.Exec(ctx,
+			`UPDATE mcp_servers SET visibility='public', updated_at=NOW() WHERE id=$1 AND visibility='private'`,
+			serverID)
+		if err != nil {
+			recordErr(span, err)
+			return false, fmt.Errorf("applying requested public visibility: %w", err)
+		}
+		madePublic = tag.RowsAffected() > 0
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("commit tx: %w", err)
+		return false, fmt.Errorf("commit tx: %w", err)
 	}
-	return nil
+	return madePublic, nil
 }
 
 // RejectMCPVersion transitions a PendingReview version to Rejected
@@ -432,6 +456,9 @@ type ReviewQueueItem struct {
 	SubmittedAt      time.Time
 	SubmittedBy      string
 	SubmittedByEmail string
+	// RequestPublic (version items only): the author asked for the entry to
+	// be made public when this submission is approved.
+	RequestPublic bool
 	// Entry-change-only fields; empty/nil for version and deletion items.
 	ChangeID string
 	Action   string
@@ -505,6 +532,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		           v.submitted_at        AS submitted_at,
 		           coalesce(v.submitted_by, '')       AS submitted_by,
 		           coalesce(v.submitted_by_email, '') AS submitted_by_email,
+		           v.request_public      AS request_public,
 		           ''                    AS change_id,
 		           ''                    AS action,
 		           NULL::jsonb           AS payload
@@ -518,7 +546,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    SELECT 'agent_version'::text, p.id, p.slug, a.slug, a.id,
 		           av.version, av.revision, av.submitted_at,
 		           coalesce(av.submitted_by, ''), coalesce(av.submitted_by_email, ''),
-		           '', '', NULL::jsonb
+		           av.request_public, '', '', NULL::jsonb
 		    FROM agent_versions av
 		    JOIN agents     a ON a.id = av.agent_id
 		    JOIN publishers p ON p.id = a.publisher_id
@@ -529,7 +557,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    SELECT 'mcp_deletion'::text, p.id, p.slug, s.slug, s.id,
 		           '', 0, s.deletion_requested_at,
 		           coalesce(s.deletion_requested_by, ''), coalesce(s.deletion_requested_by_email, ''),
-		           '', '', NULL::jsonb
+		           false, '', '', NULL::jsonb
 		    FROM mcp_servers s
 		    JOIN publishers p ON p.id = s.publisher_id
 		    WHERE s.deletion_requested_at IS NOT NULL AND s.deleted_at IS NULL
@@ -539,7 +567,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    SELECT 'agent_deletion'::text, p.id, p.slug, a.slug, a.id,
 		           '', 0, a.deletion_requested_at,
 		           coalesce(a.deletion_requested_by, ''), coalesce(a.deletion_requested_by_email, ''),
-		           '', '', NULL::jsonb
+		           false, '', '', NULL::jsonb
 		    FROM agents a
 		    JOIN publishers p ON p.id = a.publisher_id
 		    WHERE a.deletion_requested_at IS NOT NULL AND a.deleted_at IS NULL
@@ -549,7 +577,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    SELECT 'mcp_change'::text, p.id, p.slug, s.slug, s.id,
 		           '', ecr.revision, ecr.submitted_at,
 		           coalesce(ecr.submitted_by, ''), coalesce(ecr.submitted_by_email, ''),
-		           ecr.id, ecr.action, ecr.payload
+		           false, ecr.id, ecr.action, ecr.payload
 		    FROM entry_change_requests ecr
 		    JOIN mcp_servers s ON s.id = ecr.entry_id
 		    JOIN publishers p ON p.id = s.publisher_id
@@ -560,7 +588,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    SELECT 'agent_change'::text, p.id, p.slug, a.slug, a.id,
 		           '', ecr.revision, ecr.submitted_at,
 		           coalesce(ecr.submitted_by, ''), coalesce(ecr.submitted_by_email, ''),
-		           ecr.id, ecr.action, ecr.payload
+		           false, ecr.id, ecr.action, ecr.payload
 		    FROM entry_change_requests ecr
 		    JOIN agents a ON a.id = ecr.entry_id
 		    JOIN publishers p ON p.id = a.publisher_id
@@ -568,7 +596,8 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		      AND a.status != 'deleted'
 		)
 		SELECT kind, publisher_slug, entry_slug, entry_id, version, revision,
-		       submitted_at, submitted_by, submitted_by_email, change_id, action, payload
+		       submitted_at, submitted_by, submitted_by_email, request_public,
+		       change_id, action, payload
 		FROM q
 		%s
 		ORDER BY submitted_at DESC, entry_id DESC
@@ -588,7 +617,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		if err := rows.Scan(
 			&kind, &it.PublisherSlug, &it.EntrySlug, &it.EntryID,
 			&it.Version, &it.Revision, &it.SubmittedAt,
-			&it.SubmittedBy, &it.SubmittedByEmail,
+			&it.SubmittedBy, &it.SubmittedByEmail, &it.RequestPublic,
 			&it.ChangeID, &it.Action, &it.Payload,
 		); err != nil {
 			recordErr(span, err)
@@ -666,7 +695,7 @@ func diagnoseMCPApproveMiss(ctx context.Context, db *DB, serverID, version strin
 // ── Agent versions: workflow ─────────────────────────────────────────────
 
 // SubmitAgentVersion is the agent equivalent of SubmitMCPVersion.
-func (db *DB) SubmitAgentVersion(ctx context.Context, agentID, version string, a Actor) error {
+func (db *DB) SubmitAgentVersion(ctx context.Context, agentID, version string, requestPublic bool, a Actor) error {
 	ctx, span := startSpan(ctx, "SubmitAgentVersion")
 	defer span.End()
 
@@ -677,12 +706,13 @@ func (db *DB) SubmitAgentVersion(ctx context.Context, agentID, version string, a
 		    submitted_by       = $3,
 		    submitted_by_email = $4,
 		    rejection_reason   = NULL,
+		    request_public     = $5,
 		    updated_at         = NOW()
 		WHERE agent_id = $1
 		  AND version  = $2
 		  AND review_state IN ('none', 'rejected')
 		  AND published_at IS NULL`,
-		agentID, version, a.Subject, a.Email)
+		agentID, version, a.Subject, a.Email, requestPublic)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -709,6 +739,7 @@ func (db *DB) WithdrawAgentVersion(ctx context.Context, agentID, version string,
 		    submitted_at       = NULL,
 		    submitted_by       = NULL,
 		    submitted_by_email = NULL,
+		    request_public     = false,
 		    updated_at         = NOW()
 		WHERE agent_id = $1
 		  AND version  = $2
@@ -724,19 +755,21 @@ func (db *DB) WithdrawAgentVersion(ctx context.Context, agentID, version string,
 	return nil
 }
 
-// ApproveAgentVersion is the agent equivalent of ApproveMCPVersion.
-func (db *DB) ApproveAgentVersion(ctx context.Context, agentID, version string, expectedRevision int, a Actor) error {
+// ApproveAgentVersion is the agent equivalent of ApproveMCPVersion,
+// including the request_public handling — see that function's commentary.
+func (db *DB) ApproveAgentVersion(ctx context.Context, agentID, version string, expectedRevision int, a Actor) (madePublic bool, err error) {
 	ctx, span := startSpan(ctx, "ApproveAgentVersion")
 	defer span.End()
 
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("begin tx: %w", err)
+		return false, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	tag, err := tx.Exec(ctx, `
+	var requestPublic bool
+	err = tx.QueryRow(ctx, `
 		UPDATE agent_versions
 		SET review_state      = 'none',
 		    reviewed_at       = NOW(),
@@ -748,30 +781,41 @@ func (db *DB) ApproveAgentVersion(ctx context.Context, agentID, version string, 
 		WHERE agent_id     = $1
 		  AND version      = $2
 		  AND review_state = 'pending_review'
-		  AND revision     = $5`,
-		agentID, version, a.Subject, a.Email, expectedRevision)
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("approving agent version: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
+		  AND revision     = $5
+		RETURNING request_public`,
+		agentID, version, a.Subject, a.Email, expectedRevision).Scan(&requestPublic)
+	if errors.Is(err, pgx.ErrNoRows) {
 		if err := diagnoseAgentApproveMissTx(ctx, tx, agentID, version, expectedRevision); err != nil {
 			recordErr(span, err)
-			return err
+			return false, err
 		}
-		return ErrReviewStateMismatch
+		return false, ErrReviewStateMismatch
+	}
+	if err != nil {
+		recordErr(span, err)
+		return false, fmt.Errorf("approving agent version: %w", err)
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE agents SET status='published', updated_at=NOW() WHERE id=$1 AND status='draft'`,
 		agentID); err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("promoting agent status: %w", err)
+		return false, fmt.Errorf("promoting agent status: %w", err)
+	}
+	if requestPublic {
+		tag, err := tx.Exec(ctx,
+			`UPDATE agents SET visibility='public', updated_at=NOW() WHERE id=$1 AND visibility='private'`,
+			agentID)
+		if err != nil {
+			recordErr(span, err)
+			return false, fmt.Errorf("applying requested public visibility: %w", err)
+		}
+		madePublic = tag.RowsAffected() > 0
 	}
 	if err := tx.Commit(ctx); err != nil {
 		recordErr(span, err)
-		return fmt.Errorf("commit tx: %w", err)
+		return false, fmt.Errorf("commit tx: %w", err)
 	}
-	return nil
+	return madePublic, nil
 }
 
 // RejectAgentVersion is the agent equivalent of RejectMCPVersion.

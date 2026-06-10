@@ -76,8 +76,12 @@ type AgentVersion struct {
 	ReviewedByEmail  string         `json:"reviewed_by_email,omitempty"`
 	ReviewDecision   ReviewDecision `json:"review_decision,omitempty"`
 	RejectionReason  string         `json:"rejection_reason,omitempty"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
+	// RequestPublic records the author's release intent for the in-flight
+	// submission: approval also flips the owning entry's visibility to
+	// public. Set on submit, cleared on withdraw.
+	RequestPublic bool      `json:"request_public,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // IsPublished reports whether this version has been published.

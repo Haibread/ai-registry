@@ -710,3 +710,85 @@ func TestReviewHandler_ListReviewQueue_GlobalReviewerSeesAll(t *testing.T) {
 		t.Errorf("len = %d, want 2 (global reviewer sees all publishers)", len(body.Items))
 	}
 }
+
+// TestReviewHandler_SubmitRequestPublic_ApproveMakesEntryPublic exercises the
+// author-side release intent end-to-end at the handler layer: submit with
+// {"request_public": true}, the queue surfaces the flag, and approval flips
+// the entry's visibility. The legacy empty-body submit keeps working and a
+// malformed body is a 422.
+func TestReviewHandler_SubmitRequestPublic_ApproveMakesEntryPublic(t *testing.T) {
+	resetTables(t)
+	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
+	r := newReviewRouter()
+
+	// Submit with the release intent.
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, authedRequest(
+		http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit",
+		[]byte(`{"request_public":true}`)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("submit: %d, body: %s", rec.Code, rec.Body.String())
+	}
+
+	// The queue carries the flag so the reviewer sees the blast radius.
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/review-queue", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("queue: %d", rec.Code)
+	}
+	var queue struct {
+		Items []struct {
+			Version       string `json:"version"`
+			RequestPublic bool   `json:"request_public"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&queue); err != nil {
+		t.Fatalf("decode queue: %v", err)
+	}
+	if len(queue.Items) != 1 || !queue.Items[0].RequestPublic {
+		t.Fatalf("queue item should carry request_public=true: %+v", queue.Items)
+	}
+
+	// Approval publishes AND makes the entry public.
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, authedRequest(
+		http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/approve",
+		[]byte(`{"revision":1}`)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	srv, err := testDB.GetMCPServer(context.Background(), "acme", "weather", false)
+	if err != nil {
+		t.Fatalf("GetMCPServer: %v", err)
+	}
+	if srv.Visibility != domain.VisibilityPublic {
+		t.Errorf("visibility = %q, want public", srv.Visibility)
+	}
+}
+
+func TestReviewHandler_Submit_MalformedBodyIs422(t *testing.T) {
+	resetTables(t)
+	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
+	r := newReviewRouter()
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, authedRequest(
+		http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit",
+		[]byte(`{"request_public": "yes please"}`)))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("malformed body: %d, want 422", rec.Code)
+	}
+
+	// Unknown fields are rejected too (decodeJSON DisallowUnknownFields).
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, authedRequest(
+		http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit",
+		[]byte(`{"make_public":true}`)))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("unknown field: %d, want 422", rec.Code)
+	}
+}

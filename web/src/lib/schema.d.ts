@@ -820,7 +820,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an MCP server version for review */
+        /**
+         * Submit an MCP server version for review
+         * @description The optional body carries the author's release intent: with `request_public: true`, approving this submission also flips the owning entry's visibility to public (atomically with the approval). Withdrawing the submission drops the request; a resubmission states it afresh.
+         */
         post: operations["submitMCPVersion"];
         delete?: never;
         options?: never;
@@ -854,7 +857,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending MCP server version (reviewer) */
+        /**
+         * Approve a pending MCP server version (reviewer)
+         * @description Publishes the version. When the submission carried `request_public: true`, the owning entry's visibility flips to public in the same transaction.
+         */
         post: operations["approveMCPVersion"];
         delete?: never;
         options?: never;
@@ -1210,7 +1216,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an agent version for review */
+        /**
+         * Submit an agent version for review
+         * @description The optional body carries the author's release intent: with `request_public: true`, approving this submission also flips the owning entry's visibility to public (atomically with the approval). Withdrawing the submission drops the request; a resubmission states it afresh.
+         */
         post: operations["submitAgentVersion"];
         delete?: never;
         options?: never;
@@ -1244,7 +1253,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending agent version (reviewer) */
+        /**
+         * Approve a pending agent version (reviewer)
+         * @description Publishes the version. When the submission carried `request_public: true`, the owning entry's visibility flips to public in the same transaction.
+         */
         post: operations["approveAgentVersion"];
         delete?: never;
         options?: never;
@@ -1804,6 +1816,11 @@ export interface components {
             next_cursor?: string;
             total_count?: number;
         };
+        /** @description Optional submit-for-review body. Omitting the body (or the field) means no public-release request. */
+        SubmitVersionRequest: {
+            /** @description Ask for the owning entry to be made public when this submission is approved. Ignored (no-op) if the entry is already public by approval time. */
+            request_public?: boolean;
+        };
         ApproveRequest: {
             /**
              * @description Revision the reviewer last loaded. The server compares this
@@ -1873,6 +1890,11 @@ export interface components {
              *     concurrency token passed back on approve/reject).
              */
             revision?: number;
+            /**
+             * @description Present on `*_version` items only — the author asked for the
+             *     entry to be made public when this submission is approved.
+             */
+            request_public?: boolean;
             /** Format: date-time */
             submitted_at: string;
             /** @description JWT subject of the submitter (UUID). */
@@ -2051,6 +2073,8 @@ export interface components {
             review_decision?: "approved" | "rejected";
             /** @description Free-text reason persisted on the rejected version row. */
             rejection_reason?: string;
+            /** @description Author's release intent for the in-flight submission — approval also makes the owning entry public. Set on submit, cleared on withdraw. */
+            request_public?: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2168,6 +2192,8 @@ export interface components {
             /** @enum {string} */
             review_decision?: "approved" | "rejected";
             rejection_reason?: string;
+            /** @description Author's release intent for the in-flight submission — approval also makes the owning entry public. Set on submit, cleared on withdraw. */
+            request_public?: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -4033,7 +4059,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubmitVersionRequest"];
+            };
+        };
         responses: {
             /** @description submitted */
             204: {
@@ -4881,7 +4911,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubmitVersionRequest"];
+            };
+        };
         responses: {
             /** @description submitted */
             204: {

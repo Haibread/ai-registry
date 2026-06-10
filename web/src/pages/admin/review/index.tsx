@@ -510,6 +510,15 @@ export default function AdminReviewQueue() {
                       rev {it.revision}
                     </Badge>
                   )}
+                  {it.request_public && (
+                    <Badge
+                      variant="default"
+                      className="text-xs"
+                      title="The submitter asked for this entry to be made public when the version is approved"
+                    >
+                      public on approval
+                    </Badge>
+                  )}
                   <span className="text-xs text-muted-foreground ml-auto">
                     {formatDate(it.submitted_at)}
                   </span>
@@ -603,8 +612,13 @@ export default function AdminReviewQueue() {
           : isDeletion
             ? `Approve deletion of ${ref}?`
             : `Approve ${actionLabel(it.action).toLowerCase()} on ${ref}?`
+        // A version approval that also flips visibility is a bigger decision
+        // than a plain publish — the confirm must say so (author-declared
+        // request_public).
         const description = isVersion(kind)
-          ? 'Approval publishes this version to the registry immediately.'
+          ? it.request_public
+            ? 'Approval publishes this version AND makes the entry public — it becomes visible to everyone immediately.'
+            : 'Approval publishes this version to the registry immediately.'
           : isDeletion
             ? 'This permanently deletes the entry and all its versions. It disappears from the registry immediately.'
             : 'The change is applied to the entry immediately.'
