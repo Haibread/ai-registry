@@ -191,14 +191,25 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
           </Button>
         )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Drafts are authored here and sent for reviewer approval.
-        Approve and reject happen on the{' '}
-        <Link to="/admin/review" className="text-primary hover:underline">
-          review queue
-        </Link>
-        .
-      </p>
+      {/* The review-queue page is reviewer-only — linking an editor there
+          lands on "Failed to load" (403), so the link is reserved for callers
+          who can actually open it (J1 step 3). */}
+      {canReview ? (
+        <p className="text-sm text-muted-foreground">
+          Drafts are authored here and sent for reviewer approval.
+          Approve and reject happen on the{' '}
+          <Link to="/admin/review" className="text-primary hover:underline">
+            review queue
+          </Link>
+          .
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Drafts are authored here and sent for reviewer approval. After you
+          submit a version, a reviewer approves or rejects it — you can track
+          its status on this page.
+        </p>
+      )}
 
       {actionError && (
         <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

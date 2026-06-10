@@ -69,6 +69,11 @@ export default function AdminAgentNew() {
   const [authScheme, setAuthScheme] = useState('_none')
   const [formError, setFormError] = useState<CreateError | null>(null)
 
+  // Publishing is a reviewer action; an editor's version goes through the
+  // review queue instead. The checkbox below adapts its label and behavior so
+  // the form never promises an outcome the caller's role cannot deliver (J1).
+  const canReview = perms.canReview(namespace)
+
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {
       const ns = namespace
@@ -146,19 +151,31 @@ export default function AdminAgentNew() {
         throw { step: 'version', message: msg }
       }
 
+      // Publish (reviewer) or submit for review (editor), if requested. The
+      // agent + version exist either way, so a failure here is reported as a
+      // warning on the detail page rather than aborting the create.
+      let warning: string | undefined
       if (formData.get('publish') === 'on') {
-        await authFetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/publish`, {
+        const action = canReview ? 'publish' : 'submit'
+        const res = await authFetch(`/api/v1/agents/${ns}/${slug}/versions/${version}/${action}`, {
           method: 'POST',
         })
+        if (!res.ok) {
+          const fallback = `Version created, but ${action} failed (HTTP ${res.status}).`
+          warning = fallback
+          try { warning = `Version created, but ${action} failed: ${problemMessage(await res.json(), fallback)}` } catch { /* body not JSON — keep default msg */ }
+        }
       }
 
-      return { namespace: ns, slug }
+      return { namespace: ns, slug, warning }
     },
-    onSuccess: ({ namespace: ns, slug }) => {
+    onSuccess: ({ namespace: ns, slug, warning }) => {
       // Drop the cached admin list so the new agent appears immediately on
       // return; the 30s staleTime would otherwise hide it until a refetch.
       queryClient.invalidateQueries({ queryKey: ['admin-agents'] })
-      toast.success('Agent created')
+      if (warning) toast.error(warning)
+      else if (canReview) toast.success('Agent created')
+      else toast.success('Agent created — version submitted for review')
       navigate(`/admin/agents/${ns}/${slug}`)
     },
     onError: (err: CreateError) => {
@@ -386,17 +403,24 @@ export default function AdminAgentNew() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                id="publish"
-                name="publish"
-                type="checkbox"
-                defaultChecked
-                className="h-4 w-4 rounded border border-input accent-primary"
-              />
-              <Label htmlFor="publish" className="cursor-pointer font-normal">
-                Publish version immediately
-              </Label>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <input
+                  id="publish"
+                  name="publish"
+                  type="checkbox"
+                  defaultChecked
+                  className="h-4 w-4 rounded border border-input accent-primary"
+                />
+                <Label htmlFor="publish" className="cursor-pointer font-normal">
+                  {canReview ? 'Publish version immediately' : 'Submit version for review'}
+                </Label>
+              </div>
+              {!canReview && (
+                <p className="text-xs text-muted-foreground pl-6">
+                  A reviewer approves it before it goes live.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

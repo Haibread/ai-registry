@@ -306,6 +306,19 @@ of scope for a review); it's harmless but you'll want to clean it when fixing th
 it doubles as a live repro.
 
 ### J1. The editor's "publish" journey is a maze with misleading signage (P1)
+
+> **RESOLVED 2026-06-10** (steps 1–3 + pipeline hint; step 4's
+> "bundle make-public into approval" remains a §6 product decision).
+> Create forms (MCP + agents) now branch on `canReview`: reviewers keep
+> "Publish version immediately"; editors get "Submit version for review"
+> (+ helper) and the form calls `/submit` instead of a doomed `/publish`.
+> The publish/submit step's response is checked — a failure surfaces as a
+> toast with problem details and still lands on the created entry (the
+> swallowed-403 at new.tsx:153 is gone). The versions-section helper links
+> the review queue only for reviewers; editors get track-it-here copy. The
+> entry detail page shows a one-line pipeline explainer for non-admin
+> editors while the entry is private. Verified live as `genai-author`:
+> create → submit → pending-review row + Withdraw, no silent 403.
 What the editor experiences, step by step:
 
 1. The create form shows **"Publish version immediately"**, checked by default

@@ -25,6 +25,15 @@ All notable changes to this project are documented here.
   blur with an inline `aria-invalid` error, and caps length at 63. Create-form
   failures also show the server's problem-details `detail` (e.g. which slug
   collided) instead of the bare status title.
+- **The create forms tell editors the truth about publishing.** For callers
+  without the Reviewer role the "Publish version immediately" checkbox is now
+  "Submit version for review" and actually submits the version (previously the
+  form fired a publish that 403'd and **silently swallowed the error**,
+  leaving a plain draft with no explanation). Publish/submit failures after a
+  successful create now surface as a toast with the server's detail. The
+  versions section no longer links non-reviewers to the review queue they
+  cannot open, and editors get a one-line pipeline explainer on the entry
+  page (submit → review → approve → make public).
 - **High-blast-radius admin actions now confirm first, and self-lockout is
   blocked.** Disable/Enable account, Grant/Revoke Server Admin, and role-grant
   revocation no longer fire on a single click — a themed confirmation dialog

@@ -174,6 +174,16 @@ export default function AdminAgentDetail() {
         }}
       />
 
+      {/* Editors get the pipeline spelled out once: nothing else in the UI
+          explains that publish and make-public are separate reviewed steps (J1). */}
+      {perms.canEdit(ns) && !perms.isServerAdmin && data.visibility === 'private' && (
+        <p className="text-sm text-muted-foreground max-w-prose">
+          How this goes live: author a version, submit it for review, a
+          reviewer approves it — then &ldquo;Make public&rdquo; (also reviewed)
+          exposes the entry in the public registry.
+        </p>
+      )}
+
       {pendingChange && (
         <div
           role="status"
