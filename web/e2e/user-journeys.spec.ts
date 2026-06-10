@@ -124,7 +124,11 @@ test.describe('MCP server lifecycle (UI create → publish → edit → version 
     await page.fill('input[name="pkg_version"]', '2.0.0')
     await page.fill('input[name="pkg_registry_base_url"]', 'https://registry.npmjs.org')
     await page.fill('textarea[name="capabilities"]', '{"tools":{"listChanged":true}}')
-    await page.fill('textarea[name="tools"]', '[{"name":"forecast","description":"Get a forecast"}]')
+    // Author the tool through the dual-mode editor's structured Form tab (the
+    // default). It serializes into a hidden `tools` input the submit reads.
+    await page.getByRole('button', { name: /add tool/i }).click()
+    await page.getByLabel('Tool 1 name').fill('forecast')
+    await page.getByLabel('Tool 1 description').fill('Get a forecast')
     await page.getByRole('button', { name: 'Create version' }).click()
     await expect(page.getByRole('cell', { name: /v2\.0\.0/ })).toBeVisible({ timeout: 10_000 })
 
