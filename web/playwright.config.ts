@@ -239,5 +239,13 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /admin-ux-polish\.spec\.ts/,
     },
+    {
+      name: "user-access",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      dependencies: ["setup"],
+      testMatch: /user-access\.spec\.ts/,
+    },
   ],
 })

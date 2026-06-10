@@ -617,10 +617,17 @@ everything else → `ErrorState` with retry.
 > Keys nav marked "planned"; `/admin/help/roles` role matrix linked from
 > the grants editor; "rev N" badge explains itself.
 >
-> **Deferred, with reasons:** per-user access view (needs a new
-> grants-by-user API aggregate — API-first); command palette (explicitly
-> backlog in the report); date-format mix kept deliberately (lists short,
-> audit full, activity relative).
+> **Deferred, with reasons:** command palette (explicitly backlog in the
+> report); date-format mix kept deliberately (lists short, audit full,
+> activity relative).
+>
+> ✅ **RESOLVED (2026-06-10, follow-up).** Per-user access view shipped:
+> `GET /api/v1/users/{id}/grants` aggregates direct grants ∪ grants via
+> local group membership (enriched with publisher/group handles), and the
+> admin user detail page renders an "Access" section — role/scope/via
+> table with drill-down links, a Server Admin callout, and an explicit
+> caveat that IdP-claim-derived roles are matched at sign-in and cannot
+> be listed from local state.
 
 ### Component vocabulary
 - Three form-control dialects coexist: Radix `Select` (forms), native `<select>`

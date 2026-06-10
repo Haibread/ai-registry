@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DetailPageSkeleton } from '@/components/ui/detail-page-skeleton'
 import { ErrorState } from '@/components/ui/error-state'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { useAuthClient } from '@/lib/api-client'
 import { useMe } from '@/auth/useMe'
 import { formatDate, problemMessage, HTTPError, isNotFound } from '@/lib/utils'
@@ -44,9 +46,21 @@ export default function AdminUserDetail() {
     enabled: !!id && true,
   })
 
+  const access = useQuery({
+    queryKey: ['admin-user-grants', id],
+    queryFn: async () => {
+      const { data, error } = await api.GET('/api/v1/users/{id}/grants', { params: { path: { id: id! } } })
+      if (error || !data) throw new Error(problemMessage(error, 'Failed to load this user’s access.'))
+      return data
+    },
+    enabled: !!id,
+  })
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-user', id] })
     queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+    // Granting/revoking Server Admin changes the access summary too.
+    queryClient.invalidateQueries({ queryKey: ['admin-user-grants', id] })
   }
 
   const patch = useMutation({
@@ -126,6 +140,97 @@ export default function AdminUserDetail() {
         <dt className="text-muted-foreground">Created</dt>
         <dd>{formatDate(user.created_at)}</dd>
       </dl>
+
+      <Separator />
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Access</h2>
+        <p className="text-sm text-muted-foreground max-w-prose">
+          Every role grant contributing to this user&apos;s access — granted
+          directly or through a group they are a member of.{' '}
+          <Link to="/admin/help/roles" className="text-primary hover:underline">
+            What can each role do?
+          </Link>
+        </p>
+
+        {user.is_server_admin && (
+          <p className="text-sm max-w-prose rounded-md border border-border bg-muted/50 px-3 py-2">
+            <ShieldCheck className="inline h-4 w-4 mr-1 align-text-bottom" aria-hidden="true" />
+            Server Admin — full access to every publisher and all server
+            administration. The grants below only take effect if that role is
+            revoked.
+          </p>
+        )}
+
+        {access.isPending ? (
+          <TableSkeleton rows={2} cols={3} />
+        ) : access.isError ? (
+          <ErrorState
+            message={access.error instanceof Error ? access.error.message : 'Failed to load this user’s access.'}
+            onRetry={() => access.refetch()}
+          />
+        ) : (access.data.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-2">No role grants.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Role</TableHead>
+                <TableHead>Scope</TableHead>
+                <TableHead>Via</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {access.data.items.map((g) => (
+                <TableRow key={g.id}>
+                  <TableCell>
+                    <Badge variant="secondary">{g.role}</Badge>
+                    {g.source === 'config' && (
+                      <Badge
+                        variant="muted"
+                        className="ml-1"
+                        title="Seeded from the server's bootstrap file; re-applied on every boot"
+                      >
+                        config
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {g.publisher_slug ? (
+                      <Link to={`/admin/publishers/${g.publisher_slug}`} className="text-primary hover:underline">
+                        {g.publisher_name || g.publisher_slug}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">All publishers</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {g.via === 'group' ? (
+                      <>
+                        <span className="text-muted-foreground">group </span>
+                        <Link to={`/admin/groups/${g.group_slug}`} className="text-primary hover:underline">
+                          {g.group_name || g.group_slug}
+                        </Link>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">direct</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ))}
+
+        {/* Local state cannot know a federated user's IdP claims — say so
+            rather than presenting the table as the whole truth. */}
+        {user.subject && (
+          <p className="text-sm text-muted-foreground max-w-prose">
+            Federated user — roles inherited from identity-provider groups are
+            matched at sign-in and aren&apos;t listed here.
+          </p>
+        )}
+      </section>
 
       <Separator />
 

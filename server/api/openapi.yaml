@@ -563,6 +563,34 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  /api/v1/users/{id}/grants:
+    get:
+      operationId: getUserGrants
+      summary: List a user's effective role grants (Server Admin)
+      description: >
+        Aggregates every role grant contributing to a user's access — grants
+        attached directly to the user plus grants inherited from groups the
+        user is a local member of. Grants bound to IdP claim groups are
+        matched per-request from the sign-in token and are NOT included; a
+        federated user may hold additional roles when their token names a
+        group slug.
+      tags: [rbac]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The user's effective grants
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserAccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/grants:
     get:
       operationId: listGlobalGrants
@@ -2890,6 +2918,42 @@ components:
         principal_type: { type: string, enum: [user, group] }
         principal_id: { type: string }
         role: { type: string, enum: [viewer, editor, reviewer, admin] }
+
+    UserAccessGrant:
+      type: object
+      required: [id, role, source, via, created_at]
+      description: >
+        One role grant contributing to a user's access. `via: direct` is a
+        grant attached to the user; `via: group` is inherited from a group the
+        user is a local member of (the group fields identify it). Publisher
+        fields are empty for a global (all-publishers) grant.
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [viewer, editor, reviewer, admin] }
+        publisher_id:
+          type: string
+          description: Empty for a global (all-publishers) grant.
+        publisher_slug: { type: string }
+        publisher_name: { type: string }
+        source: { type: string, enum: [api, config] }
+        via: { type: string, enum: [direct, group] }
+        group_id: { type: string }
+        group_slug: { type: string }
+        group_name: { type: string }
+        created_at: { type: string, format: date-time }
+
+    UserAccess:
+      type: object
+      required: [is_server_admin, items]
+      description: >
+        A user's effective access — the Server Admin flag plus every role
+        grant held directly or through local group membership. Roles a
+        federated user gains from IdP claim groups at sign-in are not listed.
+      properties:
+        is_server_admin: { type: boolean }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UserAccessGrant" }
 
     MeGrant:
       type: object

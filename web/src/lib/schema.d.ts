@@ -416,6 +416,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{id}/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a user's effective role grants (Server Admin)
+         * @description Aggregates every role grant contributing to a user's access — grants attached directly to the user plus grants inherited from groups the user is a local member of. Grants bound to IdP claim groups are matched per-request from the sign-in token and are NOT included; a federated user may hold additional roles when their token names a group slug.
+         */
+        get: operations["getUserGrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/grants": {
         parameters: {
             query?: never;
@@ -1661,6 +1681,30 @@ export interface components {
             principal_id: string;
             /** @enum {string} */
             role: "viewer" | "editor" | "reviewer" | "admin";
+        };
+        /** @description One role grant contributing to a user's access. `via: direct` is a grant attached to the user; `via: group` is inherited from a group the user is a local member of (the group fields identify it). Publisher fields are empty for a global (all-publishers) grant. */
+        UserAccessGrant: {
+            id: string;
+            /** @enum {string} */
+            role: "viewer" | "editor" | "reviewer" | "admin";
+            /** @description Empty for a global (all-publishers) grant. */
+            publisher_id?: string;
+            publisher_slug?: string;
+            publisher_name?: string;
+            /** @enum {string} */
+            source: "api" | "config";
+            /** @enum {string} */
+            via: "direct" | "group";
+            group_id?: string;
+            group_slug?: string;
+            group_name?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description A user's effective access — the Server Admin flag plus every role grant held directly or through local group membership. Roles a federated user gains from IdP claim groups at sign-in are not listed. */
+        UserAccess: {
+            is_server_admin: boolean;
+            items: components["schemas"]["UserAccessGrant"][];
         };
         /** @description An effective role grant held by the caller. Per-publisher grants carry the publisher slug/name; a global (all-publishers) grant leaves the publisher fields empty. */
         MeGrant: {
@@ -3131,6 +3175,31 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationError"];
+        };
+    };
+    getUserGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user's effective grants */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAccess"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listGlobalGrants: {

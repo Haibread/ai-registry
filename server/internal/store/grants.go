@@ -233,6 +233,74 @@ func (db *DB) ListGrantsForPrincipal(ctx context.Context, userID string, claimGr
 	return out, nil
 }
 
+// UserAccessGrant is one role grant contributing to a user's access, enriched
+// for display: the target publisher's slug/name (empty for a global grant)
+// and, when inherited through a local group membership, the group's identity.
+// Powers GET /api/v1/users/{id}/grants.
+type UserAccessGrant struct {
+	ID            string             `json:"id"`
+	Role          domain.Role        `json:"role"`
+	PublisherID   string             `json:"publisher_id,omitempty"`
+	PublisherSlug string             `json:"publisher_slug,omitempty"`
+	PublisherName string             `json:"publisher_name,omitempty"`
+	Source        domain.GrantSource `json:"source"`
+	Via           string             `json:"via"` // "direct" | "group"
+	GroupID       string             `json:"group_id,omitempty"`
+	GroupSlug     string             `json:"group_slug,omitempty"`
+	GroupName     string             `json:"group_name,omitempty"`
+	CreatedAt     time.Time          `json:"created_at"`
+}
+
+// ListUserAccess returns every role grant contributing to a user's access:
+// grants attached directly to the user plus grants attached to groups the
+// user is a local member of. Grants bound to IdP claim groups are matched
+// per-request from the sign-in token and are intentionally absent — local
+// state cannot know a federated user's claims.
+func (db *DB) ListUserAccess(ctx context.Context, userID string) ([]UserAccessGrant, error) {
+	ctx, span := startSpan(ctx, "ListUserAccess")
+	defer span.End()
+
+	rows, err := db.Pool.Query(ctx, `
+		SELECT g.id, g.role, coalesce(g.publisher_id, ''),
+		       coalesce(p.slug, ''), coalesce(p.name, ''), g.source,
+		       coalesce(gr.id, ''), coalesce(gr.slug, ''), coalesce(gr.name, ''),
+		       g.created_at
+		FROM role_grants g
+		LEFT JOIN publishers p ON p.id = g.publisher_id
+		LEFT JOIN groups gr ON g.principal_type = 'group' AND gr.id = g.principal_id
+		WHERE (g.principal_type = 'user'  AND g.principal_id = $1)
+		   OR (g.principal_type = 'group' AND g.principal_id IN (
+		          SELECT group_id FROM group_members WHERE user_id = $1))
+		ORDER BY coalesce(p.slug, ''), g.role, g.created_at, g.id`,
+		userID)
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("listing user access: %w", err)
+	}
+	defer rows.Close()
+
+	var out []UserAccessGrant
+	for rows.Next() {
+		var g UserAccessGrant
+		if err := rows.Scan(&g.ID, &g.Role, &g.PublisherID, &g.PublisherSlug,
+			&g.PublisherName, &g.Source, &g.GroupID, &g.GroupSlug, &g.GroupName,
+			&g.CreatedAt); err != nil {
+			recordErr(span, err)
+			return nil, fmt.Errorf("scanning user access grant: %w", err)
+		}
+		g.Via = "direct"
+		if g.GroupID != "" {
+			g.Via = "group"
+		}
+		out = append(out, g)
+	}
+	if err := rows.Err(); err != nil {
+		recordErr(span, err)
+		return nil, err
+	}
+	return out, nil
+}
+
 // ListGrantsByPublisher returns the grants scoped to a single publisher
 // (publisher_id = X). Global grants are excluded — list those via
 // ListGlobalGrants.
