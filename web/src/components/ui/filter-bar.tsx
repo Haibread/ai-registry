@@ -26,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { NativeSelect } from '@/components/ui/native-select'
 
 interface FilterBarProps {
   q?: string
@@ -34,6 +35,9 @@ interface FilterBarProps {
   visibility?: string
   statusOptions: string[]
   showVisibility?: boolean
+  /** Hide the free-text publisher filter (e.g. when the page is already
+   *  scoped to one publisher and the filter could contradict the scope). */
+  showPublisherFilter?: boolean
   searchPlaceholder?: string
   /** MCP-only: transport type filter options */
   transportOptions?: string[]
@@ -43,10 +47,7 @@ interface FilterBarProps {
   sortOptions?: { value: string; label: string }[]
 }
 
-const selectClass =
-  'h-9 rounded-md border border-input bg-background px-3 text-sm ' +
-  'text-foreground shadow-xs transition-colors focus-visible:outline-hidden ' +
-  'focus-visible:ring-1 focus-visible:ring-ring min-w-[130px]'
+const selectClass = 'min-w-[130px]'
 
 const DEBOUNCE_MS = 300
 
@@ -59,6 +60,7 @@ export function FilterBar({
   // but we don't destructure them here.
   statusOptions,
   showVisibility = false,
+  showPublisherFilter = true,
   searchPlaceholder = 'Search…',
   transportOptions = [],
   registryTypeOptions = [],
@@ -166,21 +168,23 @@ export function FilterBar({
       </div>
 
       {/* Namespace / publisher */}
-      <Input
-        name="namespace"
-        value={namespace}
-        onChange={(e) => {
-          setNamespace(e.target.value)
-          applyDebounced({ q, namespace: e.target.value })
-        }}
-        placeholder="Publisher…"
-        className="min-w-[140px] max-w-[180px]"
-        aria-label="Filter by publisher"
-        autoComplete="off"
-      />
+      {showPublisherFilter && (
+        <Input
+          name="namespace"
+          value={namespace}
+          onChange={(e) => {
+            setNamespace(e.target.value)
+            applyDebounced({ q, namespace: e.target.value })
+          }}
+          placeholder="Publisher…"
+          className="min-w-[140px] max-w-[180px]"
+          aria-label="Filter by publisher"
+          autoComplete="off"
+        />
+      )}
 
       {/* Status — instant */}
-      <select
+      <NativeSelect
         name="status"
         value={currentStatus}
         onChange={(e) => applyNow({ status: e.target.value })}
@@ -193,11 +197,11 @@ export function FilterBar({
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </option>
         ))}
-      </select>
+      </NativeSelect>
 
       {/* Visibility — instant, admin only */}
       {showVisibility && (
-        <select
+        <NativeSelect
           name="visibility"
           value={currentVisibility}
           onChange={(e) => applyNow({ visibility: e.target.value })}
@@ -207,12 +211,12 @@ export function FilterBar({
           <option value="">All visibility</option>
           <option value="public">Public</option>
           <option value="private">Private</option>
-        </select>
+        </NativeSelect>
       )}
 
       {/* Transport — instant, MCP only */}
       {transportOptions.length > 0 && (
-        <select
+        <NativeSelect
           name="transport"
           value={currentTransport}
           onChange={(e) => applyNow({ transport: e.target.value })}
@@ -225,12 +229,12 @@ export function FilterBar({
               {t}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       )}
 
       {/* Registry type / ecosystem — instant, MCP only, shown when transport=stdio */}
       {registryTypeOptions.length > 0 && currentTransport === 'stdio' && (
-        <select
+        <NativeSelect
           name="registry_type"
           value={currentRegistryType}
           onChange={(e) => applyNow({ registry_type: e.target.value })}
@@ -243,12 +247,12 @@ export function FilterBar({
               {rt}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       )}
 
       {/* Sort — instant */}
       {sortOptions.length > 0 && (
-        <select
+        <NativeSelect
           name="sort"
           value={currentSort}
           onChange={(e) => applyNow({ sort: e.target.value })}
@@ -260,7 +264,7 @@ export function FilterBar({
               {s.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       )}
 
       {/* Clear — always visible; disabled + muted when no filters are active */}

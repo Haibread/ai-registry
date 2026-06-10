@@ -11,13 +11,24 @@ import { ErrorState } from '@/components/ui/error-state'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { BulkActionBar } from '@/components/admin/bulk-action-bar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useAuthClient } from '@/lib/api-client'
-import { formatDate, problemMessage } from '@/lib/utils'
+import { cn, formatDate, problemMessage } from '@/lib/utils'
 import { usePermissions } from '@/auth/useMe'
 import { usePublisher } from '@/auth/PublisherContext'
 
 const PAGE_LIMIT = 50
+
+// Mirrors the API's `sort` enum; '' falls back to the server default
+// (created_at_desc). Search results stay relevance-ranked regardless.
+const SORT_OPTIONS = [
+  { value: '', label: 'Newest first' },
+  { value: 'updated_at_desc', label: 'Recently updated' },
+  { value: 'published_at_desc', label: 'Recently published' },
+  { value: 'name_asc', label: 'Name A–Z' },
+  { value: 'name_desc', label: 'Name Z–A' },
+]
 
 export default function AdminAgentList() {
   const perms = usePermissions()
@@ -28,6 +39,7 @@ export default function AdminAgentList() {
   const namespace = searchParams.get('namespace') ?? undefined
   const status = searchParams.get('status') ?? undefined
   const visibility = searchParams.get('visibility') ?? undefined
+  const sort = searchParams.get('sort') ?? undefined
   const hasFilters = !!(q || namespace || status || visibility)
   // Scope the list to the publisher the admin area is currently focused on.
   // An explicit FilterBar publisher filter wins; a Server Admin's
@@ -37,7 +49,7 @@ export default function AdminAgentList() {
   // replacing the visible rows (the old cursor-in-URL approach hid earlier rows).
   const { data, isPending, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery({
-      queryKey: ['admin-agents', { q, namespace: effectiveNamespace, status, visibility }],
+      queryKey: ['admin-agents', { q, namespace: effectiveNamespace, status, visibility, sort }],
       queryFn: async ({ pageParam }) => {
         const { data, error } = await api.GET('/api/v1/agents', {
           params: {
@@ -51,6 +63,7 @@ export default function AdminAgentList() {
               cursor: pageParam || undefined,
               status: status as 'draft' | 'published' | 'deprecated' | undefined,
               visibility: visibility as 'public' | 'private' | undefined,
+              sort: sort as 'created_at_desc' | 'updated_at_desc' | 'published_at_desc' | 'name_asc' | 'name_desc' | undefined,
             },
           },
         })
@@ -140,7 +153,9 @@ export default function AdminAgentList() {
   }
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    // pb-24 keeps the floating bulk bar from covering the last table row
+    // while a selection is active.
+    <div className={cn('space-y-4 max-w-6xl mx-auto', selection.selectedCount > 0 && 'pb-24')}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Agents</h1>
@@ -165,6 +180,10 @@ export default function AdminAgentList() {
         statusOptions={['draft', 'published', 'deprecated']}
         showVisibility
         searchPlaceholder="Search agents…"
+        sortOptions={SORT_OPTIONS}
+        // When the admin area is scoped to one publisher the free-text
+        // publisher filter is redundant and could contradict the scope.
+        showPublisherFilter={!currentSlug}
       />
 
       {isPending ? (
@@ -203,48 +222,55 @@ export default function AdminAgentList() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label="Select all"
                     checked={agents.length > 0 && agents.every((a) => selection.isSelected(a.id))}
+                    indeterminate={selection.selectedCount > 0 && !agents.every((a) => selection.isSelected(a.id))}
                     onChange={() => selection.toggleAll(agents)}
                   />
                 </TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead className="hidden sm:table-cell">Namespace / Slug</TableHead>
+                <TableHead className="hidden @2xl:table-cell">Namespace / Slug</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="hidden md:table-cell">Visibility</TableHead>
-                <TableHead className="hidden lg:table-cell">Updated</TableHead>
+                <TableHead className="hidden @3xl:table-cell">Visibility</TableHead>
+                <TableHead className="hidden @4xl:table-cell">Updated</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {agents.map((a) => (
-                <TableRow key={a.id} data-selected={selection.isSelected(a.id) || undefined}>
+                <TableRow key={a.id} data-state={selection.isSelected(a.id) ? 'selected' : undefined}>
                   <TableCell>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       aria-label={`Select ${a.name}`}
                       checked={selection.isSelected(a.id)}
                       onChange={() => selection.toggle(a.id)}
                     />
                   </TableCell>
                   <TableCell className="font-medium">
-                    {a.name}
-                    <div className="font-mono text-xs text-muted-foreground sm:hidden">
+                    {/* The name is the row's primary navigation — Manage stays
+                        as a secondary affordance but may be off-screen on
+                        narrow containers. */}
+                    <Link
+                      to={`/admin/agents/${a.namespace}/${a.slug}`}
+                      className="hover:underline underline-offset-4 focus-visible:underline"
+                    >
+                      {a.name}
+                    </Link>
+                    <div className="font-mono text-xs text-muted-foreground @2xl:hidden">
                       {a.namespace}/{a.slug}
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground hidden sm:table-cell">
+                  <TableCell className="font-mono text-sm text-muted-foreground hidden @2xl:table-cell">
                     {a.namespace}/{a.slug}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={a.status} />
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
+                  <TableCell className="hidden @3xl:table-cell">
                     <VisibilityBadge visibility={a.visibility} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground hidden lg:table-cell">{formatDate(a.updated_at)}</TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap hidden @4xl:table-cell">{formatDate(a.updated_at)}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="outline" size="sm" asChild>
                       <Link to={`/admin/agents/${a.namespace}/${a.slug}`}>

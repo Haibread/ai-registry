@@ -3,7 +3,9 @@ import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+    // `@container` lets column visibility track the table's actual width
+    // (sidebar open, split screen) instead of the viewport.
+    <div className="relative w-full overflow-auto @container">
       <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
     </div>
   )
