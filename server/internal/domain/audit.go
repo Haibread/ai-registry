@@ -10,14 +10,16 @@ const (
 	ActionMCPServerCreated    AuditAction = "mcp_server.created"
 	ActionMCPVersionCreated   AuditAction = "mcp_server_version.created"
 	ActionMCPVersionPublished AuditAction = "mcp_server_version.published"
-	ActionMCPServerDeprecated AuditAction = "mcp_server.deprecated"
-	ActionMCPServerVisibility AuditAction = "mcp_server.visibility_changed"
+	ActionMCPServerDeprecated   AuditAction = "mcp_server.deprecated"
+	ActionMCPServerUndeprecated AuditAction = "mcp_server.undeprecated"
+	ActionMCPServerVisibility   AuditAction = "mcp_server.visibility_changed"
 
 	// Agent actions
 	ActionAgentCreated          AuditAction = "agent.created"
 	ActionAgentVersionCreated   AuditAction = "agent_version.created"
 	ActionAgentVersionPublished AuditAction = "agent_version.published"
 	ActionAgentDeprecated       AuditAction = "agent.deprecated"
+	ActionAgentUndeprecated     AuditAction = "agent.undeprecated"
 	ActionAgentVisibility       AuditAction = "agent.visibility_changed"
 
 	// MCP server update/delete actions

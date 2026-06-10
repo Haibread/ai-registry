@@ -4,7 +4,25 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Deprecation can now be reversed.** New endpoints
+  `POST /api/v1/mcp/servers/{ns}/{slug}/undeprecate` and
+  `POST /api/v1/agents/{ns}/{slug}/undeprecate` return a deprecated entry to
+  `published`. Same review contract as the other entry-level mutations:
+  Editors enqueue an `undeprecation` change request (202) that a Reviewer
+  approves; Server Admins apply immediately (200); 409 when the entry is not
+  deprecated. The admin detail page gains a **Republish** action and the
+  lifecycle stepper's deprecated → published step is wired to it.
+
 ### Fixed
+
+- **The admin lifecycle stepper no longer renders dead controls.** Clicking
+  "Published" on a draft entry now scrolls to the Versions section with a
+  hint (publishing happens per version) instead of silently doing nothing;
+  on a deprecated entry it republishes. Transition targets are hidden for
+  read-only viewers and while a change is pending review. The Deprecate
+  confirm no longer claims the action "cannot be undone".
 
 - **Force-deleting an entry no longer strands review-queue items.** Admin
   force-delete (MCP servers + agents) now also sets the `deleted_at` tombstone,

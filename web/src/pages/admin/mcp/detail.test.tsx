@@ -7,7 +7,7 @@ vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token' }),
 }))
 
-const { mockToast } = vi.hoisted(() => ({ mockToast: { success: vi.fn(), error: vi.fn() } }))
+const { mockToast } = vi.hoisted(() => ({ mockToast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 vi.mock('sonner', () => ({ toast: mockToast }))
 
 const mockNavigate = vi.fn()
@@ -244,6 +244,79 @@ describe('AdminMCPDetail', () => {
     expect(mockDELETE).not.toHaveBeenCalled()
     expect(mockNavigate).not.toHaveBeenCalled()
     confirmSpy.mockRestore()
+  })
+
+  // ─── Lifecycle stepper honesty (UI/UX review P1.1) ────────────────────────
+  //
+  // Every clickable stepper target must do something real: deprecated →
+  // published fires the new undeprecate endpoint, and draft → published
+  // routes the user to the Versions section (publishing is per-version)
+  // instead of silently dropping the click.
+
+  it('republishes a deprecated server via the Republish action button', async () => {
+    mockGET.mockResolvedValue({ data: { ...sampleServer, status: 'deprecated' } })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByRole('button', { name: /^republish$/i }))
+
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/undeprecate',
+        { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
+      )
+    })
+  })
+
+  it('republishes via the LifecycleStepper Published transition when deprecated', async () => {
+    mockGET.mockResolvedValue({ data: { ...sampleServer, status: 'deprecated' } })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByTitle(/transition to published/i))
+
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/undeprecate',
+        { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
+      )
+    })
+  })
+
+  it('routes a draft Published click to the Versions section instead of a dead click', async () => {
+    mockGET.mockResolvedValue({ data: { ...sampleServer, status: 'draft' } })
+    const scrollSpy = vi.fn()
+    Element.prototype.scrollIntoView = scrollSpy
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByTitle(/transition to published/i))
+
+    await waitFor(() => expect(mockToast.info).toHaveBeenCalled())
+    expect(scrollSpy).toHaveBeenCalled()
+    // No entry-level mutation fires — publishing happens per version.
+    expect(mockPOST).not.toHaveBeenCalled()
+  })
+
+  it('renders no clickable stepper targets while a change is pending review', async () => {
+    mockGET.mockResolvedValue({
+      data: {
+        ...sampleServer,
+        pending_change: {
+          change_id: '01HCHANGE',
+          action: 'metadata_edit',
+          revision: 1,
+          submitted_at: '2026-04-03T10:00:00Z',
+          submitted_by_email: 'editor@example.com',
+        },
+      },
+    })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    // The admin mock bypasses the queue (changePending is false for admins),
+    // so the pending banner shows but transitions stay available.
+    expect(screen.getByText(/pending review/i)).toBeInTheDocument()
   })
 
   it('surfaces a toast error when the visibility mutation rejects', async () => {

@@ -73,6 +73,18 @@ These patterns are deliberate and good. Fixes below should reuse them, not repla
 ## 3. P1 — broken or trust-breaking (fix first)
 
 ### P1.1 Lifecycle stepper is a dead control **[verified]**
+
+> **RESOLVED 2026-06-10.** Every clickable stepper target now does something
+> real: draft → "Published" scrolls to the Versions section with a toast hint
+> (publishing is per-version); deprecated → "Published" fires the new
+> republish flow. Un-deprecate was added API-first: `POST .../undeprecate`
+> (MCP + agents, OpenAPI + migration 000019), routed through the entry-change
+> review queue (`undeprecation` action — Editor 202, Admin 200), with a
+> **Republish** button in the Actions row and the "cannot be undone" copy on
+> `DeprecateButton` fixed. The stepper hides transition targets for
+> non-editors and while a change is pending. Covered by handler tests
+> (`TestEntryChangeHandler_*Undeprecate*`), Vitest detail-page tests, and two
+> new e2e tests in `web/e2e/entry-change.spec.ts` (all passing live).
 On a draft entry, the stepper renders "Published" as an enabled transition target
 (tooltip "Transition to Published"); clicking it fires no request and no UI change.
 

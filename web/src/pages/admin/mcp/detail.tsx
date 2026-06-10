@@ -70,6 +70,17 @@ export default function AdminMCPDetail() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const undeprecateMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await api.POST('/api/v1/mcp/servers/{namespace}/{slug}/undeprecate', {
+        params: { path: { namespace: ns!, slug: slug! } },
+      })
+      if (error) throw new Error(problemMessage(error, 'Failed to republish.'))
+    },
+    onSuccess: () => { invalidate(); toast.success(submitToast('Server republished')) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const editMutation = useMutation({
     mutationFn: async (body: { name: string; description: string; homepage_url: string; repo_url: string; license: string }) => {
       const { error } = await api.PATCH('/api/v1/mcp/servers/{namespace}/{slug}', {
@@ -123,6 +134,7 @@ export default function AdminMCPDetail() {
   const changeActionLabel: Record<string, string> = {
     visibility: 'Visibility change',
     deprecation: 'Deprecation',
+    undeprecation: 'Republish',
     metadata_edit: 'Metadata edit',
   }
 
@@ -148,9 +160,17 @@ export default function AdminMCPDetail() {
 
       <LifecycleStepper
         currentStatus={data.status}
+        // Read-only for viewers; no clickable targets while a change is pending.
+        allowedTransitions={!perms.canEdit(ns) || changePending ? [] : undefined}
         onTransition={(target) => {
           if (target === 'deprecated') deprecateMutation.mutate()
-          // Other transitions (e.g., publish from draft) are handled per-version
+          else if (target === 'published' && data.status === 'deprecated') undeprecateMutation.mutate()
+          else if (target === 'published' && data.status === 'draft') {
+            // Publishing happens per version — point at the Versions section
+            // instead of silently dropping the click.
+            document.getElementById('versions-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            toast.info('Publishing happens per version — submit or publish a version below.')
+          }
         }}
       />
 
@@ -365,6 +385,17 @@ export default function AdminMCPDetail() {
               />
             )}
 
+            {perms.canEdit(ns) && data.status === 'deprecated' && !changePending && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={undeprecateMutation.isPending}
+                onClick={() => undeprecateMutation.mutate()}
+              >
+                Republish
+              </Button>
+            )}
+
             {perms.canEdit(ns) && (
               <RequestDeletionButton
                 kind="mcp"
@@ -386,7 +417,9 @@ export default function AdminMCPDetail() {
 
       <Separator />
 
-      <VersionsSection kind="mcp" namespace={data.namespace} slug={data.slug} />
+      <div id="versions-section">
+        <VersionsSection kind="mcp" namespace={data.namespace} slug={data.slug} />
+      </div>
 
       <Separator />
 

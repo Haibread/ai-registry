@@ -1198,6 +1198,45 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/v1/mcp/servers/{namespace}/{slug}/undeprecate:
+    post:
+      operationId: undeprecateMCPServer
+      summary: Republish a deprecated MCP server (Editor enqueues, Server Admin immediate)
+      description: >
+        Reverses a deprecation: the entry returns to `published`. Only valid
+        when the entry is currently `deprecated` (409 otherwise). Editors
+        enqueue the change for review like the other entry-level mutations;
+        Server Admins apply it immediately.
+      tags: [mcp]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: Server republished immediately (Server Admin escape hatch)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "202":
+          description: Republish enqueued for review (non-admin Editor)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/v1/mcp/servers/{namespace}/{slug}/view:
     post:
       operationId: recordMCPServerView
@@ -1501,7 +1540,7 @@ paths:
       operationId: approveMCPChange
       summary: Approve a pending MCP entry change (reviewer)
       description: >
-        Applies the pending entry-change request (visibility / deprecation /
+        Applies the pending entry-change request (visibility / deprecation / undeprecation /
         metadata edit) on the entry. Requires the Reviewer role on the owning
         publisher.
       tags: [mcp, review]
@@ -1890,6 +1929,45 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/v1/agents/{namespace}/{slug}/undeprecate:
+    post:
+      operationId: undeprecateAgent
+      summary: Republish a deprecated agent (Editor enqueues, Server Admin immediate)
+      description: >
+        Reverses a deprecation: the entry returns to `published`. Only valid
+        when the entry is currently `deprecated` (409 otherwise). Editors
+        enqueue the change for review like the other entry-level mutations;
+        Server Admins apply it immediately.
+      tags: [agents]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NamespaceParam"
+        - $ref: "#/components/parameters/SlugParam"
+      responses:
+        "200":
+          description: Agent republished immediately (Server Admin escape hatch)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "202":
+          description: Republish enqueued for review (non-admin Editor)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/v1/agents/{namespace}/{slug}/view:
     post:
       operationId: recordAgentView
@@ -2183,7 +2261,7 @@ paths:
       operationId: approveAgentChange
       summary: Approve a pending agent entry change (reviewer)
       description: >
-        Applies the pending entry-change request (visibility / deprecation /
+        Applies the pending entry-change request (visibility / deprecation / undeprecation /
         metadata edit) on the agent. Requires the Reviewer role on the owning
         publisher.
       tags: [agents, review]
@@ -3084,7 +3162,7 @@ components:
         change_id: { type: string }
         action:
           type: string
-          enum: [visibility, deprecation, metadata_edit]
+          enum: [visibility, deprecation, undeprecation, metadata_edit]
         revision: { type: integer }
         submitted_at: { type: string, format: date-time }
         submitted_by_email: { type: string }
@@ -3124,7 +3202,7 @@ components:
             Present on `*_change` items only — the entry-change-request ULID.
         action:
           type: string
-          enum: [visibility, deprecation, metadata_edit]
+          enum: [visibility, deprecation, undeprecation, metadata_edit]
           description: |
             Present on `*_change` items only — the entry-level mutation the
             request will apply on approval.

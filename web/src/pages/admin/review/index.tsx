@@ -51,6 +51,8 @@ function actionLabel(action?: string): string {
       return 'Visibility change'
     case 'deprecation':
       return 'Deprecation'
+    case 'undeprecation':
+      return 'Republish'
     case 'metadata_edit':
       return 'Metadata edit'
     default:
@@ -84,6 +86,7 @@ function kindIcon(it: Item) {
     case 'visibility':
       return Eye
     case 'deprecation':
+    case 'undeprecation':
       return Archive
     default:
       return Pencil
@@ -106,6 +109,14 @@ function ChangeDetails({ it }: { it: Item }) {
     return (
       <p className="text-xs text-muted-foreground">
         Mark this entry as <span className="font-mono">deprecated</span>
+      </p>
+    )
+  }
+  if (it.action === 'undeprecation') {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Republish this deprecated entry (back to{' '}
+        <span className="font-mono">published</span>)
       </p>
     )
   }

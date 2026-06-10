@@ -8,7 +8,7 @@ interface DeprecateButtonProps {
 export function DeprecateButton({ onDeprecate, entityName }: DeprecateButtonProps) {
   function handleClick() {
     const confirmed = window.confirm(
-      `Deprecate "${entityName}"?\n\nThis marks the entry as deprecated. This action cannot be undone.`
+      `Deprecate "${entityName}"?\n\nThis marks the entry as deprecated. It can be republished later.`
     )
     if (confirmed) onDeprecate()
   }

@@ -685,6 +685,23 @@ func (db *DB) DeprecateAgent(ctx context.Context, agentID string) error {
 	return nil
 }
 
+// UndeprecateAgent returns a deprecated agent to published.
+func (db *DB) UndeprecateAgent(ctx context.Context, agentID string) error {
+	ctx, span := startSpan(ctx, "UndeprecateAgent")
+	defer span.End()
+
+	rows, err := applyAgentUndeprecation(ctx, db.Pool, agentID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("undeprecating agent: %w", err)
+	}
+	if rows == 0 {
+		recordErr(span, ErrNotFound)
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SetAgentVisibility sets the visibility of an agent.
 func (db *DB) SetAgentVisibility(ctx context.Context, agentID string, vis domain.Visibility) error {
 	ctx, span := startSpan(ctx, "SetAgentVisibility")

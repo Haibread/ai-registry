@@ -511,6 +511,54 @@ func (h *MCPHandlers) DeprecateServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deprecated"})
 }
 
+// ── POST /api/v1/mcp/servers/{namespace}/{slug}:undeprecate ───────────────
+
+func (h *MCPHandlers) UndeprecateServer(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("MCP server '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	// Only a deprecated entry can be republished; fail fast on both paths.
+	if srv.Status != domain.StatusDeprecated {
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("server '%s/%s' is not in deprecated status", ns, slug), r.URL.Path)
+		return
+	}
+
+	// Editors enqueue the republish for review; Server Admins apply immediately.
+	if !auth.IsServerAdminFromContext(r.Context()) {
+		enqueueEntryChange(w, r, h.db, h.audit, domain.EntryResourceMCPServer, srv.ID, ns, slug,
+			domain.EntryChangeUndeprecation, map[string]any{}, domain.ActionMCPChangeRequested)
+		return
+	}
+
+	if err := h.db.UndeprecateMCPServer(r.Context(), srv.ID); errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("server '%s/%s' is not in deprecated status", ns, slug), r.URL.Path)
+		return
+	} else if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionMCPServerUndeprecated, ResourceType: "mcp_server",
+		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
+	})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "published"})
+}
+
 // ── PATCH /api/v1/mcp/servers/{namespace}/{slug} ──────────────────────────
 
 func (h *MCPHandlers) PatchServer(w http.ResponseWriter, r *http.Request) {

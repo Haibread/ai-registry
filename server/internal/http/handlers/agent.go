@@ -494,6 +494,54 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deprecated"})
 }
 
+// ── POST /api/v1/agents/{namespace}/{slug}:undeprecate ───────────────────
+
+func (h *AgentHandlers) UndeprecateAgent(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+	slug := chi.URLParam(r, "slug")
+
+	agent, err := h.db.GetAgent(r.Context(), ns, slug, false)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found",
+			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+
+	// Only a deprecated entry can be republished; fail fast on both paths.
+	if agent.Status != domain.StatusDeprecated {
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("agent '%s/%s' is not in deprecated status", ns, slug), r.URL.Path)
+		return
+	}
+
+	// Editors enqueue the republish for review; Server Admins apply immediately.
+	if !auth.IsServerAdminFromContext(r.Context()) {
+		enqueueEntryChange(w, r, h.db, h.audit, domain.EntryResourceAgent, agent.ID, ns, slug,
+			domain.EntryChangeUndeprecation, map[string]any{}, domain.ActionAgentChangeRequested)
+		return
+	}
+
+	if err := h.db.UndeprecateAgent(r.Context(), agent.ID); errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("agent '%s/%s' is not in deprecated status", ns, slug), r.URL.Path)
+		return
+	} else if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	subject, email := auditActor(r.Context())
+	h.audit.LogAuditEvent(r.Context(), domain.AuditEvent{
+		ActorSubject: subject, ActorEmail: email,
+		Action: domain.ActionAgentUndeprecated, ResourceType: "agent",
+		ResourceID: agent.ID, ResourceNS: ns, ResourceSlug: slug,
+	})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "published"})
+}
+
 // ── PATCH /api/v1/agents/{namespace}/{slug} ───────────────────────────────
 
 func (h *AgentHandlers) PatchAgent(w http.ResponseWriter, r *http.Request) {

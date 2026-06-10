@@ -818,6 +818,23 @@ func (db *DB) DeprecateMCPServer(ctx context.Context, serverID string) error {
 	return nil
 }
 
+// UndeprecateMCPServer returns a deprecated MCP server to published.
+func (db *DB) UndeprecateMCPServer(ctx context.Context, serverID string) error {
+	ctx, span := startSpan(ctx, "UndeprecateMCPServer")
+	defer span.End()
+
+	rows, err := applyMCPUndeprecation(ctx, db.Pool, serverID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("undeprecating mcp server: %w", err)
+	}
+	if rows == 0 {
+		recordErr(span, ErrNotFound)
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SetMCPServerVisibility sets the visibility of an MCP server.
 func (db *DB) SetMCPServerVisibility(ctx context.Context, serverID string, vis domain.Visibility) error {
 	ctx, span := startSpan(ctx, "SetMCPServerVisibility")

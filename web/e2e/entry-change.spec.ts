@@ -141,6 +141,46 @@ test.describe('Entry-change review queue', () => {
     expect((await detail.json()).pending_change ?? null, 'no pending change after withdraw').toBeNull()
   })
 
+  test('deprecate → republish round-trip through the queue', async ({ browser }) => {
+    // Admin deprecates immediately (escape hatch).
+    const admin = await pageAs(browser, 'admin')
+    let res = await apiPost(admin, `/api/v1/mcp/servers/${PUB}/${MCP}/deprecate`, {})
+    expect(res.status(), 'admin deprecate').toBe(200)
+
+    // Editor requests a republish: enqueued (202), entry stays deprecated.
+    const author = await pageAs(browser, 'author')
+    res = await apiPost(author, `/api/v1/mcp/servers/${PUB}/${MCP}/undeprecate`, {})
+    expect(res.status(), 'editor enqueue republish').toBe(202)
+    let detail = await apiGet(admin, `/api/v1/mcp/servers/${PUB}/${MCP}`)
+    expect((await detail.json()).status).toBe('deprecated')
+
+    // The queue carries it as an undeprecation; approval applies it.
+    const queue = await apiGet(admin, '/api/v1/review-queue')
+    const item = ((await queue.json()) as { items: { kind: string; action?: string; entry_slug: string }[] })
+      .items.find(i => i.kind === 'mcp_change' && i.entry_slug === MCP)
+    expect(item?.action, 'queued undeprecation').toBe('undeprecation')
+
+    res = await apiPost(admin, `/api/v1/mcp/servers/${PUB}/${MCP}/change-request/approve`, { revision: 1 })
+    expect(res.status(), 'approve republish').toBe(204)
+    detail = await apiGet(admin, `/api/v1/mcp/servers/${PUB}/${MCP}`)
+    expect((await detail.json()).status).toBe('published')
+  })
+
+  test('the detail page offers Republish on a deprecated entry (admin immediate)', async ({ browser }) => {
+    const admin = await pageAs(browser, 'admin')
+    const res = await apiPost(admin, `/api/v1/mcp/servers/${PUB}/${MCP}/deprecate`, {})
+    expect(res.status(), 're-deprecate').toBe(200)
+
+    await admin.goto(`/admin/mcp/${PUB}/${MCP}`)
+    const republish = admin.getByRole('button', { name: 'Republish' })
+    await expect(republish, 'Republish action visible on deprecated entry').toBeVisible()
+    await republish.click()
+
+    // Admin path applies immediately; the action disappears with the status flip.
+    await expect(admin.getByText('Server republished')).toBeVisible()
+    await expect(republish).toBeHidden()
+  })
+
   test('cleanup', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     // Force-delete the server (admin escape hatch) then drop the publisher.

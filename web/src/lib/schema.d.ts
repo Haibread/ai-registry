@@ -679,6 +679,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcp/servers/{namespace}/{slug}/undeprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Republish a deprecated MCP server (Editor enqueues, Server Admin immediate)
+         * @description Reverses a deprecation: the entry returns to `published`. Only valid when the entry is currently `deprecated` (409 otherwise). Editors enqueue the change for review like the other entry-level mutations; Server Admins apply it immediately.
+         */
+        post: operations["undeprecateMCPServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcp/servers/{namespace}/{slug}/view": {
         parameters: {
             query?: never;
@@ -901,7 +921,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending MCP entry change (reviewer)
-         * @description Applies the pending entry-change request (visibility / deprecation / metadata edit) on the entry. Requires the Reviewer role on the owning publisher.
+         * @description Applies the pending entry-change request (visibility / deprecation / undeprecation / metadata edit) on the entry. Requires the Reviewer role on the owning publisher.
          */
         post: operations["approveMCPChange"];
         delete?: never;
@@ -1043,6 +1063,26 @@ export interface paths {
         put?: never;
         /** Deprecate an agent (Editor enqueues, Server Admin immediate) */
         post: operations["deprecateAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{namespace}/{slug}/undeprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Republish a deprecated agent (Editor enqueues, Server Admin immediate)
+         * @description Reverses a deprecation: the entry returns to `published`. Only valid when the entry is currently `deprecated` (409 otherwise). Editors enqueue the change for review like the other entry-level mutations; Server Admins apply it immediately.
+         */
+        post: operations["undeprecateAgent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1268,7 +1308,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending agent entry change (reviewer)
-         * @description Applies the pending entry-change request (visibility / deprecation / metadata edit) on the agent. Requires the Reviewer role on the owning publisher.
+         * @description Applies the pending entry-change request (visibility / deprecation / undeprecation / metadata edit) on the agent. Requires the Reviewer role on the owning publisher.
          */
         post: operations["approveAgentChange"];
         delete?: never;
@@ -1763,7 +1803,7 @@ export interface components {
         PendingEntryChange: {
             change_id: string;
             /** @enum {string} */
-            action: "visibility" | "deprecation" | "metadata_edit";
+            action: "visibility" | "deprecation" | "undeprecation" | "metadata_edit";
             revision: number;
             /** Format: date-time */
             submitted_at: string;
@@ -1799,7 +1839,7 @@ export interface components {
              *     request will apply on approval.
              * @enum {string}
              */
-            action?: "visibility" | "deprecation" | "metadata_edit";
+            action?: "visibility" | "deprecation" | "undeprecation" | "metadata_edit";
             /**
              * @description Present on `*_change` items only — the proposed mutation (e.g. the
              *     new visibility, or the edited metadata fields) for diff display.
@@ -3712,6 +3752,44 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    undeprecateMCPServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["parameters"]["NamespaceParam"];
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server republished immediately (Server Admin escape hatch) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Republish enqueued for review (non-admin Editor) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangeAccepted"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     recordMCPServerView: {
         parameters: {
             query?: never;
@@ -4508,6 +4586,44 @@ export interface operations {
                 };
             };
             /** @description Deprecation enqueued for review (non-admin Editor) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangeAccepted"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    undeprecateAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["parameters"]["NamespaceParam"];
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent republished immediately (Server Admin escape hatch) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Republish enqueued for review (non-admin Editor) */
             202: {
                 headers: {
                     [name: string]: unknown;

@@ -31,6 +31,7 @@ func newEntryChangeRouter() *chi.Mux {
 	r := chi.NewRouter()
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/visibility", mcp.SetVisibility)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/deprecate", mcp.DeprecateServer)
+	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/undeprecate", mcp.UndeprecateServer)
 	r.Patch("/api/v1/mcp/servers/{namespace}/{slug}", mcp.PatchServer)
 	r.Get("/api/v1/review-queue", rev.ListReviewQueue)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/change-request/approve", rev.ApproveMCPChange)
@@ -38,6 +39,7 @@ func newEntryChangeRouter() *chi.Mux {
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/change-request/withdraw", rev.WithdrawMCPChange)
 	r.Post("/api/v1/agents/{namespace}/{slug}/visibility", ag.SetVisibility)
 	r.Post("/api/v1/agents/{namespace}/{slug}/deprecate", ag.DeprecateAgent)
+	r.Post("/api/v1/agents/{namespace}/{slug}/undeprecate", ag.UndeprecateAgent)
 	r.Patch("/api/v1/agents/{namespace}/{slug}", ag.PatchAgent)
 	r.Post("/api/v1/agents/{namespace}/{slug}/change-request/approve", rev.ApproveAgentChange)
 	r.Post("/api/v1/agents/{namespace}/{slug}/change-request/reject", rev.RejectAgentChange)
@@ -233,6 +235,92 @@ func TestEntryChangeHandler_DuplicatePendingConflict(t *testing.T) {
 	if rec.Code != http.StatusConflict {
 		t.Errorf("second enqueue = %d, want 409; body: %s", rec.Code, rec.Body.String())
 	}
+}
+
+// ── undeprecate: deprecated → published through the same contract ────────────
+
+func TestEntryChangeHandler_UndeprecateRoundTrip(t *testing.T) {
+	resetTables(t)
+	srvID := seedPublishedMCPForHandler(t, "acme", "weather")
+	r := newEntryChangeRouter()
+
+	// Undeprecating a published entry is a 409 (wrong state) on both paths.
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/undeprecate", ""); rec.Code != http.StatusConflict {
+		t.Fatalf("undeprecate published = %d, want 409; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Admin deprecates immediately, then editor requests a republish: 202.
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/deprecate", ""); rec.Code != http.StatusOK {
+		t.Fatalf("deprecate: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := fire(r, editorCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/undeprecate", ""); rec.Code != http.StatusAccepted {
+		t.Fatalf("editor undeprecate = %d, want 202; body: %s", rec.Code, rec.Body.String())
+	}
+	if _, status, _ := readStatusVis(t, srvID); status != "deprecated" {
+		t.Errorf("status = %q, want deprecated (still pending)", status)
+	}
+
+	// Approval applies the republish.
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/change-request/approve", `{"revision":1}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if _, status, _ := readStatusVis(t, srvID); status != "published" {
+		t.Errorf("status = %q, want published after approve", status)
+	}
+
+	// Admin path is immediate: deprecate again, undeprecate as admin → 200.
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/deprecate", ""); rec.Code != http.StatusOK {
+		t.Fatalf("re-deprecate: %d", rec.Code)
+	}
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/undeprecate", ""); rec.Code != http.StatusOK {
+		t.Fatalf("admin undeprecate = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	if _, status, _ := readStatusVis(t, srvID); status != "published" {
+		t.Errorf("status = %q, want published (admin immediate)", status)
+	}
+}
+
+func TestEntryChangeHandler_AgentUndeprecate(t *testing.T) {
+	resetTables(t)
+	agID := seedPublishedAgentForHandler(t, "acme", "assistant")
+	r := newEntryChangeRouter()
+
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/agents/acme/assistant/deprecate", ""); rec.Code != http.StatusOK {
+		t.Fatalf("deprecate: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := fire(r, editorCtx(), http.MethodPost,
+		"/api/v1/agents/acme/assistant/undeprecate", ""); rec.Code != http.StatusAccepted {
+		t.Fatalf("editor undeprecate = %d, want 202; body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/agents/acme/assistant/change-request/approve", `{"revision":1}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var status string
+	if err := testDB.Pool.QueryRow(context.Background(),
+		`SELECT status FROM agents WHERE id=$1`, agID).Scan(&status); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if status != "published" {
+		t.Errorf("status = %q, want published after approve", status)
+	}
+}
+
+// readStatusVis reads (visibility, status, name) for an MCP server row.
+func readStatusVis(t *testing.T, srvID string) (vis, status, name string) {
+	t.Helper()
+	if err := testDB.Pool.QueryRow(context.Background(),
+		`SELECT visibility, status, name FROM mcp_servers WHERE id=$1`, srvID).Scan(&vis, &status, &name); err != nil {
+		t.Fatalf("read server: %v", err)
+	}
+	return vis, status, name
 }
 
 // ── agent endpoints: same review-routing contract as MCP ─────────────────────
