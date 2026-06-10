@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { authFetch } from '@/auth/tokens'
+import { ToolsEditor } from './tools-editor'
 
 type Kind = 'mcp' | 'agent'
 
@@ -331,19 +332,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             </div>
           </fieldset>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="tools" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Tools (optional)
-            </Label>
-            <textarea
-              id="tools"
-              name="tools"
-              rows={6}
-              spellCheck={false}
-              placeholder={'[\n  {\n    "name": "read_file",\n    "description": "Read a file from disk",\n    "input_schema": { "type": "object" }\n  }\n]'}
-              className={jsonTextareaClass}
-            />
-          </div>
+          <ToolsEditor name="tools" />
 
           <div className="space-y-1.5">
             <Label htmlFor="capabilities" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -164,14 +165,13 @@ describe('AdminMCPNew', () => {
     fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
     fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
     fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
-    fireEvent.change(container.querySelector('#tools') as HTMLTextAreaElement, {
-      target: {
-        value: JSON.stringify([
-          { name: 'read_file', description: 'Read a file' },
-          { name: 'write_file', description: 'Write a file' },
-        ]),
-      },
-    })
+    // Author two tools through the dual-mode editor's structured Form tab.
+    fireEvent.click(screen.getByRole('button', { name: /add tool/i }))
+    fireEvent.change(screen.getByLabelText('Tool 1 name'), { target: { value: 'read_file' } })
+    fireEvent.change(screen.getByLabelText('Tool 1 description'), { target: { value: 'Read a file' } })
+    fireEvent.click(screen.getByRole('button', { name: /add tool/i }))
+    fireEvent.change(screen.getByLabelText('Tool 2 name'), { target: { value: 'write_file' } })
+    fireEvent.change(screen.getByLabelText('Tool 2 description'), { target: { value: 'Write a file' } })
 
     fireEvent.submit(container.querySelector('form')!)
 
@@ -218,14 +218,17 @@ describe('AdminMCPNew', () => {
     fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
     fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
     fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
-    fireEvent.change(container.querySelector('#tools') as HTMLTextAreaElement, {
-      target: { value: 'not-valid-json{' },
-    })
+    // Malformed tools can only reach submit via the raw JSON tab; the submit
+    // handler's backstop parse rejects it. (Radix Tabs activates on focus, so
+    // use userEvent to switch — fireEvent.click alone won't flip the tab.)
+    await userEvent.click(screen.getByRole('tab', { name: 'JSON' }))
+    fireEvent.change(screen.getByLabelText('Tools (JSON)'), { target: { value: 'not-valid-json{' } })
 
     fireEvent.submit(container.querySelector('form')!)
 
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/tools field must be valid json/i)
+    // findByText (not findByRole): the editor shows its own inline alert
+    // synchronously; poll for the submit handler's distinct phrasing.
+    expect(await screen.findByText(/tools field must be valid json/i)).toBeInTheDocument()
   })
 
   it('rejects a non-array tools value client-side', async () => {
@@ -235,14 +238,12 @@ describe('AdminMCPNew', () => {
     fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
     fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
     fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
-    fireEvent.change(container.querySelector('#tools') as HTMLTextAreaElement, {
-      target: { value: '{"name":"oops"}' },
-    })
+    await userEvent.click(screen.getByRole('tab', { name: 'JSON' }))
+    fireEvent.change(screen.getByLabelText('Tools (JSON)'), { target: { value: '{"name":"oops"}' } })
 
     fireEvent.submit(container.querySelector('form')!)
 
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/tools field must be a json array/i)
+    expect(await screen.findByText(/tools field must be a json array/i)).toBeInTheDocument()
   })
 
   it('shows error alert when POST returns an error', async () => {

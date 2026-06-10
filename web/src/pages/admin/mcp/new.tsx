@@ -18,6 +18,7 @@ import { useAuthClient } from '@/lib/api-client'
 import { usePublisher } from '@/auth/PublisherContext'
 import { usePermissions } from '@/auth/useMe'
 import { authFetch } from '@/auth/tokens'
+import { ToolsEditor } from '@/components/admin/tools-editor'
 
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'stdio (local process)' },
@@ -392,27 +393,11 @@ export default function AdminMCPNew() {
                 Publisher-declared list of tools this server exposes. Stored
                 as a first-class JSONB field on the version row (see migration
                 000007) — NOT the same as the MCP spec's capability-negotiation
-                `capabilities.tools` flag. Paste a JSON array of MCPTool
-                objects here; `name` is required and must be unique. */}
-            <div className="rounded-md border border-dashed p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="tools" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Tools (optional)
-                </Label>
-              </div>
-              <textarea
-                id="tools"
-                name="tools"
-                rows={6}
-                spellCheck={false}
-                placeholder={'[\n  {\n    "name": "read_file",\n    "description": "Read a file from disk",\n    "input_schema": { "type": "object" }\n  }\n]'}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-              />
-              <p className="text-xs text-muted-foreground">
-                JSON array of tools published by this server (e.g. from <code className="font-mono">tools/list</code>).
-                Each item needs a unique <code className="font-mono">name</code>.
-                Not to be confused with <code className="font-mono">capabilities.tools</code>, which is the MCP spec's capability-negotiation flag.
-              </p>
+                `capabilities.tools` flag. The dual-mode editor authors these as
+                structured cards (Form) or a raw JSON array (JSON); either way it
+                emits a hidden `tools` input the FormData submit handler reads. */}
+            <div className="rounded-md border border-dashed p-4">
+              <ToolsEditor name="tools" />
             </div>
 
             <div className="flex items-center gap-2">

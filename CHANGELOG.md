@@ -23,6 +23,14 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Dual-mode tools editor in the admin version-authoring forms.** The
+  publisher-declared `tools[]` array is now authored either as structured cards
+  (a "Form" tab: per-tool name, description, annotation-hint toggles, and a JSON
+  sub-editor for `input_schema`) or as a raw array (a "JSON" tab, for pasting a
+  `tools/list` response), replacing the single raw-JSON textarea. Both tabs
+  share one validator, so switching is lossless and surfaces the offending JSON
+  path (e.g. `tools[2].input_schema`) instead of a generic submit-time error.
+  Applies to both the create-server form and the inline New version form.
 - **Create a new version of an existing MCP server / agent from the admin UI.**
   Previously a subsequent version could only be created at resource-creation
   time or via the API directly — the detail page's Versions section listed
