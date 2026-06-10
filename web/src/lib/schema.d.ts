@@ -671,7 +671,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deprecate an MCP server (admin only) */
+        /** Deprecate an MCP server (Editor enqueues, Server Admin immediate) */
         post: operations["deprecateMCPServer"];
         delete?: never;
         options?: never;
@@ -890,6 +890,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcp/servers/{namespace}/{slug}/change-request/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a pending MCP entry change (reviewer)
+         * @description Applies the pending entry-change request (visibility / deprecation / metadata edit) on the entry. Requires the Reviewer role on the owning publisher.
+         */
+        post: operations["approveMCPChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcp/servers/{namespace}/{slug}/change-request/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a pending MCP entry change with a reason (reviewer) */
+        post: operations["rejectMCPChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcp/servers/{namespace}/{slug}/change-request/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw the entry's pending change (Editor) */
+        post: operations["withdrawMCPChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish": {
         parameters: {
             query?: never;
@@ -987,7 +1041,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deprecate an agent (admin only) */
+        /** Deprecate an agent (Editor enqueues, Server Admin immediate) */
         post: operations["deprecateAgent"];
         delete?: never;
         options?: never;
@@ -1197,6 +1251,60 @@ export interface paths {
         put?: never;
         /** Reject a pending agent deletion with a reason (reviewer) */
         post: operations["rejectAgentDeletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{namespace}/{slug}/change-request/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a pending agent entry change (reviewer)
+         * @description Applies the pending entry-change request (visibility / deprecation / metadata edit) on the agent. Requires the Reviewer role on the owning publisher.
+         */
+        post: operations["approveAgentChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{namespace}/{slug}/change-request/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a pending agent entry change with a reason (reviewer) */
+        post: operations["rejectAgentChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{namespace}/{slug}/change-request/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw the agent's pending change (Editor) */
+        post: operations["withdrawAgentChange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1630,16 +1738,53 @@ export interface components {
              */
             reason: string;
         };
+        ApproveEntryChangeRequest: {
+            /**
+             * @description Optimistic-concurrency token from the queue item; the approve fails
+             *     with 409 review-revision-mismatch if it no longer matches.
+             */
+            revision: number;
+        };
+        RejectEntryChangeRequest: {
+            revision: number;
+            /** @description Free-text reason, captured in the audit log. */
+            reason: string;
+        };
+        EntryChangeAccepted: {
+            /** @enum {string} */
+            status: "pending_review";
+            /** @description ULID of the created entry-change request. */
+            change_id: string;
+        };
+        /**
+         * @description Summary of an entry's single pending change, attached to the detail
+         *     response for callers who can view private detail.
+         */
+        PendingEntryChange: {
+            change_id: string;
+            /** @enum {string} */
+            action: "visibility" | "deprecation" | "metadata_edit";
+            revision: number;
+            /** Format: date-time */
+            submitted_at: string;
+            submitted_by_email?: string;
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
         ReviewQueueItem: {
             /** @enum {string} */
-            kind: "mcp_version" | "agent_version" | "mcp_deletion" | "agent_deletion";
+            kind: "mcp_version" | "agent_version" | "mcp_deletion" | "agent_deletion" | "mcp_change" | "agent_change";
             publisher_slug: string;
             entry_slug: string;
             /** @description ULID of the entry */
             entry_id: string;
-            /** @description Present on `*_version` items, absent on `*_deletion` items. */
+            /** @description Present on `*_version` items, absent on `*_deletion` / `*_change` items. */
             version?: string;
-            /** @description Present on `*_version` items only. */
+            /**
+             * @description Present on `*_version` and `*_change` items (the optimistic-
+             *     concurrency token passed back on approve/reject).
+             */
             revision?: number;
             /** Format: date-time */
             submitted_at: string;
@@ -1647,6 +1792,21 @@ export interface components {
             submitted_by?: string;
             /** @description Email captured at submission time. */
             submitted_by_email?: string;
+            /** @description Present on `*_change` items only — the entry-change-request ULID. */
+            change_id?: string;
+            /**
+             * @description Present on `*_change` items only — the entry-level mutation the
+             *     request will apply on approval.
+             * @enum {string}
+             */
+            action?: "visibility" | "deprecation" | "metadata_edit";
+            /**
+             * @description Present on `*_change` items only — the proposed mutation (e.g. the
+             *     new visibility, or the edited metadata fields) for diff display.
+             */
+            payload?: {
+                [key: string]: unknown;
+            };
         };
         ReviewQueueList: {
             items: components["schemas"]["ReviewQueueItem"][];
@@ -1660,6 +1820,8 @@ export interface components {
          *       .../errors/review-revision-mismatch        (409)
          *       .../errors/review-already-pending          (409)
          *       .../errors/already-published               (409)
+         *       .../errors/change-already-pending          (409)
+         *       .../errors/change-not-applicable           (409)
          */
         ReviewProblem: {
             /** Format: uri */
@@ -1717,6 +1879,7 @@ export interface components {
             slug: string;
             name: string;
             description?: string;
+            pending_change?: components["schemas"]["PendingEntryChange"];
             homepage_url?: string;
             repo_url?: string;
             license?: string;
@@ -1848,6 +2011,7 @@ export interface components {
             slug: string;
             name: string;
             description?: string;
+            pending_change?: components["schemas"]["PendingEntryChange"];
             /** @enum {string} */
             visibility: "private" | "public";
             /** @enum {string} */
@@ -3425,7 +3589,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Updated MCP server */
+            /** @description Updated MCP server immediately (Server Admin escape hatch) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3434,9 +3598,27 @@ export interface operations {
                     "application/json": components["schemas"]["MCPServer"];
                 };
             };
+            /** @description Metadata edit enqueued for review (non-admin Editor) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangeAccepted"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description a change is already pending review on this entry */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ReviewProblem"];
+                };
+            };
             422: components["responses"]["ValidationError"];
         };
     };
@@ -3456,7 +3638,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Visibility updated */
+            /** @description Visibility updated immediately (Server Admin escape hatch) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3468,10 +3650,19 @@ export interface operations {
                     };
                 };
             };
+            /** @description Visibility change enqueued for review (non-admin Editor). The entry is unchanged until a Reviewer approves the pending change. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangeAccepted"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description Cannot make public — the entry has no approved (published) version yet */
+            /** @description Cannot make public — the entry has no approved (published) version yet; or a change is already pending review on this entry. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3495,7 +3686,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Server deprecated */
+            /** @description Server deprecated immediately (Server Admin escape hatch) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3504,6 +3695,15 @@ export interface operations {
                     "application/json": {
                         status?: string;
                     };
+                };
+            };
+            /** @description Deprecation enqueued for review (non-admin Editor) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangeAccepted"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -3923,6 +4123,115 @@ export interface operations {
             422: components["responses"]["ValidationError"];
         };
     };
+    approveMCPChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["parameters"]["NamespaceParam"];
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveEntryChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description change applied */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description no pending change, stale revision, or change no longer applicable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ReviewProblem"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    rejectMCPChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["parameters"]["NamespaceParam"];
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectEntryChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description change rejected */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description no pending change to reject, or stale revision */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ReviewProblem"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    withdrawMCPChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["parameters"]["NamespaceParam"];
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description change withdrawn */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description no pending change to withdraw */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ReviewProblem"];
+                };
+            };
+        };
+    };
     publishMCPServerVersion: {
         parameters: {
             query?: never;
@@ -4090,7 +4399,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Updated agent */
+            /** @description Updated agent immediately (Server Admin escape hatch) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4099,9 +4408,27 @@ export interface operations {
                     "application/json": components["schemas"]["Agent"];
                 };
             };
+            /** @description Metadata edit enqueued for review (non-admin Editor) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangeAccepted"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description a change is already pending review on this entry */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ReviewProblem"];
+                };
+            };
             422: components["responses"]["ValidationError"];
         };
     };
@@ -4121,7 +4448,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Visibility updated */
+            /** @description Visibility updated immediately (Server Admin escape hatch) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4133,10 +4460,19 @@ export interface operations {
                     };
                 };
             };
+            /** @description Visibility change enqueued for review (non-admin Editor) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangeAccepted"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description Cannot make public — the entry has no approved (published) version yet */
+            /** @description Cannot make public — the entry has no approved (published) version yet; or a change is already pending review on this entry. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4160,7 +4496,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Agent deprecated */
+            /** @description Agent deprecated immediately (Server Admin escape hatch) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4169,6 +4505,15 @@ export interface operations {
                     "application/json": {
                         status?: string;
                     };
+                };
+            };
+            /** @description Deprecation enqueued for review (non-admin Editor) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangeAccepted"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -4578,6 +4923,115 @@ export interface operations {
                 };
             };
             422: components["responses"]["ValidationError"];
+        };
+    };
+    approveAgentChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["parameters"]["NamespaceParam"];
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveEntryChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description change applied */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description no pending change, stale revision, or change no longer applicable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ReviewProblem"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    rejectAgentChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["parameters"]["NamespaceParam"];
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectEntryChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description change rejected */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description no pending change to reject, or stale revision */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ReviewProblem"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    withdrawAgentChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: components["parameters"]["NamespaceParam"];
+                slug: components["parameters"]["SlugParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description change withdrawn */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description no pending change to withdraw */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ReviewProblem"];
+                };
+            };
         };
     };
     publishAgentVersion: {

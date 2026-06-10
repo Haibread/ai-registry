@@ -68,6 +68,9 @@ func writeReviewProblem(w http.ResponseWriter, r *http.Request, err error) bool 
 	case errors.Is(err, store.ErrAlreadyPublished):
 		problem.Write(w, http.StatusConflict, "already-published",
 			"the version is already published and cannot be re-reviewed", r.URL.Path)
+	case errors.Is(err, store.ErrChangeNotApplicable):
+		problem.Write(w, http.StatusConflict, "change-not-applicable",
+			"the entry is no longer in a state where this change can be applied (e.g. already deprecated or deleted); reject this request", r.URL.Path)
 	case errors.Is(err, store.ErrConflict):
 		problem.Write(w, http.StatusConflict, "review-already-pending",
 			"another version on this entry is already in pending_review", r.URL.Path)
@@ -189,6 +192,17 @@ func (h *ReviewHandlers) ListReviewQueue(w http.ResponseWriter, r *http.Request)
 		if it.Version != "" {
 			entry["version"] = it.Version
 			entry["revision"] = it.Revision
+		}
+		// Entry-change items carry the change id, the action, the revision
+		// (for the approve/reject optimistic-concurrency token), and the
+		// proposed mutation payload so the UI can render a diff.
+		if it.ChangeID != "" {
+			entry["change_id"] = it.ChangeID
+			entry["action"] = it.Action
+			entry["revision"] = it.Revision
+			if len(it.Payload) > 0 {
+				entry["payload"] = it.Payload
+			}
 		}
 		items = append(items, entry)
 	}

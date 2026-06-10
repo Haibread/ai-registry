@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Entry-level mutations now route through the review queue.** Changing an
+  entry's visibility (`POST .../visibility`), deprecating it
+  (`POST .../deprecate`), or editing its metadata (`PATCH .../{ns}/{slug}`) no
+  longer takes effect immediately for publisher Editors — the request is now
+  **enqueued for review** (HTTP `202`, was `200`) and a Reviewer approves it
+  before it applies. Previously only version content and entry deletion went
+  through the queue; these three actions bypassed it. **Server Admins keep the
+  immediate path** (still `200`) as a break-glass escape hatch, consistent with
+  reviewer direct-publish and admin force-delete. New endpoints:
+  `POST .../change-request/{approve,reject,withdraw}` (MCP + agents). The review
+  queue and its count now include `mcp_change` / `agent_change` items, and the
+  admin detail page shows a "pending review" banner with a **Withdraw** action.
+  API clients that relied on `200` from these three endpoints as a non-admin
+  must handle `202` + the approval step.
+
 ### Added
 
 - **Create a new version of an existing MCP server / agent from the admin UI.**

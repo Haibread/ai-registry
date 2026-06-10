@@ -165,7 +165,13 @@ func (h *AgentHandlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, agentToResponse(agent))
+	resp := agentToResponse(agent)
+	if !publicOnly {
+		if pc, ok := pendingChangeInfo(r.Context(), h.db, domain.EntryResourceAgent, agent.ID); ok {
+			resp["pending_change"] = pc
+		}
+	}
+	writeJSON(w, r, http.StatusOK, resp)
 }
 
 // ── POST /api/v1/agents ───────────────────────────────────────────────────
@@ -457,6 +463,20 @@ func (h *AgentHandlers) DeprecateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only a published entry can be deprecated; fail fast on both paths.
+	if agent.Status != domain.StatusPublished {
+		problem.Write(w, http.StatusConflict, "conflict",
+			fmt.Sprintf("agent '%s/%s' is not in published status", ns, slug), r.URL.Path)
+		return
+	}
+
+	// Editors enqueue the deprecation for review; Server Admins apply immediately.
+	if !auth.IsServerAdminFromContext(r.Context()) {
+		enqueueEntryChange(w, r, h.db, h.audit, domain.EntryResourceAgent, agent.ID, ns, slug,
+			domain.EntryChangeDeprecation, map[string]any{}, domain.ActionAgentChangeRequested)
+		return
+	}
+
 	if err := h.db.DeprecateAgent(r.Context(), agent.ID); errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusConflict, "conflict",
 			fmt.Sprintf("agent '%s/%s' is not in published status", ns, slug), r.URL.Path)
@@ -513,6 +533,13 @@ func (h *AgentHandlers) PatchAgent(w http.ResponseWriter, r *http.Request) {
 	if p.Name == "" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"name is required", r.URL.Path)
+		return
+	}
+
+	// Editors enqueue the metadata edit for review; Server Admins apply now.
+	if !auth.IsServerAdminFromContext(r.Context()) {
+		enqueueEntryChange(w, r, h.db, h.audit, domain.EntryResourceAgent, agent.ID, ns, slug,
+			domain.EntryChangeMetadataEdit, p, domain.ActionAgentChangeRequested)
 		return
 	}
 

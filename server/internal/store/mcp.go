@@ -806,14 +806,12 @@ func (db *DB) DeprecateMCPServer(ctx context.Context, serverID string) error {
 	ctx, span := startSpan(ctx, "DeprecateMCPServer")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx,
-		`UPDATE mcp_servers SET status='deprecated', updated_at=now() WHERE id=$1 AND status='published'`,
-		serverID)
+	rows, err := applyMCPDeprecation(ctx, db.Pool, serverID)
 	if err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("deprecating mcp server: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if rows == 0 {
 		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
@@ -825,14 +823,12 @@ func (db *DB) SetMCPServerVisibility(ctx context.Context, serverID string, vis d
 	ctx, span := startSpan(ctx, "SetMCPServerVisibility")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx,
-		`UPDATE mcp_servers SET visibility=$1, updated_at=now() WHERE id=$2`,
-		vis, serverID)
+	rows, err := applyMCPVisibility(ctx, db.Pool, serverID, vis)
 	if err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("setting visibility: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if rows == 0 {
 		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
@@ -958,11 +954,11 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 
 // UpdateMCPServerParams holds the mutable fields for a PATCH operation.
 type UpdateMCPServerParams struct {
-	Name        string
-	Description string
-	HomepageURL string
-	RepoURL     string
-	License     string
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	HomepageURL string `json:"homepage_url"`
+	RepoURL     string `json:"repo_url"`
+	License     string `json:"license"`
 }
 
 // UpdateMCPServer updates the mutable metadata fields of an MCP server.
@@ -971,17 +967,12 @@ func (db *DB) UpdateMCPServer(ctx context.Context, serverID string, p UpdateMCPS
 	ctx, span := startSpan(ctx, "UpdateMCPServer")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE mcp_servers
-		SET name=$1, description=$2, homepage_url=$3, repo_url=$4, license=$5, updated_at=now()
-		WHERE id=$6 AND status != 'deleted'`,
-		p.Name, p.Description, p.HomepageURL, p.RepoURL, p.License, serverID,
-	)
+	rows, err := applyMCPMetadata(ctx, db.Pool, serverID, p)
 	if err != nil {
 		recordErr(span, err)
 		return nil, fmt.Errorf("updating mcp server: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if rows == 0 {
 		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}

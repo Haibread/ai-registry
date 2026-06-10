@@ -673,14 +673,12 @@ func (db *DB) DeprecateAgent(ctx context.Context, agentID string) error {
 	ctx, span := startSpan(ctx, "DeprecateAgent")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx,
-		`UPDATE agents SET status='deprecated', updated_at=now() WHERE id=$1 AND status='published'`,
-		agentID)
+	rows, err := applyAgentDeprecation(ctx, db.Pool, agentID)
 	if err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("deprecating agent: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if rows == 0 {
 		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
@@ -692,13 +690,12 @@ func (db *DB) SetAgentVisibility(ctx context.Context, agentID string, vis domain
 	ctx, span := startSpan(ctx, "SetAgentVisibility")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx,
-		`UPDATE agents SET visibility=$1, updated_at=now() WHERE id=$2`, vis, agentID)
+	rows, err := applyAgentVisibility(ctx, db.Pool, agentID, vis)
 	if err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("setting agent visibility: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if rows == 0 {
 		recordErr(span, ErrNotFound)
 		return ErrNotFound
 	}
@@ -770,8 +767,8 @@ func (db *DB) SetAllAgentVersionsStatus(ctx context.Context, agentID string, sta
 
 // UpdateAgentParams holds the mutable fields for a PATCH operation on an agent.
 type UpdateAgentParams struct {
-	Name        string
-	Description string
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // UpdateAgent updates the mutable metadata fields of an agent.
@@ -780,17 +777,12 @@ func (db *DB) UpdateAgent(ctx context.Context, agentID string, p UpdateAgentPara
 	ctx, span := startSpan(ctx, "UpdateAgent")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE agents
-		SET name=$1, description=$2, updated_at=now()
-		WHERE id=$3 AND status != 'deleted'`,
-		p.Name, p.Description, agentID,
-	)
+	rows, err := applyAgentMetadata(ctx, db.Pool, agentID, p)
 	if err != nil {
 		recordErr(span, err)
 		return nil, fmt.Errorf("updating agent: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if rows == 0 {
 		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}

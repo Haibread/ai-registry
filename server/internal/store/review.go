@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -413,11 +414,14 @@ const (
 	ReviewQueueItemAgentVersion  ReviewQueueItemKind = "agent_version"
 	ReviewQueueItemMCPDeletion   ReviewQueueItemKind = "mcp_deletion"
 	ReviewQueueItemAgentDeletion ReviewQueueItemKind = "agent_deletion"
+	ReviewQueueItemMCPChange     ReviewQueueItemKind = "mcp_change"
+	ReviewQueueItemAgentChange   ReviewQueueItemKind = "agent_change"
 )
 
 // ReviewQueueItem is a flattened entry in the reviewer's queue. Version
 // items have non-empty Version and a Revision >= 1; deletion items have
-// empty Version and Revision == 0.
+// empty Version and Revision == 0. Entry-change items carry ChangeID, Action,
+// and Payload (the proposed mutation) and a Revision >= 1.
 type ReviewQueueItem struct {
 	Kind             ReviewQueueItemKind
 	PublisherSlug    string
@@ -428,6 +432,10 @@ type ReviewQueueItem struct {
 	SubmittedAt      time.Time
 	SubmittedBy      string
 	SubmittedByEmail string
+	// Entry-change-only fields; empty/nil for version and deletion items.
+	ChangeID string
+	Action   string
+	Payload  json.RawMessage
 }
 
 // ListReviewQueueParams paginates the queue. The cursor is the
@@ -496,7 +504,10 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		           v.revision            AS revision,
 		           v.submitted_at        AS submitted_at,
 		           coalesce(v.submitted_by, '')       AS submitted_by,
-		           coalesce(v.submitted_by_email, '') AS submitted_by_email
+		           coalesce(v.submitted_by_email, '') AS submitted_by_email,
+		           ''                    AS change_id,
+		           ''                    AS action,
+		           NULL::jsonb           AS payload
 		    FROM mcp_server_versions v
 		    JOIN mcp_servers s ON s.id = v.server_id
 		    JOIN publishers p ON p.id = s.publisher_id
@@ -505,7 +516,8 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    UNION ALL
 		    SELECT 'agent_version'::text, p.id, p.slug, a.slug, a.id,
 		           av.version, av.revision, av.submitted_at,
-		           coalesce(av.submitted_by, ''), coalesce(av.submitted_by_email, '')
+		           coalesce(av.submitted_by, ''), coalesce(av.submitted_by_email, ''),
+		           '', '', NULL::jsonb
 		    FROM agent_versions av
 		    JOIN agents     a ON a.id = av.agent_id
 		    JOIN publishers p ON p.id = a.publisher_id
@@ -514,7 +526,8 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    UNION ALL
 		    SELECT 'mcp_deletion'::text, p.id, p.slug, s.slug, s.id,
 		           '', 0, s.deletion_requested_at,
-		           coalesce(s.deletion_requested_by, ''), coalesce(s.deletion_requested_by_email, '')
+		           coalesce(s.deletion_requested_by, ''), coalesce(s.deletion_requested_by_email, ''),
+		           '', '', NULL::jsonb
 		    FROM mcp_servers s
 		    JOIN publishers p ON p.id = s.publisher_id
 		    WHERE s.deletion_requested_at IS NOT NULL AND s.deleted_at IS NULL
@@ -522,13 +535,34 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    UNION ALL
 		    SELECT 'agent_deletion'::text, p.id, p.slug, a.slug, a.id,
 		           '', 0, a.deletion_requested_at,
-		           coalesce(a.deletion_requested_by, ''), coalesce(a.deletion_requested_by_email, '')
+		           coalesce(a.deletion_requested_by, ''), coalesce(a.deletion_requested_by_email, ''),
+		           '', '', NULL::jsonb
 		    FROM agents a
 		    JOIN publishers p ON p.id = a.publisher_id
 		    WHERE a.deletion_requested_at IS NOT NULL AND a.deleted_at IS NULL
+
+		    UNION ALL
+		    SELECT 'mcp_change'::text, p.id, p.slug, s.slug, s.id,
+		           '', ecr.revision, ecr.submitted_at,
+		           coalesce(ecr.submitted_by, ''), coalesce(ecr.submitted_by_email, ''),
+		           ecr.id, ecr.action, ecr.payload
+		    FROM entry_change_requests ecr
+		    JOIN mcp_servers s ON s.id = ecr.entry_id
+		    JOIN publishers p ON p.id = s.publisher_id
+		    WHERE ecr.resource_type = 'mcp_server' AND ecr.state = 'pending_review'
+
+		    UNION ALL
+		    SELECT 'agent_change'::text, p.id, p.slug, a.slug, a.id,
+		           '', ecr.revision, ecr.submitted_at,
+		           coalesce(ecr.submitted_by, ''), coalesce(ecr.submitted_by_email, ''),
+		           ecr.id, ecr.action, ecr.payload
+		    FROM entry_change_requests ecr
+		    JOIN agents a ON a.id = ecr.entry_id
+		    JOIN publishers p ON p.id = a.publisher_id
+		    WHERE ecr.resource_type = 'agent' AND ecr.state = 'pending_review'
 		)
 		SELECT kind, publisher_slug, entry_slug, entry_id, version, revision,
-		       submitted_at, submitted_by, submitted_by_email
+		       submitted_at, submitted_by, submitted_by_email, change_id, action, payload
 		FROM q
 		%s
 		ORDER BY submitted_at DESC, entry_id DESC
@@ -549,6 +583,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 			&kind, &it.PublisherSlug, &it.EntrySlug, &it.EntryID,
 			&it.Version, &it.Revision, &it.SubmittedAt,
 			&it.SubmittedBy, &it.SubmittedByEmail,
+			&it.ChangeID, &it.Action, &it.Payload,
 		); err != nil {
 			recordErr(span, err)
 			return nil, fmt.Errorf("scanning review queue row: %w", err)
