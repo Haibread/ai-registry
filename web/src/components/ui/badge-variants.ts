@@ -19,7 +19,10 @@ export const badgeVariants = cva(
         outline: "text-foreground",
         success: "border-transparent bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
         warning: "border-transparent bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-        muted: "border-transparent bg-muted text-muted-foreground",
+        // text-foreground/75 (not text-muted-foreground): the muted
+        // foreground on the tinted badge background measured 4.3:1, just
+        // below WCAG AA. The blend clears it in both themes.
+        muted: "border-transparent bg-muted text-foreground/75",
       },
     },
     defaultVariants: {
@@ -45,9 +48,13 @@ export function statusVariant(
   }
 }
 
-/** Returns the badge variant for a visibility value. */
+/** Returns the badge variant for a visibility value.
+ *
+ * `private` carries the heavier mark: public is the registry's normal end
+ * state, while private flags restricted content an admin scanning the list
+ * needs to spot (the old solid-blue `public` had the emphasis inverted). */
 export function visibilityVariant(
   visibility: "public" | "private"
 ): VariantProps<typeof badgeVariants>["variant"] {
-  return visibility === "public" ? "default" : "secondary"
+  return visibility === "public" ? "outline" : "default"
 }

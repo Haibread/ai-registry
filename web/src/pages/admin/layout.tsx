@@ -48,6 +48,14 @@ export default function AdminLayout() {
   return (
     <PublisherProvider>
     <div className="flex min-h-screen flex-col">
+      {/* Skip link: the header + switcher + nav are 10+ tab stops before the
+          content on every page. Visible only while focused. */}
+      <a
+        href="#admin-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-md focus:border focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:ring-2 focus:ring-ring"
+      >
+        Skip to content
+      </a>
       <header className="sticky top-0 z-50 border-b bg-background h-14 flex items-center px-4 md:px-6 gap-2 md:gap-4">
         <Button
           variant="ghost"
@@ -103,7 +111,7 @@ export default function AdminLayout() {
 
       <div className="flex flex-1 min-w-0">
         <AdminSidebar />
-        <main className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0"><Outlet /></main>
+        <main id="admin-main" tabIndex={-1} className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0 focus:outline-hidden"><Outlet /></main>
       </div>
     </div>
     </PublisherProvider>

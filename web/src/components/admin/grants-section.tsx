@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthClient } from '@/lib/api-client'
 import { usePermissions } from '@/auth/useMe'
@@ -98,40 +100,42 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
     ? (groupsQuery.data?.items ?? []).map(g => ({ id: g.id, label: g.slug }))
     : (usersQuery.data?.items ?? []).map(u => ({ id: u.id, label: u.email }))
 
-  const selectClass = 'h-9 rounded-md border border-input bg-background px-3 text-sm'
-
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-semibold">Role grants</h2>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground max-w-prose">
         {publisherSlug
           ? 'Roles granted on this publisher. Editor authors, Reviewer approves, Admin manages; Viewer reads private entries.'
-          : 'Global grants apply on every publisher. Use sparingly — prefer per-publisher grants.'}
+          : 'Global grants apply on every publisher. Use sparingly — prefer per-publisher grants.'}{' '}
+        <Link to="/admin/help/roles" className="text-primary hover:underline">
+          What can each role do?
+        </Link>
       </p>
 
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={(e) => { e.preventDefault(); addGrant.mutate() }}
       >
+        {/* Labels are block-level so they stack above their selects instead
+            of collapsing inline ("Principal[Group ▾]"). */}
         <div className="space-y-1">
-          <Label htmlFor="principal-type">Principal</Label>
-          <select
+          <Label htmlFor="principal-type" className="block">Principal</Label>
+          <NativeSelect
             id="principal-type"
-            className={selectClass}
             value={principalType}
             disabled={!canManageGroups}
             onChange={(e) => { setPrincipalType(e.target.value as PrincipalType); setPrincipalId('') }}
           >
             {canManageGroups && <option value="group">Group</option>}
             <option value="user">User</option>
-          </select>
+          </NativeSelect>
         </div>
 
         <div className="space-y-1 min-w-[12rem]">
-          <Label htmlFor="principal-id">{principalType === 'group' ? 'Group' : 'User'}</Label>
-          <select
+          <Label htmlFor="principal-id" className="block">{principalType === 'group' ? 'Group' : 'User'}</Label>
+          <NativeSelect
             id="principal-id"
-            className={`${selectClass} w-full`}
+            className="w-full"
             value={principalId}
             onChange={(e) => setPrincipalId(e.target.value)}
           >
@@ -139,17 +143,20 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
             {principals.map(p => (
               <option key={p.id} value={p.id}>{p.label}</option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         <div className="space-y-1">
-          <Label htmlFor="grant-role">Role</Label>
-          <select id="grant-role" className={selectClass} value={role} onChange={(e) => setRole(e.target.value as Role)}>
+          <Label htmlFor="grant-role" className="block">Role</Label>
+          <NativeSelect id="grant-role" value={role} onChange={(e) => setRole(e.target.value as Role)}>
             {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
+          </NativeSelect>
         </div>
 
-        <Button type="submit" size="sm" disabled={addGrant.isPending || !principalId} className="flex items-center gap-1.5">
+        {/* Enabled even with no principal picked: submitting then surfaces
+            "Pick a principal first" as a toast, which keyboard and touch
+            users can actually discover (a disabled button explains nothing). */}
+        <Button type="submit" size="sm" disabled={addGrant.isPending} className="flex items-center gap-1.5">
           <Plus className="h-4 w-4" aria-hidden="true" /> Grant
         </Button>
       </form>
@@ -179,21 +186,38 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
                 <TableCell className="text-muted-foreground">{g.principal_type}</TableCell>
                 <TableCell>
                   <Badge variant="secondary">{g.role}</Badge>
-                  {g.source === 'config' && <Badge variant="muted" className="ml-1">config</Badge>}
+                  {g.source === 'config' && (
+                    <Badge
+                      variant="muted"
+                      className="ml-1"
+                      title="Seeded from the server's bootstrap file; re-applied on every boot"
+                    >
+                      config
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-right">
-                  {(g.principal_type !== 'group' || canManageGroups) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Revoke ${g.role} from ${g.principal_label || g.principal_id}`}
-                      disabled={deleteGrant.isPending}
-                      onClick={() =>
-                        setRevokeTarget({ id: g.id, role: g.role, label: g.principal_label || g.principal_id })
-                      }
-                    >
-                      <X className="h-4 w-4" aria-hidden="true" />
-                    </Button>
+                  {g.source === 'config' ? (
+                    // Revoking a config grant would not stick — bootstrap
+                    // re-seeds it on the next server start. Say so instead
+                    // of offering a revoke that silently comes back.
+                    <span className="text-xs text-muted-foreground">
+                      remove from bootstrap file
+                    </span>
+                  ) : (
+                    (g.principal_type !== 'group' || canManageGroups) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Revoke ${g.role} from ${g.principal_label || g.principal_id}`}
+                        disabled={deleteGrant.isPending}
+                        onClick={() =>
+                          setRevokeTarget({ id: g.id, role: g.role, label: g.principal_label || g.principal_id })
+                        }
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    )
                   )}
                 </TableCell>
               </TableRow>

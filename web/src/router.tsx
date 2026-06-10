@@ -42,6 +42,7 @@ const AdminReports = lazy(() => import('@/pages/admin/reports'))
 const AdminAudit = lazy(() => import('@/pages/admin/audit'))
 const AdminReviewQueue = lazy(() => import('@/pages/admin/review'))
 const AdminMembers = lazy(() => import('@/pages/admin/members'))
+const AdminHelpRoles = lazy(() => import('@/pages/admin/help-roles'))
 const AdminActivity = lazy(() => import('@/pages/admin/activity'))
 const AdminSettings = lazy(() => import('@/pages/admin/settings'))
 
@@ -89,6 +90,7 @@ export function AppRoutes() {
         <Route path="agents/new" element={<AdminAgentNew />} />
         <Route path="agents/:ns/:slug" element={<AdminAgentDetail />} />
         <Route path="members" element={<AdminMembers />} />
+        <Route path="help/roles" element={<AdminHelpRoles />} />
         <Route path="activity" element={<AdminActivity />} />
         <Route path="settings" element={<AdminSettings />} />
         {/* Per-publisher detail is publisher-Admin scoped (not Server Admin) —

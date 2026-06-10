@@ -114,20 +114,12 @@ describe('AdminDashboard', () => {
     expect(screen.getByText('3')).toBeInTheDocument() // publishers
   })
 
-  it('renders quick action links to create new entries', () => {
+  it('renders no quick-action block — the New buttons live on the list pages', () => {
     renderPage()
-    expect(screen.getByRole('link', { name: /new publisher/i })).toHaveAttribute(
-      'href',
-      '/admin/publishers/new',
-    )
-    expect(screen.getByRole('link', { name: /new mcp server/i })).toHaveAttribute(
-      'href',
-      '/admin/mcp/new',
-    )
-    expect(screen.getByRole('link', { name: /new agent/i })).toHaveAttribute(
-      'href',
-      '/admin/agents/new',
-    )
+    // The stat cards already link to each list page, which carries its own
+    // New button; a duplicate Quick Actions block was dropped (UI/UX P3).
+    expect(screen.queryByText(/quick actions/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /new publisher/i })).not.toBeInTheDocument()
   })
 
   it('renders recent MCP servers and recent agents with links to detail pages', async () => {

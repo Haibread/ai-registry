@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 vi.mock('@/auth/AuthContext', () => ({
@@ -57,7 +58,10 @@ function renderSection(props: { publisherSlug?: string } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <GrantsSection {...props} />
+      {/* MemoryRouter: the section links to the role-matrix help page. */}
+      <MemoryRouter>
+        <GrantsSection {...props} />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }

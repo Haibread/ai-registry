@@ -22,6 +22,9 @@ interface NavItem {
   icon: typeof LayoutDashboard
   exact?: boolean
   badge?: 'review'
+  /** Muted affix for not-yet-shipped surfaces (e.g. "planned"), so a
+   *  placeholder page doesn't masquerade as a working feature. */
+  affix?: string
   requires: NavRequirement
 }
 
@@ -48,7 +51,7 @@ const serverAdminNav: NavItem[] = [
   { to: '/admin/grants', label: 'Global grants', icon: Shield, requires: 'serverAdmin' },
   { to: '/admin/reports', label: 'Reports', icon: Flag, requires: 'serverAdmin' },
   { to: '/admin/audit', label: 'Audit log', icon: ScrollText, requires: 'serverAdmin' },
-  { to: '/admin/api-keys', label: 'API Keys', icon: Key, requires: 'serverAdmin' },
+  { to: '/admin/api-keys', label: 'API Keys', icon: Key, affix: 'planned', requires: 'serverAdmin' },
 ]
 
 function navItemVisible(requires: NavRequirement, perms: Permissions, currentSlug: string | null): boolean {
@@ -124,7 +127,7 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
   const publisherItems = publisherNav.filter((item) => navItemVisible(item.requires, perms, currentSlug))
   const serverAdminItems = serverAdminNav.filter((item) => navItemVisible(item.requires, perms, currentSlug))
 
-  const renderItem = ({ to, label, icon: Icon, exact, badge }: NavItem) => {
+  const renderItem = ({ to, label, icon: Icon, exact, badge, affix }: NavItem) => {
     const active = exact ? pathname === to : pathname.startsWith(to)
     return (
       <Link
@@ -132,7 +135,10 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
         to={to}
         onClick={onNavigate}
         className={cn(
+          // Same focus language as Button (ring, not the UA outline) so
+          // keyboard focus looks identical across the chrome.
           'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+          'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background',
           active
             ? 'bg-accent text-accent-foreground'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
@@ -140,6 +146,11 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
       >
         <Icon className="h-4 w-4" />
         <span className="truncate">{label}</span>
+        {affix && (
+          <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
+            {affix}
+          </span>
+        )}
         {badge === 'review' && <ReviewQueueBadge />}
       </Link>
     )

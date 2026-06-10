@@ -96,12 +96,15 @@ describe('AdminAudit page', () => {
     expect(screen.getByText('agent.deprecated')).toBeInTheDocument()
   })
 
-  it('shows actor identity (email + subject) on every row', async () => {
+  it('shows the actor email on every row and the subject only when expanded', async () => {
     renderPage()
     await screen.findByText('mcp_server.created')
     expect(screen.getAllByText('alice@example.com').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('bob@example.com')).toBeInTheDocument()
-    expect(screen.getAllByText('kc-uuid-a').length).toBeGreaterThanOrEqual(1)
+    // Raw identifiers live in the expanded detail, not the collapsed row.
+    expect(screen.queryByText('kc-uuid-a')).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: /expand row/i })[0])
+    expect(await screen.findByText('kc-uuid-a')).toBeInTheDocument()
   })
 
   it('renders drill-down links to the admin detail pages', async () => {
@@ -130,14 +133,15 @@ describe('AdminAudit page', () => {
     })
   })
 
-  it('sends the actor filter when Apply is clicked', async () => {
+  it('auto-applies the actor filter after a typing pause', async () => {
     renderPage()
     await screen.findByText('mcp_server.created')
     mockGET.mockClear()
     fireEvent.change(screen.getByLabelText('Actor subject'), {
       target: { value: 'kc-uuid-b' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /apply/i }))
+    // No Apply button — the input debounces and applies on its own.
+    expect(screen.queryByRole('button', { name: /apply/i })).not.toBeInTheDocument()
     await waitFor(() => {
       const call = mockGET.mock.calls.find(
         (c) => c[1]?.params?.query?.actor === 'kc-uuid-b',

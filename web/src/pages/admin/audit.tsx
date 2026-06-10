@@ -11,7 +11,8 @@
  * the admin detail pages for each mutated resource.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
@@ -22,7 +23,6 @@ import {
   Server,
   Bot,
   Users,
-  ExternalLink,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -132,15 +132,40 @@ export default function AdminAuditPage() {
   const [resourceType, setResourceType] = useState<string>('all')
   const [action, setAction] = useState<string>('all')
   const [actor, setActor] = useState<string>('')
+  // The applied (debounced) actor value the query actually uses — typing
+  // auto-applies after a pause, same behavior as the entity-list filters.
+  const [appliedActor, setAppliedActor] = useState<string>('')
   const [pages, setPages] = useState<AuditEvent[][]>([])
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAppliedActor((prev) => {
+        if (prev === actor.trim()) return prev
+        // A new actor filter restarts pagination.
+        setPages([])
+        setCursor(undefined)
+        return actor.trim()
+      })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [actor])
+
+  // Known users feed the actor picker: pick by email, filter by subject
+  // (what the audit rows record) — no remembered UUIDs required.
+  const usersQuery = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: () => api.GET('/api/v1/users', { params: { query: { limit: 100 } } }).then((r) => r.data),
+    enabled: true,
+  })
+  const actorSuggestions = (usersQuery.data?.items ?? []).filter((u) => !!u.subject)
+
   // React-query key encodes all filters + the current cursor, so a filter
   // change triggers a refetch and a cursor advance triggers the next page.
-  const queryKey = ['admin-audit', resourceType, action, actor, cursor ?? null]
+  const queryKey = ['admin-audit', resourceType, action, appliedActor, cursor ?? null]
 
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
       const query: Record<string, string> = {}
@@ -148,7 +173,7 @@ export default function AdminAuditPage() {
       // The backend supports filtering by resource_type but not action —
       // filter client-side for `action`. We still pass resource_type server-
       // side so we don't pull 100 unrelated rows to locally filter.
-      if (actor.trim()) query.actor = actor.trim()
+      if (appliedActor) query.actor = appliedActor
       if (cursor) query.cursor = cursor
       query.limit = '50'
       const r = await api.GET('/api/v1/audit', { params: { query } })
@@ -179,6 +204,7 @@ export default function AdminAuditPage() {
     setResourceType('all')
     setAction('all')
     setActor('')
+    setAppliedActor('')
     setPages([])
     setCursor(undefined)
   }
@@ -269,30 +295,31 @@ export default function AdminAuditPage() {
           </div>
 
           <div className="space-y-1 md:col-span-2">
-            <label className="text-xs text-muted-foreground">
-              Actor (Keycloak subject UUID)
+            <label htmlFor="audit-actor" className="text-xs text-muted-foreground">
+              Actor
             </label>
             <Input
+              id="audit-actor"
               value={actor}
               onChange={(e) => setActor(e.target.value)}
-              placeholder="e.g. a1b2c3d4-…"
+              placeholder="Pick a user or paste an OIDC subject…"
               aria-label="Actor subject"
+              list="audit-actor-suggestions"
             />
+            {/* Datalist pairs each known user's email with the subject the
+                audit rows record, so admins filter by recognisable emails. */}
+            <datalist id="audit-actor-suggestions">
+              {actorSuggestions.map((u) => (
+                <option key={u.id} value={u.subject ?? ''}>
+                  {u.email}
+                </option>
+              ))}
+            </datalist>
           </div>
         </div>
         <div className="flex items-center gap-2 pt-1">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setPages([])
-              setCursor(undefined)
-              refetch()
-            }}
-          >
-            Apply
-          </Button>
+          {/* Filters auto-apply (selects instantly, the actor input after a
+              typing pause) — same behavior as the entity-list filters. */}
           <Button
             type="button"
             size="sm"
@@ -321,8 +348,18 @@ export default function AdminAuditPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Activity className="h-10 w-10" />}
-          title="No audit events match"
-          description="Adjust filters or clear them to see the full log."
+          title={
+            // The action filter runs client-side over loaded pages only —
+            // don't claim "no matches" while unloaded events may match.
+            action !== 'all' && canLoadMore
+              ? 'No matches in loaded events'
+              : 'No audit events match'
+          }
+          description={
+            action !== 'all' && canLoadMore
+              ? 'Older events may match this action — use "Load more" below to keep searching.'
+              : 'Adjust filters or clear them to see the full log.'
+          }
         />
       ) : (
         <ul className="divide-y rounded-md border" data-testid="audit-rows">
@@ -358,20 +395,24 @@ export default function AdminAuditPage() {
                     {e.action}
                   </Badge>
                   {href && (e.resource_ns || e.resource_slug) && (
-                    <a
-                      href={href}
+                    // <Link>, not <a> — a raw anchor full-page-reloads the
+                    // SPA mid-triage.
+                    <Link
+                      to={href}
                       className="text-xs font-mono text-primary hover:underline inline-flex items-center gap-1"
                     >
                       {e.resource_ns ? `${e.resource_ns}/` : ''}
                       {e.resource_slug}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                    </Link>
                   )}
                   <span className="text-xs text-muted-foreground ml-auto tabular-nums">
                     {formatFullTimestamp(e.created_at)}
                   </span>
                 </div>
 
+                {/* Collapsed rows show the human-readable actor; raw
+                    identifiers (subject UUID, event/resource ULIDs) live in
+                    the expanded detail where they're wanted. */}
                 <div className="mt-1 ml-8 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                   <span>
                     <span className="uppercase tracking-wide mr-1">Actor:</span>
@@ -379,21 +420,26 @@ export default function AdminAuditPage() {
                       {e.actor_email || '(unknown)'}
                     </span>
                   </span>
-                  <span>
-                    <span className="uppercase tracking-wide mr-1">Subject:</span>
-                    <span className="font-mono">
-                      {e.actor_subject || '(unknown)'}
-                    </span>
-                  </span>
-                  <span>
-                    <span className="uppercase tracking-wide mr-1">ID:</span>
-                    <span className="font-mono">{e.id}</span>
-                  </span>
-                  <span>
-                    <span className="uppercase tracking-wide mr-1">Resource ID:</span>
-                    <span className="font-mono">{e.resource_id}</span>
-                  </span>
                 </div>
+
+                {expanded && (
+                  <div className="mt-2 ml-8 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>
+                      <span className="uppercase tracking-wide mr-1">Subject:</span>
+                      <span className="font-mono">
+                        {e.actor_subject || '(unknown)'}
+                      </span>
+                    </span>
+                    <span>
+                      <span className="uppercase tracking-wide mr-1">ID:</span>
+                      <span className="font-mono">{e.id}</span>
+                    </span>
+                    <span>
+                      <span className="uppercase tracking-wide mr-1">Resource ID:</span>
+                      <span className="font-mono">{e.resource_id}</span>
+                    </span>
+                  </div>
+                )}
 
                 {expanded && hasMetadata && (
                   <div className="mt-2 ml-8">

@@ -33,6 +33,7 @@ export function DeleteButton({
         variant="destructive"
         size="sm"
         disabled={isPending}
+        title="Server Admin only — deletes immediately, bypassing the review workflow"
         onClick={() => setConfirming(true)}
       >
         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

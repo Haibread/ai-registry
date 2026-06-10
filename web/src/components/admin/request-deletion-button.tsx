@@ -72,8 +72,10 @@ export function RequestDeletionButton({
         onClick={() => setConfirming(true)}
       >
         <Trash2 className="h-4 w-4" />
+        {/* Plain verb, no "(review)" jargon — the confirm dialog spells out
+            that a reviewer approves the request. */}
         <span className="ml-1.5">
-          {success ? 'Pending review' : mutation.isPending ? 'Submitting…' : 'Request deletion (review)'}
+          {success ? 'Pending review' : mutation.isPending ? 'Submitting…' : 'Request deletion'}
         </span>
       </Button>
       <ConfirmDialog

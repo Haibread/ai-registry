@@ -35,10 +35,13 @@ function renderButton(kind: 'mcp' | 'agent' = 'mcp') {
   )
 }
 
-// Opens the button's confirmation and confirms it.
+// Opens the button's confirmation and confirms it. The trigger and the
+// dialog confirm share the "Request deletion" name; only the trigger exists
+// before the dialog opens, and the dialog confirm is the later of the two.
 function clickThroughConfirm() {
-  fireEvent.click(screen.getByRole('button', { name: /request deletion \(review\)/i }))
   fireEvent.click(screen.getByRole('button', { name: /^request deletion$/i }))
+  const confirmButtons = screen.getAllByRole('button', { name: /^request deletion$/i })
+  fireEvent.click(confirmButtons[confirmButtons.length - 1])
 }
 
 describe('RequestDeletionButton', () => {
@@ -71,7 +74,7 @@ describe('RequestDeletionButton', () => {
 
   it('does nothing when the user cancels the confirmation', () => {
     renderButton()
-    fireEvent.click(screen.getByRole('button', { name: /request deletion \(review\)/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^request deletion$/i }))
     expect(screen.getByRole('heading', { name: /request deletion of "weather"\?/i })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
     expect(mockPOST).not.toHaveBeenCalled()
