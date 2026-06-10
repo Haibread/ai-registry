@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -87,6 +87,23 @@ const sampleAgent = {
   },
 }
 
+
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// ConfirmDialog (deprecate/delete) opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
+
 describe('AdminAgentDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -164,12 +181,13 @@ describe('AdminAgentDetail', () => {
   // whole point of the Agent registry per CLAUDE.md. These tests fill all of
   // those gaps plus the same delete/cancel/error trio as the MCP page.
 
-  it('deprecates via the DeprecateButton when confirm is accepted', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deprecates via the DeprecateButton when its dialog is confirmed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
     fireEvent.click(screen.getByRole('button', { name: /^deprecate$/i }))
+    const dialog = screen.getByRole('heading', { name: /deprecate "example agent"\?/i }).closest('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^deprecate$/i }))
 
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
@@ -177,15 +195,14 @@ describe('AdminAgentDetail', () => {
         { params: { path: { namespace: 'acme', slug: 'example-agent' } } },
       )
     })
-    confirmSpy.mockRestore()
   })
 
-  it('does not deprecate when the user declines the confirm dialog', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('does not deprecate when the user cancels the dialog', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
     fireEvent.click(screen.getByRole('button', { name: /^deprecate$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
 
     await Promise.resolve()
     // The visibility POST would have succeeded — we specifically assert that
@@ -194,7 +211,6 @@ describe('AdminAgentDetail', () => {
       typeof c[0] === 'string' && c[0].endsWith('/deprecate'),
     )
     expect(deprecateCalls).toHaveLength(0)
-    confirmSpy.mockRestore()
   })
 
   it('deprecates via the LifecycleStepper Deprecated transition', async () => {
@@ -243,12 +259,13 @@ describe('AdminAgentDetail', () => {
     expect(mockPATCH).not.toHaveBeenCalled()
   })
 
-  it('deletes the agent and navigates back to the list when confirmed', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deletes the agent and navigates back to the list when the dialog is confirmed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+    const dialog = screen.getByRole('heading', { name: /delete "example agent"\?/i }).closest('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
     await waitFor(() => {
       expect(mockDELETE).toHaveBeenCalledWith(
@@ -259,7 +276,6 @@ describe('AdminAgentDetail', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/admin/agents')
     })
-    confirmSpy.mockRestore()
   })
 
   it('surfaces a toast error when the visibility mutation rejects', async () => {

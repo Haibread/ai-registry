@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -6,8 +6,25 @@ const mockPOST = vi.fn()
 vi.mock('@/lib/api-client', () => ({
   useAuthClient: () => ({ POST: mockPOST }),
 }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { RequestDeletionButton } from './request-deletion-button'
+
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// ConfirmDialog opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
 
 function renderButton(kind: 'mcp' | 'agent' = 'mcp') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -18,28 +35,21 @@ function renderButton(kind: 'mcp' | 'agent' = 'mcp') {
   )
 }
 
-describe('RequestDeletionButton', () => {
-  // ReturnType<typeof vi.spyOn<Window, 'confirm'>> trips the strict
-  // function-type assignability check; an `any` type for the spy
-  // handle is the simplest escape hatch and only loses the typed
-  // helpers like mockReturnValue (which we still call below — vitest
-  // accepts them at runtime).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let confirmSpy: any
+// Opens the button's confirmation and confirms it.
+function clickThroughConfirm() {
+  fireEvent.click(screen.getByRole('button', { name: /request deletion \(review\)/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^request deletion$/i }))
+}
 
+describe('RequestDeletionButton', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPOST.mockResolvedValue({})
-    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-  })
-
-  afterEach(() => {
-    confirmSpy.mockRestore()
   })
 
   it('posts to the mcp deletion-request endpoint when kind=mcp', async () => {
     renderButton('mcp')
-    fireEvent.click(screen.getByRole('button', { name: /request deletion/i }))
+    clickThroughConfirm()
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request',
@@ -50,7 +60,7 @@ describe('RequestDeletionButton', () => {
 
   it('posts to the agent endpoint when kind=agent', async () => {
     renderButton('agent')
-    fireEvent.click(screen.getByRole('button', { name: /request deletion/i }))
+    clickThroughConfirm()
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/agents/{namespace}/{slug}/deletion-request',
@@ -59,16 +69,17 @@ describe('RequestDeletionButton', () => {
     })
   })
 
-  it('does nothing when the user cancels the confirm prompt', () => {
-    confirmSpy.mockReturnValue(false)
+  it('does nothing when the user cancels the confirmation', () => {
     renderButton()
-    fireEvent.click(screen.getByRole('button', { name: /request deletion/i }))
+    fireEvent.click(screen.getByRole('button', { name: /request deletion \(review\)/i }))
+    expect(screen.getByRole('heading', { name: /request deletion of "weather"\?/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
     expect(mockPOST).not.toHaveBeenCalled()
   })
 
   it('shows success copy and disables itself after a 202', async () => {
     renderButton()
-    fireEvent.click(screen.getByRole('button', { name: /request deletion/i }))
+    clickThroughConfirm()
     expect(await screen.findByText(/pending review/i)).toBeInTheDocument()
     expect(await screen.findByText(/a reviewer will approve or reject/i)).toBeInTheDocument()
     // The button text flips to "Pending review" and is disabled.
@@ -80,7 +91,7 @@ describe('RequestDeletionButton', () => {
       error: { status: 409, type: 'https://registry/errors/review-already-pending' },
     })
     renderButton()
-    fireEvent.click(screen.getByRole('button', { name: /request deletion/i }))
+    clickThroughConfirm()
     expect(
       await screen.findByText(/deletion is already pending review/i),
     ).toBeInTheDocument()
@@ -91,7 +102,7 @@ describe('RequestDeletionButton', () => {
       error: { status: 500, detail: 'database hiccup' },
     })
     renderButton()
-    fireEvent.click(screen.getByRole('button', { name: /request deletion/i }))
+    clickThroughConfirm()
     expect(await screen.findByText(/database hiccup/i)).toBeInTheDocument()
   })
 })

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useAuthClient } from '@/lib/api-client'
 
 interface RequestDeletionButtonProps {
@@ -29,6 +30,7 @@ export function RequestDeletionButton({
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -67,18 +69,24 @@ export function RequestDeletionButton({
         variant="outline"
         size="sm"
         disabled={mutation.isPending || success}
-        onClick={() => {
-          const ok = window.confirm(
-            `Request deletion of "${entityName}"?\n\nA reviewer must approve before the entry is removed.`,
-          )
-          if (ok) mutation.mutate()
-        }}
+        onClick={() => setConfirming(true)}
       >
         <Trash2 className="h-4 w-4" />
         <span className="ml-1.5">
           {success ? 'Pending review' : mutation.isPending ? 'Submitting…' : 'Request deletion (review)'}
         </span>
       </Button>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Request deletion of "${entityName}"?`}
+        description="A reviewer must approve the request before the entry is removed."
+        confirmLabel="Request deletion"
+        onConfirm={() => {
+          mutation.mutate()
+          setConfirming(false)
+        }}
+      />
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

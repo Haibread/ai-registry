@@ -25,6 +25,14 @@ All notable changes to this project are documented here.
   blur with an inline `aria-invalid` error, and caps length at 63. Create-form
   failures also show the server's problem-details `detail` (e.g. which slug
   collided) instead of the bare status title.
+- **One confirmation dialect across the admin.** Every remaining browser
+  `confirm()` (bulk delete/deprecate on the entity lists, single-row Delete
+  and Deprecate, deletion requests) now uses the shared themed dialog, naming
+  the target and the consequence. Button weight now matches reversibility:
+  the reversible Deprecate is a quiet outline button, while the irreversible
+  break-glass Delete is solid destructive red (previously inverted, and the
+  muted Delete read as disabled). Type-to-confirm stays reserved for cascade
+  deletes (publishers).
 - **Interactive sign-in lands on the admin console.** Completing an OIDC
   sign-in with no pending deep link now lands on `/admin` instead of the
   public homepage the server redirect points at — matching the local-login

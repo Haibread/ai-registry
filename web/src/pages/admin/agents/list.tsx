@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { BulkActionBar } from '@/components/admin/bulk-action-bar'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate, problemMessage } from '@/lib/utils'
@@ -116,8 +117,11 @@ export default function AdminAgentList() {
     })
   }
 
+  // Bulk deprecate/delete confirm through the shared dialog (P2.1) — the
+  // pending kind also selects the dialog copy.
+  const [bulkConfirm, setBulkConfirm] = useState<'deprecate' | 'delete' | null>(null)
+
   const bulkDeprecate = () => {
-    if (!window.confirm(`Deprecate ${selection.selectedCount} agent(s)? This signals consumers to migrate away.`)) return
     bulkMutation.mutate(async ({ namespace, slug }) => {
       const { error } = await api.POST('/api/v1/agents/{namespace}/{slug}/deprecate', {
         params: { path: { namespace, slug } },
@@ -127,7 +131,6 @@ export default function AdminAgentList() {
   }
 
   const bulkDelete = () => {
-    if (!window.confirm(`Delete ${selection.selectedCount} agent(s)? This cannot be undone.`)) return
     bulkMutation.mutate(async ({ namespace, slug }) => {
       const { error } = await api.DELETE('/api/v1/agents/{namespace}/{slug}', {
         params: { path: { namespace, slug } },
@@ -259,8 +262,8 @@ export default function AdminAgentList() {
             selectedCount={selection.selectedCount}
             onClear={selection.clear}
             onSetVisibility={bulkSetVisibility}
-            onDeprecate={bulkDeprecate}
-            onDelete={bulkDelete}
+            onDeprecate={() => setBulkConfirm('deprecate')}
+            onDelete={() => setBulkConfirm('delete')}
             isBusy={bulkMutation.isPending}
             // Visibility + deprecate are Editor/Admin actions; the direct
             // delete escape hatch stays Server-Admin-only. The backend still
@@ -279,6 +282,29 @@ export default function AdminAgentList() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={bulkConfirm !== null}
+        onOpenChange={(o) => { if (!o) setBulkConfirm(null) }}
+        title={
+          bulkConfirm === 'delete'
+            ? `Delete ${selection.selectedCount} agent${selection.selectedCount === 1 ? '' : 's'}?`
+            : `Deprecate ${selection.selectedCount} agent${selection.selectedCount === 1 ? '' : 's'}?`
+        }
+        description={
+          bulkConfirm === 'delete'
+            ? 'This permanently deletes the selected entries and all their versions. It cannot be undone.'
+            : 'This marks the selected entries as deprecated, signalling consumers to migrate away. They can be republished later.'
+        }
+        confirmLabel={bulkConfirm === 'delete' ? 'Delete' : 'Deprecate'}
+        destructive={bulkConfirm === 'delete'}
+        isPending={bulkMutation.isPending}
+        onConfirm={() => {
+          if (bulkConfirm === 'delete') bulkDelete()
+          else bulkDeprecate()
+          setBulkConfirm(null)
+        }}
+      />
     </div>
   )
 }

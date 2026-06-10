@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 interface DeleteButtonProps {
   onDelete: () => void
@@ -12,34 +14,43 @@ interface DeleteButtonProps {
   label?: string
 }
 
-// Quiet "destructive outline" styling: red text + red border at low opacity,
-// filled red on hover. This keeps Delete readable as destructive without
-// drowning out the row's primary actions (Edit / Manage). The window.confirm
-// gate is the actual safety net, so the button doesn't need to scream.
+// Solid destructive styling: this is the irreversible break-glass path
+// (admin force-delete, bypassing the review workflow), so its weight matches
+// its blast radius — unlike the reversible Deprecate, which stays quiet. The
+// previous muted-red outline read as disabled (UI/UX review P2.1/P3).
 export function DeleteButton({
   onDelete,
   entityName,
   isPending,
   label = 'Delete',
 }: DeleteButtonProps) {
-  function handleClick() {
-    const confirmed = window.confirm(
-      `Delete "${entityName}"?\n\nThis action cannot be undone.`
-    )
-    if (confirmed) onDelete()
-  }
+  const [confirming, setConfirming] = useState(false)
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      disabled={isPending}
-      onClick={handleClick}
-      className="border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
-    >
-      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-      {label}
-    </Button>
+    <>
+      <Button
+        type="button"
+        variant="destructive"
+        size="sm"
+        disabled={isPending}
+        onClick={() => setConfirming(true)}
+      >
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+        {label}
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Delete "${entityName}"?`}
+        description="This permanently deletes the entry and all its versions, bypassing the review workflow. It cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        isPending={isPending ?? false}
+        onConfirm={() => {
+          onDelete()
+          setConfirming(false)
+        }}
+      />
+    </>
   )
 }

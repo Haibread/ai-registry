@@ -465,6 +465,17 @@ remains offered on a deprecated entry — confirm that's intended.
 ## 4. P2 — high-impact UX gaps
 
 ### P2.1 Three destructive-confirmation dialects coexist **[verified]**
+
+> **RESOLVED 2026-06-10.** Zero `window.confirm` calls remain in the app. All
+> call sites use the shared `ConfirmDialog` (P1.4): bulk delete/deprecate on
+> both entity lists, `delete-button.tsx`, `deprecate-button.tsx`,
+> `request-deletion-button.tsx`, and version publish (done in J2 with the
+> "Approve & publish" ceremony naming entry + version). Weight inversion
+> fixed: Deprecate (reversible) is a quiet outline button; force-Delete
+> (irreversible, break-glass) is solid destructive — also resolving the P3
+> "muted Delete reads as disabled" note. Type-to-confirm
+> (`confirm-delete-panel.tsx`) remains reserved for cascade deletes, per the
+> report. Grant revoke / Server Admin toggles were covered in P1.4.
 - Type-to-confirm inline panel: publisher/entry delete (`confirm-delete-panel.tsx`) — excellent.
 - Native `window.confirm`: bulk delete/deprecate (`web/src/pages/admin/mcp/list.tsx:112,122`,
   same in `agents/list.tsx`), version publish

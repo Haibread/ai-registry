@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -80,6 +80,23 @@ const sampleServer = {
   },
 }
 
+
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// ConfirmDialog (deprecate/delete) opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
+
 describe('AdminMCPDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -121,18 +138,18 @@ describe('AdminMCPDetail', () => {
     })
   })
 
-  it('deprecates the server when the confirm dialog is accepted', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deprecates the server when the dialog is confirmed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
     fireEvent.click(screen.getByRole('button', { name: /^deprecate$/i }))
+    const dialog = screen.getByRole('heading', { name: /deprecate "example mcp"\?/i }).closest('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^deprecate$/i }))
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}/deprecate',
         { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
       )
     })
-    confirmSpy.mockRestore()
   })
 
   it('submits a PATCH when the edit form is saved', async () => {
@@ -212,12 +229,13 @@ describe('AdminMCPDetail', () => {
     expect(mockPATCH).not.toHaveBeenCalled()
   })
 
-  it('deletes the server and navigates back to the list when confirmed', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deletes the server and navigates back to the list when the dialog is confirmed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
 
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+    const dialog = screen.getByRole('heading', { name: /delete "example mcp"\?/i }).closest('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
     await waitFor(() => {
       expect(mockDELETE).toHaveBeenCalledWith(
@@ -228,22 +246,20 @@ describe('AdminMCPDetail', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/admin/mcp')
     })
-    confirmSpy.mockRestore()
   })
 
-  it('does not delete when the user declines the confirm dialog', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('does not delete when the user cancels the dialog', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
 
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
 
     // Nothing to wait for — the user said no, so the call should never happen.
     // Give React Query a microtask to settle, then assert.
     await Promise.resolve()
     expect(mockDELETE).not.toHaveBeenCalled()
     expect(mockNavigate).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
   })
 
   // ─── Lifecycle stepper honesty (UI/UX review P1.1) ────────────────────────
