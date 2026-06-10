@@ -20,7 +20,7 @@
  */
 
 import { test, expect, type Browser, type Page } from '@playwright/test'
-import { apiPost, apiGet } from './helpers'
+import { apiPost, apiGet, confirmDialog } from './helpers'
 
 const RUN = Date.now().toString(36)
 
@@ -148,9 +148,9 @@ test.describe('A partially-failing bulk action reports progress', () => {
           : route.continue(),
     )
 
-    page.once('dialog', (d) => d.accept())
     await page.getByRole('checkbox', { name: /select all/i }).check()
     await page.getByRole('button', { name: /delete/i }).click()
+    await confirmDialog(page, /^delete$/i)
 
     await expect(page.getByText(/1 of 2 succeeded/i)).toBeVisible({ timeout: 10_000 })
     // The one that wasn't intercepted is actually gone; the failed one remains.

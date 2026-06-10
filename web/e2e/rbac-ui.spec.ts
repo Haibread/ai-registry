@@ -19,7 +19,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost, apiDelete } from './helpers'
+import { apiPost, apiDelete, confirmDialog } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB = `e2e-rbac-${RUN_ID}`
@@ -86,12 +86,15 @@ test.describe('RBAC admin UI', () => {
     await page.waitForURL(/\/admin\/users\/[^/]+$/)
     await expect(page.getByRole('heading', { name: /actions/i })).toBeVisible({ timeout: 15_000 })
 
-    // Grant Server Admin → the badge appears (the patch invalidates the query).
+    // Grant Server Admin → confirm the dialog; the badge appears once the
+    // patch invalidates the query.
     await page.getByRole('button', { name: /grant server admin/i }).click()
+    await confirmDialog(page, /grant server admin/i)
     await expect(page.getByText('Server Admin', { exact: true })).toBeVisible({ timeout: 10_000 })
 
-    // Revoke it again → the badge disappears.
+    // Revoke it again → confirm; the badge disappears.
     await page.getByRole('button', { name: /revoke server admin/i }).click()
+    await confirmDialog(page, /revoke server admin/i)
     await expect(page.getByText('Server Admin', { exact: true })).toBeHidden({ timeout: 10_000 })
 
     // Set a local password. The page doesn't refetch on success, so reload and
@@ -119,8 +122,9 @@ test.describe('RBAC admin UI', () => {
     await expect(grantRow).toBeVisible({ timeout: 10_000 })
     await expect(grantRow.getByText('editor', { exact: true })).toBeVisible()
 
-    // Revoke it → the row leaves the grants table.
+    // Revoke it → confirm the dialog; the row leaves the grants table.
     await grantRow.getByRole('button', { name: /revoke/i }).click()
+    await confirmDialog(page, /^revoke grant$/i)
     await expect(grantRow).toBeHidden({ timeout: 10_000 })
   })
 

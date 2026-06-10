@@ -15,7 +15,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost } from './helpers'
+import { apiPost, confirmDialog } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 
@@ -195,9 +195,9 @@ test.describe('Admin: bulk actions', () => {
 
     await page.getByRole('checkbox', { name: `Select ${SLUGS[2]}` }).check()
 
-    page.on('dialog', (d) => d.accept())
     const toolbar = page.getByRole('toolbar', { name: 'Bulk actions' })
     await toolbar.getByRole('button', { name: 'Delete' }).click()
+    await confirmDialog(page, 'Delete')
 
     await expect(page.getByRole('cell', { name: SLUGS[2], exact: true })).not.toBeVisible({ timeout: 10_000 })
   })

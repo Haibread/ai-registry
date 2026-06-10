@@ -26,7 +26,7 @@
  */
 
 import { test, expect, type Browser, type Page } from '@playwright/test'
-import { apiPost, apiGet } from './helpers'
+import { apiPost, apiGet, confirmDialog } from './helpers'
 
 const RUN = Date.now().toString(36)
 
@@ -83,8 +83,6 @@ test.describe('MCP server lifecycle (UI create → publish → edit → version 
     const pub = await seedPublisher(page, 'mcp-life')
     const slug = `weather-${RUN}`
 
-    // Accept the "publish takes it live" confirm dialog the moment it appears.
-    page.on('dialog', (d) => d.accept())
 
     // Scope the admin area to the publisher so the New form pre-selects it.
     await page.goto('/admin')
@@ -132,9 +130,11 @@ test.describe('MCP server lifecycle (UI create → publish → edit → version 
     await page.getByRole('button', { name: 'Create version' }).click()
     await expect(page.getByRole('cell', { name: /v2\.0\.0/ })).toBeVisible({ timeout: 10_000 })
 
-    // PUBLISH the new draft via its Publish button (dialog auto-accepted above).
+    // PUBLISH the new draft via its Publish button, confirming the themed
+    // dialog (which replaced window.confirm).
     // `exact` avoids matching the LifecycleStepper's "Published" stage button.
     await page.getByRole('button', { name: 'Publish', exact: true }).first().click()
+    await confirmDialog(page, 'Publish')
     // Two published versions now exist; assert the table shows ≥2 published.
     await expect
       .poll(async () => page.getByText('published').count(), { timeout: 10_000 })
@@ -148,12 +148,14 @@ test.describe('MCP server lifecycle (UI create → publish → edit → version 
     expect(Array.isArray(v2.tools) && v2.tools.length).toBeTruthy()
     expect(v2.packages?.[0]?.registryBaseUrl).toBe('https://registry.npmjs.org')
 
-    // DEPRECATE via the UI.
+    // DEPRECATE via the UI, confirming the themed dialog.
     await page.getByRole('button', { name: /^deprecate$/i }).click()
+    await confirmDialog(page, 'Deprecate')
     await expect(page.getByText('deprecated').first()).toBeVisible({ timeout: 10_000 })
 
-    // DELETE via the UI (Server-Admin escape hatch).
+    // DELETE via the UI (Server-Admin escape hatch), confirming the dialog.
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await confirmDialog(page, 'Delete')
     await page.waitForURL(/\/admin\/mcp(?:$|\?)/, { timeout: 10_000 })
 
     // GONE — the entry no longer resolves.
@@ -356,20 +358,20 @@ test.describe('Bulk deprecate asks for confirmation', () => {
 
     const selectAll = page.getByRole('checkbox', { name: /select all/i })
 
-    // DECLINE the confirm → nothing changes.
-    page.once('dialog', (d) => d.dismiss())
+    // CANCEL the confirmation dialog → nothing changes.
     await selectAll.check()
     await page.getByRole('button', { name: /deprecate/i }).click()
+    await confirmDialog(page, /^cancel$/i)
     // Both still report published via the API.
     for (const s of slugs) {
       const r = await apiGet(page, `/api/v1/mcp/servers/${pub.slug}/${s}`)
       expect((await r.json()).status).toBe('published')
     }
 
-    // ACCEPT the confirm → both deprecate.
-    page.once('dialog', (d) => d.accept())
+    // CONFIRM the dialog → both deprecate.
     if (!(await selectAll.isChecked())) await selectAll.check()
     await page.getByRole('button', { name: /deprecate/i }).click()
+    await confirmDialog(page, /^deprecate$/i)
     await expect
       .poll(
         async () => {

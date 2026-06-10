@@ -7,9 +7,9 @@ type AuditAction string
 
 const (
 	// MCP server actions
-	ActionMCPServerCreated    AuditAction = "mcp_server.created"
-	ActionMCPVersionCreated   AuditAction = "mcp_server_version.created"
-	ActionMCPVersionPublished AuditAction = "mcp_server_version.published"
+	ActionMCPServerCreated      AuditAction = "mcp_server.created"
+	ActionMCPVersionCreated     AuditAction = "mcp_server_version.created"
+	ActionMCPVersionPublished   AuditAction = "mcp_server_version.published"
 	ActionMCPServerDeprecated   AuditAction = "mcp_server.deprecated"
 	ActionMCPServerUndeprecated AuditAction = "mcp_server.undeprecated"
 	ActionMCPServerVisibility   AuditAction = "mcp_server.visibility_changed"
