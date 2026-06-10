@@ -65,15 +65,25 @@ func (db *DB) ListReports(ctx context.Context, p ListReportsParams) ([]domain.Re
 		p.Limit = 50
 	}
 
-	q := `SELECT id, resource_type, resource_id, issue_type, description,
-		      coalesce(reporter_ip, ''), status, created_at, reviewed_at, coalesce(reviewed_by, '')
-		  FROM reports`
+	// Join the reported entry (and its publisher) so the admin UI can link
+	// to the entry detail page and show a human-readable name instead of a
+	// bare ULID. LEFT JOINs: a report must survive its target's deletion.
+	q := `SELECT r.id, r.resource_type, r.resource_id, r.issue_type, r.description,
+		      coalesce(r.reporter_ip, ''), r.status, r.created_at, r.reviewed_at, coalesce(r.reviewed_by, ''),
+		      coalesce(pm.slug, pa.slug, '') AS resource_ns,
+		      coalesce(m.slug, a.slug, '') AS resource_slug,
+		      coalesce(m.name, a.name, '') AS resource_name
+		  FROM reports r
+		  LEFT JOIN mcp_servers m ON r.resource_type = 'mcp_server' AND m.id = r.resource_id
+		  LEFT JOIN publishers pm ON pm.id = m.publisher_id
+		  LEFT JOIN agents a ON r.resource_type = 'agent' AND a.id = r.resource_id
+		  LEFT JOIN publishers pa ON pa.id = a.publisher_id`
 	args := []any{}
 	if p.Status != "" {
-		q += " WHERE status = $1"
+		q += " WHERE r.status = $1"
 		args = append(args, p.Status)
 	}
-	q += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", len(args)+1)
+	q += fmt.Sprintf(" ORDER BY r.created_at DESC LIMIT $%d", len(args)+1)
 	args = append(args, p.Limit)
 
 	rows, err := db.Pool.Query(ctx, q, args...)
@@ -90,6 +100,7 @@ func (db *DB) ListReports(ctx context.Context, p ListReportsParams) ([]domain.Re
 		if err := rows.Scan(
 			&r.ID, &r.ResourceType, &r.ResourceID, &r.IssueType, &r.Description,
 			&r.ReporterIP, &status, &r.CreatedAt, &r.ReviewedAt, &r.ReviewedBy,
+			&r.ResourceNS, &r.ResourceSlug, &r.ResourceName,
 		); err != nil {
 			recordErr(span, err)
 			return nil, fmt.Errorf("scanning report row: %w", err)

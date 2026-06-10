@@ -61,12 +61,12 @@ export default function AdminReports() {
     onError: (err: Error) => setActionError(err.message || 'Action failed'),
   })
 
-  function linkFor(resourceType: string, resourceId: string): string | null {
-    // The admin detail pages take ns/slug, not IDs. Without a lookup we can
-    // only point at the list pages filtered by ID-ish text so the reviewer can
-    // click through. Unknown resource types get no link (rendered as plain text).
-    if (resourceType === 'mcp_server') return `/admin/mcp?q=${encodeURIComponent(resourceId)}`
-    if (resourceType === 'agent') return `/admin/agents?q=${encodeURIComponent(resourceId)}`
+  function linkFor(r: { resource_type: string; resource_ns?: string; resource_slug?: string }): string | null {
+    // The admin list response joins ns/slug for us; both are empty when the
+    // reported entry has since been deleted — no link then.
+    if (!r.resource_ns || !r.resource_slug) return null
+    if (r.resource_type === 'mcp_server') return `/admin/mcp/${r.resource_ns}/${r.resource_slug}`
+    if (r.resource_type === 'agent') return `/admin/agents/${r.resource_ns}/${r.resource_slug}`
     return null
   }
 
@@ -139,13 +139,20 @@ export default function AdminReports() {
                 </Badge>
                 <span className="text-xs text-muted-foreground">{formatDate(r.created_at)}</span>
                 {(() => {
-                  const to = linkFor(r.resource_type, r.resource_id)
-                  return to ? (
-                    <Link to={to} className="text-xs text-primary hover:underline font-mono ml-auto">
-                      {r.resource_id}
+                  // Recognition over recall: name + ns/slug, linked straight
+                  // to the entry detail. The raw ULID only shows when the
+                  // entry is gone and there is nothing better to print.
+                  const to = linkFor(r)
+                  const handle = r.resource_ns && r.resource_slug ? `${r.resource_ns}/${r.resource_slug}` : null
+                  return to && handle ? (
+                    <Link to={to} className="text-xs text-primary hover:underline ml-auto">
+                      {r.resource_name ? `${r.resource_name} — ` : ''}
+                      <span className="font-mono">{handle}</span>
                     </Link>
                   ) : (
-                    <span className="text-xs text-muted-foreground font-mono ml-auto">{r.resource_id}</span>
+                    <span className="text-xs text-muted-foreground ml-auto" title={r.resource_id}>
+                      deleted entry (<span className="font-mono">{r.resource_id}</span>)
+                    </span>
                   )
                 })()}
               </div>

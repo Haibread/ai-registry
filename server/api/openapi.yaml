@@ -4004,6 +4004,21 @@ components:
         resource_id:
           type: string
           description: ULID of the reported resource
+        resource_ns:
+          type: string
+          description: >
+            Publisher namespace of the reported resource. Admin list responses
+            only; empty when the resource no longer exists.
+        resource_slug:
+          type: string
+          description: >
+            Slug of the reported resource. Admin list responses only; empty
+            when the resource no longer exists.
+        resource_name:
+          type: string
+          description: >
+            Display name of the reported resource. Admin list responses only;
+            empty when the resource no longer exists.
         issue_type:
           type: string
           enum: [broken, misleading, spam, security, licensing, outdated, duplicate, other]

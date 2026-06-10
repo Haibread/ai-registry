@@ -16,6 +16,12 @@ type Report struct {
 	ID           string
 	ResourceType string // "mcp_server" | "agent"
 	ResourceID   string
+	// ResourceNS / ResourceSlug / ResourceName identify the reported entry in
+	// human terms. Populated on admin list reads (joined from the entry
+	// tables); empty when the entry no longer exists.
+	ResourceNS   string
+	ResourceSlug string
+	ResourceName string
 	IssueType    string
 	Description  string
 	ReporterIP   string

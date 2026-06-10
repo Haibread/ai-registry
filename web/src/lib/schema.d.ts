@@ -2250,6 +2250,12 @@ export interface components {
             resource_type: "mcp_server" | "agent";
             /** @description ULID of the reported resource */
             resource_id: string;
+            /** @description Publisher namespace of the reported resource. Admin list responses only; empty when the resource no longer exists. */
+            resource_ns?: string;
+            /** @description Slug of the reported resource. Admin list responses only; empty when the resource no longer exists. */
+            resource_slug?: string;
+            /** @description Display name of the reported resource. Admin list responses only; empty when the resource no longer exists. */
+            resource_name?: string;
             /** @enum {string} */
             issue_type: "broken" | "misleading" | "spam" | "security" | "licensing" | "outdated" | "duplicate" | "other";
             description: string;
