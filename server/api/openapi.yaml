@@ -4,7 +4,7 @@ info:
   description: >
     Centralized registry for MCP servers and AI agents.
     Exposes a versioned HTTP API; all UIs are clients of this API.
-  version: 0.4.0-rc6
+  version: 0.4.0-rc7
   contact:
     name: AI Registry Team
 servers:
