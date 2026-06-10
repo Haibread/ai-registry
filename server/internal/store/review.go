@@ -512,6 +512,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    JOIN mcp_servers s ON s.id = v.server_id
 		    JOIN publishers p ON p.id = s.publisher_id
 		    WHERE v.review_state = 'pending_review' AND v.submitted_at IS NOT NULL
+		      AND s.status != 'deleted'
 
 		    UNION ALL
 		    SELECT 'agent_version'::text, p.id, p.slug, a.slug, a.id,
@@ -522,6 +523,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    JOIN agents     a ON a.id = av.agent_id
 		    JOIN publishers p ON p.id = a.publisher_id
 		    WHERE av.review_state = 'pending_review' AND av.submitted_at IS NOT NULL
+		      AND a.status != 'deleted'
 
 		    UNION ALL
 		    SELECT 'mcp_deletion'::text, p.id, p.slug, s.slug, s.id,
@@ -531,6 +533,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    FROM mcp_servers s
 		    JOIN publishers p ON p.id = s.publisher_id
 		    WHERE s.deletion_requested_at IS NOT NULL AND s.deleted_at IS NULL
+		      AND s.status != 'deleted'
 
 		    UNION ALL
 		    SELECT 'agent_deletion'::text, p.id, p.slug, a.slug, a.id,
@@ -540,6 +543,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    FROM agents a
 		    JOIN publishers p ON p.id = a.publisher_id
 		    WHERE a.deletion_requested_at IS NOT NULL AND a.deleted_at IS NULL
+		      AND a.status != 'deleted'
 
 		    UNION ALL
 		    SELECT 'mcp_change'::text, p.id, p.slug, s.slug, s.id,
@@ -550,6 +554,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    JOIN mcp_servers s ON s.id = ecr.entry_id
 		    JOIN publishers p ON p.id = s.publisher_id
 		    WHERE ecr.resource_type = 'mcp_server' AND ecr.state = 'pending_review'
+		      AND s.status != 'deleted'
 
 		    UNION ALL
 		    SELECT 'agent_change'::text, p.id, p.slug, a.slug, a.id,
@@ -560,6 +565,7 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    JOIN agents a ON a.id = ecr.entry_id
 		    JOIN publishers p ON p.id = a.publisher_id
 		    WHERE ecr.resource_type = 'agent' AND ecr.state = 'pending_review'
+		      AND a.status != 'deleted'
 		)
 		SELECT kind, publisher_slug, entry_slug, entry_id, version, revision,
 		       submitted_at, submitted_by, submitted_by_email, change_id, action, payload

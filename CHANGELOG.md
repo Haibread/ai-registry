@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Force-deleting an entry no longer strands review-queue items.** Admin
+  force-delete (MCP servers + agents) now also sets the `deleted_at` tombstone,
+  cancels any in-flight version submission, and drops any pending entry-change
+  request in the same transaction. Previously an entry force-deleted while a
+  deletion request was pending left a permanently-stuck queue item that could
+  be neither approved nor rejected and inflated the reviewer badge forever. The
+  review-queue query additionally excludes `status='deleted'` entries from
+  every branch, so pre-fix residue is hidden too.
+
 ### Changed
 
 - **Entry-level mutations now route through the review queue.** Changing an

@@ -789,8 +789,11 @@ func (db *DB) UpdateAgent(ctx context.Context, agentID string, p UpdateAgentPara
 	return db.getAgentByID(ctx, agentID)
 }
 
-// DeleteAgent soft-deletes an agent by setting status='deleted' on the agent
-// and all its versions. Returns ErrNotFound if not found.
+// DeleteAgent soft-deletes an agent by setting status='deleted' (and
+// deleted_at) on the agent and all its versions. Any review-queue residue —
+// a pending deletion request, pending version submissions, a pending entry
+// change — is resolved in the same transaction so the queue can never hold an
+// item whose target no longer exists. Returns ErrNotFound if not found.
 func (db *DB) DeleteAgent(ctx context.Context, agentID string) error {
 	ctx, span := startSpan(ctx, "DeleteAgent")
 	defer span.End()
@@ -804,8 +807,13 @@ func (db *DB) DeleteAgent(ctx context.Context, agentID string) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op after commit
 
+	// deleted_at drives the review-queue exclusion (the deletion-request branch
+	// keys off deletion_requested_at; the deletion_requested_* audit columns are
+	// retained, mirroring ApproveAgentDeletion).
 	tag, err := tx.Exec(ctx,
-		`UPDATE agents SET status='deleted', updated_at=now() WHERE id=$1 AND status != 'deleted'`,
+		`UPDATE agents
+		 SET status='deleted', deleted_at=COALESCE(deleted_at, now()), updated_at=now()
+		 WHERE id=$1 AND status != 'deleted'`,
 		agentID)
 	if err != nil {
 		recordErr(span, err)
@@ -820,6 +828,23 @@ func (db *DB) DeleteAgent(ctx context.Context, agentID string) error {
 		agentID); err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("deleting agent versions: %w", err)
+	}
+	// Cancel in-flight version submissions so the queue's version branch drops them.
+	if _, err = tx.Exec(ctx,
+		`UPDATE agent_versions
+		 SET review_state='none', submitted_at=NULL, submitted_by=NULL, submitted_by_email=NULL
+		 WHERE agent_id=$1 AND review_state='pending_review'`,
+		agentID); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("cancelling pending agent version reviews: %w", err)
+	}
+	// Drop a pending entry-change request, mirroring the editor's withdraw path.
+	if _, err = tx.Exec(ctx,
+		`DELETE FROM entry_change_requests
+		 WHERE resource_type='agent' AND entry_id=$1 AND state='pending_review'`,
+		agentID); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("cancelling pending agent entry change: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
