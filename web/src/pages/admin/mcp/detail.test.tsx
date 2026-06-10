@@ -171,10 +171,21 @@ describe('AdminMCPDetail', () => {
     })
   })
 
-  it('shows a not-found state when the query errors', async () => {
-    mockGET.mockRejectedValueOnce(new Error('nope'))
+  it('shows a retryable error state when the query fails with a non-404', async () => {
+    mockGET.mockResolvedValueOnce({ error: { detail: 'boom' }, response: { status: 500 } })
+    renderPage()
+    // Non-404 failures must NOT read "Not found" (P2.6) — they get the
+    // error surface with the server detail and a retry affordance.
+    expect(await screen.findByRole('alert')).toHaveTextContent('boom')
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a not-found state when the query 404s', async () => {
+    mockGET.mockResolvedValueOnce({ error: { title: 'Not Found' }, response: { status: 404 } })
     renderPage()
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
   })
 
   // ─── Lifecycle / delete / error-surfacing coverage (v0.2.2) ───────────────
@@ -187,26 +198,14 @@ describe('AdminMCPDetail', () => {
   // delete-confirm → DELETE → navigate chain, and the failure path where a
   // mutation errors out and the UI surfaces a retry hint.
 
-  it('deprecates via the LifecycleStepper Deprecated transition', async () => {
+  it('offers no stepper transition on a published entry — Deprecate owns the mutation', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
 
-    // The LifecycleStepper renders a clickable button for each target state.
-    // `defaultAllowedTransitions('published')` returns ['deprecated'], so the
-    // Deprecated stage should be clickable and fire the same POST that the
-    // DeprecateButton does — but WITHOUT going through window.confirm.
-    // The button's text content is "Deprecated" and only the clickable
-    // target has `title="Transition to …"`; querying by title keeps this
-    // unambiguous without reaching into classnames.
-    const transitionBtn = screen.getByTitle(/transition to deprecated/i)
-    fireEvent.click(transitionBtn)
-
-    await waitFor(() => {
-      expect(mockPOST).toHaveBeenCalledWith(
-        '/api/v1/mcp/servers/{namespace}/{slug}/deprecate',
-        { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
-      )
-    })
+    // One transition surface per action (P3 duplicate-affordance): for a
+    // published entry the stepper is informational only; deprecation happens
+    // via the confirmed DeprecateButton, covered above.
+    expect(screen.queryByTitle(/transition to/i)).not.toBeInTheDocument()
   })
 
   it('opens and cancels the edit form without firing a PATCH', async () => {

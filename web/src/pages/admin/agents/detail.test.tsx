@@ -167,10 +167,21 @@ describe('AdminAgentDetail', () => {
     })
   })
 
-  it('shows a not-found state when the query errors', async () => {
-    mockGET.mockRejectedValueOnce(new Error('nope'))
+  it('shows a retryable error state when the query fails with a non-404', async () => {
+    mockGET.mockResolvedValueOnce({ error: { detail: 'boom' }, response: { status: 500 } })
+    renderPage()
+    // Non-404 failures must NOT read "Not found" (P2.6) — they get the
+    // error surface with the server detail and a retry affordance.
+    expect(await screen.findByRole('alert')).toHaveTextContent('boom')
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a not-found state when the query 404s', async () => {
+    mockGET.mockResolvedValueOnce({ error: { title: 'Not Found' }, response: { status: 404 } })
     renderPage()
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
   })
 
   // ─── Deprecate / lifecycle / delete / a2a-link coverage (v0.2.2) ─────────
@@ -213,23 +224,14 @@ describe('AdminAgentDetail', () => {
     expect(deprecateCalls).toHaveLength(0)
   })
 
-  it('deprecates via the LifecycleStepper Deprecated transition', async () => {
+  it('offers no stepper transition on a published entry — Deprecate owns the mutation', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
-    // The stepper bypasses window.confirm — it's a one-click lifecycle
-    // affordance. Query by title (the tooltip) because only the clickable
-    // target carries "Transition to …" — the other stages show their label
-    // or "Current status: …".
-    const transitionBtn = screen.getByTitle(/transition to deprecated/i)
-    fireEvent.click(transitionBtn)
-
-    await waitFor(() => {
-      expect(mockPOST).toHaveBeenCalledWith(
-        '/api/v1/agents/{namespace}/{slug}/deprecate',
-        { params: { path: { namespace: 'acme', slug: 'example-agent' } } },
-      )
-    })
+    // One transition surface per action (P3 duplicate-affordance): for a
+    // published entry the stepper is informational only; deprecation happens
+    // via the confirmed DeprecateButton, covered above.
+    expect(screen.queryByTitle(/transition to/i)).not.toBeInTheDocument()
   })
 
   it('hides the DeprecateButton when status is not published', async () => {

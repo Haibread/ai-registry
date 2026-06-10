@@ -24,6 +24,10 @@ interface VersionsSectionProps {
   kind: Kind
   namespace: string
   slug: string
+  /** Lifecycle status of the owning entry. A deprecated entry keeps its
+   *  versions "published" in the domain model — annotate so the two badges
+   *  don't read as a contradiction (J4). */
+  entryStatus?: 'draft' | 'published' | 'deprecated' | 'deleted'
 }
 
 // review_state → badge variant + label.
@@ -59,7 +63,7 @@ function friendlyProblem(error: unknown, fallback: string): string {
   return e.detail ?? fallback
 }
 
-export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps) {
+export function VersionsSection({ kind, namespace, slug, entryStatus }: VersionsSectionProps) {
   const perms = usePermissions()
   // Submit/withdraw are publisher Editor actions. Approve/reject of a submitted
   // version live on the review queue; the direct Publish below is the Reviewer's
@@ -265,7 +269,11 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                   <TableCell className="font-mono">
                     v{v.version}
                     {typeof v.revision === 'number' && v.revision > 0 && (
-                      <Badge variant="outline" className="ml-2 text-xs">
+                      <Badge
+                        variant="outline"
+                        className="ml-2 text-xs"
+                        title={`Edited and resubmitted ${v.revision} time${v.revision === 1 ? '' : 's'} since first submission`}
+                      >
                         rev {v.revision}
                       </Badge>
                     )}
@@ -278,6 +286,11 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                       <Badge variant={reviewBadge.variant} className="text-xs">
                         {reviewBadge.label}
                       </Badge>
+                    )}
+                    {entryStatus === 'deprecated' && v.published_at && (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        (entry deprecated)
+                      </span>
                     )}
                   </TableCell>
                   <TableCell className="text-sm">

@@ -19,6 +19,26 @@ export function problemMessage(error: unknown, fallback: string): string {
   return e?.detail ?? e?.title ?? fallback
 }
 
+/**
+ * Error carrying the HTTP status of a failed API call, so query error
+ * surfaces can branch (404 → not-found view, anything else → retryable
+ * error state) instead of collapsing every failure into "Not found".
+ */
+export class HTTPError extends Error {
+  status: number | undefined
+
+  constructor(message: string, status?: number) {
+    super(message)
+    this.name = "HTTPError"
+    this.status = status
+  }
+}
+
+/** True when the query error is an HTTP 404 (vs a 5xx / network failure). */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof HTTPError && error.status === 404
+}
+
 /** Format an ISO date string into a human-readable date. */
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {

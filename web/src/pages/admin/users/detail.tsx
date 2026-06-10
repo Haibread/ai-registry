@@ -9,11 +9,14 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DetailPageSkeleton } from '@/components/ui/detail-page-skeleton'
+import { ErrorState } from '@/components/ui/error-state'
 import { useAuthClient } from '@/lib/api-client'
 import { useMe } from '@/auth/useMe'
-import { formatDate } from '@/lib/utils'
+import { formatDate, problemMessage, HTTPError, isNotFound } from '@/lib/utils'
 
 type UserPatch = {
+  display_name?: string
   disabled?: boolean
   is_server_admin?: boolean
 }
@@ -29,9 +32,15 @@ export default function AdminUserDetail() {
   const { data: me } = useMe()
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
 
-  const { data: user, isPending, isError } = useQuery({
+  const { data: user, isPending, isError, error, refetch } = useQuery({
     queryKey: ['admin-user', id],
-    queryFn: () => api.GET('/api/v1/users/{id}', { params: { path: { id: id! } } }).then(r => r.data),
+    queryFn: async () => {
+      const { data, error, response } = await api.GET('/api/v1/users/{id}', { params: { path: { id: id! } } })
+      // Carry the HTTP status so the error branch can tell a real 404 from
+      // a server error or network failure (P2.6).
+      if (error || !data) throw new HTTPError(problemMessage(error, 'Failed to load this user.'), response?.status)
+      return data
+    },
     enabled: !!id && true,
   })
 
@@ -64,10 +73,17 @@ export default function AdminUserDetail() {
 
   const isSelf = !!me?.user_id && me.user_id === id
 
-  if (isPending) return <p className="text-muted-foreground">Loading…</p>
+  if (isPending) return <DetailPageSkeleton />
   if (isError || !user) return (
     <div className="space-y-4">
-      <p className="text-destructive">Not found.</p>
+      {isNotFound(error) ? (
+        <p className="text-destructive">Not found — this user may have been removed.</p>
+      ) : (
+        <ErrorState
+          message={error instanceof Error ? error.message : 'Failed to load this user.'}
+          onRetry={() => refetch()}
+        />
+      )}
       <Button variant="outline" size="sm" onClick={() => navigate('/admin/users')}>Back to Users</Button>
     </div>
   )
@@ -86,7 +102,11 @@ export default function AdminUserDetail() {
       <div className="flex items-start gap-3 flex-wrap">
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{user.display_name || user.email}</h1>
-          <p className="text-sm text-muted-foreground font-mono mt-0.5">{user.email}</p>
+          {/* Only show the email subtitle when the heading is a display
+              name — otherwise the email would print twice. */}
+          {user.display_name && (
+            <p className="text-sm text-muted-foreground font-mono mt-0.5">{user.email}</p>
+          )}
         </div>
         {user.is_server_admin && (
           <Badge variant="success" className="gap-1">
@@ -174,6 +194,35 @@ export default function AdminUserDetail() {
           setPendingAction(null)
         }}
       />
+
+      <Separator />
+
+      <form
+        className="space-y-3 max-w-sm"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const fd = new FormData(e.currentTarget)
+          patch.mutate({ display_name: (fd.get('display_name') as string).trim() })
+        }}
+      >
+        <h2 className="text-lg font-semibold">Display name</h2>
+        <p className="text-sm text-muted-foreground max-w-prose">
+          Shown instead of the email across the admin console.
+        </p>
+        <div className="space-y-1">
+          <Label htmlFor="display_name">Display name</Label>
+          <Input
+            id="display_name"
+            name="display_name"
+            defaultValue={user.display_name ?? ''}
+            placeholder="Jane Doe"
+            autoComplete="off"
+          />
+        </div>
+        <Button type="submit" size="sm" variant="outline" disabled={patch.isPending}>
+          {patch.isPending ? 'Saving…' : 'Save display name'}
+        </Button>
+      </form>
 
       <Separator />
 
