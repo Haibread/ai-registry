@@ -154,6 +154,18 @@ inline validation; errors surface only after submit. Audit `agents/new.tsx` for 
 same title-only extraction.
 
 ### P1.3 Signed-out and under-privileged deep links die silently **[verified]**
+
+> **RESOLVED 2026-06-10.** `RequireAuth` now redirects to `/login` carrying
+> the original destination as router state; the login page shows "Sign in to
+> continue to …" and resumes it after local login (navigate) and OIDC
+> (sessionStorage stash consumed in `consumeOIDCHandoff`, since the IdP
+> round-trip loses router state). `RequireServerAdmin` bounces with a
+> "Server Admin access required" toast (deduped via a fixed toast id).
+> returnTo values are restricted to same-origin absolute paths — no open
+> redirect. Verified live: signed-out `/admin/mcp` → login + hint → local
+> sign-in landed back on `/admin/mcp`; editor deep-link to `/admin/users` →
+> dashboard + toast. Unit tests cover the redirect state, returnTo for both
+> login paths, the open-redirect rejection, and the bounce toast.
 - `web/src/auth/RequireAuth.tsx:22` — any `/admin/...` URL visited signed-out redirects
   to `/` (public homepage) with no message. The user isn't told they need to sign in.
 - `web/src/pages/login.tsx:18,28` — login always lands on `/admin`, so the original

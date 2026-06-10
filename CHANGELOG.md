@@ -25,6 +25,13 @@ All notable changes to this project are documented here.
   blur with an inline `aria-invalid` error, and caps length at 63. Create-form
   failures also show the server's problem-details `detail` (e.g. which slug
   collided) instead of the bare status title.
+- **Signed-out and under-privileged deep links no longer die silently.**
+  Visiting an `/admin/...` URL signed out now lands on the login page with a
+  "Sign in to continue to …" hint, and signing in (local or OIDC) resumes the
+  original destination instead of dropping it. A non-admin deep-linking a
+  Server-Admin page (e.g. `/admin/users`) is bounced to the dashboard with a
+  visible "Server Admin access required" notice instead of a silent redirect.
+  Only same-origin paths are honored as return destinations.
 - **The admin lifecycle stepper no longer renders dead controls.** Clicking
   "Published" on a draft entry now scrolls to the Versions section with a
   hint (publishing happens per version) instead of silently doing nothing;

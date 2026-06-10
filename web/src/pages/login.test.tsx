@@ -18,8 +18,8 @@ vi.mock('@/auth/AuthContext', () => ({
 
 import LoginPage from './login'
 
-function renderPage() {
-  return render(<MemoryRouter><LoginPage /></MemoryRouter>)
+function renderPage(entry: string | { pathname: string; state?: unknown } = '/login') {
+  return render(<MemoryRouter initialEntries={[entry]}><LoginPage /></MemoryRouter>)
 }
 
 describe('LoginPage', () => {
@@ -59,6 +59,32 @@ describe('LoginPage', () => {
       expect(mockLoginLocal).toHaveBeenCalledWith('admin@example.com', 'hunter2hunter2')
     })
     expect(mockNavigate).toHaveBeenCalledWith('/admin')
+  })
+
+  it('honors a returnTo deep link after local login', async () => {
+    mockLoginLocal.mockResolvedValue(undefined)
+    renderPage({ pathname: '/login', state: { returnTo: '/admin/mcp/acme/thing' } })
+    expect(screen.getByText(/sign in to continue to/i)).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/email/i), 'admin@example.com')
+    await userEvent.type(screen.getByLabelText(/password/i), 'hunter2hunter2')
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin/mcp/acme/thing'))
+  })
+
+  it('passes returnTo to the OIDC login so the round-trip can resume it', async () => {
+    renderPage({ pathname: '/login', state: { returnTo: '/admin/users' } })
+    await userEvent.click(screen.getByRole('button', { name: /sign in with your organization/i }))
+    expect(mockLogin).toHaveBeenCalledWith('/admin/users')
+  })
+
+  it('rejects an external returnTo (no open redirect)', async () => {
+    mockLoginLocal.mockResolvedValue(undefined)
+    renderPage({ pathname: '/login', state: { returnTo: '//evil.example/phish' } })
+    expect(screen.queryByText(/sign in to continue to/i)).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/email/i), 'admin@example.com')
+    await userEvent.type(screen.getByLabelText(/password/i), 'hunter2hunter2')
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin'))
   })
 
   it('shows the error message when local login fails', async () => {

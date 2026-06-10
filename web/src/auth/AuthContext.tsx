@@ -28,7 +28,8 @@ interface AuthState {
   oidcEnabled: boolean
   localLoginEnabled: boolean
   loginError: string | null
-  login: () => void
+  /** Start the OIDC sign-in redirect; returnTo is resumed after the round-trip. */
+  login: (returnTo?: string) => void
   loginLocal: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -78,6 +79,33 @@ function bootstrapAuth(): Promise<Me | null> {
   return bootInFlight
 }
 
+// Where to resume after a full-page OIDC round-trip. The IdP redirect leaves
+// the SPA entirely, so router state can't carry the deep link — sessionStorage
+// (per-tab, survives the redirect) bridges it.
+const RETURN_TO_KEY = 'ai_registry_return_to'
+
+/** stashReturnTo records an in-app path to land on after OIDC sign-in. */
+export function stashReturnTo(path: string) {
+  try {
+    sessionStorage.setItem(RETURN_TO_KEY, path)
+  } catch {
+    // Storage unavailable (private mode hard-limits) — login still works,
+    // only the deep link is lost.
+  }
+}
+
+// takeReturnTo pops the stashed path. Only same-origin absolute paths are
+// honored so a crafted value can never turn this into an open redirect.
+function takeReturnTo(): string | null {
+  try {
+    const v = sessionStorage.getItem(RETURN_TO_KEY)
+    sessionStorage.removeItem(RETURN_TO_KEY)
+    return v && v.startsWith('/') && !v.startsWith('//') ? v : null
+  } catch {
+    return null
+  }
+}
+
 // consumeOIDCHandoff looks for the one-time code the OIDC callback left in the
 // URL fragment (`#code=…`), exchanges it for tokens, and strips it from the URL.
 // Returns true when a code was successfully exchanged.
@@ -98,6 +126,11 @@ async function consumeOIDCHandoff(): Promise<boolean> {
     if (!res.ok) return false
     const body = (await res.json()) as { accessToken: string; refreshToken: string }
     setTokens(body.accessToken, body.refreshToken)
+    // Resume the deep link that triggered the sign-in, if any. This runs
+    // before the router mounts (bootstrapAuth), so a replaceState is enough
+    // for the router to render the original destination directly.
+    const returnTo = takeReturnTo()
+    if (returnTo) window.history.replaceState(null, '', returnTo)
     return true
   } catch {
     return false
@@ -157,7 +190,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('auth:unauthorized', onUnauthorized)
   }, [refresh])
 
-  const login = useCallback(() => {
+  const login = useCallback((returnTo?: string) => {
+    if (returnTo) stashReturnTo(returnTo)
     window.location.href = '/api/v1/auth/oidc/login'
   }, [])
 

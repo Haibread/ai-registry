@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 
 interface Props { children: React.ReactNode }
@@ -7,6 +7,7 @@ interface Props { children: React.ReactNode }
 // (AuthContext's GET /api/v1/me), not a JS token.
 export function RequireAuth({ children }: Props) {
   const { isAuthenticated, authLoading } = useAuth()
+  const location = useLocation()
 
   if (authLoading) {
     return (
@@ -16,10 +17,17 @@ export function RequireAuth({ children }: Props) {
     )
   }
 
-  // Not signed in (no session, or it lapsed after a 401) → send home. The
-  // header's Sign in button lets the user initiate login intentionally.
+  // Not signed in (no session, or it lapsed after a 401) → send to the login
+  // page, carrying the original destination so signing in lands back here
+  // instead of losing the deep link.
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ returnTo: location.pathname + location.search }}
+      />
+    )
   }
 
   return <>{children}</>
