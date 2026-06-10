@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -38,6 +39,9 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
   const principalType: PrincipalType = canManageGroups ? principalTypeState : 'user'
   const [principalId, setPrincipalId] = useState('')
   const [role, setRole] = useState<Role>('editor')
+  // Grant whose revocation awaits confirmation — this is the RBAC surface, so
+  // a single stray X-click must not remove access (P1.4).
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; role: string; label: string } | null>(null)
 
   const grantsQuery = useQuery({
     queryKey: ['admin-grants', scopeKey],
@@ -184,7 +188,9 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
                       size="sm"
                       aria-label={`Revoke ${g.role} from ${g.principal_label || g.principal_id}`}
                       disabled={deleteGrant.isPending}
-                      onClick={() => deleteGrant.mutate(g.id)}
+                      onClick={() =>
+                        setRevokeTarget({ id: g.id, role: g.role, label: g.principal_label || g.principal_id })
+                      }
                     >
                       <X className="h-4 w-4" aria-hidden="true" />
                     </Button>
@@ -195,6 +201,24 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        onOpenChange={(o) => { if (!o) setRevokeTarget(null) }}
+        title={revokeTarget ? `Revoke ${revokeTarget.role} from "${revokeTarget.label}"?` : ''}
+        description={
+          publisherSlug
+            ? `The principal immediately loses its ${revokeTarget?.role ?? ''} access on ${publisherSlug}.`
+            : `The principal immediately loses its global ${revokeTarget?.role ?? ''} access (all publishers).`
+        }
+        confirmLabel="Revoke grant"
+        destructive
+        isPending={deleteGrant.isPending}
+        onConfirm={() => {
+          if (revokeTarget) deleteGrant.mutate(revokeTarget.id)
+          setRevokeTarget(null)
+        }}
+      />
     </div>
   )
 }

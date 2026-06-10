@@ -392,7 +392,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a user's display name, disabled, or is_server_admin (Server Admin) */
+        /**
+         * Update a user's display name, disabled, or is_server_admin (Server Admin)
+         * @description Lockout protection: the caller cannot disable their own account or revoke their own Server Admin role (409) — another admin must do it.
+         */
         patch: operations["patchUser"];
         trace?: never;
     };
@@ -3093,6 +3096,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     setUserPassword: {

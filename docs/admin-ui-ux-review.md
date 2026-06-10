@@ -179,6 +179,20 @@ hint. For authorization bounces, land with a toast/notice ("Server Admin access
 required") instead of a silent redirect.
 
 ### P1.4 One-click, unconfirmed, high-blast-radius actions **[verified]**
+
+> **RESOLVED 2026-06-10.** New shared `ConfirmDialog`
+> (`web/src/components/ui/confirm-dialog.tsx`, native `<dialog>` + `m-auto`
+> per J3b, keyboard-accessible, destructive variant) — the P2.1 primitive,
+> built here since P1.4 needed it. Applied to all four actions: Disable/Enable
+> account and Grant/Revoke Server Admin (`users/detail.tsx`) and grant
+> revocation (`grants-section.tsx`), each naming the target and consequence.
+> The lockout question was checked and confirmed real: the server had no
+> self-guard. `PatchUser` now 409s on self-disable / self-demote
+> (openapi + handler test `TestUserHandler_PatchSelfLockoutGuard`), and the UI
+> disables those buttons on your own page. Verified live: confirm dialog
+> centered + functional; self-PATCH returns 409; own-page buttons disabled
+> with explanatory titles. The remaining `window.confirm` call sites migrate
+> to ConfirmDialog in P2.1.
 - `web/src/pages/admin/users/detail.tsx:111-119` — "Grant/Revoke Server Admin" and
   "Disable/Enable account" fire the mutation immediately on click. No confirm of any
   kind. (Check whether an admin can disable or demote *themselves* — lockout risk.)

@@ -1,13 +1,16 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuthClient } from '@/lib/api-client'
+import { useMe } from '@/auth/useMe'
 import { formatDate } from '@/lib/utils'
 
 type UserPatch = {
@@ -15,11 +18,16 @@ type UserPatch = {
   is_server_admin?: boolean
 }
 
+// Which consequential action is awaiting confirmation.
+type PendingAction = 'disable' | 'admin' | null
+
 export default function AdminUserDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const api = useAuthClient()
+  const { data: me } = useMe()
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
 
   const { data: user, isPending, isError } = useQuery({
     queryKey: ['admin-user', id],
@@ -53,6 +61,8 @@ export default function AdminUserDetail() {
     onSuccess: () => { invalidate(); toast.success('Password set') },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  const isSelf = !!me?.user_id && me.user_id === id
 
   if (isPending) return <p className="text-muted-foreground">Loading…</p>
   if (isError || !user) return (
@@ -101,25 +111,69 @@ export default function AdminUserDetail() {
 
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">Actions</h2>
+        {/* Both actions reshape who can sign in / administer the registry, so
+            they confirm first (P1.4). Pointing them at yourself is blocked —
+            the server enforces the same rule (lockout protection). */}
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             size="sm"
-            disabled={patch.isPending}
-            onClick={() => patch.mutate({ disabled: !user.disabled })}
+            disabled={patch.isPending || (isSelf && !user.disabled)}
+            title={isSelf && !user.disabled ? 'You cannot disable your own account' : undefined}
+            onClick={() => setPendingAction('disable')}
           >
             {user.disabled ? 'Enable account' : 'Disable account'}
           </Button>
           <Button
             variant="outline"
             size="sm"
-            disabled={patch.isPending}
-            onClick={() => patch.mutate({ is_server_admin: !user.is_server_admin })}
+            disabled={patch.isPending || (isSelf && user.is_server_admin)}
+            title={isSelf && user.is_server_admin ? 'You cannot revoke your own Server Admin role' : undefined}
+            onClick={() => setPendingAction('admin')}
           >
             {user.is_server_admin ? 'Revoke Server Admin' : 'Grant Server Admin'}
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingAction === 'disable'}
+        onOpenChange={(o) => { if (!o) setPendingAction(null) }}
+        title={user.disabled ? `Enable account "${user.email}"?` : `Disable account "${user.email}"?`}
+        description={
+          user.disabled
+            ? 'The user will be able to sign in again.'
+            : 'The user will no longer be able to sign in. Existing sessions stop working at the next token refresh.'
+        }
+        confirmLabel={user.disabled ? 'Enable account' : 'Disable account'}
+        destructive={!user.disabled}
+        isPending={patch.isPending}
+        onConfirm={() => {
+          patch.mutate({ disabled: !user.disabled })
+          setPendingAction(null)
+        }}
+      />
+      <ConfirmDialog
+        open={pendingAction === 'admin'}
+        onOpenChange={(o) => { if (!o) setPendingAction(null) }}
+        title={
+          user.is_server_admin
+            ? `Revoke Server Admin from "${user.email}"?`
+            : `Grant Server Admin to "${user.email}"?`
+        }
+        description={
+          user.is_server_admin
+            ? 'The user loses access to every publisher and all server administration.'
+            : 'Server Admins bypass publisher roles and the review queue, and can manage every user, publisher, and entry.'
+        }
+        confirmLabel={user.is_server_admin ? 'Revoke Server Admin' : 'Grant Server Admin'}
+        destructive={user.is_server_admin}
+        isPending={patch.isPending}
+        onConfirm={() => {
+          patch.mutate({ is_server_admin: !user.is_server_admin })
+          setPendingAction(null)
+        }}
+      />
 
       <Separator />
 

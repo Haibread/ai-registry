@@ -518,6 +518,9 @@ paths:
     patch:
       operationId: patchUser
       summary: Update a user's display name, disabled, or is_server_admin (Server Admin)
+      description: >
+        Lockout protection: the caller cannot disable their own account or
+        revoke their own Server Admin role (409) — another admin must do it.
       tags: [rbac]
       security: [{ bearerAuth: [] }]
       requestBody:
@@ -534,6 +537,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/v1/users/{id}/set-password:
     post:

@@ -25,6 +25,14 @@ All notable changes to this project are documented here.
   blur with an inline `aria-invalid` error, and caps length at 63. Create-form
   failures also show the server's problem-details `detail` (e.g. which slug
   collided) instead of the bare status title.
+- **High-blast-radius admin actions now confirm first, and self-lockout is
+  blocked.** Disable/Enable account, Grant/Revoke Server Admin, and role-grant
+  revocation no longer fire on a single click — a themed confirmation dialog
+  names the user/principal and the consequence (new shared `ConfirmDialog`,
+  replacing nothing-at-all on these surfaces). The server additionally rejects
+  disabling your own account or revoking your own Server Admin role (409), so
+  an instance cannot lose its last administrator; the UI disables those
+  buttons on your own user page with an explanation.
 - **Signed-out and under-privileged deep links no longer die silently.**
   Visiting an `/admin/...` URL signed out now lands on the login page with a
   "Sign in to continue to …" hint, and signing in (local or OIDC) resumes the

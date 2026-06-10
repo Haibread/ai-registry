@@ -25,6 +25,22 @@ vi.mock('@/auth/useMe', () => ({
 
 import { GrantsSection } from './grants-section'
 
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// revoke confirmation (ConfirmDialog) opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
+
 const groups = [{ id: '01HG1', slug: 'platform', name: 'Platform', created_at: '', updated_at: '' }]
 const users = [{ id: '01HU1', email: 'dev@x.test', has_password: true, is_server_admin: false, disabled: false, created_at: '', updated_at: '' }]
 const grant = { id: '01HGR1', principal_type: 'group', principal_id: '01HG1', principal_label: 'platform', publisher_id: 'p1', role: 'editor', source: 'api', created_at: '' }
@@ -99,14 +115,27 @@ describe('GrantsSection', () => {
     expect(await screen.findByRole('option', { name: 'dev@x.test' })).toBeInTheDocument()
   })
 
-  it('revokes a grant via DELETE', async () => {
+  it('revokes a grant via DELETE after confirmation', async () => {
     mountGET({ items: [grant] })
     mockDELETE.mockResolvedValue({ error: undefined })
     renderSection()
     await userEvent.click(await screen.findByRole('button', { name: /revoke editor from platform/i }))
+    // The X-click alone must not revoke — this is the RBAC surface.
+    expect(mockDELETE).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: /revoke editor from "platform"\?/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^revoke grant$/i }))
     await waitFor(() => {
       expect(mockDELETE).toHaveBeenCalledWith('/api/v1/grants/{id}', { params: { path: { id: '01HGR1' } } })
     })
+  })
+
+  it('cancelling the revoke confirmation leaves the grant alone', async () => {
+    mountGET({ items: [grant] })
+    mockDELETE.mockResolvedValue({ error: undefined })
+    renderSection()
+    await userEvent.click(await screen.findByRole('button', { name: /revoke editor from platform/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(mockDELETE).not.toHaveBeenCalled()
   })
 
   describe('publisher Admin (not Server Admin)', () => {
@@ -137,6 +166,7 @@ describe('GrantsSection', () => {
       mockDELETE.mockResolvedValue({ error: undefined })
       renderSection({ publisherSlug: 'acme' })
       await userEvent.click(await screen.findByRole('button', { name: /revoke editor from dev@x.test/i }))
+      await userEvent.click(screen.getByRole('button', { name: /^revoke grant$/i }))
       await waitFor(() => {
         expect(mockDELETE).toHaveBeenCalledWith('/api/v1/publishers/{slug}/grants/{id}', { params: { path: { slug: 'acme', id: '01HGR2' } } })
       })
