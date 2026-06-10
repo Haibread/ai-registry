@@ -6,6 +6,24 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Admin report rows name the reported entry.** `GET /api/v1/reports`
+  (admin) now joins `resource_ns` / `resource_slug` / `resource_name` for
+  each report, and the admin Reports page links straight to the entry's
+  detail page (instead of a text search over a raw ULID). Reports whose
+  target was deleted say so explicitly.
+- **Entity-list sorting.** The admin MCP and Agent lists expose the API's
+  `sort` orders (newest, recently updated, recently published, name A–Z/Z–A)
+  in the filter bar, persisted in the URL.
+- **Unsaved-changes protection.** The four create forms and the new-version
+  editor warn before in-app navigation or page unload would discard typed
+  input (shared `DirtyFormGuard`, router-blocker + `beforeunload`).
+- **Global-only reviewers get a landing page.** A reviewer with a global
+  grant and no publisher membership now lands on their queue count with a
+  link to `/admin/review` instead of the "No publishers yet" empty state.
+- **Role matrix help page.** `/admin/help/roles` documents what
+  Viewer/Editor/Reviewer/Admin/Server Admin can do, linked from the grants
+  editor.
+
 - **Deprecation can now be reversed.** New endpoints
   `POST /api/v1/mcp/servers/{ns}/{slug}/undeprecate` and
   `POST /api/v1/agents/{ns}/{slug}/undeprecate` return a deprecated entry to
@@ -17,6 +35,33 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Admin entity lists fit their container.** Entry names are links, column
+  visibility now tracks the table's actual width (container queries) so the
+  Manage button no longer clips off-screen at laptop widths, dates stop
+  wrapping, the selected-row highlight works, and the floating bulk bar no
+  longer covers the last row.
+- **Detail pages distinguish "not found" from "failed to load".** A 404
+  renders the not-found branch; any other failure shows the error surface
+  with the server's problem detail and a Try again button. Loading states
+  use the detail skeleton, the read view shows every editable field (with an
+  explicit "—" when unset), and version rows on a deprecated entry are
+  annotated "(entry deprecated)".
+- **One transition surface per lifecycle action.** The stepper no longer
+  duplicates the Deprecate button with an unconfirmed one-click transition;
+  it keeps the draft→published guidance hint and the republish affordance.
+- **Audit log ergonomics.** Filters auto-apply (no Apply button), the actor
+  filter offers a picker of known users by email instead of demanding a
+  remembered subject UUID, raw ULIDs moved into the expanded row detail,
+  resource links no longer full-page-reload the SPA, and the client-side
+  action filter no longer claims "no matches" while unloaded events may
+  match.
+- **Grants editor.** Labels stack above their selects, the `config` badge
+  explains itself, and config-seeded grants no longer offer a revoke that
+  bootstrap would undo on the next start.
+- **Accessibility.** WCAG AA contrast for the destructive palette and muted
+  badges, a skip-to-content link in the admin shell, one focus-ring language
+  across sidebar links and buttons, no heading-level skips on the dashboard,
+  and only compositor-friendly properties are animated.
 - **Admin create-form slug validation works again, and server errors surface
   in full.** The slug `pattern` attribute (`^[a-z0-9-]+`) failed to compile
   under the `v` regex flag modern browsers apply, so client-side validation

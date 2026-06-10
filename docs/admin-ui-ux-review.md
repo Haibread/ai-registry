@@ -416,6 +416,13 @@ private agent that path correctly returns 404 (verified). The same J0 bypass app
 (agent create/submit path); the same J0b zombie bug was in fact found via this agent.
 
 ### J4. State vocabulary divergence after lifecycle transitions (P3)
+
+> **RESOLVED 2026-06-10.** Published version rows on a deprecated entry are
+> annotated "(entry deprecated)" next to the version-state badge
+> (`versions-section.tsx`, new `entryStatus` prop). "Make public" on a
+> deprecated entry was checked and is intended: it mirrors the server
+> precondition (deprecated entries stay publicly visible with a deprecation
+> notice), so it was kept.
 After deprecating an entry, the entry badge reads `deprecated` while the version row
 still reads `published` — both true in the domain model, but unexplained side by side.
 A one-line legend (entry status vs version state) or a muted "(entry deprecated)"
@@ -494,6 +501,18 @@ action public consumers actually feel — a designed moment with version + entry
 the dialog, not a browser `confirm()`. Align button weight with reversibility.
 
 ### P2.2 List tables: the only navigation affordance clips off-screen **[verified]**
+
+> **RESOLVED 2026-06-10.** Entry names are links to the detail page; column
+> visibility now uses container queries (`@container` on the Table wrapper,
+> `@2xl/@3xl/@4xl` steps) so it tracks the table's actual width — verified
+> live at a 1040px viewport (753px container): no horizontal overflow,
+> Manage visible, Visibility/Updated collapsed. Dates are
+> `whitespace-nowrap`; lists widened to `max-w-6xl`; `sortOptions` wired to
+> the API's `sort` enum (newest/updated/published/name) with the value in
+> the URL — verified live (`?sort=name_asc` reorders server-side). Bonus
+> fixes in passing: the selected-row highlight (`data-state` mismatch) and
+> `pb-24` so the bulk bar can't cover the last row. E2E in
+> `web/e2e/admin-ux-polish.spec.ts`.
 - Entry names are not links and rows are not clickable; the right-most "Manage" button is
   the only path into an entry (verified by DOM inspection).
 - At a 1038px viewport the table (822px content) overflows its 751px container with
@@ -512,6 +531,12 @@ the responsive column set in `web/src/pages/admin/mcp/list.tsx` and `agents/list
 wire `sortOptions` (updated/name/status).
 
 ### P2.3 Read views hide part of the metadata admins come to check **[verified, corrected]**
+
+> **RESOLVED 2026-06-10.** The MCP detail read view always renders
+> Description, Homepage (linked), Repository (linked), and License with an
+> explicit "—" when unset; the agent read view does the same for its only
+> other editable field (Description). Verified live + e2e
+> (`admin-ux-polish.spec.ts`).
 The MCP detail read view renders description and license *when set*
 (`web/src/pages/admin/mcp/detail.tsx:190,208-211`) — but **homepage URL and repository
 URL never render outside the Edit form**, and unset fields are omitted entirely, so a
@@ -519,6 +544,11 @@ reader can't distinguish "not set" from "not shown". Same component structure fo
 agents. Show all editable fields in the read view, with an explicit "—" for unset ones.
 
 ### P2.4 The *global-only* reviewer persona has no home **[scoped down after live test]**
+
+> **RESOLVED 2026-06-10.** `AdminDashboard` branches the empty-publisher
+> state on `isReviewerAnywhere`: a global-only reviewer lands on a queue
+> card (pending count, shared cache with the sidebar badge, "Open queue"
+> CTA) instead of "No publishers yet". Unit-tested in `dashboard.test.tsx`.
 Live testing showed a **publisher-scoped** reviewer already gets a good home: "1
 awaiting your review" callout, badged Review queue nav item, Reviewer role chip on the
 dashboard. The problem is specifically a reviewer with only a **global** grant and no
@@ -531,6 +561,16 @@ work to do.
 count + recent decisions, or redirect straight to `/admin/review`.
 
 ### P2.5 No unsaved-changes protection anywhere **[verified]**
+
+> **RESOLVED 2026-06-10.** Shared `DirtyFormGuard`
+> (`web/src/components/ui/dirty-form-guard.tsx`): `beforeunload` for
+> refresh/close plus a router blocker (the app root moved from
+> `<BrowserRouter>` to `createBrowserRouter` to enable `useBlocker`) that
+> confirms through the shared ConfirmDialog. Applied to all four create
+> forms and `new-version-form` (the tools-editor worst case). A successful
+> submit clears the flag via `flushSync` so the guard never blocks its own
+> success redirect. Verified live (Keep editing preserves input; Discard
+> navigates) + e2e.
 Every inline edit form and the long create forms discard state silently on Cancel or
 navigation. Worst case: the new-version form with a hand-built tools list
 (`new-version-form.tsx`, tools editor) — one stray sidebar click loses everything.
@@ -539,6 +579,13 @@ navigation. Worst case: the new-version form with a hand-built tools list
 forms and the version editor at minimum.
 
 ### P2.6 Every detail-page failure reads "Not found."
+
+> **RESOLVED 2026-06-10.** Detail queries (mcp, agents, users) throw an
+> `HTTPError` carrying the response status; the error branch renders
+> not-found only for a real 404 and otherwise an `ErrorState` (which gained
+> an `onRetry` "Try again" wired to refetch) with the server's problem
+> detail. Bare "Loading…" text replaced by `DetailPageSkeleton`. Unit +
+> e2e covered.
 `web/src/pages/admin/mcp/detail.tsx:111` (and siblings) render "Not found." for *any*
 query error — including 500s and network failures. Branch on status: 404 → not-found,
 everything else → `ErrorState` with retry.
@@ -546,6 +593,34 @@ everything else → `ErrorState` with retry.
 ---
 
 ## 5. P3 — consistency, accessibility, polish
+
+> **RESOLVED (batch) 2026-06-10** — everything below except the explicitly
+> deferred items. Highlights: shared `Checkbox` (focus ring + indeterminate)
+> and `NativeSelect` primitives with a documented two-dialect select rule
+> (Radix in forms, native inline); error-display rule codified on
+> `ErrorState` (field → inline, form → alert region, background → toast);
+> audit links are SPA `<Link>`s; detail pages got skeletons; destructive
+> palette and muted badge now clear WCAG AA; skip-to-content link; one
+> focus-ring language; dashboard heading order fixed (CardTitle stays `h3`,
+> the dashboard uses plain styled divs); only transform/opacity/colors are
+> animated; helper text capped at `max-w-prose`; grants editor labels/config
+> badge/disabled-state fixed (config grants now say "remove from bootstrap
+> file" instead of offering a revoke bootstrap would undo); audit filters
+> auto-apply with a known-users actor picker and ULIDs moved into expanded
+> detail; users page explains JIT provisioning, dedupes the email heading,
+> and gained a display-name editor; reports rows link the entry by name
+> (API enrichment: `resource_ns/slug/name` joined onto admin report rows);
+> stepper/deprecate duplicate affordance resolved (Actions row owns
+> mutations); "Request deletion" copy de-jargoned; Delete labeled as the
+> admin escape hatch; visibility badge emphasis un-inverted (private solid,
+> public quiet); bulk bar padding; dashboard Quick Actions dropped; API
+> Keys nav marked "planned"; `/admin/help/roles` role matrix linked from
+> the grants editor; "rev N" badge explains itself.
+>
+> **Deferred, with reasons:** per-user access view (needs a new
+> grants-by-user API aggregate — API-first); command palette (explicitly
+> backlog in the report); date-format mix kept deliberately (lists short,
+> audit full, activity relative).
 
 ### Component vocabulary
 - Three form-control dialects coexist: Radix `Select` (forms), native `<select>`
