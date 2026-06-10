@@ -21,19 +21,29 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
-// newEntryChangeRouter wires the MCP enqueue endpoints plus the entry-change
-// review endpoints onto one router so a test can drive the whole flow.
+// newEntryChangeRouter wires the MCP and agent enqueue endpoints plus the
+// entry-change review endpoints onto one router so a test can drive the whole
+// flow for both resource types.
 func newEntryChangeRouter() *chi.Mux {
 	mcp := handlers.NewMCPHandlers(testDB, testDB, nil)
+	ag := handlers.NewAgentHandlers(testDB, testDB, nil)
 	rev := handlers.NewReviewHandlers(testDB, testDB)
 	r := chi.NewRouter()
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/visibility", mcp.SetVisibility)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/deprecate", mcp.DeprecateServer)
+	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/undeprecate", mcp.UndeprecateServer)
 	r.Patch("/api/v1/mcp/servers/{namespace}/{slug}", mcp.PatchServer)
 	r.Get("/api/v1/review-queue", rev.ListReviewQueue)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/change-request/approve", rev.ApproveMCPChange)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/change-request/reject", rev.RejectMCPChange)
 	r.Post("/api/v1/mcp/servers/{namespace}/{slug}/change-request/withdraw", rev.WithdrawMCPChange)
+	r.Post("/api/v1/agents/{namespace}/{slug}/visibility", ag.SetVisibility)
+	r.Post("/api/v1/agents/{namespace}/{slug}/deprecate", ag.DeprecateAgent)
+	r.Post("/api/v1/agents/{namespace}/{slug}/undeprecate", ag.UndeprecateAgent)
+	r.Patch("/api/v1/agents/{namespace}/{slug}", ag.PatchAgent)
+	r.Post("/api/v1/agents/{namespace}/{slug}/change-request/approve", rev.ApproveAgentChange)
+	r.Post("/api/v1/agents/{namespace}/{slug}/change-request/reject", rev.RejectAgentChange)
+	r.Post("/api/v1/agents/{namespace}/{slug}/change-request/withdraw", rev.WithdrawAgentChange)
 	return r
 }
 
@@ -59,6 +69,24 @@ func seedPublishedMCPForHandler(t *testing.T, ns, slug string) string {
 		t.Fatalf("SetMCPServerStatus: %v", err)
 	}
 	return srv.ID
+}
+
+// seedPublishedAgentForHandler creates a publisher + agent flipped to published
+// so visibility-to-public and deprecate preconditions hold.
+func seedPublishedAgentForHandler(t *testing.T, ns, slug string) string {
+	t.Helper()
+	pubID := seedPublisher(t, ns, ns)
+	ag, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
+		PublisherID: pubID, Slug: slug, Name: slug,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgent: %v", err)
+	}
+	if _, err := testDB.Pool.Exec(context.Background(),
+		`UPDATE agents SET status='published' WHERE id=$1`, ag.ID); err != nil {
+		t.Fatalf("publish agent: %v", err)
+	}
+	return ag.ID
 }
 
 func fire(r http.Handler, ctx context.Context, method, path, body string) *httptest.ResponseRecorder {
@@ -206,5 +234,169 @@ func TestEntryChangeHandler_DuplicatePendingConflict(t *testing.T) {
 		"/api/v1/mcp/servers/acme/weather/deprecate", "")
 	if rec.Code != http.StatusConflict {
 		t.Errorf("second enqueue = %d, want 409; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── undeprecate: deprecated → published through the same contract ────────────
+
+func TestEntryChangeHandler_UndeprecateRoundTrip(t *testing.T) {
+	resetTables(t)
+	srvID := seedPublishedMCPForHandler(t, "acme", "weather")
+	r := newEntryChangeRouter()
+
+	// Undeprecating a published entry is a 409 (wrong state) on both paths.
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/undeprecate", ""); rec.Code != http.StatusConflict {
+		t.Fatalf("undeprecate published = %d, want 409; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Admin deprecates immediately, then editor requests a republish: 202.
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/deprecate", ""); rec.Code != http.StatusOK {
+		t.Fatalf("deprecate: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := fire(r, editorCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/undeprecate", ""); rec.Code != http.StatusAccepted {
+		t.Fatalf("editor undeprecate = %d, want 202; body: %s", rec.Code, rec.Body.String())
+	}
+	if _, status, _ := readStatusVis(t, srvID); status != "deprecated" {
+		t.Errorf("status = %q, want deprecated (still pending)", status)
+	}
+
+	// Approval applies the republish.
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/change-request/approve", `{"revision":1}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if _, status, _ := readStatusVis(t, srvID); status != "published" {
+		t.Errorf("status = %q, want published after approve", status)
+	}
+
+	// Admin path is immediate: deprecate again, undeprecate as admin → 200.
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/deprecate", ""); rec.Code != http.StatusOK {
+		t.Fatalf("re-deprecate: %d", rec.Code)
+	}
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/undeprecate", ""); rec.Code != http.StatusOK {
+		t.Fatalf("admin undeprecate = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	if _, status, _ := readStatusVis(t, srvID); status != "published" {
+		t.Errorf("status = %q, want published (admin immediate)", status)
+	}
+}
+
+func TestEntryChangeHandler_AgentUndeprecate(t *testing.T) {
+	resetTables(t)
+	agID := seedPublishedAgentForHandler(t, "acme", "assistant")
+	r := newEntryChangeRouter()
+
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/agents/acme/assistant/deprecate", ""); rec.Code != http.StatusOK {
+		t.Fatalf("deprecate: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := fire(r, editorCtx(), http.MethodPost,
+		"/api/v1/agents/acme/assistant/undeprecate", ""); rec.Code != http.StatusAccepted {
+		t.Fatalf("editor undeprecate = %d, want 202; body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/agents/acme/assistant/change-request/approve", `{"revision":1}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var status string
+	if err := testDB.Pool.QueryRow(context.Background(),
+		`SELECT status FROM agents WHERE id=$1`, agID).Scan(&status); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if status != "published" {
+		t.Errorf("status = %q, want published after approve", status)
+	}
+}
+
+// readStatusVis reads (visibility, status, name) for an MCP server row.
+func readStatusVis(t *testing.T, srvID string) (vis, status, name string) {
+	t.Helper()
+	if err := testDB.Pool.QueryRow(context.Background(),
+		`SELECT visibility, status, name FROM mcp_servers WHERE id=$1`, srvID).Scan(&vis, &status, &name); err != nil {
+		t.Fatalf("read server: %v", err)
+	}
+	return vis, status, name
+}
+
+// ── agent endpoints: same review-routing contract as MCP ─────────────────────
+
+func TestEntryChangeHandler_AgentEditorEnqueuesAllMutations(t *testing.T) {
+	resetTables(t)
+	agID := seedPublishedAgentForHandler(t, "acme", "assistant")
+	r := newEntryChangeRouter()
+
+	// Each editor mutation enqueues (202) and leaves the entry untouched; the
+	// pending slot is withdrawn between attempts so each path is exercised.
+	steps := []struct {
+		name, method, path, body string
+	}{
+		{"patch", http.MethodPatch, "/api/v1/agents/acme/assistant", `{"description":"sneaky edit"}`},
+		{"visibility", http.MethodPost, "/api/v1/agents/acme/assistant/visibility", `{"visibility":"public"}`},
+		{"deprecate", http.MethodPost, "/api/v1/agents/acme/assistant/deprecate", ""},
+	}
+	for _, s := range steps {
+		if rec := fire(r, editorCtx(), s.method, s.path, s.body); rec.Code != http.StatusAccepted {
+			t.Fatalf("%s: status = %d, want 202; body: %s", s.name, rec.Code, rec.Body.String())
+		}
+		var status, vis, desc string
+		if err := testDB.Pool.QueryRow(context.Background(),
+			`SELECT status, visibility, description FROM agents WHERE id=$1`, agID).Scan(&status, &vis, &desc); err != nil {
+			t.Fatalf("%s: read: %v", s.name, err)
+		}
+		if status != "published" || vis != "private" || desc != "" {
+			t.Errorf("%s: agent mutated while pending: status=%q vis=%q desc=%q", s.name, status, vis, desc)
+		}
+		if rec := fire(r, editorCtx(), http.MethodPost,
+			"/api/v1/agents/acme/assistant/change-request/withdraw", ""); rec.Code != http.StatusNoContent {
+			t.Fatalf("%s: withdraw: %d, body: %s", s.name, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestEntryChangeHandler_AgentAdminAppliesImmediately(t *testing.T) {
+	resetTables(t)
+	agID := seedPublishedAgentForHandler(t, "acme", "assistant")
+	r := newEntryChangeRouter()
+
+	rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/agents/acme/assistant/visibility", `{"visibility":"public"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	var vis string
+	if err := testDB.Pool.QueryRow(context.Background(),
+		`SELECT visibility FROM agents WHERE id=$1`, agID).Scan(&vis); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if vis != "public" {
+		t.Errorf("visibility = %q, want public (applied immediately)", vis)
+	}
+}
+
+func TestEntryChangeHandler_AgentEnqueueThenApprove(t *testing.T) {
+	resetTables(t)
+	agID := seedPublishedAgentForHandler(t, "acme", "assistant")
+	r := newEntryChangeRouter()
+
+	if rec := fire(r, editorCtx(), http.MethodPatch,
+		"/api/v1/agents/acme/assistant", `{"description":"reviewed edit"}`); rec.Code != http.StatusAccepted {
+		t.Fatalf("enqueue: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := fire(r, adminCtx(), http.MethodPost,
+		"/api/v1/agents/acme/assistant/change-request/approve", `{"revision":1}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var desc string
+	if err := testDB.Pool.QueryRow(context.Background(),
+		`SELECT description FROM agents WHERE id=$1`, agID).Scan(&desc); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if desc != "reviewed edit" {
+		t.Errorf("description = %q, want %q after approve", desc, "reviewed edit")
 	}
 }

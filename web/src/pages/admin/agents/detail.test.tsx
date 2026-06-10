@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -87,6 +87,23 @@ const sampleAgent = {
   },
 }
 
+
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// ConfirmDialog (deprecate/delete) opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
+
 describe('AdminAgentDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -150,10 +167,21 @@ describe('AdminAgentDetail', () => {
     })
   })
 
-  it('shows a not-found state when the query errors', async () => {
-    mockGET.mockRejectedValueOnce(new Error('nope'))
+  it('shows a retryable error state when the query fails with a non-404', async () => {
+    mockGET.mockResolvedValueOnce({ error: { detail: 'boom' }, response: { status: 500 } })
+    renderPage()
+    // Non-404 failures must NOT read "Not found" (P2.6) — they get the
+    // error surface with the server detail and a retry affordance.
+    expect(await screen.findByRole('alert')).toHaveTextContent('boom')
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a not-found state when the query 404s', async () => {
+    mockGET.mockResolvedValueOnce({ error: { title: 'Not Found' }, response: { status: 404 } })
     renderPage()
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
   })
 
   // ─── Deprecate / lifecycle / delete / a2a-link coverage (v0.2.2) ─────────
@@ -164,12 +192,13 @@ describe('AdminAgentDetail', () => {
   // whole point of the Agent registry per CLAUDE.md. These tests fill all of
   // those gaps plus the same delete/cancel/error trio as the MCP page.
 
-  it('deprecates via the DeprecateButton when confirm is accepted', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deprecates via the DeprecateButton when its dialog is confirmed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
     fireEvent.click(screen.getByRole('button', { name: /^deprecate$/i }))
+    const dialog = screen.getByRole('heading', { name: /deprecate "example agent"\?/i }).closest('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^deprecate$/i }))
 
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
@@ -177,15 +206,14 @@ describe('AdminAgentDetail', () => {
         { params: { path: { namespace: 'acme', slug: 'example-agent' } } },
       )
     })
-    confirmSpy.mockRestore()
   })
 
-  it('does not deprecate when the user declines the confirm dialog', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('does not deprecate when the user cancels the dialog', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
     fireEvent.click(screen.getByRole('button', { name: /^deprecate$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
 
     await Promise.resolve()
     // The visibility POST would have succeeded — we specifically assert that
@@ -194,26 +222,16 @@ describe('AdminAgentDetail', () => {
       typeof c[0] === 'string' && c[0].endsWith('/deprecate'),
     )
     expect(deprecateCalls).toHaveLength(0)
-    confirmSpy.mockRestore()
   })
 
-  it('deprecates via the LifecycleStepper Deprecated transition', async () => {
+  it('offers no stepper transition on a published entry — Deprecate owns the mutation', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
-    // The stepper bypasses window.confirm — it's a one-click lifecycle
-    // affordance. Query by title (the tooltip) because only the clickable
-    // target carries "Transition to …" — the other stages show their label
-    // or "Current status: …".
-    const transitionBtn = screen.getByTitle(/transition to deprecated/i)
-    fireEvent.click(transitionBtn)
-
-    await waitFor(() => {
-      expect(mockPOST).toHaveBeenCalledWith(
-        '/api/v1/agents/{namespace}/{slug}/deprecate',
-        { params: { path: { namespace: 'acme', slug: 'example-agent' } } },
-      )
-    })
+    // One transition surface per action (P3 duplicate-affordance): for a
+    // published entry the stepper is informational only; deprecation happens
+    // via the confirmed DeprecateButton, covered above.
+    expect(screen.queryByTitle(/transition to/i)).not.toBeInTheDocument()
   })
 
   it('hides the DeprecateButton when status is not published', async () => {
@@ -243,12 +261,13 @@ describe('AdminAgentDetail', () => {
     expect(mockPATCH).not.toHaveBeenCalled()
   })
 
-  it('deletes the agent and navigates back to the list when confirmed', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deletes the agent and navigates back to the list when the dialog is confirmed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+    const dialog = screen.getByRole('heading', { name: /delete "example agent"\?/i }).closest('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
     await waitFor(() => {
       expect(mockDELETE).toHaveBeenCalledWith(
@@ -259,7 +278,6 @@ describe('AdminAgentDetail', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/admin/agents')
     })
-    confirmSpy.mockRestore()
   })
 
   it('surfaces a toast error when the visibility mutation rejects', async () => {

@@ -41,9 +41,12 @@ export default function AdminUserList() {
         </Button>
       </div>
 
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground max-w-prose">
         Users are principals: federated (OIDC), local (email + password), both, or
         invited (no credential yet). Role grants attach to users or groups.
+        Federated users appear here after their first sign-in — someone who
+        exists in the identity provider but has never signed in won&apos;t be
+        listed yet.
       </p>
 
       {isPending ? (

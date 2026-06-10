@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -18,7 +19,10 @@ import { useAuthClient } from '@/lib/api-client'
 import { usePublisher } from '@/auth/PublisherContext'
 import { usePermissions } from '@/auth/useMe'
 import { authFetch } from '@/auth/tokens'
+import { problemMessage } from '@/lib/utils'
+import { SlugField } from '@/components/admin/slug-field'
 import { ToolsEditor } from '@/components/admin/tools-editor'
+import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
 
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'stdio (local process)' },
@@ -67,6 +71,15 @@ export default function AdminMCPNew() {
   const [runtime, setRuntime] = useState('stdio')
   const [pkgRegistryType, setPkgRegistryType] = useState('npm')
   const [formError, setFormError] = useState<CreateError | null>(null)
+  // Unsaved-changes guard (P2.5): any input change marks the form dirty;
+  // a successful create clears it (synchronously, so the redirect isn't
+  // blocked by the guard it just satisfied).
+  const [dirty, setDirty] = useState(false)
+
+  // Publishing is a reviewer action; an editor's version goes through the
+  // review queue instead. The checkbox below adapts its label and behavior so
+  // the form never promises an outcome the caller's role cannot deliver (J1).
+  const canReview = perms.canReview(namespace)
 
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -91,8 +104,7 @@ export default function AdminMCPNew() {
         },
       })
       if (serverError || !server) {
-        const msg = (serverError as { title?: string } | undefined)?.title ?? 'Failed to create server.'
-        throw { step: undefined, message: msg }
+        throw { step: undefined, message: problemMessage(serverError, 'Failed to create server.') }
       }
 
       // Step 2: Create version (optional)
@@ -145,25 +157,41 @@ export default function AdminMCPNew() {
         }),
       })
       if (!versionRes.ok) {
-        let msg = `Failed to create version (HTTP ${versionRes.status}).`
-        try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch { /* body not JSON — keep default msg */ }
+        const fallback = `Failed to create version (HTTP ${versionRes.status}).`
+        let msg = fallback
+        try { msg = problemMessage(await versionRes.json(), fallback) } catch { /* body not JSON — keep default msg */ }
         throw { step: 'version', message: msg }
       }
 
-      // Step 3: Publish if requested
+      // Step 3: Publish (reviewer) or submit for review (editor), if requested.
+      // The server + version exist either way, so a failure here is reported
+      // as a warning on the detail page rather than aborting the create.
+      let warning: string | undefined
       if (formData.get('publish') === 'on') {
-        await authFetch(`/api/v1/mcp/servers/${ns}/${slug}/versions/${version}/publish`, {
+        const action = canReview ? 'publish' : 'submit'
+        const res = await authFetch(`/api/v1/mcp/servers/${ns}/${slug}/versions/${version}/${action}`, {
           method: 'POST',
         })
+        if (!res.ok) {
+          const fallback = `Version created, but ${action} failed (HTTP ${res.status}).`
+          warning = fallback
+          try { warning = `Version created, but ${action} failed: ${problemMessage(await res.json(), fallback)}` } catch { /* body not JSON — keep default msg */ }
+        }
       }
 
-      return { namespace: ns, slug }
+      return { namespace: ns, slug, warning }
     },
-    onSuccess: ({ namespace: ns, slug }) => {
+    onSuccess: ({ namespace: ns, slug, warning }) => {
+      // flushSync so the navigation blocker sees the form as clean before
+      // the redirect below — otherwise the guard would block its own
+      // success navigation.
+      flushSync(() => setDirty(false))
       // Drop the cached admin list so the new server appears immediately on
       // return; the 30s staleTime would otherwise hide it until a refetch.
       queryClient.invalidateQueries({ queryKey: ['admin-mcp'] })
-      toast.success('MCP server created')
+      if (warning) toast.error(warning)
+      else if (canReview) toast.success('MCP server created')
+      else toast.success('MCP server created — version submitted for review')
       navigate(`/admin/mcp/${ns}/${slug}`)
     },
     onError: (err: CreateError) => {
@@ -202,7 +230,9 @@ export default function AdminMCPNew() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <DirtyFormGuard when={dirty} />
+
+      <form onSubmit={handleSubmit} onChange={() => setDirty(true)} className="space-y-6">
         {/* ── Server metadata ──────────────────────────────────────────── */}
         <Card>
           <CardHeader>
@@ -220,7 +250,7 @@ export default function AdminMCPNew() {
                 // Ignore Radix's spurious empty-value callback (fired when the
                 // controlled value has no mounted item yet) so it can't clobber
                 // the pre-selected default; a real pick is always a slug.
-                onValueChange={(v) => { if (v) setPicked(v) }}
+                onValueChange={(v) => { if (v) { setPicked(v); setDirty(true) } }}
               >
                 <SelectTrigger id="namespace-select" aria-required="true">
                   <SelectValue placeholder="Select publisher…">
@@ -239,21 +269,7 @@ export default function AdminMCPNew() {
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="slug">
-                Slug <span className="text-destructive" aria-hidden="true">*</span>
-              </Label>
-              <Input
-                id="slug"
-                name="slug"
-                placeholder="my-server"
-                pattern="^[a-z0-9-]+"
-                title="Lowercase letters, numbers, and hyphens only"
-                required
-                aria-required="true"
-              />
-              <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only.</p>
-            </div>
+            <SlugField placeholder="my-server" />
 
             <div className="space-y-1.5">
               <Label htmlFor="name">
@@ -320,7 +336,7 @@ export default function AdminMCPNew() {
               <Label htmlFor="runtime-select">
                 Transport type <span className="text-destructive" aria-hidden="true">*</span>
               </Label>
-              <Select value={runtime} onValueChange={setRuntime} required>
+              <Select value={runtime} onValueChange={(v) => { setRuntime(v); setDirty(true) }} required>
                 <SelectTrigger id="runtime-select" aria-required="true">
                   <SelectValue />
                 </SelectTrigger>
@@ -346,7 +362,7 @@ export default function AdminMCPNew() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="pkg_registry_type-select">Registry</Label>
-                <Select value={pkgRegistryType} onValueChange={setPkgRegistryType}>
+                <Select value={pkgRegistryType} onValueChange={(v) => { setPkgRegistryType(v); setDirty(true) }}>
                   <SelectTrigger id="pkg_registry_type-select">
                     <SelectValue />
                   </SelectTrigger>
@@ -400,17 +416,24 @@ export default function AdminMCPNew() {
               <ToolsEditor name="tools" />
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                id="publish"
-                name="publish"
-                type="checkbox"
-                defaultChecked
-                className="h-4 w-4 rounded border border-input accent-primary"
-              />
-              <Label htmlFor="publish" className="cursor-pointer font-normal">
-                Publish version immediately
-              </Label>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <input
+                  id="publish"
+                  name="publish"
+                  type="checkbox"
+                  defaultChecked
+                  className="h-4 w-4 rounded border border-input accent-primary"
+                />
+                <Label htmlFor="publish" className="cursor-pointer font-normal">
+                  {canReview ? 'Publish version immediately' : 'Submit version for review'}
+                </Label>
+              </div>
+              {!canReview && (
+                <p className="text-xs text-muted-foreground pl-6">
+                  A reviewer approves it before it goes live.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 vi.mock('@/auth/AuthContext', () => ({
@@ -22,7 +23,10 @@ describe('AdminGrants', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={qc}>
-        <AdminGrants />
+        {/* MemoryRouter: the grants section links to the roles help page. */}
+        <MemoryRouter>
+          <AdminGrants />
+        </MemoryRouter>
       </QueryClientProvider>,
     )
     expect(screen.getByRole('heading', { name: /global grants/i })).toBeInTheDocument()

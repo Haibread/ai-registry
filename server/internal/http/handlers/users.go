@@ -141,6 +141,17 @@ func (h *UserHandlers) PatchUser(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
+	// Lockout protection: an admin must not disable their own account or
+	// revoke their own Server Admin role — another admin has to do it, so the
+	// instance can never lose its last reachable administrator to a stray
+	// click on the caller's own user page.
+	if p, ok := auth.PrincipalFromContext(r.Context()); ok && p != nil && p.UserID == id {
+		if (body.Disabled != nil && *body.Disabled) || (body.IsServerAdmin != nil && !*body.IsServerAdmin) {
+			problem.Write(w, http.StatusConflict, "conflict",
+				"you cannot disable your own account or revoke your own Server Admin role", r.URL.Path)
+			return
+		}
+	}
 	u, err := h.db.UpdateUser(r.Context(), id, store.UpdateUserParams{
 		DisplayName:   body.DisplayName,
 		Disabled:      body.Disabled,

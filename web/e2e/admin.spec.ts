@@ -12,7 +12,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost } from './helpers'
+import { apiPost, confirmDialog } from './helpers'
 
 // Unique suffix to avoid collisions between test runs.
 const RUN_ID = Date.now().toString(36)
@@ -117,10 +117,11 @@ test.describe('Admin: MCP Server CRUD', () => {
   test('publish a draft version via the UI Publish button', async ({ page }) => {
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
 
-    // The admin (Server Admin) can publish directly. Accept the confirm dialog.
-    page.on('dialog', (dialog) => dialog.accept())
+    // The admin (Server Admin) can publish directly; the themed ConfirmDialog
+    // (which replaced window.confirm) names the entry + version.
     // `exact` avoids matching the LifecycleStepper's "Published" stage button.
     await page.getByRole('button', { name: 'Publish', exact: true }).first().click()
+    await confirmDialog(page, 'Publish')
 
     // The version's published badge appears once the table refetches.
     await expect(page.getByText('published').first()).toBeVisible({ timeout: 10_000 })
@@ -189,20 +190,20 @@ test.describe('Admin: MCP Server CRUD', () => {
     const deprecateBtn = page.getByRole('button', { name: 'Deprecate', exact: true })
     await expect(deprecateBtn).toBeVisible()
 
-    // Deprecate via UI.
-    page.on('dialog', dialog => dialog.accept())
+    // Deprecate via UI, confirming through the themed dialog.
     await deprecateBtn.click()
+    await confirmDialog(page, 'Deprecate')
     await expect(page.getByText('deprecated').first()).toBeVisible()
   })
 
   test('delete an MCP server', async ({ page }) => {
     await goTo(page, `/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
 
-    page.on('dialog', dialog => dialog.accept())
     // The lifecycle transition row renders a disabled "Deleted" chip whose
     // accessible name partial-matches "Delete". Use exact:true so we target
-    // only the red action button.
+    // only the red action button, then confirm through the themed dialog.
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await confirmDialog(page, 'Delete')
 
     // Navigated back to the list.
     await page.waitForURL(/\/admin\/mcp$/)
@@ -282,10 +283,10 @@ test.describe('Admin: Agent CRUD', () => {
   test('delete an agent', async ({ page }) => {
     await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
 
-    page.on('dialog', dialog => dialog.accept())
     // Same strict-mode rationale as the MCP delete test — the "Deleted"
-    // lifecycle chip partial-matches "Delete".
+    // lifecycle chip partial-matches "Delete"; confirm through the dialog.
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await confirmDialog(page, 'Delete')
 
     await page.waitForURL(/\/admin\/agents$/)
     await expect(page.getByText(`${AGENT_NAME} edited`, { exact: true })).not.toBeVisible({ timeout: 10_000 })

@@ -15,6 +15,30 @@ vi.mock('@/lib/api-client', () => ({
 
 import AdminReviewQueue from './index'
 
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// approve confirmation (ConfirmDialog) opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
+
+// Clicks the row's Approve button, then the dialog's confirm button. Approve
+// must never fire from a single unconfirmed click (J2).
+async function approveRow(index: number, confirmName: RegExp) {
+  const approveButtons = await screen.findAllByRole('button', { name: /^approve$/i })
+  fireEvent.click(approveButtons[index])
+  fireEvent.click(await screen.findByRole('button', { name: confirmName }))
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -84,10 +108,14 @@ describe('AdminReviewQueue', () => {
     expect(await screen.findByText(/queue is empty/i)).toBeInTheDocument()
   })
 
-  it('approves a version item via the typed approve endpoint', async () => {
+  it('approves a version item via the typed approve endpoint, after a confirm naming it', async () => {
     renderPage()
     const approveButtons = await screen.findAllByRole('button', { name: /^approve$/i })
     fireEvent.click(approveButtons[0])
+    // Nothing fires until the dialog (naming entry + version) is confirmed.
+    expect(mockPOST).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: /approve acme\/weather v1\.0\.0\?/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^approve & publish$/i }))
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/approve',
@@ -99,17 +127,54 @@ describe('AdminReviewQueue', () => {
     })
   })
 
-  it('approves a deletion item via the deletion-request approve endpoint', async () => {
+  it('approves a deletion item via the deletion-request approve endpoint, after a destructive confirm', async () => {
     renderPage()
     const approveButtons = await screen.findAllByRole('button', { name: /^approve$/i })
     // Second row is the agent deletion.
     fireEvent.click(approveButtons[1])
+    expect(mockPOST).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: /approve deletion of globex\/planner\?/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^approve deletion$/i }))
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/agents/{namespace}/{slug}/deletion-request/approve',
         { params: { path: { namespace: 'globex', slug: 'planner' } } },
       )
     })
+  })
+
+  it('cancelling the approve confirmation fires nothing', async () => {
+    renderPage()
+    const approveButtons = await screen.findAllByRole('button', { name: /^approve$/i })
+    fireEvent.click(approveButtons[0])
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(mockPOST).not.toHaveBeenCalled()
+  })
+
+  it('lazily loads and shows a version item\'s submitted content on expand', async () => {
+    mockGET.mockImplementation((path: string) =>
+      path === '/api/v1/review-queue'
+        ? Promise.resolve({ data: { items: [mcpVersionItem, agentDeletionItem] } })
+        : Promise.resolve({
+            data: {
+              version: '1.0.0',
+              runtime: 'stdio',
+              protocol_version: '2025-03-26',
+              packages: [{ registryType: 'npm', identifier: '@acme/weather', version: '1.0.0', transport: { type: 'stdio' } }],
+              tools: [{ name: 'get_forecast' }, { name: 'get_alerts' }],
+            },
+          }),
+    )
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /show submitted content/i }))
+    await waitFor(() => {
+      expect(mockGET).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}',
+        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } } },
+      )
+    })
+    expect(await screen.findByText(/get_forecast, get_alerts/)).toBeInTheDocument()
+    expect(screen.getByText(/npm: @acme\/weather@1\.0\.0 \(stdio\)/)).toBeInTheDocument()
   })
 
   it('shows a reject form on click and submits with revision + reason', async () => {
@@ -149,8 +214,7 @@ describe('AdminReviewQueue', () => {
       },
     })
     renderPage()
-    const approveButtons = await screen.findAllByRole('button', { name: /^approve$/i })
-    fireEvent.click(approveButtons[0])
+    await approveRow(0, /^approve & publish$/i)
     expect(
       await screen.findByText(/edited since this queue page loaded/i),
     ).toBeInTheDocument()

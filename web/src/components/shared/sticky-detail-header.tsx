@@ -47,7 +47,9 @@ export function StickyDetailHeader({
   return (
     <div
       className={cn(
-        'fixed top-14 left-0 right-0 z-40 border-b bg-background/95 backdrop-blur-sm transition-all duration-200',
+        // Animate only transform/opacity (compositor-friendly) — never
+        // layout properties like height.
+        'fixed top-14 left-0 right-0 z-40 border-b bg-background/95 backdrop-blur-sm transition-[transform,opacity] duration-200',
         visible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none',
       )}
     >

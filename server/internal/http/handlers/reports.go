@@ -212,6 +212,11 @@ func reportToResponse(r *domain.Report, includeIP bool) map[string]any {
 		} else {
 			m["reviewed_at"] = nil
 		}
+		// Human handle for the reported entry (admin list only) — empty when
+		// the entry has since been deleted.
+		m["resource_ns"] = r.ResourceNS
+		m["resource_slug"] = r.ResourceSlug
+		m["resource_name"] = r.ResourceName
 	}
 	return m
 }

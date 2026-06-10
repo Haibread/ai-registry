@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { GitPullRequestArrow, CheckCircle2, AlertCircle, Send, Undo2, Plus, Rocket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { NewVersionForm } from '@/components/admin/new-version-form'
@@ -23,6 +24,10 @@ interface VersionsSectionProps {
   kind: Kind
   namespace: string
   slug: string
+  /** Lifecycle status of the owning entry. A deprecated entry keeps its
+   *  versions "published" in the domain model — annotate so the two badges
+   *  don't read as a contradiction (J4). */
+  entryStatus?: 'draft' | 'published' | 'deprecated' | 'deleted'
 }
 
 // review_state → badge variant + label.
@@ -58,7 +63,7 @@ function friendlyProblem(error: unknown, fallback: string): string {
   return e.detail ?? fallback
 }
 
-export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps) {
+export function VersionsSection({ kind, namespace, slug, entryStatus }: VersionsSectionProps) {
   const perms = usePermissions()
   // Submit/withdraw are publisher Editor actions. Approve/reject of a submitted
   // version live on the review queue; the direct Publish below is the Reviewer's
@@ -69,6 +74,9 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  // Version awaiting publish confirmation; `pending` selects the verb
+  // ("Approve & publish" for a pending_review row, "Publish" for a draft).
+  const [publishTarget, setPublishTarget] = useState<{ version: string; pending: boolean } | null>(null)
 
   const queryKey = ['admin-versions', kind, namespace, slug]
   // The resource detail page caches the entry (incl. latest_version); refresh
@@ -191,14 +199,25 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
           </Button>
         )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Drafts are authored here and sent for reviewer approval.
-        Approve and reject happen on the{' '}
-        <Link to="/admin/review" className="text-primary hover:underline">
-          review queue
-        </Link>
-        .
-      </p>
+      {/* The review-queue page is reviewer-only — linking an editor there
+          lands on "Failed to load" (403), so the link is reserved for callers
+          who can actually open it (J1 step 3). */}
+      {canReview ? (
+        <p className="text-sm text-muted-foreground">
+          Drafts are authored here and sent for reviewer approval.
+          Approve and reject happen on the{' '}
+          <Link to="/admin/review" className="text-primary hover:underline">
+            review queue
+          </Link>
+          .
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Drafts are authored here and sent for reviewer approval. After you
+          submit a version, a reviewer approves or rejects it — you can track
+          its status on this page.
+        </p>
+      )}
 
       {actionError && (
         <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -250,7 +269,11 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                   <TableCell className="font-mono">
                     v{v.version}
                     {typeof v.revision === 'number' && v.revision > 0 && (
-                      <Badge variant="outline" className="ml-2 text-xs">
+                      <Badge
+                        variant="outline"
+                        className="ml-2 text-xs"
+                        title={`Edited and resubmitted ${v.revision} time${v.revision === 1 ? '' : 's'} since first submission`}
+                      >
                         rev {v.revision}
                       </Badge>
                     )}
@@ -263,6 +286,11 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                       <Badge variant={reviewBadge.variant} className="text-xs">
                         {reviewBadge.label}
                       </Badge>
+                    )}
+                    {entryStatus === 'deprecated' && v.published_at && (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        (entry deprecated)
+                      </span>
                     )}
                   </TableCell>
                   <TableCell className="text-sm">
@@ -332,16 +360,16 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                         </Button>
                       )}
                       {canReview && !v.published_at && (
+                        // Same verb as the review queue when the version is
+                        // pending review — "Approve & publish" — so the two
+                        // surfaces are recognisably the same action (J2).
                         <Button
                           size="sm"
-                          onClick={() => {
-                            if (window.confirm(`Publish v${v.version}? This takes it live immediately.`))
-                              publishMutation.mutate(v.version)
-                          }}
+                          onClick={() => setPublishTarget({ version: v.version, pending: isPending })}
                           disabled={publishMutation.isPending}
                         >
                           <Rocket className="h-4 w-4" />
-                          <span className="ml-1.5">Publish</span>
+                          <span className="ml-1.5">{isPending ? 'Approve & publish' : 'Publish'}</span>
                         </Button>
                       )}
                     </div>
@@ -351,6 +379,21 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
             })}
           </TableBody>
         </Table>
+      )}
+
+      {publishTarget && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => { if (!o) setPublishTarget(null) }}
+          title={`${publishTarget.pending ? 'Approve' : 'Publish'} ${namespace}/${slug} v${publishTarget.version}?`}
+          description="This takes the version live in the public registry immediately."
+          confirmLabel={publishTarget.pending ? 'Approve & publish' : 'Publish'}
+          isPending={publishMutation.isPending}
+          onConfirm={() => {
+            publishMutation.mutate(publishTarget.version)
+            setPublishTarget(null)
+          }}
+        />
       )}
     </div>
   )

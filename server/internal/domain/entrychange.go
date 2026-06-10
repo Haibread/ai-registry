@@ -14,14 +14,16 @@ const (
 
 // EntryChangeAction names the entry-level mutation a change request will apply
 // on approval. Each action implies a payload shape (see the store's apply
-// dispatch): visibility -> {visibility}, deprecation -> {} (one-way
-// published->deprecated), metadata_edit -> the entry's editable fields.
+// dispatch): visibility -> {visibility}, deprecation -> {}
+// (published->deprecated), undeprecation -> {} (deprecated->published),
+// metadata_edit -> the entry's editable fields.
 type EntryChangeAction string
 
 const (
-	EntryChangeVisibility   EntryChangeAction = "visibility"
-	EntryChangeDeprecation  EntryChangeAction = "deprecation"
-	EntryChangeMetadataEdit EntryChangeAction = "metadata_edit"
+	EntryChangeVisibility    EntryChangeAction = "visibility"
+	EntryChangeDeprecation   EntryChangeAction = "deprecation"
+	EntryChangeUndeprecation EntryChangeAction = "undeprecation"
+	EntryChangeMetadataEdit  EntryChangeAction = "metadata_edit"
 )
 
 // EntryChangeState is the change-approval workflow position of a change

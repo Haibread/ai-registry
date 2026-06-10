@@ -14,7 +14,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost, apiDelete } from './helpers'
+import { apiPost, apiDelete, confirmDialog } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB = `e2e-review-ui-${RUN_ID}`
@@ -83,11 +83,13 @@ test.describe('Admin review UI', () => {
     await expect(page.getByRole('heading', { name: /review queue/i })).toBeVisible({
       timeout: 15_000,
     })
-    // Find the row by entry slug.
-    await expect(page.getByText(`${PUB}/${MCP}`)).toBeVisible()
+    // Scope to the seeded entry's row — the shared dev queue may hold other
+    // pending items whose version badge is also "v1.0.0" (strict mode).
+    const row = page.locator('li', { hasText: `${PUB}/${MCP}` })
+    await expect(row).toBeVisible()
     // Version + revision badges from the queue.
-    await expect(page.getByText(`v${VER1}`)).toBeVisible()
-    await expect(page.getByText(/rev 1/i)).toBeVisible()
+    await expect(row.getByText(`v${VER1}`)).toBeVisible()
+    await expect(row.getByText(/rev 1/i)).toBeVisible()
   })
 
   test('Reject from queue returns the version to draft (rejected) with the reason', async ({ page }) => {
@@ -126,6 +128,7 @@ test.describe('Admin review UI', () => {
     const queueRow = page.locator('li', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP version/i })
     await expect(queueRow).toBeVisible()
     await queueRow.getByRole('button', { name: /^approve$/i }).click()
+    await confirmDialog(page, /approve & publish/i)
 
     // Row leaves the queue; on the entry page the version is now
     // published (no review-state badge, no action buttons).
@@ -137,8 +140,8 @@ test.describe('Admin review UI', () => {
 
   test('Request deletion button on the entry submits a deletion review', async ({ page }) => {
     await page.goto(`/admin/mcp/${PUB}/${MCP}`)
-    page.once('dialog', (d) => d.accept())
-    await page.getByRole('button', { name: /request deletion \(review\)/i }).click()
+    await page.getByRole('button', { name: /^request deletion$/i }).click()
+    await confirmDialog(page, /^request deletion$/i)
     // Button flips to Pending review, success message renders.
     await expect(page.getByRole('button', { name: /pending review/i })).toBeDisabled({
       timeout: 10_000,
@@ -150,8 +153,9 @@ test.describe('Admin review UI', () => {
     const delRow = page.locator('li', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP deletion/i })
     await expect(delRow).toBeVisible()
 
-    // Approve the deletion.
+    // Approve the deletion through its destructive confirmation.
     await delRow.getByRole('button', { name: /^approve$/i }).click()
+    await confirmDialog(page, /approve deletion/i)
     await expect(delRow).toBeHidden({ timeout: 10_000 })
   })
 

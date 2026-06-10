@@ -818,6 +818,23 @@ func (db *DB) DeprecateMCPServer(ctx context.Context, serverID string) error {
 	return nil
 }
 
+// UndeprecateMCPServer returns a deprecated MCP server to published.
+func (db *DB) UndeprecateMCPServer(ctx context.Context, serverID string) error {
+	ctx, span := startSpan(ctx, "UndeprecateMCPServer")
+	defer span.End()
+
+	rows, err := applyMCPUndeprecation(ctx, db.Pool, serverID)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("undeprecating mcp server: %w", err)
+	}
+	if rows == 0 {
+		recordErr(span, ErrNotFound)
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SetMCPServerVisibility sets the visibility of an MCP server.
 func (db *DB) SetMCPServerVisibility(ctx context.Context, serverID string, vis domain.Visibility) error {
 	ctx, span := startSpan(ctx, "SetMCPServerVisibility")
@@ -979,8 +996,11 @@ func (db *DB) UpdateMCPServer(ctx context.Context, serverID string, p UpdateMCPS
 	return db.GetMCPServerByID(ctx, serverID)
 }
 
-// DeleteMCPServer soft-deletes an MCP server by setting status='deleted' on
-// the server and all its versions. Returns ErrNotFound if not found.
+// DeleteMCPServer soft-deletes an MCP server by setting status='deleted' (and
+// deleted_at) on the server and all its versions. Any review-queue residue —
+// a pending deletion request, pending version submissions, a pending entry
+// change — is resolved in the same transaction so the queue can never hold an
+// item whose target no longer exists. Returns ErrNotFound if not found.
 func (db *DB) DeleteMCPServer(ctx context.Context, serverID string) error {
 	ctx, span := startSpan(ctx, "DeleteMCPServer")
 	defer span.End()
@@ -995,8 +1015,13 @@ func (db *DB) DeleteMCPServer(ctx context.Context, serverID string) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // rollback is a no-op after commit
 
+	// deleted_at drives the review-queue exclusion (the deletion-request branch
+	// keys off deletion_requested_at; the deletion_requested_* audit columns are
+	// retained, mirroring ApproveMCPDeletion).
 	tag, err := tx.Exec(ctx,
-		`UPDATE mcp_servers SET status='deleted', updated_at=now() WHERE id=$1 AND status != 'deleted'`,
+		`UPDATE mcp_servers
+		 SET status='deleted', deleted_at=COALESCE(deleted_at, now()), updated_at=now()
+		 WHERE id=$1 AND status != 'deleted'`,
 		serverID)
 	if err != nil {
 		recordErr(span, err)
@@ -1012,6 +1037,23 @@ func (db *DB) DeleteMCPServer(ctx context.Context, serverID string) error {
 		serverID); err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("deleting mcp server versions: %w", err)
+	}
+	// Cancel in-flight version submissions so the queue's version branch drops them.
+	if _, err = tx.Exec(ctx,
+		`UPDATE mcp_server_versions
+		 SET review_state='none', submitted_at=NULL, submitted_by=NULL, submitted_by_email=NULL
+		 WHERE server_id=$1 AND review_state='pending_review'`,
+		serverID); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("cancelling pending mcp version reviews: %w", err)
+	}
+	// Drop a pending entry-change request, mirroring the editor's withdraw path.
+	if _, err = tx.Exec(ctx,
+		`DELETE FROM entry_change_requests
+		 WHERE resource_type='mcp_server' AND entry_id=$1 AND state='pending_review'`,
+		serverID); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("cancelling pending mcp entry change: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

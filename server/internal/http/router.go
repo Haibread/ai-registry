@@ -306,6 +306,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				// force-delete escape hatch.
 				r.With(auth.RequireAdmin).Delete("/", mcpH.DeleteServer)
 				r.With(requireMCPServerNS).Post("/deprecate", mcpH.DeprecateServer)
+				r.With(requireMCPServerNS).Post("/undeprecate", mcpH.UndeprecateServer)
 				// Visibility is an Editor/Admin action, but SetVisibility only
 				// allows flipping to public once the entry has an approved
 				// (published) version — an unreviewed draft cannot be exposed.
@@ -354,6 +355,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				// stays admin-only.
 				r.With(auth.RequireAdmin).Delete("/", agentH.DeleteAgent)
 				r.With(requireAgentNS).Post("/deprecate", agentH.DeprecateAgent)
+				r.With(requireAgentNS).Post("/undeprecate", agentH.UndeprecateAgent)
 				// Editor/Admin; public requires an approved version (see MCP note).
 				r.With(requireAgentNS).Post("/visibility", agentH.SetVisibility)
 				r.With(publicRL).Post("/view", agentH.RecordView)

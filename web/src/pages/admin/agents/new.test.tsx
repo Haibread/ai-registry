@@ -15,11 +15,12 @@ vi.mock('@/auth/AuthContext', () => ({
 // usePermissions().canEdit. Both are mocked so the page renders standalone.
 let mockPublishers: { slug: string; name: string; roles: string[] }[]
 let mockCanEdit: (slug: string | undefined) => boolean
+let mockCanReview: (slug: string | undefined) => boolean
 vi.mock('@/auth/PublisherContext', () => ({
   usePublisher: () => ({ publishers: mockPublishers }),
 }))
 vi.mock('@/auth/useMe', () => ({
-  usePermissions: () => ({ canEdit: mockCanEdit }),
+  usePermissions: () => ({ canEdit: mockCanEdit, canReview: mockCanReview }),
 }))
 
 const mockGET = vi.fn()
@@ -60,6 +61,7 @@ describe('AdminAgentNew', () => {
     vi.clearAllMocks()
     mockPublishers = [{ slug: 'acme', name: 'Acme', roles: ['editor'] }]
     mockCanEdit = () => true
+    mockCanReview = () => true
     mockPOST.mockResolvedValue({ data: { id: 'agent-1' }, error: undefined })
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,

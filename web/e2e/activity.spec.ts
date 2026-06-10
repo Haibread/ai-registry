@@ -109,9 +109,11 @@ test.describe('Activity feed + admin audit', () => {
       `/admin/mcp/${PUB_SLUG}/${MCP_SLUG}`,
     )
 
-    // Actor identity columns are admin-only. An email and a subject should
-    // appear somewhere on the page (the seed ran as the admin session user).
+    // Actor identity is admin-only. The email shows on the collapsed row;
+    // raw identifiers (subject UUID, ULIDs) live in the expanded detail.
     await expect(page.getByText(/actor:/i).first()).toBeVisible()
+    await expect(page.getByText(/subject:/i)).toHaveCount(0)
+    await page.getByRole('button', { name: /expand row/i }).first().click()
     await expect(page.getByText(/subject:/i).first()).toBeVisible()
   })
 

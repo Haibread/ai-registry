@@ -16,11 +16,12 @@ vi.mock('@/auth/AuthContext', () => ({
 // usePermissions().canEdit. Both are mocked so the page renders standalone.
 let mockPublishers: { slug: string; name: string; roles: string[] }[]
 let mockCanEdit: (slug: string | undefined) => boolean
+let mockCanReview: (slug: string | undefined) => boolean
 vi.mock('@/auth/PublisherContext', () => ({
   usePublisher: () => ({ publishers: mockPublishers }),
 }))
 vi.mock('@/auth/useMe', () => ({
-  usePermissions: () => ({ canEdit: mockCanEdit }),
+  usePermissions: () => ({ canEdit: mockCanEdit, canReview: mockCanReview }),
 }))
 
 const mockGET = vi.fn()
@@ -34,6 +35,11 @@ vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
   return { ...actual, useNavigate: () => mockNavigate }
 })
+
+const { mockToast } = vi.hoisted(() => ({
+  mockToast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+}))
+vi.mock('sonner', () => ({ toast: mockToast }))
 
 import AdminMCPNew from './new'
 
@@ -62,6 +68,7 @@ describe('AdminMCPNew', () => {
     vi.clearAllMocks()
     mockPublishers = [{ slug: 'acme', name: 'Acme', roles: ['editor'] }]
     mockCanEdit = () => true
+    mockCanReview = () => true
     mockPOST.mockResolvedValue({ data: { id: 'srv-1' }, error: undefined })
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -156,6 +163,55 @@ describe('AdminMCPNew', () => {
       expect(urls).toContain('/api/v1/mcp/servers/acme/my-srv/versions')
       expect(urls).toContain('/api/v1/mcp/servers/acme/my-srv/versions/1.0.0/publish')
     })
+  })
+
+  // ─── Role-aware publish step (UI/UX review J1) ────────────────────────────
+
+  it('offers "Submit version for review" to an editor and calls the submit endpoint', async () => {
+    mockCanReview = () => false
+    const { container } = renderPage()
+
+    await selectNamespace()
+    expect(screen.getByLabelText(/submit version for review/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/publish version immediately/i)).not.toBeInTheDocument()
+
+    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
+    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
+    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
+    fireEvent.submit(container.querySelector('form')!)
+
+    await waitFor(() => {
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+      const urls = fetchMock.mock.calls.map((c) => c[0])
+      expect(urls).toContain('/api/v1/mcp/servers/acme/my-srv/versions/1.0.0/submit')
+      expect(urls).not.toContain('/api/v1/mcp/servers/acme/my-srv/versions/1.0.0/publish')
+    })
+    expect(mockToast.success).toHaveBeenCalledWith('MCP server created — version submitted for review')
+  })
+
+  it('surfaces a publish failure instead of swallowing it, and still lands on the entry', async () => {
+    // Version create succeeds; the publish step 403s with problem details.
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        url.endsWith('/publish')
+          ? { ok: false, status: 403, json: async () => ({ title: 'Forbidden', detail: 'Reviewer role required to publish.' }) }
+          : { ok: true, status: 201, json: async () => ({}) },
+      ),
+    ) as unknown as typeof fetch
+    const { container } = renderPage()
+
+    await selectNamespace()
+    fireEvent.change(container.querySelector('#slug') as HTMLInputElement, { target: { value: 'my-srv' } })
+    fireEvent.change(container.querySelector('#name') as HTMLInputElement, { target: { value: 'My Server' } })
+    fireEvent.change(container.querySelector('#version') as HTMLInputElement, { target: { value: '1.0.0' } })
+    fireEvent.submit(container.querySelector('form')!)
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith(
+        'Version created, but publish failed: Reviewer role required to publish.',
+      )
+    })
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/mcp/acme/my-srv')
   })
 
   it('sends the parsed tools array in the version POST body', async () => {

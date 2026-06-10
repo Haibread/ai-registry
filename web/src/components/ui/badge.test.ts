@@ -43,12 +43,14 @@ describe("statusVariant", () => {
 })
 
 describe("visibilityVariant", () => {
-  it("maps 'public' to default (primary colour)", () => {
-    expect(visibilityVariant("public")).toBe("default")
+  // Private carries the heavier mark (restricted content an admin must
+  // spot at a glance); public is the registry's normal end state.
+  it("maps 'public' to outline (quiet — the normal end state)", () => {
+    expect(visibilityVariant("public")).toBe("outline")
   })
 
-  it("maps 'private' to secondary (subdued colour)", () => {
-    expect(visibilityVariant("private")).toBe("secondary")
+  it("maps 'private' to default (solid — the restricted state)", () => {
+    expect(visibilityVariant("private")).toBe("default")
   })
 
   it("returns distinct variants for public and private", () => {

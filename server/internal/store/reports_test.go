@@ -70,6 +70,58 @@ func TestReports_CreateAndList(t *testing.T) {
 	}
 }
 
+func TestReports_ListJoinsReportedResourceHandle(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pubID := insertPublisher(t, "acme", "Acme Corp")
+	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
+		PublisherID: pubID,
+		Slug:        "my-server",
+		Name:        "My Server",
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer: %v", err)
+	}
+
+	if _, err := sharedDB.CreateReport(ctx, store.CreateReportParams{
+		ResourceType: "mcp_server",
+		ResourceID:   srv.ID,
+		IssueType:    "broken",
+		Description:  "does not install",
+	}); err != nil {
+		t.Fatalf("CreateReport: %v", err)
+	}
+	// A report whose target never existed — the join must degrade to empty
+	// strings, not drop the row.
+	if _, err := sharedDB.CreateReport(ctx, store.CreateReportParams{
+		ResourceType: "agent",
+		ResourceID:   "01HNOSUCH",
+		IssueType:    "spam",
+		Description:  "this is advertising",
+	}); err != nil {
+		t.Fatalf("CreateReport orphan: %v", err)
+	}
+
+	all, err := sharedDB.ListReports(ctx, store.ListReportsParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListReports: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2 reports, got %d", len(all))
+	}
+	// Newest first: [0] is the orphan agent report, [1] the MCP one.
+	if all[0].ResourceNS != "" || all[0].ResourceSlug != "" || all[0].ResourceName != "" {
+		t.Errorf("orphan report should have empty handle, got %q/%q (%q)",
+			all[0].ResourceNS, all[0].ResourceSlug, all[0].ResourceName)
+	}
+	got := all[1]
+	if got.ResourceNS != "acme" || got.ResourceSlug != "my-server" || got.ResourceName != "My Server" {
+		t.Errorf("joined handle = %q/%q (%q), want acme/my-server (My Server)",
+			got.ResourceNS, got.ResourceSlug, got.ResourceName)
+	}
+}
+
 func TestReports_UpdateStatus(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

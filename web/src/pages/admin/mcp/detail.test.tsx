@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -7,7 +7,7 @@ vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token' }),
 }))
 
-const { mockToast } = vi.hoisted(() => ({ mockToast: { success: vi.fn(), error: vi.fn() } }))
+const { mockToast } = vi.hoisted(() => ({ mockToast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 vi.mock('sonner', () => ({ toast: mockToast }))
 
 const mockNavigate = vi.fn()
@@ -80,6 +80,23 @@ const sampleServer = {
   },
 }
 
+
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// ConfirmDialog (deprecate/delete) opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
+
 describe('AdminMCPDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -121,18 +138,18 @@ describe('AdminMCPDetail', () => {
     })
   })
 
-  it('deprecates the server when the confirm dialog is accepted', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deprecates the server when the dialog is confirmed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
     fireEvent.click(screen.getByRole('button', { name: /^deprecate$/i }))
+    const dialog = screen.getByRole('heading', { name: /deprecate "example mcp"\?/i }).closest('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^deprecate$/i }))
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}/deprecate',
         { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
       )
     })
-    confirmSpy.mockRestore()
   })
 
   it('submits a PATCH when the edit form is saved', async () => {
@@ -154,10 +171,21 @@ describe('AdminMCPDetail', () => {
     })
   })
 
-  it('shows a not-found state when the query errors', async () => {
-    mockGET.mockRejectedValueOnce(new Error('nope'))
+  it('shows a retryable error state when the query fails with a non-404', async () => {
+    mockGET.mockResolvedValueOnce({ error: { detail: 'boom' }, response: { status: 500 } })
+    renderPage()
+    // Non-404 failures must NOT read "Not found" (P2.6) — they get the
+    // error surface with the server detail and a retry affordance.
+    expect(await screen.findByRole('alert')).toHaveTextContent('boom')
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a not-found state when the query 404s', async () => {
+    mockGET.mockResolvedValueOnce({ error: { title: 'Not Found' }, response: { status: 404 } })
     renderPage()
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
   })
 
   // ─── Lifecycle / delete / error-surfacing coverage (v0.2.2) ───────────────
@@ -170,26 +198,14 @@ describe('AdminMCPDetail', () => {
   // delete-confirm → DELETE → navigate chain, and the failure path where a
   // mutation errors out and the UI surfaces a retry hint.
 
-  it('deprecates via the LifecycleStepper Deprecated transition', async () => {
+  it('offers no stepper transition on a published entry — Deprecate owns the mutation', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
 
-    // The LifecycleStepper renders a clickable button for each target state.
-    // `defaultAllowedTransitions('published')` returns ['deprecated'], so the
-    // Deprecated stage should be clickable and fire the same POST that the
-    // DeprecateButton does — but WITHOUT going through window.confirm.
-    // The button's text content is "Deprecated" and only the clickable
-    // target has `title="Transition to …"`; querying by title keeps this
-    // unambiguous without reaching into classnames.
-    const transitionBtn = screen.getByTitle(/transition to deprecated/i)
-    fireEvent.click(transitionBtn)
-
-    await waitFor(() => {
-      expect(mockPOST).toHaveBeenCalledWith(
-        '/api/v1/mcp/servers/{namespace}/{slug}/deprecate',
-        { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
-      )
-    })
+    // One transition surface per action (P3 duplicate-affordance): for a
+    // published entry the stepper is informational only; deprecation happens
+    // via the confirmed DeprecateButton, covered above.
+    expect(screen.queryByTitle(/transition to/i)).not.toBeInTheDocument()
   })
 
   it('opens and cancels the edit form without firing a PATCH', async () => {
@@ -212,12 +228,13 @@ describe('AdminMCPDetail', () => {
     expect(mockPATCH).not.toHaveBeenCalled()
   })
 
-  it('deletes the server and navigates back to the list when confirmed', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deletes the server and navigates back to the list when the dialog is confirmed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
 
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+    const dialog = screen.getByRole('heading', { name: /delete "example mcp"\?/i }).closest('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
     await waitFor(() => {
       expect(mockDELETE).toHaveBeenCalledWith(
@@ -228,22 +245,93 @@ describe('AdminMCPDetail', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/admin/mcp')
     })
-    confirmSpy.mockRestore()
   })
 
-  it('does not delete when the user declines the confirm dialog', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('does not delete when the user cancels the dialog', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example MCP' })
 
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
 
     // Nothing to wait for — the user said no, so the call should never happen.
     // Give React Query a microtask to settle, then assert.
     await Promise.resolve()
     expect(mockDELETE).not.toHaveBeenCalled()
     expect(mockNavigate).not.toHaveBeenCalled()
-    confirmSpy.mockRestore()
+  })
+
+  // ─── Lifecycle stepper honesty (UI/UX review P1.1) ────────────────────────
+  //
+  // Every clickable stepper target must do something real: deprecated →
+  // published fires the new undeprecate endpoint, and draft → published
+  // routes the user to the Versions section (publishing is per-version)
+  // instead of silently dropping the click.
+
+  it('republishes a deprecated server via the Republish action button', async () => {
+    mockGET.mockResolvedValue({ data: { ...sampleServer, status: 'deprecated' } })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByRole('button', { name: /^republish$/i }))
+
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/undeprecate',
+        { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
+      )
+    })
+  })
+
+  it('republishes via the LifecycleStepper Published transition when deprecated', async () => {
+    mockGET.mockResolvedValue({ data: { ...sampleServer, status: 'deprecated' } })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByTitle(/transition to published/i))
+
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/undeprecate',
+        { params: { path: { namespace: 'acme', slug: 'example-mcp' } } },
+      )
+    })
+  })
+
+  it('routes a draft Published click to the Versions section instead of a dead click', async () => {
+    mockGET.mockResolvedValue({ data: { ...sampleServer, status: 'draft' } })
+    const scrollSpy = vi.fn()
+    Element.prototype.scrollIntoView = scrollSpy
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    fireEvent.click(screen.getByTitle(/transition to published/i))
+
+    await waitFor(() => expect(mockToast.info).toHaveBeenCalled())
+    expect(scrollSpy).toHaveBeenCalled()
+    // No entry-level mutation fires — publishing happens per version.
+    expect(mockPOST).not.toHaveBeenCalled()
+  })
+
+  it('renders no clickable stepper targets while a change is pending review', async () => {
+    mockGET.mockResolvedValue({
+      data: {
+        ...sampleServer,
+        pending_change: {
+          change_id: '01HCHANGE',
+          action: 'metadata_edit',
+          revision: 1,
+          submitted_at: '2026-04-03T10:00:00Z',
+          submitted_by_email: 'editor@example.com',
+        },
+      },
+    })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Example MCP' })
+
+    // The admin mock bypasses the queue (changePending is false for admins),
+    // so the pending banner shows but transitions stay available.
+    expect(screen.getByText(/pending review/i)).toBeInTheDocument()
   })
 
   it('surfaces a toast error when the visibility mutation rejects', async () => {

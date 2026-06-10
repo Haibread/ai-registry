@@ -29,7 +29,8 @@ const TabsTrigger = React.forwardRef<
       // `cursor-pointer` is explicit — Tailwind v4's preflight sets
       // `button { cursor: default }`, so without this class tab triggers
       // hover with an arrow cursor and don't read as clickable.
-      'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all cursor-pointer',
+      // transition-colors, not -all: never animate layout properties.
+      'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-colors cursor-pointer',
       'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       'disabled:pointer-events-none disabled:opacity-50',
       'data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm',

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -80,6 +80,23 @@ const sampleServers = [
   },
 ]
 
+
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// bulk-action ConfirmDialog opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
+
 describe('AdminMCPList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -137,20 +154,23 @@ describe('AdminMCPList', () => {
     expect(screen.getByText(/1 selected/i)).toBeInTheDocument()
   })
 
-  it('calls DELETE for each selected row when bulk-delete confirmed', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('calls DELETE for each selected row when bulk-delete is confirmed in the dialog', async () => {
     renderPage()
     await screen.findByText('Filesystem Server')
     fireEvent.click(screen.getByRole('checkbox', { name: /select filesystem server/i }))
     await screen.findByRole('toolbar', { name: /bulk actions/i })
     fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+    // The bulk bar click opens the shared confirmation; nothing fires yet.
+    expect(mockDELETE).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: /delete 1 server\?/i })).toBeInTheDocument()
+    const dialog = document.querySelector('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }))
     await waitFor(() => {
       expect(mockDELETE).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}',
         { params: { path: { namespace: 'acme', slug: 'fs' } } },
       )
     })
-    confirmSpy.mockRestore()
   })
 
   it('shows a Load more button and fetches the next page on click', async () => {

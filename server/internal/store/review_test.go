@@ -891,3 +891,128 @@ func TestSubmitAgentVersion_StackingRejectedByPartialUniqueIndex(t *testing.T) {
 		t.Errorf("expected ErrConflict, got %v", err)
 	}
 }
+
+// ── Force-delete must not strand review-queue items ─────────────────────
+
+// TestForceDeleteMCP_ClearsReviewQueueResidue covers the zombie-review-item
+// bug: an entry force-deleted while a deletion request, a pending version
+// submission, or a pending entry change is in flight must leave the review
+// queue empty — otherwise the item is unresolvable (approve/reject 404 on the
+// deleted target) and inflates the reviewer badge forever.
+func TestForceDeleteMCP_ClearsReviewQueueResidue(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+		t.Fatalf("submit version: %v", err)
+	}
+	if err := sharedDB.RequestMCPDeletion(ctx, srvID, actor()); err != nil {
+		t.Fatalf("request deletion: %v", err)
+	}
+
+	if err := sharedDB.DeleteMCPServer(ctx, srvID); err != nil {
+		t.Fatalf("DeleteMCPServer: %v", err)
+	}
+
+	items, err := sharedDB.ListReviewQueue(ctx, store.ListReviewQueueParams{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListReviewQueue: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("queue not empty after force-delete: %+v", items)
+	}
+
+	// The tombstone carries deleted_at so the deletion branch's filter holds.
+	var deletedAt *string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT to_char(deleted_at, 'YYYY-MM-DD') FROM mcp_servers WHERE id=$1`, srvID,
+	).Scan(&deletedAt); err != nil {
+		t.Fatalf("read tombstone: %v", err)
+	}
+	if deletedAt == nil {
+		t.Error("deleted_at not set by force-delete")
+	}
+}
+
+func TestForceDeleteMCP_DropsPendingEntryChange(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+	if _, err := sharedDB.CreateEntryChangeRequest(ctx, domain.EntryResourceMCPServer, srvID,
+		domain.EntryChangeMetadataEdit, json.RawMessage(`{"name":"x"}`), actor()); err != nil {
+		t.Fatalf("create entry change: %v", err)
+	}
+
+	if err := sharedDB.DeleteMCPServer(ctx, srvID); err != nil {
+		t.Fatalf("DeleteMCPServer: %v", err)
+	}
+
+	items, err := sharedDB.ListReviewQueue(ctx, store.ListReviewQueueParams{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListReviewQueue: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("queue not empty after force-delete: %+v", items)
+	}
+	if _, ok, err := sharedDB.GetPendingEntryChange(ctx, domain.EntryResourceMCPServer, srvID); err != nil || ok {
+		t.Errorf("pending entry change survived force-delete (ok=%v, err=%v)", ok, err)
+	}
+}
+
+func TestForceDeleteAgent_ClearsReviewQueueResidue(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	agID := seedDraftAgentVersion(t, ctx, "umbrella", "sweeper", "0.1.0")
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+		t.Fatalf("submit version: %v", err)
+	}
+	if err := sharedDB.RequestAgentDeletion(ctx, agID, actor()); err != nil {
+		t.Fatalf("request deletion: %v", err)
+	}
+	if _, err := sharedDB.CreateEntryChangeRequest(ctx, domain.EntryResourceAgent, agID,
+		domain.EntryChangeMetadataEdit, json.RawMessage(`{"name":"x"}`), actor()); err != nil {
+		t.Fatalf("create entry change: %v", err)
+	}
+
+	if err := sharedDB.DeleteAgent(ctx, agID); err != nil {
+		t.Fatalf("DeleteAgent: %v", err)
+	}
+
+	items, err := sharedDB.ListReviewQueue(ctx, store.ListReviewQueueParams{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListReviewQueue: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("queue not empty after force-delete: %+v", items)
+	}
+}
+
+// TestListReviewQueue_ExcludesLegacyZombies asserts the queue's defensive
+// status filter also hides pre-fix residue: a row force-deleted by the OLD
+// code path (status='deleted' but deleted_at NULL, deletion_requested_at
+// still set) must not surface.
+func TestListReviewQueue_ExcludesLegacyZombies(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	agID := seedDraftAgentVersion(t, ctx, "umbrella", "sweeper", "0.1.0")
+	if err := sharedDB.RequestAgentDeletion(ctx, agID, actor()); err != nil {
+		t.Fatalf("request deletion: %v", err)
+	}
+	// Reproduce the legacy tombstone shape directly.
+	if _, err := sharedDB.Pool.Exec(ctx,
+		`UPDATE agents SET status='deleted' WHERE id=$1`, agID); err != nil {
+		t.Fatalf("simulate legacy force-delete: %v", err)
+	}
+
+	items, err := sharedDB.ListReviewQueue(ctx, store.ListReviewQueueParams{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListReviewQueue: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("legacy zombie surfaced in queue: %+v", items)
+	}
+}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate, Link } from 'react-router-dom'
+import { Navigate, useNavigate, useLocation, Link } from 'react-router-dom'
 import { AlertCircle, LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,12 +10,23 @@ import { useAuth } from '@/auth/AuthContext'
 export default function LoginPage() {
   const { login, loginLocal, oidcEnabled, localLoginEnabled, configLoading, isAuthenticated, authLoading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Already signed in → straight to the admin surface.
+  // Deep link preserved by RequireAuth's bounce (router state) or an explicit
+  // ?returnTo= link. Only same-origin absolute paths are honored — a crafted
+  // value must not become an open redirect.
+  const stateReturnTo = (location.state as { returnTo?: string } | null)?.returnTo
+  const queryReturnTo = new URLSearchParams(location.search).get('returnTo')
+  const rawReturnTo = stateReturnTo ?? queryReturnTo ?? ''
+  const returnTo =
+    rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//') ? rawReturnTo : null
+  const destination = returnTo ?? '/admin'
+
+  // Already signed in → straight to the destination.
   if (!authLoading && isAuthenticated) {
-    return <Navigate to="/admin" replace />
+    return <Navigate to={destination} replace />
   }
 
   async function handleLocal(e: React.FormEvent<HTMLFormElement>) {
@@ -25,7 +36,7 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       await loginLocal((fd.get('email') as string).trim(), fd.get('password') as string)
-      navigate('/admin')
+      navigate(destination)
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Sign-in failed.')
     } finally {
@@ -42,6 +53,11 @@ export default function LoginPage() {
             <span>Registry</span>
           </Link>
           <h1 className="text-xl font-bold pt-2">Sign in</h1>
+          {returnTo && (
+            <p className="text-sm text-muted-foreground">
+              Sign in to continue to <span className="font-mono">{returnTo}</span>
+            </p>
+          )}
         </div>
 
         {errorMsg && (
@@ -52,7 +68,7 @@ export default function LoginPage() {
         )}
 
         {oidcEnabled && (
-          <Button type="button" className="w-full" onClick={login}>
+          <Button type="button" className="w-full" onClick={() => login(returnTo ?? undefined)}>
             <LogIn className="h-4 w-4" aria-hidden="true" /> Sign in with your organization
           </Button>
         )}

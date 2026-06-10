@@ -228,5 +228,16 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /ux-edge-cases\.spec\.ts/,
     },
+    // Admin UX review follow-ups (linked list names + sort, dirty-form guard,
+    // detail read view / not-found branch, report drill-down). Identity is
+    // switched per-test via browser.newContext, like ux-edge-cases.
+    {
+      name: "admin-ux-polish",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      dependencies: ["setup"],
+      testMatch: /admin-ux-polish\.spec\.ts/,
+    },
   ],
 })

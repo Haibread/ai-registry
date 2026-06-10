@@ -58,3 +58,14 @@ export async function apiPatch(page: Page, path: string, data: unknown): Promise
 export async function apiDelete(page: Page, path: string): Promise<APIResponse> {
   return page.request.delete(path, { headers: await authHeaders(page) })
 }
+
+/**
+ * Confirms the app's shared <dialog>-based ConfirmDialog (which replaced
+ * window.confirm) by clicking its confirm button and waiting for the dialog
+ * to close. Use right after clicking an action that asks for confirmation.
+ */
+export async function confirmDialog(page: Page, buttonName: string | RegExp): Promise<void> {
+  const dialog = page.locator('dialog[open]')
+  await dialog.getByRole('button', { name: buttonName }).click()
+  await dialog.waitFor({ state: 'hidden' })
+}

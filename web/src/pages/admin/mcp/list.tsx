@@ -10,13 +10,25 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { BulkActionBar } from '@/components/admin/bulk-action-bar'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useAuthClient } from '@/lib/api-client'
-import { formatDate, problemMessage } from '@/lib/utils'
+import { cn, formatDate, problemMessage } from '@/lib/utils'
 import { usePermissions } from '@/auth/useMe'
 import { usePublisher } from '@/auth/PublisherContext'
 
 const PAGE_LIMIT = 50
+
+// Mirrors the API's `sort` enum; '' falls back to the server default
+// (created_at_desc). Search results stay relevance-ranked regardless.
+const SORT_OPTIONS = [
+  { value: '', label: 'Newest first' },
+  { value: 'updated_at_desc', label: 'Recently updated' },
+  { value: 'published_at_desc', label: 'Recently published' },
+  { value: 'name_asc', label: 'Name A–Z' },
+  { value: 'name_desc', label: 'Name Z–A' },
+]
 
 export default function AdminMCPList() {
   const perms = usePermissions()
@@ -27,6 +39,7 @@ export default function AdminMCPList() {
   const namespace = searchParams.get('namespace') ?? undefined
   const status = searchParams.get('status') ?? undefined
   const visibility = searchParams.get('visibility') ?? undefined
+  const sort = searchParams.get('sort') ?? undefined
   const hasFilters = !!(q || namespace || status || visibility)
   // Scope the list to the publisher the admin area is currently focused on.
   // An explicit FilterBar publisher filter wins; a Server Admin's
@@ -36,7 +49,7 @@ export default function AdminMCPList() {
   // replacing the visible rows (the old cursor-in-URL approach hid earlier rows).
   const { data, isPending, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery({
-      queryKey: ['admin-mcp', { q, namespace: effectiveNamespace, status, visibility }],
+      queryKey: ['admin-mcp', { q, namespace: effectiveNamespace, status, visibility, sort }],
       queryFn: async ({ pageParam }) => {
         const { data, error } = await api.GET('/api/v1/mcp/servers', {
           params: {
@@ -51,6 +64,7 @@ export default function AdminMCPList() {
               cursor: pageParam || undefined,
               status: status as 'draft' | 'published' | 'deprecated' | undefined,
               visibility: visibility as 'public' | 'private' | undefined,
+              sort: sort as 'created_at_desc' | 'updated_at_desc' | 'published_at_desc' | 'name_asc' | 'name_desc' | undefined,
             },
           },
         })
@@ -108,8 +122,11 @@ export default function AdminMCPList() {
     })
   }
 
+  // Bulk deprecate/delete confirm through the shared dialog (P2.1) — the
+  // pending kind also selects the dialog copy.
+  const [bulkConfirm, setBulkConfirm] = useState<'deprecate' | 'delete' | null>(null)
+
   const bulkDeprecate = () => {
-    if (!window.confirm(`Deprecate ${selection.selectedCount} server(s)? This signals consumers to migrate away.`)) return
     bulkMutation.mutate(async ({ namespace, slug }) => {
       const { error } = await api.POST('/api/v1/mcp/servers/{namespace}/{slug}/deprecate', {
         params: { path: { namespace, slug } },
@@ -119,7 +136,6 @@ export default function AdminMCPList() {
   }
 
   const bulkDelete = () => {
-    if (!window.confirm(`Delete ${selection.selectedCount} server(s)? This cannot be undone.`)) return
     bulkMutation.mutate(async ({ namespace, slug }) => {
       const { error } = await api.DELETE('/api/v1/mcp/servers/{namespace}/{slug}', {
         params: { path: { namespace, slug } },
@@ -129,7 +145,9 @@ export default function AdminMCPList() {
   }
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    // pb-24 keeps the floating bulk bar from covering the last table row
+    // while a selection is active.
+    <div className={cn('space-y-4 max-w-6xl mx-auto', selection.selectedCount > 0 && 'pb-24')}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">MCP Servers</h1>
@@ -154,6 +172,10 @@ export default function AdminMCPList() {
         statusOptions={['draft', 'published', 'deprecated']}
         showVisibility
         searchPlaceholder="Search servers…"
+        sortOptions={SORT_OPTIONS}
+        // When the admin area is scoped to one publisher the free-text
+        // publisher filter is redundant and could contradict the scope.
+        showPublisherFilter={!currentSlug}
       />
 
       {isPending ? (
@@ -192,50 +214,57 @@ export default function AdminMCPList() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label="Select all"
                     checked={servers.length > 0 && servers.every((s) => selection.isSelected(s.id))}
+                    indeterminate={selection.selectedCount > 0 && !servers.every((s) => selection.isSelected(s.id))}
                     onChange={() => selection.toggleAll(servers)}
                   />
                 </TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead className="hidden sm:table-cell">Namespace / Slug</TableHead>
+                <TableHead className="hidden @2xl:table-cell">Namespace / Slug</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="hidden md:table-cell">Visibility</TableHead>
-                <TableHead className="hidden lg:table-cell">Updated</TableHead>
+                <TableHead className="hidden @3xl:table-cell">Visibility</TableHead>
+                <TableHead className="hidden @4xl:table-cell">Updated</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {servers.map((s) => (
-                <TableRow key={s.id} data-selected={selection.isSelected(s.id) || undefined}>
+                <TableRow key={s.id} data-state={selection.isSelected(s.id) ? 'selected' : undefined}>
                   <TableCell>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       aria-label={`Select ${s.name}`}
                       checked={selection.isSelected(s.id)}
                       onChange={() => selection.toggle(s.id)}
                     />
                   </TableCell>
                   <TableCell className="font-medium">
-                    {s.name}
-                    {/* Show the namespace/slug inline on narrow screens
+                    {/* The name is the row's primary navigation — Manage stays
+                        as a secondary affordance but may be off-screen on
+                        narrow containers. */}
+                    <Link
+                      to={`/admin/mcp/${s.namespace}/${s.slug}`}
+                      className="hover:underline underline-offset-4 focus-visible:underline"
+                    >
+                      {s.name}
+                    </Link>
+                    {/* Show the namespace/slug inline on narrow containers
                         where its dedicated column is hidden. */}
-                    <div className="font-mono text-xs text-muted-foreground sm:hidden">
+                    <div className="font-mono text-xs text-muted-foreground @2xl:hidden">
                       {s.namespace}/{s.slug}
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground hidden sm:table-cell">
+                  <TableCell className="font-mono text-sm text-muted-foreground hidden @2xl:table-cell">
                     {s.namespace}/{s.slug}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={s.status} />
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
+                  <TableCell className="hidden @3xl:table-cell">
                     <VisibilityBadge visibility={s.visibility} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground hidden lg:table-cell">{formatDate(s.updated_at)}</TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap hidden @4xl:table-cell">{formatDate(s.updated_at)}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="outline" size="sm" asChild>
                       <Link to={`/admin/mcp/${s.namespace}/${s.slug}`}>
@@ -253,8 +282,8 @@ export default function AdminMCPList() {
             selectedCount={selection.selectedCount}
             onClear={selection.clear}
             onSetVisibility={bulkSetVisibility}
-            onDeprecate={bulkDeprecate}
-            onDelete={bulkDelete}
+            onDeprecate={() => setBulkConfirm('deprecate')}
+            onDelete={() => setBulkConfirm('delete')}
             isBusy={bulkMutation.isPending}
             // Visibility + deprecate are Editor/Admin actions; the direct
             // delete escape hatch stays Server-Admin-only. The backend still
@@ -273,6 +302,29 @@ export default function AdminMCPList() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={bulkConfirm !== null}
+        onOpenChange={(o) => { if (!o) setBulkConfirm(null) }}
+        title={
+          bulkConfirm === 'delete'
+            ? `Delete ${selection.selectedCount} server${selection.selectedCount === 1 ? '' : 's'}?`
+            : `Deprecate ${selection.selectedCount} server${selection.selectedCount === 1 ? '' : 's'}?`
+        }
+        description={
+          bulkConfirm === 'delete'
+            ? 'This permanently deletes the selected entries and all their versions. It cannot be undone.'
+            : 'This marks the selected entries as deprecated, signalling consumers to migrate away. They can be republished later.'
+        }
+        confirmLabel={bulkConfirm === 'delete' ? 'Delete' : 'Deprecate'}
+        destructive={bulkConfirm === 'delete'}
+        isPending={bulkMutation.isPending}
+        onConfirm={() => {
+          if (bulkConfirm === 'delete') bulkDelete()
+          else bulkDeprecate()
+          setBulkConfirm(null)
+        }}
+      />
     </div>
   )
 }

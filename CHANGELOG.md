@@ -4,6 +4,138 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Admin report rows name the reported entry.** `GET /api/v1/reports`
+  (admin) now joins `resource_ns` / `resource_slug` / `resource_name` for
+  each report, and the admin Reports page links straight to the entry's
+  detail page (instead of a text search over a raw ULID). Reports whose
+  target was deleted say so explicitly.
+- **Entity-list sorting.** The admin MCP and Agent lists expose the API's
+  `sort` orders (newest, recently updated, recently published, name A–Z/Z–A)
+  in the filter bar, persisted in the URL.
+- **Unsaved-changes protection.** The four create forms and the new-version
+  editor warn before in-app navigation or page unload would discard typed
+  input (shared `DirtyFormGuard`, router-blocker + `beforeunload`).
+- **Global-only reviewers get a landing page.** A reviewer with a global
+  grant and no publisher membership now lands on their queue count with a
+  link to `/admin/review` instead of the "No publishers yet" empty state.
+- **Role matrix help page.** `/admin/help/roles` documents what
+  Viewer/Editor/Reviewer/Admin/Server Admin can do, linked from the grants
+  editor.
+
+- **Deprecation can now be reversed.** New endpoints
+  `POST /api/v1/mcp/servers/{ns}/{slug}/undeprecate` and
+  `POST /api/v1/agents/{ns}/{slug}/undeprecate` return a deprecated entry to
+  `published`. Same review contract as the other entry-level mutations:
+  Editors enqueue an `undeprecation` change request (202) that a Reviewer
+  approves; Server Admins apply immediately (200); 409 when the entry is not
+  deprecated. The admin detail page gains a **Republish** action and the
+  lifecycle stepper's deprecated → published step is wired to it.
+
+### Fixed
+
+- **Admin entity lists fit their container.** Entry names are links, column
+  visibility now tracks the table's actual width (container queries) so the
+  Manage button no longer clips off-screen at laptop widths, dates stop
+  wrapping, the selected-row highlight works, and the floating bulk bar no
+  longer covers the last row.
+- **Detail pages distinguish "not found" from "failed to load".** A 404
+  renders the not-found branch; any other failure shows the error surface
+  with the server's problem detail and a Try again button. Loading states
+  use the detail skeleton, the read view shows every editable field (with an
+  explicit "—" when unset), and version rows on a deprecated entry are
+  annotated "(entry deprecated)".
+- **One transition surface per lifecycle action.** The stepper no longer
+  duplicates the Deprecate button with an unconfirmed one-click transition;
+  it keeps the draft→published guidance hint and the republish affordance.
+- **Audit log ergonomics.** Filters auto-apply (no Apply button), the actor
+  filter offers a picker of known users by email instead of demanding a
+  remembered subject UUID, raw ULIDs moved into the expanded row detail,
+  resource links no longer full-page-reload the SPA, and the client-side
+  action filter no longer claims "no matches" while unloaded events may
+  match.
+- **Grants editor.** Labels stack above their selects, the `config` badge
+  explains itself, and config-seeded grants no longer offer a revoke that
+  bootstrap would undo on the next start.
+- **Accessibility.** WCAG AA contrast for the destructive palette and muted
+  badges, a skip-to-content link in the admin shell, one focus-ring language
+  across sidebar links and buttons, no heading-level skips on the dashboard,
+  and only compositor-friendly properties are animated.
+- **Admin create-form slug validation works again, and server errors surface
+  in full.** The slug `pattern` attribute (`^[a-z0-9-]+`) failed to compile
+  under the `v` regex flag modern browsers apply, so client-side validation
+  was silently skipped in all four create forms (MCP server, agent, publisher,
+  group). The shared `SlugField` now uses a compatible pattern, validates on
+  blur with an inline `aria-invalid` error, and caps length at 63. Create-form
+  failures also show the server's problem-details `detail` (e.g. which slug
+  collided) instead of the bare status title.
+- **One confirmation dialect across the admin.** Every remaining browser
+  `confirm()` (bulk delete/deprecate on the entity lists, single-row Delete
+  and Deprecate, deletion requests) now uses the shared themed dialog, naming
+  the target and the consequence. Button weight now matches reversibility:
+  the reversible Deprecate is a quiet outline button, while the irreversible
+  break-glass Delete is solid destructive red (previously inverted, and the
+  muted Delete read as disabled). Type-to-confirm stays reserved for cascade
+  deletes (publishers).
+- **Interactive sign-in lands on the admin console.** Completing an OIDC
+  sign-in with no pending deep link now lands on `/admin` instead of the
+  public homepage the server redirect points at — matching the local-login
+  behavior. Deep links captured before sign-in are still honored.
+- **The "Report an issue" dialog renders centered.** Tailwind's preflight
+  stripped the `margin: auto` that centers a modal `<dialog>`, pinning it to
+  the top-left corner; `m-auto` restores centering.
+- **Reviewers no longer approve blind, and Approve confirms first.** Version
+  items in the review queue gain an expandable "Show submitted content" panel
+  (runtime, protocol, packages, tools for MCP; endpoint, skills, auth for
+  agents) so the reviewed content is visible without leaving the queue.
+  Approve now opens a confirmation naming the entry and consequence —
+  "Approve & publish" for versions, a destructive "Approve deletion" for
+  deletion requests (previously one unconfirmed click hard-deleted the entry).
+  The entry page's Publish button on a pending version now reads
+  "Approve & publish" too, so the two surfaces are recognisably the same
+  action, and its browser confirm() was replaced by the themed dialog. Queue
+  resource links no longer full-page reload (SPA navigation).
+- **The create forms tell editors the truth about publishing.** For callers
+  without the Reviewer role the "Publish version immediately" checkbox is now
+  "Submit version for review" and actually submits the version (previously the
+  form fired a publish that 403'd and **silently swallowed the error**,
+  leaving a plain draft with no explanation). Publish/submit failures after a
+  successful create now surface as a toast with the server's detail. The
+  versions section no longer links non-reviewers to the review queue they
+  cannot open, and editors get a one-line pipeline explainer on the entry
+  page (submit → review → approve → make public).
+- **High-blast-radius admin actions now confirm first, and self-lockout is
+  blocked.** Disable/Enable account, Grant/Revoke Server Admin, and role-grant
+  revocation no longer fire on a single click — a themed confirmation dialog
+  names the user/principal and the consequence (new shared `ConfirmDialog`,
+  replacing nothing-at-all on these surfaces). The server additionally rejects
+  disabling your own account or revoking your own Server Admin role (409), so
+  an instance cannot lose its last administrator; the UI disables those
+  buttons on your own user page with an explanation.
+- **Signed-out and under-privileged deep links no longer die silently.**
+  Visiting an `/admin/...` URL signed out now lands on the login page with a
+  "Sign in to continue to …" hint, and signing in (local or OIDC) resumes the
+  original destination instead of dropping it. A non-admin deep-linking a
+  Server-Admin page (e.g. `/admin/users`) is bounced to the dashboard with a
+  visible "Server Admin access required" notice instead of a silent redirect.
+  Only same-origin paths are honored as return destinations.
+- **The admin lifecycle stepper no longer renders dead controls.** Clicking
+  "Published" on a draft entry now scrolls to the Versions section with a
+  hint (publishing happens per version) instead of silently doing nothing;
+  on a deprecated entry it republishes. Transition targets are hidden for
+  read-only viewers and while a change is pending review. The Deprecate
+  confirm no longer claims the action "cannot be undone".
+
+- **Force-deleting an entry no longer strands review-queue items.** Admin
+  force-delete (MCP servers + agents) now also sets the `deleted_at` tombstone,
+  cancels any in-flight version submission, and drops any pending entry-change
+  request in the same transaction. Previously an entry force-deleted while a
+  deletion request was pending left a permanently-stuck queue item that could
+  be neither approved nor rejected and inflated the reviewer badge forever. The
+  review-queue query additionally excludes `status='deleted'` entries from
+  every branch, so pre-fix residue is hidden too.
+
 ### Changed
 
 - **Entry-level mutations now route through the review queue.** Changing an

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -8,11 +9,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useAuthClient } from '@/lib/api-client'
+import { problemMessage } from '@/lib/utils'
+import { SlugField } from '@/components/admin/slug-field'
+import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
 
 export default function AdminGroupNew() {
   const api = useAuthClient()
   const navigate = useNavigate()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // Unsaved-changes guard (P2.5).
+  const [dirty, setDirty] = useState(false)
 
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -29,11 +35,16 @@ export default function AdminGroupNew() {
         },
       })
       if (error) {
-        const msg = (error as { title?: string } | undefined)?.title
-        throw new Error(msg ?? 'Failed to create group. The slug may already be in use.')
+        throw new Error(problemMessage(error, 'Failed to create group. The slug may already be in use.'))
       }
     },
-    onSuccess: () => { toast.success('Group created'); navigate('/admin/groups') },
+    onSuccess: () => {
+      // flushSync so the navigation blocker sees the form as clean before
+      // the redirect below.
+      flushSync(() => setDirty(false))
+      toast.success('Group created')
+      navigate('/admin/groups')
+    },
     onError: (err: Error) => setErrorMsg(err.message),
   })
 
@@ -63,7 +74,9 @@ export default function AdminGroupNew() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <DirtyFormGuard when={dirty} />
+
+      <form onSubmit={handleSubmit} onChange={() => setDirty(true)}>
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Group Details</CardTitle>
@@ -73,21 +86,7 @@ export default function AdminGroupNew() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="slug">
-                Slug <span className="text-destructive" aria-hidden="true">*</span>
-              </Label>
-              <Input
-                id="slug"
-                name="slug"
-                placeholder="platform-team"
-                pattern="^[a-z0-9-]+"
-                title="Lowercase letters, numbers, and hyphens only"
-                required
-                aria-required="true"
-              />
-              <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only.</p>
-            </div>
+            <SlugField placeholder="platform-team" />
 
             <div className="space-y-1.5">
               <Label htmlFor="name">

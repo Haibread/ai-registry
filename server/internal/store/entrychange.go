@@ -47,6 +47,13 @@ func applyMCPDeprecation(ctx context.Context, q querier, serverID string) (int64
 	return tag.RowsAffected(), err
 }
 
+func applyMCPUndeprecation(ctx context.Context, q querier, serverID string) (int64, error) {
+	tag, err := q.Exec(ctx,
+		`UPDATE mcp_servers SET status='published', updated_at=now() WHERE id=$1 AND status='deprecated'`,
+		serverID)
+	return tag.RowsAffected(), err
+}
+
 func applyMCPMetadata(ctx context.Context, q querier, serverID string, p UpdateMCPServerParams) (int64, error) {
 	tag, err := q.Exec(ctx, `
 		UPDATE mcp_servers
@@ -66,6 +73,13 @@ func applyAgentVisibility(ctx context.Context, q querier, agentID string, vis do
 func applyAgentDeprecation(ctx context.Context, q querier, agentID string) (int64, error) {
 	tag, err := q.Exec(ctx,
 		`UPDATE agents SET status='deprecated', updated_at=now() WHERE id=$1 AND status='published'`,
+		agentID)
+	return tag.RowsAffected(), err
+}
+
+func applyAgentUndeprecation(ctx context.Context, q querier, agentID string) (int64, error) {
+	tag, err := q.Exec(ctx,
+		`UPDATE agents SET status='published', updated_at=now() WHERE id=$1 AND status='deprecated'`,
 		agentID)
 	return tag.RowsAffected(), err
 }
@@ -272,6 +286,9 @@ func applyEntryChange(ctx context.Context, tx querier, cr domain.EntryChangeRequ
 		case domain.EntryChangeDeprecation:
 			rows, err := applyMCPDeprecation(ctx, tx, cr.EntryID)
 			return applyResult(rows, err)
+		case domain.EntryChangeUndeprecation:
+			rows, err := applyMCPUndeprecation(ctx, tx, cr.EntryID)
+			return applyResult(rows, err)
 		case domain.EntryChangeMetadataEdit:
 			var p UpdateMCPServerParams
 			if err := json.Unmarshal(cr.Payload, &p); err != nil {
@@ -293,6 +310,9 @@ func applyEntryChange(ctx context.Context, tx querier, cr domain.EntryChangeRequ
 			return applyResult(rows, err)
 		case domain.EntryChangeDeprecation:
 			rows, err := applyAgentDeprecation(ctx, tx, cr.EntryID)
+			return applyResult(rows, err)
+		case domain.EntryChangeUndeprecation:
+			rows, err := applyAgentUndeprecation(ctx, tx, cr.EntryID)
 			return applyResult(rows, err)
 		case domain.EntryChangeMetadataEdit:
 			var p UpdateAgentParams

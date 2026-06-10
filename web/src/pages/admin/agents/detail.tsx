@@ -15,8 +15,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
+import { DetailPageSkeleton } from '@/components/ui/detail-page-skeleton'
+import { ErrorState } from '@/components/ui/error-state'
 import { useAuthClient } from '@/lib/api-client'
-import { formatDate, problemMessage } from '@/lib/utils'
+import { formatDate, problemMessage, HTTPError, isNotFound } from '@/lib/utils'
 import { usePermissions } from '@/auth/useMe'
 import type { components } from '@/lib/schema'
 
@@ -30,11 +32,17 @@ export default function AdminAgentDetail() {
   const [editOpen, setEditOpen] = useState(false)
 
   const api = useAuthClient()
-  const { data, isPending, isError } = useQuery({
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['admin-agent-detail', ns, slug],
-    queryFn: () => api.GET('/api/v1/agents/{namespace}/{slug}', {
-      params: { path: { namespace: ns!, slug: slug! } },
-    }).then(r => r.data),
+    queryFn: async () => {
+      const { data, error, response } = await api.GET('/api/v1/agents/{namespace}/{slug}', {
+        params: { path: { namespace: ns!, slug: slug! } },
+      })
+      // Carry the HTTP status so the error branch can tell a real 404 from
+      // a server error or network failure (P2.6).
+      if (error || !data) throw new HTTPError(problemMessage(error, 'Failed to load this agent.'), response?.status)
+      return data
+    },
     enabled: !!ns && !!slug && true,
   })
 
@@ -69,6 +77,17 @@ export default function AdminAgentDetail() {
       if (error) throw new Error(problemMessage(error, 'Failed to deprecate.'))
     },
     onSuccess: () => { invalidate(); toast.success(submitToast('Agent deprecated')) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const undeprecateMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await api.POST('/api/v1/agents/{namespace}/{slug}/undeprecate', {
+        params: { path: { namespace: ns!, slug: slug! } },
+      })
+      if (error) throw new Error(problemMessage(error, 'Failed to republish.'))
+    },
+    onSuccess: () => { invalidate(); toast.success(submitToast('Agent republished')) },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -109,10 +128,17 @@ export default function AdminAgentDetail() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  if (isPending) return <p className="text-muted-foreground">Loading…</p>
+  if (isPending) return <DetailPageSkeleton />
   if (isError || !data) return (
-    <div className="space-y-4">
-      <p className="text-destructive">Not found.</p>
+    <div className="space-y-4 max-w-3xl mx-auto">
+      {isNotFound(error) ? (
+        <p className="text-destructive">Not found — this agent may have been deleted or renamed.</p>
+      ) : (
+        <ErrorState
+          message={error instanceof Error ? error.message : 'Failed to load this agent.'}
+          onRetry={() => refetch()}
+        />
+      )}
       <Button variant="outline" size="sm" onClick={() => navigate('/admin/agents')}>Back to Agents</Button>
     </div>
   )
@@ -123,6 +149,7 @@ export default function AdminAgentDetail() {
   const changeActionLabel: Record<string, string> = {
     visibility: 'Visibility change',
     deprecation: 'Deprecation',
+    undeprecation: 'Republish',
     metadata_edit: 'Metadata edit',
   }
 
@@ -148,10 +175,33 @@ export default function AdminAgentDetail() {
 
       <LifecycleStepper
         currentStatus={data.status}
+        // Read-only for viewers; no clickable targets while a change is pending.
+        // For published entries the stepper is informational only — deprecation
+        // belongs to the Actions row's Deprecate button, which confirms first
+        // (one transition surface per action).
+        allowedTransitions={
+          !perms.canEdit(ns) || changePending || data.status === 'published' ? [] : undefined
+        }
         onTransition={(target) => {
-          if (target === 'deprecated') deprecateMutation.mutate()
+          if (target === 'published' && data.status === 'deprecated') undeprecateMutation.mutate()
+          else if (target === 'published' && data.status === 'draft') {
+            // Publishing happens per version — point at the Versions section
+            // instead of silently dropping the click.
+            document.getElementById('versions-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            toast.info('Publishing happens per version — submit or publish a version below.')
+          }
         }}
       />
+
+      {/* Editors get the pipeline spelled out once: nothing else in the UI
+          explains that publish and make-public are separate reviewed steps (J1). */}
+      {perms.canEdit(ns) && !perms.isServerAdmin && data.visibility === 'private' && (
+        <p className="text-sm text-muted-foreground max-w-prose">
+          How this goes live: author a version, submit it for review, a
+          reviewer approves it — then &ldquo;Make public&rdquo; (also reviewed)
+          exposes the entry in the public registry.
+        </p>
+      )}
 
       {pendingChange && (
         <div
@@ -184,12 +234,10 @@ export default function AdminAgentDetail() {
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted-foreground">Namespace / Slug</dt>
         <dd className="font-mono">{data.namespace}/{data.slug}</dd>
-        {data.description && (
-          <>
-            <dt className="text-muted-foreground">Description</dt>
-            <dd>{data.description}</dd>
-          </>
-        )}
+        {/* Every editable field renders, with an explicit "—" for unset
+            values, so a reader can tell "not set" from "not shown" (P2.3). */}
+        <dt className="text-muted-foreground">Description</dt>
+        <dd className="max-w-prose">{data.description || <span className="text-muted-foreground">—</span>}</dd>
         {lv && (
           <>
             {lv.endpoint_url && (
@@ -398,6 +446,17 @@ export default function AdminAgentDetail() {
               />
             )}
 
+            {perms.canEdit(ns) && data.status === 'deprecated' && !changePending && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={undeprecateMutation.isPending}
+                onClick={() => undeprecateMutation.mutate()}
+              >
+                Republish
+              </Button>
+            )}
+
             {perms.canEdit(ns) && (
               <RequestDeletionButton
                 kind="agent"
@@ -438,7 +497,9 @@ export default function AdminAgentDetail() {
 
       <Separator />
 
-      <VersionsSection kind="agent" namespace={data.namespace} slug={data.slug} />
+      <div id="versions-section">
+        <VersionsSection kind="agent" namespace={data.namespace} slug={data.slug} entryStatus={data.status} />
+      </div>
 
       <Separator />
 

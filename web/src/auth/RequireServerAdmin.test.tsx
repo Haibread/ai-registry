@@ -11,6 +11,9 @@ vi.mock('@/auth/useMe', () => ({ usePermissions: vi.fn() }))
 import { usePermissions } from '@/auth/useMe'
 const mockPerms = vi.mocked(usePermissions)
 
+const { mockToast } = vi.hoisted(() => ({ mockToast: { error: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: mockToast }))
+
 function renderAt(state: { isLoading: boolean; isServerAdmin: boolean }) {
   mockPerms.mockReturnValue(state as never)
   return render(
@@ -32,10 +35,14 @@ describe('RequireServerAdmin', () => {
     expect(screen.queryByText(/users management/i)).not.toBeInTheDocument()
   })
 
-  it('redirects a non-Server-Admin to the dashboard', () => {
+  it('redirects a non-Server-Admin to the dashboard with a visible notice', () => {
     renderAt({ isLoading: false, isServerAdmin: false })
     expect(screen.getByText('Admin dashboard')).toBeInTheDocument()
     expect(screen.queryByText(/users management/i)).not.toBeInTheDocument()
+    expect(mockToast.error).toHaveBeenCalledWith(
+      'Server Admin access required',
+      expect.objectContaining({ description: expect.stringMatching(/server admins/i) }),
+    )
   })
 
   it('renders the guarded route for a Server Admin', () => {

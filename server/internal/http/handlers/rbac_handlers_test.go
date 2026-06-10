@@ -255,6 +255,51 @@ func TestUserHandler_CreateGetPatch(t *testing.T) {
 	}
 }
 
+// TestUserHandler_PatchSelfLockoutGuard: an admin cannot disable their own
+// account or revoke their own Server Admin role (409) — another admin must.
+// Self-PATCHes that don't reduce access (display name, enable) still work.
+func TestUserHandler_PatchSelfLockoutGuard(t *testing.T) {
+	resetTables(t)
+	router := newUserRouter()
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, jsonReq(http.MethodPost, "/api/v1/users", `{"email":"self@example.com","is_server_admin":true}`))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d; %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.NewDecoder(rec.Body).Decode(&created)
+
+	selfCtx := auth.ContextWithPrincipal(context.Background(),
+		&auth.Principal{UserID: created.ID, Email: "self@example.com", IsServerAdmin: true})
+
+	for _, tc := range []struct {
+		name, body string
+		want       int
+	}{
+		{"self-disable blocked", `{"disabled":true}`, http.StatusConflict},
+		{"self-demote blocked", `{"is_server_admin":false}`, http.StatusConflict},
+		{"self display-name ok", `{"display_name":"Me"}`, http.StatusOK},
+	} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, jsonReq(http.MethodPatch, "/api/v1/users/"+created.ID, tc.body).WithContext(selfCtx))
+		if rec.Code != tc.want {
+			t.Errorf("%s: %d, want %d; %s", tc.name, rec.Code, tc.want, rec.Body.String())
+		}
+	}
+
+	// A different admin can still disable/demote the user.
+	otherCtx := auth.ContextWithPrincipal(context.Background(),
+		&auth.Principal{UserID: "someone-else", IsServerAdmin: true})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, jsonReq(http.MethodPatch, "/api/v1/users/"+created.ID, `{"disabled":true,"is_server_admin":false}`).WithContext(otherCtx))
+	if rec.Code != http.StatusOK {
+		t.Errorf("other-admin patch: %d, want 200; %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestUserHandler_CreateDuplicateConflict(t *testing.T) {
 	resetTables(t)
 	router := newUserRouter()

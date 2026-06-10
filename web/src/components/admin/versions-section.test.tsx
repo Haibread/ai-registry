@@ -1,7 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
+// JSDOM doesn't implement HTMLDialogElement's modal methods; stub them so the
+// publish confirmation (ConfirmDialog) opens and closes.
+beforeEach(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
 
 vi.mock('@/auth/AuthContext', () => ({
   useAuth: () => ({ accessToken: 'test-token' }),
@@ -169,29 +185,48 @@ describe('VersionsSection', () => {
     })
   })
 
-  it('Publish on an unpublished version posts to the publish endpoint after confirm', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('Publish on a draft posts to the publish endpoint after the confirm dialog', async () => {
     renderSection('mcp')
     // publishedV0 (0.9.0) is already published, so the first Publish button
     // belongs to the first unpublished row (draftV1, 1.0.0).
     const publishButtons = await screen.findAllByRole('button', { name: /^publish$/i })
     fireEvent.click(publishButtons[0])
+    // Nothing fires until the themed dialog (naming entry + version) confirms.
+    expect(mockPOST).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: /publish acme\/weather v1\.0\.0\?/i })).toBeInTheDocument()
+    const dialog = document.querySelector('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^publish$/i }))
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish',
         { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } } },
       )
     })
-    confirmSpy.mockRestore()
+  })
+
+  it('uses the queue\'s "Approve & publish" verb on a pending-review row', async () => {
+    renderSection('mcp')
+    // pendingV2 (1.1.0) is the only pending_review row.
+    const approveBtn = await screen.findByRole('button', { name: /^approve & publish$/i })
+    fireEvent.click(approveBtn)
+    expect(screen.getByRole('heading', { name: /approve acme\/weather v1\.1\.0\?/i })).toBeInTheDocument()
+    const dialog = document.querySelector('dialog')!
+    fireEvent.click(within(dialog).getByRole('button', { name: /^approve & publish$/i }))
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish',
+        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.1.0' } } },
+      )
+    })
   })
 
   it('does not show Publish on an already-published version', async () => {
     renderSection('mcp')
     await screen.findByText('v0.9.0')
-    // Three unpublished rows (draft, pending, rejected) → three Publish buttons,
-    // never four — the published row must not offer Publish.
-    const publishButtons = screen.getAllByRole('button', { name: /^publish$/i })
-    expect(publishButtons).toHaveLength(3)
+    // Three unpublished rows: draft + rejected say "Publish", the pending row
+    // says "Approve & publish" — the published row offers neither.
+    expect(screen.getAllByRole('button', { name: /^publish$/i })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /^approve & publish$/i })).toHaveLength(1)
   })
 
   it('surfaces a friendly error on review-revision-mismatch', async () => {
