@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -10,9 +11,12 @@ import {
   Eye,
   Archive,
   Pencil,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -21,6 +25,8 @@ import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type Item = components['schemas']['ReviewQueueItem']
+type MCPVersion = components['schemas']['MCPServerVersion']
+type AgentVersion = components['schemas']['AgentVersion']
 
 // The discriminator values returned by the server. Keep in sync with the
 // OpenAPI ReviewQueueItem.kind enum.
@@ -135,6 +141,105 @@ function ChangeDetails({ it }: { it: Item }) {
   )
 }
 
+// VersionContent — expandable panel showing what a version submission
+// actually contains, fetched lazily from the existing version GET endpoints.
+// Reviewers previously had to open the entry and read the raw API response to
+// see the content they were approving (J2).
+function VersionContent({ it }: { it: Item }) {
+  const api = useAuthClient()
+  const [expanded, setExpanded] = useState(false)
+  const mcp = isMCP(it.kind as Kind)
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['review-version-content', it.kind, it.publisher_slug, it.entry_slug, it.version],
+    queryFn: async () => {
+      const path = { namespace: it.publisher_slug, slug: it.entry_slug, version: it.version! }
+      if (mcp) {
+        const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}', { params: { path } })
+        return { mcp: r.data ?? null, agent: null }
+      }
+      const r = await api.GET('/api/v1/agents/{namespace}/{slug}/versions/{version}', { params: { path } })
+      return { mcp: null, agent: r.data ?? null }
+    },
+    enabled: expanded,
+    staleTime: 30_000,
+  })
+
+  const Chevron = expanded ? ChevronDown : ChevronRight
+  return (
+    <div>
+      <button
+        type="button"
+        className="flex items-center gap-1 text-xs text-primary hover:underline"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <Chevron className="h-3.5 w-3.5" aria-hidden="true" />
+        {expanded ? 'Hide submitted content' : 'Show submitted content'}
+      </button>
+      {expanded && (
+        <div className="mt-2 rounded-md border bg-muted/30 p-3">
+          {isLoading ? (
+            <Skeleton className="h-12 w-full rounded" />
+          ) : isError || !data ? (
+            <p className="text-xs text-destructive">Failed to load the version's content.</p>
+          ) : data.mcp ? (
+            <MCPVersionSummary v={data.mcp} />
+          ) : data.agent ? (
+            <AgentVersionSummary v={data.agent} />
+          ) : (
+            <p className="text-xs text-muted-foreground">No content found.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SummaryRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="contents">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-mono break-words">{children}</dd>
+    </div>
+  )
+}
+
+function MCPVersionSummary({ v }: { v: MCPVersion }) {
+  const tools = v.tools ?? []
+  const packages = v.packages ?? []
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+      <SummaryRow label="Runtime">{v.runtime}</SummaryRow>
+      <SummaryRow label="Protocol">{v.protocol_version}</SummaryRow>
+      <SummaryRow label="Packages">
+        {packages.length === 0
+          ? '—'
+          : packages.map((p) => `${p.registryType}: ${p.identifier}@${p.version} (${p.transport.type})`).join(', ')}
+      </SummaryRow>
+      <SummaryRow label="Tools">
+        {tools.length === 0 ? '—' : tools.map((t) => t.name).join(', ')}
+      </SummaryRow>
+    </dl>
+  )
+}
+
+function AgentVersionSummary({ v }: { v: AgentVersion }) {
+  const skills = v.skills ?? []
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+      <SummaryRow label="Endpoint">{v.endpoint_url}</SummaryRow>
+      <SummaryRow label="Protocol">{v.protocol_version}</SummaryRow>
+      <SummaryRow label="Skills">
+        {skills.length === 0 ? '—' : skills.map((s) => s.name).join(', ')}
+      </SummaryRow>
+      <SummaryRow label="Auth">
+        {(v.authentication ?? []).length === 0 ? '—' : (v.authentication ?? []).map((a) => a.scheme).join(', ')}
+      </SummaryRow>
+    </dl>
+  )
+}
+
 // 409 problem-type suffix → friendly message. Anything we don't recognise
 // falls through to the generic detail field.
 function friendlyProblem(type?: string, detail?: string): string {
@@ -162,6 +267,10 @@ export default function AdminReviewQueue() {
   // item's URL parameters so two open forms don't collide.
   const [rejectingKey, setRejectingKey] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState<string>('')
+  // Item whose approval awaits confirmation. Approve applies/publishes (or
+  // hard-deletes, for deletion requests) immediately — it must not be a
+  // single unconfirmed click (J2).
+  const [confirmTarget, setConfirmTarget] = useState<Item | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-review-queue'],
@@ -385,12 +494,12 @@ export default function AdminReviewQueue() {
                     <Icon className="h-3 w-3" />
                     {kindLabel(it)}
                   </Badge>
-                  <a
-                    href={detailHref}
+                  <Link
+                    to={detailHref}
                     className="text-sm font-mono text-primary hover:underline"
                   >
                     {it.publisher_slug}/{it.entry_slug}
-                  </a>
+                  </Link>
                   {it.version && (
                     <Badge variant="secondary" className="text-xs">
                       v{it.version}
@@ -406,6 +515,7 @@ export default function AdminReviewQueue() {
                   </span>
                 </div>
                 {isChange(kind) && <ChangeDetails it={it} />}
+                {isVersion(kind) && it.version && <VersionContent it={it} />}
                 {it.submitted_by_email && (
                   <p className="text-xs text-muted-foreground">
                     Submitted by{' '}
@@ -417,7 +527,7 @@ export default function AdminReviewQueue() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => approveMutation.mutate(it)}
+                    onClick={() => setConfirmTarget(it)}
                     disabled={approveMutation.isPending || rejectMutation.isPending}
                   >
                     <CheckCircle2 className="h-4 w-4" />
@@ -482,6 +592,38 @@ export default function AdminReviewQueue() {
           })}
         </ul>
       )}
+
+      {confirmTarget && (() => {
+        const it = confirmTarget
+        const ref = `${it.publisher_slug}/${it.entry_slug}`
+        const kind = it.kind as Kind
+        const isDeletion = kind === 'mcp_deletion' || kind === 'agent_deletion'
+        const title = isVersion(kind)
+          ? `Approve ${ref} v${it.version}?`
+          : isDeletion
+            ? `Approve deletion of ${ref}?`
+            : `Approve ${actionLabel(it.action).toLowerCase()} on ${ref}?`
+        const description = isVersion(kind)
+          ? 'Approval publishes this version to the registry immediately.'
+          : isDeletion
+            ? 'This permanently deletes the entry and all its versions. It disappears from the registry immediately.'
+            : 'The change is applied to the entry immediately.'
+        return (
+          <ConfirmDialog
+            open
+            onOpenChange={(o) => { if (!o) setConfirmTarget(null) }}
+            title={title}
+            description={description}
+            confirmLabel={isVersion(kind) ? 'Approve & publish' : isDeletion ? 'Approve deletion' : 'Approve change'}
+            destructive={isDeletion}
+            isPending={approveMutation.isPending}
+            onConfirm={() => {
+              approveMutation.mutate(it)
+              setConfirmTarget(null)
+            }}
+          />
+        )
+      })()}
     </div>
   )
 }

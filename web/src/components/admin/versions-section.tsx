@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { GitPullRequestArrow, CheckCircle2, AlertCircle, Send, Undo2, Plus, Rocket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { NewVersionForm } from '@/components/admin/new-version-form'
@@ -69,6 +70,9 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  // Version awaiting publish confirmation; `pending` selects the verb
+  // ("Approve & publish" for a pending_review row, "Publish" for a draft).
+  const [publishTarget, setPublishTarget] = useState<{ version: string; pending: boolean } | null>(null)
 
   const queryKey = ['admin-versions', kind, namespace, slug]
   // The resource detail page caches the entry (incl. latest_version); refresh
@@ -343,16 +347,16 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
                         </Button>
                       )}
                       {canReview && !v.published_at && (
+                        // Same verb as the review queue when the version is
+                        // pending review — "Approve & publish" — so the two
+                        // surfaces are recognisably the same action (J2).
                         <Button
                           size="sm"
-                          onClick={() => {
-                            if (window.confirm(`Publish v${v.version}? This takes it live immediately.`))
-                              publishMutation.mutate(v.version)
-                          }}
+                          onClick={() => setPublishTarget({ version: v.version, pending: isPending })}
                           disabled={publishMutation.isPending}
                         >
                           <Rocket className="h-4 w-4" />
-                          <span className="ml-1.5">Publish</span>
+                          <span className="ml-1.5">{isPending ? 'Approve & publish' : 'Publish'}</span>
                         </Button>
                       )}
                     </div>
@@ -362,6 +366,21 @@ export function VersionsSection({ kind, namespace, slug }: VersionsSectionProps)
             })}
           </TableBody>
         </Table>
+      )}
+
+      {publishTarget && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => { if (!o) setPublishTarget(null) }}
+          title={`${publishTarget.pending ? 'Approve' : 'Publish'} ${namespace}/${slug} v${publishTarget.version}?`}
+          description="This takes the version live in the public registry immediately."
+          confirmLabel={publishTarget.pending ? 'Approve & publish' : 'Publish'}
+          isPending={publishMutation.isPending}
+          onConfirm={() => {
+            publishMutation.mutate(publishTarget.version)
+            setPublishTarget(null)
+          }}
+        />
       )}
     </div>
   )

@@ -25,6 +25,17 @@ All notable changes to this project are documented here.
   blur with an inline `aria-invalid` error, and caps length at 63. Create-form
   failures also show the server's problem-details `detail` (e.g. which slug
   collided) instead of the bare status title.
+- **Reviewers no longer approve blind, and Approve confirms first.** Version
+  items in the review queue gain an expandable "Show submitted content" panel
+  (runtime, protocol, packages, tools for MCP; endpoint, skills, auth for
+  agents) so the reviewed content is visible without leaving the queue.
+  Approve now opens a confirmation naming the entry and consequence —
+  "Approve & publish" for versions, a destructive "Approve deletion" for
+  deletion requests (previously one unconfirmed click hard-deleted the entry).
+  The entry page's Publish button on a pending version now reads
+  "Approve & publish" too, so the two surfaces are recognisably the same
+  action, and its browser confirm() was replaced by the themed dialog. Queue
+  resource links no longer full-page reload (SPA navigation).
 - **The create forms tell editors the truth about publishing.** For callers
   without the Reviewer role the "Publish version immediately" checkbox is now
   "Submit version for review" and actually submits the version (previously the

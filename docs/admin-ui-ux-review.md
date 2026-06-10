@@ -345,6 +345,18 @@ hint (or the lifecycle stepper, repurposed honestly) on the entry detail page; c
 bundling "make public" into the first approval or asking the editor up front.
 
 ### J2. Reviewers approve blind, with two competing affordances (P1/P2)
+
+> **RESOLVED 2026-06-10.** Queue version items get an expandable
+> "Show submitted content" panel (lazy GET of the existing version endpoint:
+> runtime/protocol/packages/tools, agent endpoint/skills/auth). Approve opens
+> a ConfirmDialog naming the entry + consequence; deletion approvals are
+> styled destructive ("This permanently deletes the entry and all its
+> versions"). Vocabulary unified: the entry page's Publish on a
+> pending-review version now reads "Approve & publish" (same verb as the
+> queue) and its `window.confirm` was replaced with the themed dialog. The
+> queue's raw `<a href>` resource links became SPA `<Link>`s (also a P3
+> item). Reject's inline required-reason form kept as-is per the report.
+> Verified live as `genai-reviewer` with a seeded version submission.
 - The queue card identifies the item only as `ns/slug` + version — no display name and
   **none of the submitted content**: no description, tools, package, or capabilities.
   The only way to inspect what's being approved is to open the entry and expand the
