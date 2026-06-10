@@ -25,6 +25,13 @@ All notable changes to this project are documented here.
   blur with an inline `aria-invalid` error, and caps length at 63. Create-form
   failures also show the server's problem-details `detail` (e.g. which slug
   collided) instead of the bare status title.
+- **Interactive sign-in lands on the admin console.** Completing an OIDC
+  sign-in with no pending deep link now lands on `/admin` instead of the
+  public homepage the server redirect points at — matching the local-login
+  behavior. Deep links captured before sign-in are still honored.
+- **The "Report an issue" dialog renders centered.** Tailwind's preflight
+  stripped the `margin: auto` that centers a modal `<dialog>`, pinning it to
+  the top-left corner; `m-auto` restores centering.
 - **Reviewers no longer approve blind, and Approve confirms first.** Version
   items in the review queue gain an expandable "Show submitted content" panel
   (runtime, protocol, packages, tools for MCP; endpoint, skills, auth for

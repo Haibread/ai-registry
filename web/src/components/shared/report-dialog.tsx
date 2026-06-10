@@ -110,7 +110,9 @@ export function ReportDialog({ resourceType, resourceId, resourceLabel }: Report
       <dialog
         ref={dialogRef}
         aria-labelledby="report-dialog-title"
-        className="rounded-lg border border-border bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50 backdrop:backdrop-blur-sm w-full max-w-lg"
+        // m-auto restores the centering Tailwind's preflight strips from
+        // modal <dialog> elements (UI/UX review J3b).
+        className="m-auto rounded-lg border border-border bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50 backdrop:backdrop-blur-sm w-full max-w-lg"
       >
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-6">
           <div>

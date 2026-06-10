@@ -376,6 +376,13 @@ card or an expandable panel; add a lightweight confirm on Approve naming the ent
 version; unify Approve/Publish vocabulary.
 
 ### J3. OIDC sign-in lands on the public homepage (P2)
+
+> **RESOLVED 2026-06-10.** `consumeOIDCHandoff` now redirects to the stashed
+> deep link or `/admin` (never the server's `/` post-login target) after the
+> token exchange, dispatching a `popstate` so the already-mounted router
+> re-renders. Verified live with a real handoff code: reviewer landed on
+> `/admin`. Unit tests cover both the default-`/admin` and the
+> resume-deep-link paths.
 After completing Keycloak login, the user lands on `/` (public homepage) and must spot
 the small "Admin" link in the header to reach the console. Combined with P1.3 (no
 `returnTo`), every OIDC session starts with a detour. Since auth is expected to be
@@ -383,6 +390,11 @@ predominantly OIDC, the post-login landing should be `/admin` (or the preserved 
 link).
 
 ### J3b. Report dialog renders in the top-left corner, not centered (P2) **[verified live]**
+
+> **RESOLVED 2026-06-10.** Added `m-auto` to the report `<dialog>`. Verified
+> live via computed styles: the dialog box is horizontally and vertically
+> centered in the viewport. The new shared `ConfirmDialog` already carries
+> `m-auto`, so the audit for other UA-centered dialogs is clean.
 The "Report an issue" dialog (`web/src/components/shared/report-dialog.tsx`, a native
 `<dialog>` opened with `showModal()`) renders pinned to the **top-left corner** instead
 of centered. Root cause confirmed via computed styles: the dialog is `position: fixed`

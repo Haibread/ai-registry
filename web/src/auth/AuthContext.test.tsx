@@ -143,6 +143,38 @@ describe('AuthProvider', () => {
     const exchangeCall = fetchMock.mock.calls.find((c) => c[0] === '/api/v1/auth/oidc/exchange')
     expect(exchangeCall).toBeTruthy()
     expect(JSON.parse((exchangeCall?.[1] as RequestInit).body as string)).toEqual({ code: 'handoff-xyz' })
+    // With no stashed deep link, an interactive sign-in lands on the admin
+    // console, not the public homepage the server redirect points at (J3).
+    expect(window.location.pathname).toBe('/admin')
+  })
+
+  it('resumes a stashed deep link after the OIDC handoff', async () => {
+    clearTokens()
+    sessionStorage.setItem('ai_registry_return_to', '/admin/mcp/acme/thing')
+    window.location.hash = '#code=handoff-deep'
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url === '/config.json') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ oidc_enabled: true, local_login_enabled: true }), { status: 200 }),
+        )
+      }
+      if (url === '/api/v1/auth/oidc/exchange') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ accessToken: 'acc', refreshToken: 'oidc-ref', expiresIn: 900 }), { status: 200 }),
+        )
+      }
+      if (url === '/api/v1/me') {
+        return Promise.resolve(new Response(JSON.stringify({ authenticated: true, grants: [] }), { status: 200 }))
+      }
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
+    renderProvider()
+
+    await waitFor(() => expect(getRefreshToken()).toBe('oidc-ref'))
+    expect(window.location.pathname).toBe('/admin/mcp/acme/thing')
+    // The stash is single-use.
+    expect(sessionStorage.getItem('ai_registry_return_to')).toBeNull()
   })
 
   it('consumes the single-use handoff code exactly once under StrictMode and ends signed in', async () => {

@@ -126,11 +126,16 @@ async function consumeOIDCHandoff(): Promise<boolean> {
     if (!res.ok) return false
     const body = (await res.json()) as { accessToken: string; refreshToken: string }
     setTokens(body.accessToken, body.refreshToken)
-    // Resume the deep link that triggered the sign-in, if any. This runs
-    // before the router mounts (bootstrapAuth), so a replaceState is enough
-    // for the router to render the original destination directly.
-    const returnTo = takeReturnTo()
-    if (returnTo) window.history.replaceState(null, '', returnTo)
+    // Resume the deep link that triggered the sign-in; with none, land on the
+    // admin console rather than the public homepage the server's
+    // post-login redirect points at — whoever completes an interactive
+    // sign-in came to work in the console (UI/UX review J3). The router is
+    // already mounted on the callback page by the time this async exchange
+    // finishes, and it cannot see a bare replaceState — the popstate event
+    // makes it re-read the location and render the destination.
+    const returnTo = takeReturnTo() ?? '/admin'
+    window.history.replaceState(null, '', returnTo)
+    window.dispatchEvent(new PopStateEvent('popstate'))
     return true
   } catch {
     return false
