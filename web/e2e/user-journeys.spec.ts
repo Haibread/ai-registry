@@ -427,6 +427,8 @@ test.describe('Review workflow honors separation of duties', () => {
       .filter({ hasText: /MCP version/i })
     await expect(queueRow).toBeVisible({ timeout: 15_000 })
     await queueRow.getByRole('button', { name: /^approve$/i }).click()
+    // Approvals confirm through the shared dialog (J2) before applying.
+    await confirmDialog(reviewer, /approve/i)
     await expect(queueRow).toBeHidden({ timeout: 10_000 })
 
     // Confirm it actually published.
