@@ -17,6 +17,14 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Admin create-form slug validation works again, and server errors surface
+  in full.** The slug `pattern` attribute (`^[a-z0-9-]+`) failed to compile
+  under the `v` regex flag modern browsers apply, so client-side validation
+  was silently skipped in all four create forms (MCP server, agent, publisher,
+  group). The shared `SlugField` now uses a compatible pattern, validates on
+  blur with an inline `aria-invalid` error, and caps length at 63. Create-form
+  failures also show the server's problem-details `detail` (e.g. which slug
+  collided) instead of the bare status title.
 - **The admin lifecycle stepper no longer renders dead controls.** Clicking
   "Published" on a draft entry now scrolls to the Versions section with a
   hint (publishing happens per version) instead of silently doing nothing;

@@ -18,6 +18,8 @@ import { useAuthClient } from '@/lib/api-client'
 import { usePublisher } from '@/auth/PublisherContext'
 import { usePermissions } from '@/auth/useMe'
 import { authFetch } from '@/auth/tokens'
+import { problemMessage } from '@/lib/utils'
+import { SlugField } from '@/components/admin/slug-field'
 
 const AUTH_SCHEME_OPTIONS = [
   { value: 'Bearer', label: 'Bearer (JWT / OAuth 2.0 access token)' },
@@ -87,8 +89,7 @@ export default function AdminAgentNew() {
         },
       })
       if (agentError || !agent) {
-        const msg = (agentError as { title?: string } | undefined)?.title ?? 'Failed to create agent.'
-        throw { step: undefined, message: msg }
+        throw { step: undefined, message: problemMessage(agentError, 'Failed to create agent.') }
       }
 
       // Step 2: Create version (optional). Version + endpoint are paired: you
@@ -139,8 +140,9 @@ export default function AdminAgentNew() {
         }),
       })
       if (!versionRes.ok) {
-        let msg = `Failed to create version (HTTP ${versionRes.status}).`
-        try { const body = await versionRes.json(); if (body?.title) msg = body.title } catch { /* body not JSON — keep default msg */ }
+        const fallback = `Failed to create version (HTTP ${versionRes.status}).`
+        let msg = fallback
+        try { msg = problemMessage(await versionRes.json(), fallback) } catch { /* body not JSON — keep default msg */ }
         throw { step: 'version', message: msg }
       }
 
@@ -232,21 +234,7 @@ export default function AdminAgentNew() {
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="slug">
-                Slug <span className="text-destructive" aria-hidden="true">*</span>
-              </Label>
-              <Input
-                id="slug"
-                name="slug"
-                placeholder="my-agent"
-                pattern="^[a-z0-9-]+"
-                title="Lowercase letters, numbers, and hyphens only"
-                required
-                aria-required="true"
-              />
-              <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only.</p>
-            </div>
+            <SlugField placeholder="my-agent" />
 
             <div className="space-y-1.5">
               <Label htmlFor="name">

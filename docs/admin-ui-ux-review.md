@@ -108,6 +108,18 @@ The domain allows deprecated→published (`defaultAllowedTransitions('deprecated
 copy true. Fix the stepper (or add a "Republish" action) and the copy together.
 
 ### P1.2 Slug validation is silently dead in four create forms **[verified]**
+
+> **RESOLVED 2026-06-10.** All four slug inputs were replaced by a shared
+> `SlugField` (`web/src/components/admin/slug-field.tsx`) with a
+> v-flag-compatible `pattern="[a-z0-9\-]+"`, `maxLength=63`, and onBlur inline
+> validation (`aria-invalid` + visible `role="alert"` message backed by
+> `web/src/lib/slug.ts`). All create-form error paths (entry + version step in
+> mcp/agents, publishers, groups) now route through `problemMessage()` so the
+> server's `detail` reaches the user. Verified live: `Bad Slug!!` now fails
+> `checkValidity()` (patternMismatch) and shows the inline message; a
+> duplicate `genai-test/echo` submit shows "MCP server 'genai-test/echo'
+> already exists" instead of "Conflict". Unit tests in `slug-field.test.tsx`
+> include a regression test that the pattern compiles under the `v` flag.
 `pattern="^[a-z0-9-]+"` fails to compile under the `v` regex flag Chromium uses for the
 HTML `pattern` attribute (`Invalid character class` — reproduced with
 `new RegExp('^(?:^[a-z0-9-]+)$', 'v')`). When the pattern fails to compile the browser
