@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { AlertCircle } from 'lucide-react'
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { authFetch } from '@/auth/tokens'
 import { ToolsEditor } from './tools-editor'
+import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
 
 type Kind = 'mcp' | 'agent'
 
@@ -95,6 +97,9 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
   const [pkgRegistryType, setPkgRegistryType] = useState('npm')
   const [authScheme, setAuthScheme] = useState('_none')
   const [error, setError] = useState<string | null>(null)
+  // Unsaved-changes guard (P2.5) — this form is the worst loss case (a
+  // hand-built tools list dies on one stray sidebar click).
+  const [dirty, setDirty] = useState(false)
 
   const mutation = useMutation({
     mutationFn: async (fd: FormData) => {
@@ -218,6 +223,9 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
       return version
     },
     onSuccess: (version) => {
+      // flushSync so a parent that navigates from onCreated isn't blocked
+      // by the guard this form just satisfied.
+      flushSync(() => setDirty(false))
       toast.success(`v${version} created as draft`)
       onCreated(version)
     },
@@ -227,11 +235,13 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
   return (
     <form
       className="space-y-4 border rounded-lg p-4"
+      onChange={() => setDirty(true)}
       onSubmit={(e) => {
         e.preventDefault()
         mutation.mutate(new FormData(e.currentTarget))
       }}
     >
+      <DirtyFormGuard when={dirty} />
       <h3 className="text-base font-semibold">New version</h3>
 
       {error && (
@@ -272,7 +282,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
         <>
           <div className="space-y-1.5">
             <Label htmlFor="runtime-select">Transport</Label>
-            <Select value={runtime} onValueChange={setRuntime}>
+            <Select value={runtime} onValueChange={(v) => { setRuntime(v); setDirty(true) }}>
               <SelectTrigger id="runtime-select">
                 <SelectValue />
               </SelectTrigger>
@@ -292,7 +302,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             </legend>
             <div className="space-y-1.5">
               <Label htmlFor="pkg_registry_type-select">Registry</Label>
-              <Select value={pkgRegistryType} onValueChange={setPkgRegistryType}>
+              <Select value={pkgRegistryType} onValueChange={(v) => { setPkgRegistryType(v); setDirty(true) }}>
                 <SelectTrigger id="pkg_registry_type-select">
                   <SelectValue />
                 </SelectTrigger>
@@ -400,7 +410,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
 
           <div className="space-y-1.5">
             <Label htmlFor="auth-scheme-select">Authentication</Label>
-            <Select value={authScheme} onValueChange={setAuthScheme}>
+            <Select value={authScheme} onValueChange={(v) => { setAuthScheme(v); setDirty(true) }}>
               <SelectTrigger id="auth-scheme-select">
                 <SelectValue />
               </SelectTrigger>

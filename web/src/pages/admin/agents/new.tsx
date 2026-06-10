@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -20,6 +21,7 @@ import { usePermissions } from '@/auth/useMe'
 import { authFetch } from '@/auth/tokens'
 import { problemMessage } from '@/lib/utils'
 import { SlugField } from '@/components/admin/slug-field'
+import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
 
 const AUTH_SCHEME_OPTIONS = [
   { value: 'Bearer', label: 'Bearer (JWT / OAuth 2.0 access token)' },
@@ -68,6 +70,10 @@ export default function AdminAgentNew() {
   const selectedPublisher = publishers.find((p) => p.slug === namespace)
   const [authScheme, setAuthScheme] = useState('_none')
   const [formError, setFormError] = useState<CreateError | null>(null)
+  // Unsaved-changes guard (P2.5): any input change marks the form dirty;
+  // a successful create clears it (synchronously, so the redirect isn't
+  // blocked by the guard it just satisfied).
+  const [dirty, setDirty] = useState(false)
 
   // Publishing is a reviewer action; an editor's version goes through the
   // review queue instead. The checkbox below adapts its label and behavior so
@@ -170,6 +176,10 @@ export default function AdminAgentNew() {
       return { namespace: ns, slug, warning }
     },
     onSuccess: ({ namespace: ns, slug, warning }) => {
+      // flushSync so the navigation blocker sees the form as clean before
+      // the redirect below — otherwise the guard would block its own
+      // success navigation.
+      flushSync(() => setDirty(false))
       // Drop the cached admin list so the new agent appears immediately on
       // return; the 30s staleTime would otherwise hide it until a refetch.
       queryClient.invalidateQueries({ queryKey: ['admin-agents'] })
@@ -214,7 +224,9 @@ export default function AdminAgentNew() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <DirtyFormGuard when={dirty} />
+
+      <form onSubmit={handleSubmit} onChange={() => setDirty(true)} className="space-y-6">
         {/* ── Agent metadata ───────────────────────────────────────────── */}
         <Card>
           <CardHeader>
@@ -231,7 +243,7 @@ export default function AdminAgentNew() {
                 // Ignore Radix's spurious empty-value callback (fired when the
                 // controlled value has no mounted item yet) so it can't clobber
                 // the pre-selected default; a real pick is always a slug.
-                onValueChange={(v) => { if (v) setPicked(v) }}
+                onValueChange={(v) => { if (v) { setPicked(v); setDirty(true) } }}
                 required
               >
                 <SelectTrigger id="namespace-select" aria-required="true">
@@ -316,7 +328,7 @@ export default function AdminAgentNew() {
 
             <div className="space-y-1.5">
               <Label htmlFor="auth-scheme-select">Authentication scheme</Label>
-              <Select value={authScheme} onValueChange={setAuthScheme}>
+              <Select value={authScheme} onValueChange={(v) => { setAuthScheme(v); setDirty(true) }}>
                 <SelectTrigger id="auth-scheme-select">
                   <SelectValue placeholder="None / public" />
                 </SelectTrigger>

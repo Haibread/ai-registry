@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -21,6 +22,7 @@ import { authFetch } from '@/auth/tokens'
 import { problemMessage } from '@/lib/utils'
 import { SlugField } from '@/components/admin/slug-field'
 import { ToolsEditor } from '@/components/admin/tools-editor'
+import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
 
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'stdio (local process)' },
@@ -69,6 +71,10 @@ export default function AdminMCPNew() {
   const [runtime, setRuntime] = useState('stdio')
   const [pkgRegistryType, setPkgRegistryType] = useState('npm')
   const [formError, setFormError] = useState<CreateError | null>(null)
+  // Unsaved-changes guard (P2.5): any input change marks the form dirty;
+  // a successful create clears it (synchronously, so the redirect isn't
+  // blocked by the guard it just satisfied).
+  const [dirty, setDirty] = useState(false)
 
   // Publishing is a reviewer action; an editor's version goes through the
   // review queue instead. The checkbox below adapts its label and behavior so
@@ -176,6 +182,10 @@ export default function AdminMCPNew() {
       return { namespace: ns, slug, warning }
     },
     onSuccess: ({ namespace: ns, slug, warning }) => {
+      // flushSync so the navigation blocker sees the form as clean before
+      // the redirect below — otherwise the guard would block its own
+      // success navigation.
+      flushSync(() => setDirty(false))
       // Drop the cached admin list so the new server appears immediately on
       // return; the 30s staleTime would otherwise hide it until a refetch.
       queryClient.invalidateQueries({ queryKey: ['admin-mcp'] })
@@ -220,7 +230,9 @@ export default function AdminMCPNew() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <DirtyFormGuard when={dirty} />
+
+      <form onSubmit={handleSubmit} onChange={() => setDirty(true)} className="space-y-6">
         {/* ── Server metadata ──────────────────────────────────────────── */}
         <Card>
           <CardHeader>
@@ -238,7 +250,7 @@ export default function AdminMCPNew() {
                 // Ignore Radix's spurious empty-value callback (fired when the
                 // controlled value has no mounted item yet) so it can't clobber
                 // the pre-selected default; a real pick is always a slug.
-                onValueChange={(v) => { if (v) setPicked(v) }}
+                onValueChange={(v) => { if (v) { setPicked(v); setDirty(true) } }}
               >
                 <SelectTrigger id="namespace-select" aria-required="true">
                   <SelectValue placeholder="Select publisher…">
@@ -324,7 +336,7 @@ export default function AdminMCPNew() {
               <Label htmlFor="runtime-select">
                 Transport type <span className="text-destructive" aria-hidden="true">*</span>
               </Label>
-              <Select value={runtime} onValueChange={setRuntime} required>
+              <Select value={runtime} onValueChange={(v) => { setRuntime(v); setDirty(true) }} required>
                 <SelectTrigger id="runtime-select" aria-required="true">
                   <SelectValue />
                 </SelectTrigger>
@@ -350,7 +362,7 @@ export default function AdminMCPNew() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="pkg_registry_type-select">Registry</Label>
-                <Select value={pkgRegistryType} onValueChange={setPkgRegistryType}>
+                <Select value={pkgRegistryType} onValueChange={(v) => { setPkgRegistryType(v); setDirty(true) }}>
                   <SelectTrigger id="pkg_registry_type-select">
                     <SelectValue />
                   </SelectTrigger>

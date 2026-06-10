@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -10,11 +11,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useAuthClient } from '@/lib/api-client'
 import { problemMessage } from '@/lib/utils'
 import { SlugField } from '@/components/admin/slug-field'
+import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
 
 export default function AdminGroupNew() {
   const api = useAuthClient()
   const navigate = useNavigate()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // Unsaved-changes guard (P2.5).
+  const [dirty, setDirty] = useState(false)
 
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -34,7 +38,13 @@ export default function AdminGroupNew() {
         throw new Error(problemMessage(error, 'Failed to create group. The slug may already be in use.'))
       }
     },
-    onSuccess: () => { toast.success('Group created'); navigate('/admin/groups') },
+    onSuccess: () => {
+      // flushSync so the navigation blocker sees the form as clean before
+      // the redirect below.
+      flushSync(() => setDirty(false))
+      toast.success('Group created')
+      navigate('/admin/groups')
+    },
     onError: (err: Error) => setErrorMsg(err.message),
   })
 
@@ -64,7 +74,9 @@ export default function AdminGroupNew() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <DirtyFormGuard when={dirty} />
+
+      <form onSubmit={handleSubmit} onChange={() => setDirty(true)}>
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Group Details</CardTitle>
