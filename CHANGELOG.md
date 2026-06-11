@@ -13,6 +13,16 @@ All notable changes to this project are documented here.
   metadata — are seeded from the latest version, with a patch-bumped
   version suggestion and a visible "Pre-filled from vX.Y.Z" note.
 
+- **The tools editor explains how to dump `tools/list` from a running
+  server.** A "How do I get this list from my server?" panel below the
+  editor offers copy-ready recipes for three situations: the MCP Inspector
+  CLI (Node), a plain `curl` Streamable-HTTP handshake for remote servers,
+  and a raw JSON-RPC stdin pipe for local servers — the latter two need no
+  Node at all. The paste paths now accept the commands' output verbatim:
+  the `{"tools": […]}` JSON-RPC envelope is unwrapped in the JSON tab too,
+  and the MCP spec's `inputSchema` spelling is adopted into `input_schema`
+  (previously it was silently carried as an unknown key and never shown).
+
 - **Remote MCP servers carry a first-class endpoint URL.** MCP server
   versions gain a `remotes` array (`[{type, url}]`, mirroring the MCP
   registry server.json) so a hosted server no longer needs a fabricated

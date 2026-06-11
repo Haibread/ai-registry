@@ -126,3 +126,54 @@ describe("ToolsEditor", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("tools[0].name")
   })
 })
+
+describe("ToolsEditor how-to panel", () => {
+  it("documents tools/list recipes for Node, curl, and raw stdio users", async () => {
+    const user = userEvent.setup()
+    render(<ToolsEditor />)
+
+    // Visible from either tab — the recipes feed the JSON textarea AND the
+    // Form tab's "Paste from tools/list" button — collapsed by default.
+    const toggle = screen.getByRole("button", { name: /how do i get this list/i })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByText(/curl -isS/)).not.toBeInTheDocument()
+
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute("aria-expanded", "true")
+
+    // One recipe per tooling situation, each with its own copy button.
+    expect(screen.getByText(/@modelcontextprotocol\/inspector --cli/)).toBeInTheDocument()
+    expect(screen.getByText(/curl -isS/)).toBeInTheDocument()
+    expect(screen.getByText(/printf '%s\\n'/)).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /copy commands/i })).toHaveLength(3)
+    expect(screen.getByText(/Paste the output as-is/)).toBeInTheDocument()
+
+    // Toggles closed again.
+    await user.click(toggle)
+    expect(screen.queryByText(/curl -isS/)).not.toBeInTheDocument()
+  })
+})
+
+describe("ToolsEditor accepts raw tools/list output in the JSON tab", () => {
+  it("unwraps the {tools: …} envelope and normalizes inputSchema", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<ToolsEditor />)
+
+    await user.click(screen.getByRole("tab", { name: "JSON" }))
+    const textarea = screen.getByLabelText("Tools (JSON)")
+    await user.click(textarea)
+    // Verbatim shape of a live tools/list JSON-RPC result.
+    await user.paste(
+      '{"tools":[{"name":"get_forecast","inputSchema":{"type":"object"}}]}',
+    )
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(JSON.parse(hidden(container).value)).toEqual([
+      { name: "get_forecast", input_schema: { type: "object" } },
+    ])
+
+    // The structured view hydrates from the same normalized parse.
+    await user.click(screen.getByRole("tab", { name: "Form" }))
+    expect(screen.getByLabelText("Tool 1 name")).toHaveValue("get_forecast")
+  })
+})
