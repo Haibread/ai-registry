@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **The new-version form pre-fills from the previous version.** Authoring
+  v(n+1) starts from v(n) instead of a blank slate: transport, remote
+  endpoint, package fields, capabilities, the tools list, protocol version —
+  and for agents the endpoint, skill, auth scheme, modes, and provider
+  metadata — are seeded from the latest version, with a patch-bumped
+  version suggestion and a visible "Pre-filled from vX.Y.Z" note.
+
 - **Remote MCP servers carry a first-class endpoint URL.** MCP server
   versions gain a `remotes` array (`[{type, url}]`, mirroring the MCP
   registry server.json) so a hosted server no longer needs a fabricated

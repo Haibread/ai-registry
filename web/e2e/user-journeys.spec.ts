@@ -117,6 +117,12 @@ test.describe('MCP server lifecycle (UI create → publish → edit → version 
     // ADD a second version through the New version form, exercising the rich
     // fields (capabilities JSON + package registry base URL + tools).
     await page.getByRole('button', { name: 'New version' }).click()
+    // The form seeds itself from v1.0.0: patch-bumped version suggestion and
+    // the previous package identifier, so authoring v2 is a delta, not a
+    // blank slate.
+    await expect(page.getByText(/Pre-filled from\s*v1\.0\.0/)).toBeVisible()
+    await expect(page.locator('input[name="version"]')).toHaveValue('1.0.1')
+    await expect(page.locator('input[name="pkg_identifier"]')).toHaveValue('@e2e/weather')
     await page.fill('input[name="version"]', '2.0.0')
     await page.fill('input[name="pkg_identifier"]', '@e2e/weather')
     await page.fill('input[name="pkg_version"]', '2.0.0')
