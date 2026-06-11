@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Added
+
+- **Instance-wide tags, curated by Server Admins and ticked by publishers.**
+  A new vocabulary of registry-wide tags (e.g. pricing or maturity markers)
+  lives at `GET /api/v1/tags` (public; each tag carries `slug`, display
+  `name`, `description`, badge `color`, and an `active` flag) with
+  Server-Admin-only `POST` / `PATCH /{slug}` / `DELETE /{slug}` management
+  and a matching `/admin/tags` UI page. Publishers tick tags from the
+  vocabulary on the new-version forms (a checkbox group appears once tags are
+  defined); the create-version endpoints validate the slugs against the
+  active vocabulary (422 otherwise) and freeze the selection into the
+  immutable version row. Entry-level `tags` in list/detail responses and the
+  existing `?tag=` filter now reflect the latest *published* version's tags,
+  the public detail pages and catalog cards render them as colored chips, and
+  the catalog list pages gain a tag filter dropdown. Because published
+  versions are immutable, an in-use tag cannot be deleted — `DELETE` answers
+  409 and the tag is deactivated instead (hidden from new publishes, still
+  displayed on the versions that carry it); the never-written entry-level
+  `tags` columns from migration 000002 are dropped.
+
+- **The tag vocabulary can be defined declaratively in configuration.** A new
+  `instance_tags` config key (`INSTANCE_TAGS` env var as a JSON array; Helm:
+  `api.instanceTags`) lists tags that the server reconciles into the database
+  on every startup: listed tags are created or updated and flagged
+  `managed`, making them read-only through the API and admin UI (PATCH /
+  DELETE answer 409, the UI badges them "Managed" and disables the actions);
+  removing an entry releases the tag back to admin-UI ownership without
+  deleting it. Invalid entries (bad slug/color, duplicates) fail startup
+  fast. The version-create checkbox picker also gained the tag description
+  as a hover tooltip on the whole row.
+
 ## v0.4.0-rc8 — 2026-06-11
 
 ### Added

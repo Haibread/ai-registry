@@ -65,7 +65,10 @@ type MCPServerSpec struct {
 	Featured bool `yaml:"featured" json:"featured"`
 	// Verified marks the server as officially vetted by the registry.
 	Verified bool `yaml:"verified" json:"verified"`
-	// Tags are free-form category labels surfaced in listing filters.
+	// Tags are instance-tag slugs applied to every version this spec
+	// creates (tags live on version rows since migration 000022). Slugs
+	// missing from the vocabulary are created on the fly (unmanaged,
+	// name = slug) so seeded data always resolves.
 	Tags []string `yaml:"tags" json:"tags"`
 	// Readme is long-form markdown content rendered on the detail page.
 	Readme   string           `yaml:"readme"   json:"readme"`
@@ -148,7 +151,10 @@ type AgentSpec struct {
 	Featured bool `yaml:"featured" json:"featured"`
 	// Verified marks the agent as officially vetted by the registry.
 	Verified bool `yaml:"verified" json:"verified"`
-	// Tags are free-form category labels surfaced in listing filters.
+	// Tags are instance-tag slugs applied to every version this spec
+	// creates (tags live on version rows since migration 000022). Slugs
+	// missing from the vocabulary are created on the fly (unmanaged,
+	// name = slug) so seeded data always resolves.
 	Tags []string `yaml:"tags" json:"tags"`
 	// Readme is long-form markdown content rendered on the detail page.
 	Readme   string             `yaml:"readme"   json:"readme"`

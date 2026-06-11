@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ResourceIcon } from '@/components/ui/resource-icon'
 import { Button } from '@/components/ui/button'
 import { getPublicClient } from '@/lib/api-client'
+import { useInstanceTags } from '@/lib/use-instance-tags'
 
 export default function AgentListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -17,18 +18,20 @@ export default function AgentListPage() {
   const cursor = searchParams.get('cursor') ?? undefined
   const namespace = searchParams.get('namespace') ?? undefined
   const status = searchParams.get('status') ?? undefined
+  const tag = searchParams.get('tag') ?? undefined
   const sort = searchParams.get('sort') ?? undefined
 
   const api = getPublicClient()
   const { data, isLoading } = useQuery({
-    queryKey: ['agents', { q, cursor, namespace, status, sort }],
+    queryKey: ['agents', { q, cursor, namespace, status, tag, sort }],
     queryFn: () => api.GET('/api/v1/agents', {
-      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined, sort: sort as 'created_at_desc' | 'updated_at_desc' | 'name_asc' | 'name_desc' | undefined } },
+      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined, tag, sort: sort as 'created_at_desc' | 'updated_at_desc' | 'name_asc' | 'name_desc' | undefined } },
     }).then(r => r.data),
   })
+  const { data: tagData } = useInstanceTags()
 
   const agents = data?.items ?? []
-  const hasFilters = !!(q || namespace || status || sort)
+  const hasFilters = !!(q || namespace || status || tag || sort)
 
   const buildNextParams = () => {
     const p = new URLSearchParams(searchParams)
@@ -59,6 +62,7 @@ export default function AgentListPage() {
               status={status}
               statusOptions={['published', 'deprecated']}
               searchPlaceholder="Search agents…"
+              tagOptions={(tagData?.items ?? []).map((t) => ({ value: t.slug, label: t.name }))}
               sortOptions={[
                 { value: '', label: 'Newest first' },
                 { value: 'updated_at_desc', label: 'Recently updated' },

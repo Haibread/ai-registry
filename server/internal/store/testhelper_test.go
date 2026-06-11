@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 func resetDB(t *testing.T) {
 	t.Helper()
 	_, err := sharedDB.Pool.Exec(context.Background(),
-		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers, audit_log, reports, refresh_tokens, oidc_auth_requests, auth_handoff_codes, role_grants, group_members, groups, users RESTART IDENTITY CASCADE`)
+		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers, audit_log, reports, refresh_tokens, oidc_auth_requests, auth_handoff_codes, role_grants, group_members, groups, users, instance_tags RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("truncating tables: %v", err)
 	}

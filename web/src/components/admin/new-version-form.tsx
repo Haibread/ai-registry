@@ -15,7 +15,9 @@ import {
 } from '@/components/ui/select'
 import { authFetch } from '@/auth/tokens'
 import { ToolsEditor } from './tools-editor'
+import { InstanceTagPicker } from './instance-tag-picker'
 import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
+import { collectInstanceTags } from '@/lib/use-instance-tags'
 import type { components } from '@/lib/schema'
 
 type Kind = 'mcp' | 'agent'
@@ -148,6 +150,7 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
       const version = (fd.get('version') as string).trim()
       if (!version) throw new Error('Version is required.')
       const protocolVersion = (fd.get('protocol_version') as string).trim()
+      const instanceTags = collectInstanceTags(fd)
 
       if (kind === 'mcp') {
         const pkgIdentifier = (fd.get('pkg_identifier') as string).trim()
@@ -198,6 +201,7 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
             ...(remotes.length > 0 ? { remotes } : {}),
             ...(tools !== undefined ? { tools } : {}),
             ...(capabilities ? { capabilities } : {}),
+            ...(instanceTags.length > 0 ? { tags: instanceTags } : {}),
           }),
         })
         if (!res.ok) throw new Error(await problemTitle(res, 'Failed to create version.'))
@@ -264,6 +268,7 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
           ...(documentationUrl ? { documentation_url: documentationUrl } : {}),
           ...(iconUrl ? { icon_url: iconUrl } : {}),
           ...(capabilities ? { capabilities } : {}),
+          ...(instanceTags.length > 0 ? { tags: instanceTags } : {}),
         }),
       })
       if (!res.ok) throw new Error(await problemTitle(res, 'Failed to create version.'))
@@ -332,6 +337,8 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
           />
         </div>
       </div>
+
+      <InstanceTagPicker defaultSelected={prefill?.tags ?? []} />
 
       {kind === 'mcp' ? (
         <>

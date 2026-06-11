@@ -152,6 +152,29 @@ func run() error {
 	}
 	logger.Info("rbac seed complete")
 
+	// ── Config-managed instance tags ──────────────────────────────────────────
+	// Always reconciled (even when the list is empty: that releases tags a
+	// previous configuration managed). Listed tags are upserted and become
+	// read-only via the API; unlisted ones return to admin-UI ownership.
+	managedTags := make([]store.ManagedTagSpec, 0, len(cfg.InstanceTags))
+	for _, t := range cfg.InstanceTags {
+		spec := store.ManagedTagSpec{
+			Slug:        t.Slug,
+			Name:        t.Name,
+			Description: t.Description,
+			Color:       t.Color,
+			Active:      t.Active == nil || *t.Active,
+		}
+		if spec.Color == "" {
+			spec.Color = "gray"
+		}
+		managedTags = append(managedTags, spec)
+	}
+	if err := db.ReconcileManagedInstanceTags(ctx, managedTags); err != nil {
+		return fmt.Errorf("reconciling instance tags: %w", err)
+	}
+	logger.Info("instance tags reconciled", slog.Int("managed", len(managedTags)))
+
 	// ── Bootstrap (optional) ─────────────────────────────────────────────────
 	if bootstrapPath != "" {
 		logger.Info("loading bootstrap file", slog.String("path", bootstrapPath))

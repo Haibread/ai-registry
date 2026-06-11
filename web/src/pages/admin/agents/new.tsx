@@ -21,7 +21,9 @@ import { usePermissions } from '@/auth/useMe'
 import { authFetch } from '@/auth/tokens'
 import { problemMessage } from '@/lib/utils'
 import { SlugField } from '@/components/admin/slug-field'
+import { InstanceTagPicker } from '@/components/admin/instance-tag-picker'
 import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
+import { collectInstanceTags } from '@/lib/use-instance-tags'
 
 const AUTH_SCHEME_OPTIONS = [
   { value: 'Bearer', label: 'Bearer (JWT / OAuth 2.0 access token)' },
@@ -135,6 +137,8 @@ export default function AdminAgentNew() {
       const defaultInputModes = MODE_VALUES.filter((v) => formData.get(`input_mode_${v}`) === 'on')
       const defaultOutputModes = MODE_VALUES.filter((v) => formData.get(`output_mode_${v}`) === 'on')
 
+      const instanceTags = collectInstanceTags(formData)
+
       const versionRes = await authFetch(`/api/v1/agents/${ns}/${slug}/versions`, {
         method: 'POST',
         headers: {
@@ -148,6 +152,7 @@ export default function AdminAgentNew() {
           ...(authentication.length > 0 ? { authentication } : {}),
           ...(defaultInputModes.length > 0 ? { default_input_modes: defaultInputModes } : {}),
           ...(defaultOutputModes.length > 0 ? { default_output_modes: defaultOutputModes } : {}),
+          ...(instanceTags.length > 0 ? { tags: instanceTags } : {}),
         }),
       })
       if (!versionRes.ok) {
@@ -318,6 +323,8 @@ export default function AdminAgentNew() {
                 />
               </div>
             </div>
+
+            <InstanceTagPicker />
 
             <div className="space-y-1.5">
               <Label htmlFor="endpoint_url">

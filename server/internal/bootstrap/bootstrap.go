@@ -105,6 +105,17 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		}
 	}
 
+	// ── Instance tags ─────────────────────────────────────────────────────────
+	// Spec tags reference the instance-wide vocabulary (instance_tags). Make
+	// sure every referenced slug exists (create-if-absent, unmanaged, name =
+	// slug) so the seeded versions resolve to a real tag the admin can then
+	// polish in the UI. Tags already defined — by an admin or by the
+	// INSTANCE_TAGS config reconcile, which runs before bootstrap — are
+	// left untouched.
+	if err := ensureInstanceTags(ctx, db, spec, logger); err != nil {
+		return fmt.Errorf("bootstrap: instance tags: %w", err)
+	}
+
 	// ── MCP servers ───────────────────────────────────────────────────────────
 	for _, s := range spec.MCPServers {
 		pubID, ok := pubIDs[s.Publisher]
@@ -134,6 +145,46 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		slog.Int("mcp_servers", len(spec.MCPServers)),
 		slog.Int("agents", len(spec.Agents)),
 	)
+	return nil
+}
+
+// ensureInstanceTags creates a vocabulary entry for every tag slug the spec
+// references that does not exist yet (unmanaged, active, name = slug).
+// Existing definitions are never modified — bootstrap stays additive.
+func ensureInstanceTags(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) error {
+	seen := make(map[string]struct{})
+	var slugs []string
+	collect := func(tags []string) {
+		for _, t := range domain.NormalizeVersionTags(tags) {
+			if _, dup := seen[t]; !dup {
+				seen[t] = struct{}{}
+				slugs = append(slugs, t)
+			}
+		}
+	}
+	for _, s := range spec.MCPServers {
+		collect(s.Tags)
+	}
+	for _, a := range spec.Agents {
+		collect(a.Tags)
+	}
+
+	for _, slug := range slugs {
+		if err := domain.ValidateSlug(slug); err != nil {
+			return fmt.Errorf("tag %q: %w", slug, err)
+		}
+		tag, err := db.Pool.Exec(ctx, `
+			INSERT INTO instance_tags (id, slug, name)
+			VALUES ($1, $2, $2)
+			ON CONFLICT (slug) DO NOTHING`,
+			store.NewULID(), slug)
+		if err != nil {
+			return fmt.Errorf("ensuring tag %q: %w", slug, err)
+		}
+		if tag.RowsAffected() > 0 {
+			logger.Info("bootstrap: created instance tag", slog.String("slug", slug))
+		}
+	}
 	return nil
 }
 
@@ -311,18 +362,16 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSl
 				},
 			})
 		}
-		// Apply v0.2 metadata fields (featured / verified / tags / readme)
-		// via direct SQL — the CreateMCPServer helper predates these columns.
-		if s.Featured || s.Verified || len(s.Tags) > 0 || s.Readme != "" {
-			tags := s.Tags
-			if tags == nil {
-				tags = []string{}
-			}
+		// Apply v0.2 metadata fields (featured / verified / readme) via
+		// direct SQL — the CreateMCPServer helper predates these columns.
+		// Tags moved to version rows (migration 000022); spec tags are
+		// applied per version below.
+		if s.Featured || s.Verified || s.Readme != "" {
 			if _, err := db.Pool.Exec(ctx,
 				`UPDATE mcp_servers
-				 SET featured=$1, verified=$2, tags=$3, readme=$4, updated_at=now()
-				 WHERE id=$5`,
-				s.Featured, s.Verified, tags, s.Readme, serverID,
+				 SET featured=$1, verified=$2, readme=$3, updated_at=now()
+				 WHERE id=$4`,
+				s.Featured, s.Verified, s.Readme, serverID,
 			); err != nil {
 				return fmt.Errorf("setting mcp server metadata: %w", err)
 			}
@@ -332,9 +381,11 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSl
 		logger.Info("bootstrap: mcp_server already exists, skipping", slog.String("slug", s.Slug))
 	}
 
-	// Apply versions (idempotent per-version check inside).
+	// Apply versions (idempotent per-version check inside). The entry-level
+	// spec tags ride along: tags live on version rows, so "this server is
+	// tagged free" means every bootstrapped version carries the slug.
 	for _, v := range s.Versions {
-		if err := upsertMCPVersion(ctx, db, serverID, publisherSlug, s.Slug, v, logger); err != nil {
+		if err := upsertMCPVersion(ctx, db, serverID, publisherSlug, s.Slug, v, s.Tags, logger); err != nil {
 			return fmt.Errorf("version %q: %w", v.Version, err)
 		}
 	}
@@ -357,7 +408,7 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSl
 	return nil
 }
 
-func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug, serverSlug string, v MCPVersionSpec, logger *slog.Logger) error {
+func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug, serverSlug string, v MCPVersionSpec, entryTags []string, logger *slog.Logger) error {
 	// Tools: marshal the publisher-declared list (possibly empty) and run
 	// it through domain.ValidateTools so bootstrap catches structural
 	// mistakes at load time rather than letting the UI render garbage.
@@ -447,6 +498,7 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 		Remotes:         remotes,
 		Capabilities:    capabilities,
 		Tools:           tools,
+		Tags:            domain.NormalizeVersionTags(entryTags),
 		ProtocolVersion: protocolVersion,
 	})
 	if err != nil {
@@ -558,18 +610,16 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug s
 				},
 			})
 		}
-		// Apply v0.2 metadata fields (featured / verified / tags / readme)
-		// via direct SQL — the CreateAgent helper predates these columns.
-		if a.Featured || a.Verified || len(a.Tags) > 0 || a.Readme != "" {
-			tags := a.Tags
-			if tags == nil {
-				tags = []string{}
-			}
+		// Apply v0.2 metadata fields (featured / verified / readme) via
+		// direct SQL — the CreateAgent helper predates these columns.
+		// Tags moved to version rows (migration 000022); spec tags are
+		// applied per version below.
+		if a.Featured || a.Verified || a.Readme != "" {
 			if _, err := db.Pool.Exec(ctx,
 				`UPDATE agents
-				 SET featured=$1, verified=$2, tags=$3, readme=$4, updated_at=now()
-				 WHERE id=$5`,
-				a.Featured, a.Verified, tags, a.Readme, agentID,
+				 SET featured=$1, verified=$2, readme=$3, updated_at=now()
+				 WHERE id=$4`,
+				a.Featured, a.Verified, a.Readme, agentID,
 			); err != nil {
 				return fmt.Errorf("setting agent metadata: %w", err)
 			}
@@ -579,9 +629,10 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug s
 		logger.Info("bootstrap: agent already exists, skipping", slog.String("slug", a.Slug))
 	}
 
-	// Apply versions (idempotent per-version check inside).
+	// Apply versions (idempotent per-version check inside). The entry-level
+	// spec tags ride along — tags live on version rows.
 	for _, v := range a.Versions {
-		if err := upsertAgentVersion(ctx, db, agentID, publisherSlug, a.Slug, v, logger); err != nil {
+		if err := upsertAgentVersion(ctx, db, agentID, publisherSlug, a.Slug, v, a.Tags, logger); err != nil {
 			return fmt.Errorf("version %q: %w", v.Version, err)
 		}
 	}
@@ -604,7 +655,7 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug s
 	return nil
 }
 
-func upsertAgentVersion(ctx context.Context, db *store.DB, agentID, publisherSlug, agentSlug string, v AgentVersionSpec, logger *slog.Logger) error {
+func upsertAgentVersion(ctx context.Context, db *store.DB, agentID, publisherSlug, agentSlug string, v AgentVersionSpec, entryTags []string, logger *slog.Logger) error {
 	var exists bool
 	_ = db.Pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM agent_versions WHERE agent_id = $1 AND version = $2)`,
@@ -640,6 +691,7 @@ func upsertAgentVersion(ctx context.Context, db *store.DB, agentID, publisherSlu
 		DefaultOutputModes: v.DefaultOutputModes,
 		DocumentationURL:   v.DocumentationURL,
 		IconURL:            v.IconURL,
+		Tags:               domain.NormalizeVersionTags(entryTags),
 		ProtocolVersion:    protocolVersion,
 	})
 	if err != nil {

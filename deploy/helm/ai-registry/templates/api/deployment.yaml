@@ -170,6 +170,11 @@ spec:
             - name: BOOTSTRAP_FILE
               value: {{ printf "%s/bootstrap.yaml" $v.bootstrap.mountPath | quote }}
             {{- end }}
+            # ── Instance tags (config-managed vocabulary) ────────────────────
+            {{- with $v.instanceTags }}
+            - name: INSTANCE_TAGS
+              value: {{ toJson . | quote }}
+            {{- end }}
             # ── Secret-backed values (never inlined as plain env) ────────────
             {{- /*
               DATABASE_URL precedence (highest to lowest):

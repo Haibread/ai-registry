@@ -23,6 +23,7 @@ type LatestAgentVersion struct {
 	DefaultOutputModes []string
 	Authentication     json.RawMessage
 	ProtocolVersion    string
+	Tags               []string
 	PublishedAt        *time.Time
 }
 
@@ -44,7 +45,7 @@ type ListAgentsParams struct {
 	Cursor         string
 	Sort           string     // sort order: "created_at_desc" (default), "updated_at_desc", "published_at_desc", "name_asc", "name_desc"
 	Featured       *bool      // when non-nil, filter by featured flag
-	Tag            string     // when non-empty, filter to agents that contain this tag
+	Tag            string     // when non-empty, filter to agents whose latest published version carries this instance-tag slug
 	PublishedSince *time.Time // when non-nil, only entries whose latest version was published after this time
 	IncludeDeleted bool       // when true, include agents with status='deleted'
 }
@@ -108,16 +109,18 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		argN++
 		countArgN++
 	}
+	// Post-join filters (reference lav.* columns only available after lateral join).
+	var postJoinFilter string
+	var postJoinFilterCount string
 	if p.Tag != "" {
-		filterWhere += fmt.Sprintf(" AND $%d = ANY(a.tags)", argN)
+		// Tags live on version rows; the entry-level filter matches the
+		// latest published version's tags, mirroring what list responses show.
+		postJoinFilter += fmt.Sprintf(" AND $%d = ANY(lav.tags)", argN)
+		postJoinFilterCount += fmt.Sprintf(" AND $%d = ANY(lav.tags)", countArgN)
 		filterArgs = append(filterArgs, p.Tag)
 		argN++
 		countArgN++
 	}
-
-	// Post-join filters (reference lav.* columns only available after lateral join).
-	var postJoinFilter string
-	var postJoinFilterCount string
 	if p.PublishedSince != nil {
 		postJoinFilter += fmt.Sprintf(" AND lav.published_at > $%d", argN)
 		postJoinFilterCount += fmt.Sprintf(" AND lav.published_at > $%d", countArgN)
@@ -198,7 +201,8 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 	args = append(args, p.Limit)
 	q := fmt.Sprintf(`
 		SELECT a.id, pub.slug AS namespace, a.publisher_id, a.slug, a.name,
-		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
+		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified,
+		       coalesce(lav.tags, '{}'),
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
@@ -206,7 +210,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		JOIN publishers pub ON pub.id = a.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
-		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
+		           av.default_output_modes, av.authentication, av.protocol_version, av.tags, av.published_at
 		    FROM agent_versions av
 		    WHERE av.agent_id = a.id AND av.published_at IS NOT NULL
 		    ORDER BY av.published_at DESC
@@ -276,7 +280,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 			FROM agents a
 			JOIN publishers pub ON pub.id = a.publisher_id
 			LEFT JOIN LATERAL (
-			    SELECT av.published_at
+			    SELECT av.published_at, av.tags
 			    FROM agent_versions av
 			    WHERE av.agent_id = a.id AND av.published_at IS NOT NULL
 			    ORDER BY av.published_at DESC
@@ -307,7 +311,8 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 
 	q := `
 		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
-		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
+		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified,
+		       coalesce(lav.tags, '{}'),
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
@@ -315,7 +320,7 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 		JOIN publishers pub ON pub.id = a.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
-		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
+		           av.default_output_modes, av.authentication, av.protocol_version, av.tags, av.published_at
 		    FROM agent_versions av
 		    WHERE av.agent_id = a.id AND av.published_at IS NOT NULL
 		    ORDER BY av.published_at DESC
@@ -362,6 +367,7 @@ func (db *DB) GetAgent(ctx context.Context, namespace, slug string, publicOnly b
 			DefaultOutputModes: lavOutputModes,
 			Authentication:     json.RawMessage(lavAuth),
 			ProtocolVersion:    *lavProto,
+			Tags:               r.Tags, // entry tags ARE the latest version's tags
 			PublishedAt:        lavPublishedAt,
 		}
 	}
@@ -440,7 +446,7 @@ func (db *DB) ListAgentVersions(ctx context.Context, agentID string, publicOnly 
 	rows, err := db.Pool.Query(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
-		       coalesce(documentation_url,''), coalesce(icon_url,''),
+		       coalesce(documentation_url,''), coalesce(icon_url,''), tags,
 		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
@@ -484,7 +490,7 @@ func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string, publ
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
-		       coalesce(documentation_url,''), coalesce(icon_url,''),
+		       coalesce(documentation_url,''), coalesce(icon_url,''), tags,
 		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
@@ -512,7 +518,7 @@ func (db *DB) GetLatestPublishedAgentVersion(ctx context.Context, agentID string
 	row := db.Pool.QueryRow(ctx, `
 		SELECT id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		       default_input_modes, default_output_modes, provider,
-		       coalesce(documentation_url,''), coalesce(icon_url,''),
+		       coalesce(documentation_url,''), coalesce(icon_url,''), tags,
 		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
@@ -547,6 +553,7 @@ type CreateAgentVersionParams struct {
 	Provider           json.RawMessage
 	DocumentationURL   string
 	IconURL            string
+	Tags               []string // instance-tag slugs, validated by the handler against the active vocabulary
 	ProtocolVersion    string
 }
 
@@ -570,6 +577,9 @@ func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams
 	if len(p.DefaultOutputModes) == 0 {
 		p.DefaultOutputModes = []string{"text/plain"}
 	}
+	if p.Tags == nil {
+		p.Tags = []string{}
+	}
 
 	id := NewULID()
 	now := time.Now().UTC()
@@ -578,12 +588,12 @@ func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams
 		INSERT INTO agent_versions
 		    (id, agent_id, version, endpoint_url, skills, capabilities, authentication,
 		     default_input_modes, default_output_modes, provider,
-		     documentation_url, icon_url, protocol_version)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		     documentation_url, icon_url, tags, protocol_version)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		id, p.AgentID, p.Version, p.EndpointURL,
 		p.Skills, p.Capabilities, p.Authentication,
 		p.DefaultInputModes, p.DefaultOutputModes, p.Provider,
-		p.DocumentationURL, p.IconURL, p.ProtocolVersion,
+		p.DocumentationURL, p.IconURL, p.Tags, p.ProtocolVersion,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -608,6 +618,7 @@ func (db *DB) CreateAgentVersion(ctx context.Context, p CreateAgentVersionParams
 		Provider:           p.Provider,
 		DocumentationURL:   p.DocumentationURL,
 		IconURL:            p.IconURL,
+		Tags:               p.Tags,
 		ProtocolVersion:    p.ProtocolVersion,
 		Status:             domain.VersionStatusActive,
 		StatusChangedAt:    now,
@@ -878,7 +889,8 @@ func (db *DB) getAgentByID(ctx context.Context, id string) (*AgentRow, error) {
 
 	q := `
 		SELECT a.id, pub.slug, a.publisher_id, a.slug, a.name,
-		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified, a.tags,
+		       coalesce(a.description,''), a.visibility, a.status, a.featured, a.verified,
+		       coalesce(lav.tags, '{}'),
 		       coalesce(a.readme,''), a.view_count, a.copy_count, a.created_at, a.updated_at,
 		       lav.version, lav.endpoint_url, lav.skills, lav.default_input_modes,
 		       lav.default_output_modes, lav.authentication, lav.protocol_version, lav.published_at
@@ -886,7 +898,7 @@ func (db *DB) getAgentByID(ctx context.Context, id string) (*AgentRow, error) {
 		JOIN publishers pub ON pub.id = a.publisher_id
 		LEFT JOIN LATERAL (
 		    SELECT av.version, av.endpoint_url, av.skills, av.default_input_modes,
-		           av.default_output_modes, av.authentication, av.protocol_version, av.published_at
+		           av.default_output_modes, av.authentication, av.protocol_version, av.tags, av.published_at
 		    FROM agent_versions av
 		    WHERE av.agent_id = a.id AND av.published_at IS NOT NULL
 		    ORDER BY av.published_at DESC
@@ -929,6 +941,7 @@ func (db *DB) getAgentByID(ctx context.Context, id string) (*AgentRow, error) {
 			DefaultOutputModes: lavOutputModes,
 			Authentication:     json.RawMessage(lavAuth),
 			ProtocolVersion:    *lavProto,
+			Tags:               r.Tags, // entry tags ARE the latest version's tags
 			PublishedAt:        lavPublishedAt,
 		}
 	}
@@ -941,7 +954,7 @@ func scanAgentVersion(s interface{ Scan(...any) error }) (domain.AgentVersion, e
 		&v.ID, &v.AgentID, &v.Version, &v.EndpointURL,
 		&v.Skills, &v.Capabilities, &v.Authentication,
 		&v.DefaultInputModes, &v.DefaultOutputModes, &v.Provider,
-		&v.DocumentationURL, &v.IconURL,
+		&v.DocumentationURL, &v.IconURL, &v.Tags,
 		&v.ProtocolVersion, &v.Status, &v.StatusMessage, &v.StatusChangedAt,
 		&v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
 		&v.ReviewState, &v.Revision, &v.SubmittedAt, &v.SubmittedBy, &v.SubmittedByEmail,

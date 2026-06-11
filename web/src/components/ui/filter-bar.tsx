@@ -43,6 +43,8 @@ interface FilterBarProps {
   transportOptions?: string[]
   /** MCP-only: registry/ecosystem type filter options */
   registryTypeOptions?: string[]
+  /** Instance-tag filter options (value = tag slug, label = display name). */
+  tagOptions?: { value: string; label: string }[]
   /** Sort options (values like "created_at_desc", "name_asc") */
   sortOptions?: { value: string; label: string }[]
 }
@@ -64,6 +66,7 @@ export function FilterBar({
   searchPlaceholder = 'Search…',
   transportOptions = [],
   registryTypeOptions = [],
+  tagOptions = [],
   sortOptions = [],
 }: FilterBarProps) {
   const navigate = useNavigate()
@@ -139,7 +142,8 @@ export function FilterBar({
   const currentTransport = searchParams.get('transport') ?? ''
   const currentRegistryType = searchParams.get('registry_type') ?? ''
   const currentSort = searchParams.get('sort') ?? ''
-  const hasFilters = !!(q || namespace || currentStatus || currentVisibility || currentTransport || currentRegistryType || currentSort)
+  const currentTag = searchParams.get('tag') ?? ''
+  const hasFilters = !!(q || namespace || currentStatus || currentVisibility || currentTransport || currentRegistryType || currentTag || currentSort)
 
   return (
     // The form still works as a GET form when JS is unavailable.
@@ -245,6 +249,24 @@ export function FilterBar({
           {registryTypeOptions.map((rt) => (
             <option key={rt} value={rt}>
               {rt}
+            </option>
+          ))}
+        </NativeSelect>
+      )}
+
+      {/* Instance tag — instant */}
+      {tagOptions.length > 0 && (
+        <NativeSelect
+          name="tag"
+          value={currentTag}
+          onChange={(e) => applyNow({ tag: e.target.value })}
+          className={selectClass}
+          aria-label="Filter by tag"
+        >
+          <option value="">All tags</option>
+          {tagOptions.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
             </option>
           ))}
         </NativeSelect>

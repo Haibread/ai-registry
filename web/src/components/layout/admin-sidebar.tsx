@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, Flag, Activity, ScrollText, ClipboardCheck, Settings } from 'lucide-react'
+import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, Flag, Activity, ScrollText, ClipboardCheck, Settings, Tags } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthClient } from '@/lib/api-client'
 import { usePermissions, type Permissions } from '@/auth/useMe'
@@ -49,6 +49,7 @@ const serverAdminNav: NavItem[] = [
   { to: '/admin/groups', label: 'Groups', icon: UsersRound, requires: 'serverAdmin' },
   { to: '/admin/users', label: 'Users', icon: UserCog, requires: 'serverAdmin' },
   { to: '/admin/grants', label: 'Global grants', icon: Shield, requires: 'serverAdmin' },
+  { to: '/admin/tags', label: 'Instance tags', icon: Tags, requires: 'serverAdmin' },
   { to: '/admin/reports', label: 'Reports', icon: Flag, requires: 'serverAdmin' },
   { to: '/admin/audit', label: 'Audit log', icon: ScrollText, requires: 'serverAdmin' },
   { to: '/admin/api-keys', label: 'API Keys', icon: Key, affix: 'planned', requires: 'serverAdmin' },

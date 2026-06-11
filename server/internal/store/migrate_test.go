@@ -65,6 +65,7 @@ func TestMigrate_AppliesAllMigrationsToFreshDatabase(t *testing.T) {
 		"agent_versions",
 		"audit_log",
 		"reports",
+		"instance_tags",
 	}
 	for _, table := range wantTables {
 		var exists bool
@@ -84,13 +85,12 @@ func TestMigrate_AppliesAllMigrationsToFreshDatabase(t *testing.T) {
 
 	// A sample of columns added by later migrations on mcp_servers. They
 	// were added incrementally and prove the later migrations ran in order.
-	//   - 000002: featured, tags
+	//   - 000002: featured (its `tags` twin was dropped by 000022)
 	//   - 000003: verified
 	//   - 000004: readme
 	//   - 000005: view_count, copy_count
 	wantMCPColumns := []string{
 		"featured",
-		"tags",
 		"verified",
 		"readme",
 		"view_count",
@@ -112,6 +112,40 @@ func TestMigrate_AppliesAllMigrationsToFreshDatabase(t *testing.T) {
 		if !exists {
 			t.Errorf("column mcp_servers.%s not created by migrations", col)
 		}
+	}
+
+	// 000022 moved tags from the entry tables to the version tables: the
+	// entry-level column must be gone and the version-level one present.
+	// 000023 added the `managed` flag for config-reconciled tags.
+	columnExists := func(table, col string) bool {
+		var exists bool
+		err := db.Pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema = 'public'
+				  AND table_name   = $1
+				  AND column_name  = $2
+			)`, table, col).Scan(&exists)
+		if err != nil {
+			t.Fatalf("checking column %s.%s: %v", table, col, err)
+		}
+		return exists
+	}
+	if columnExists("mcp_servers", "tags") {
+		t.Error("column mcp_servers.tags should have been dropped by 000022")
+	}
+	if columnExists("agents", "tags") {
+		t.Error("column agents.tags should have been dropped by 000022")
+	}
+	if !columnExists("mcp_server_versions", "tags") {
+		t.Error("column mcp_server_versions.tags not created by 000022")
+	}
+	if !columnExists("agent_versions", "tags") {
+		t.Error("column agent_versions.tags not created by 000022")
+	}
+	if !columnExists("instance_tags", "managed") {
+		t.Error("column instance_tags.managed not created by 000023")
 	}
 
 	// Idempotency: running Migrate a second time must be a no-op (Migrate

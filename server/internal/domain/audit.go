@@ -35,6 +35,11 @@ const (
 	ActionPublisherUpdated AuditAction = "publisher.updated"
 	ActionPublisherDeleted AuditAction = "publisher.deleted"
 
+	// Instance tag vocabulary actions (Server Admin).
+	ActionInstanceTagCreated AuditAction = "instance_tag.created"
+	ActionInstanceTagUpdated AuditAction = "instance_tag.updated"
+	ActionInstanceTagDeleted AuditAction = "instance_tag.deleted"
+
 	// Change-approval workflow actions.
 	ActionMCPVersionSubmitted  AuditAction = "mcp_server_version.submitted"
 	ActionMCPVersionWithdrawn  AuditAction = "mcp_server_version.withdrawn"

@@ -271,6 +271,23 @@ api:
     # container. The server reads `<mountPath>/bootstrap.yaml`.
     mountPath: /etc/ai-registry
 
+  # ── Instance tags ─────────────────────────────────────────────────────────
+  # -- (list) Config-managed portion of the instance-wide tag vocabulary,
+  # reconciled into the database on every startup (rendered as the
+  # `INSTANCE_TAGS` env var). Listed tags are created or updated and become
+  # read-only in the admin UI/API while listed; removing an entry releases
+  # the tag to admin-UI ownership (it is never deleted — published versions
+  # may carry it). Each entry: `slug` (immutable identity), `name` (display
+  # name), optional `description`, optional `color` (gray, red, orange,
+  # yellow, green, teal, blue, indigo, purple, pink; default gray), optional
+  # `active` (default true). Example:
+  # instanceTags:
+  #   - slug: free
+  #     name: Free
+  #     description: No cost to use
+  #     color: green
+  instanceTags: []
+
   service:
     # -- Service type for the server.
     type: ClusterIP

@@ -57,7 +57,7 @@ test.describe('Request public release on approval', () => {
 
   test('the queue shows the intent and approval makes the entry public', async ({ page }) => {
     await page.goto('/admin/review')
-    const queueRow = page.locator('li', { hasText: `${PUB}/${APPROVED}` })
+    const queueRow = page.locator('li:not([data-sonner-toast])', { hasText: `${PUB}/${APPROVED}` })
     await expect(queueRow).toBeVisible({ timeout: 15_000 })
     await expect(queueRow.getByText(/public on approval/i)).toBeVisible()
 
@@ -81,7 +81,7 @@ test.describe('Request public release on approval', () => {
     expect(sub.status(), `submit: ${await sub.text()}`).toBe(204)
 
     await page.goto('/admin/review')
-    const queueRow = page.locator('li', { hasText: `${PUB}/${REJECTED}` })
+    const queueRow = page.locator('li:not([data-sonner-toast])', { hasText: `${PUB}/${REJECTED}` })
     await expect(queueRow).toBeVisible({ timeout: 15_000 })
     await queueRow.getByRole('button', { name: /^reject$/i }).click()
     await queueRow.getByPlaceholder(/reason/i).fill('not ready for the public registry')

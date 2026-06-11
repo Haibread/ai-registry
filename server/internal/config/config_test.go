@@ -689,3 +689,79 @@ auth:
 		t.Errorf("DATABASE_URL: got %q, want path-a value", cfg.Database.URL)
 	}
 }
+
+// ── instance tags ─────────────────────────────────────────────────────────────
+
+func TestLoad_InstanceTags_FromFile(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	path := writeConfigFile(t, `
+instance_tags:
+  - slug: free
+    name: Free
+    description: No cost to use
+    color: green
+  - slug: legacy
+    name: Legacy
+    active: false
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.InstanceTags) != 2 {
+		t.Fatalf("got %d instance tags, want 2", len(cfg.InstanceTags))
+	}
+	free := cfg.InstanceTags[0]
+	if free.Slug != "free" || free.Name != "Free" || free.Color != "green" || free.Active != nil {
+		t.Errorf("unexpected first tag: %+v", free)
+	}
+	legacy := cfg.InstanceTags[1]
+	if legacy.Slug != "legacy" || legacy.Active == nil || *legacy.Active {
+		t.Errorf("unexpected second tag: %+v", legacy)
+	}
+}
+
+func TestLoad_InstanceTags_EnvJSONWinsOverFile(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("INSTANCE_TAGS", `[{"slug":"early-access","name":"Early Access","color":"yellow","active":false}]`)
+	path := writeConfigFile(t, `
+instance_tags:
+  - slug: free
+    name: Free
+`)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.InstanceTags) != 1 || cfg.InstanceTags[0].Slug != "early-access" {
+		t.Fatalf("env must win over file, got %+v", cfg.InstanceTags)
+	}
+	if a := cfg.InstanceTags[0].Active; a == nil || *a {
+		t.Errorf("active=false from env JSON not honoured: %+v", cfg.InstanceTags[0])
+	}
+}
+
+func TestLoad_InstanceTags_Validation(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+	}{
+		{"malformed JSON", `not-json`},
+		{"missing name", `[{"slug":"x"}]`},
+		{"missing slug", `[{"name":"X"}]`},
+		{"bad slug", `[{"slug":"Not A Slug","name":"X"}]`},
+		{"bad color", `[{"slug":"x","name":"X","color":"magenta"}]`},
+		{"duplicate slug", `[{"slug":"x","name":"X"},{"slug":"x","name":"Y"}]`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+			t.Setenv("INSTANCE_TAGS", tt.env)
+			if _, err := config.Load(""); err == nil {
+				t.Errorf("Load() with INSTANCE_TAGS=%q should fail", tt.env)
+			}
+		})
+	}
+}

@@ -15,6 +15,8 @@ import {
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { Badge, StatusBadge, VisibilityBadge, VerifiedBadge } from '@/components/ui/badge'
+import { TagBadge } from '@/components/ui/tag-badge'
+import { indexInstanceTags, useInstanceTags } from '@/lib/use-instance-tags'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -70,6 +72,8 @@ export default function MCPDetailPage() {
   const titleRef = useRef<HTMLHeadingElement>(null)
   useRecordView('mcp', data?.namespace, data?.slug)
   const recordCopy = useRecordCopy('mcp', data?.namespace, data?.slug)
+  const { data: tagData } = useInstanceTags()
+  const tagIndex = indexInstanceTags(tagData?.items)
 
   if (isLoading) return (
     <div className="flex min-h-screen flex-col">
@@ -141,6 +145,9 @@ export default function MCPDetailPage() {
               {data.verified && <VerifiedBadge />}
               <StatusBadge status={data.status} />
               <VisibilityBadge visibility={data.visibility} />
+              {(data.tags ?? []).map((tagSlug) => (
+                <TagBadge key={tagSlug} slug={tagSlug} tag={tagIndex.get(tagSlug)} />
+              ))}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">

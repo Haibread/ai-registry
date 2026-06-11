@@ -3,7 +3,9 @@ import { ExternalLink, Eye, Braces, Cpu, Link2, Bot } from 'lucide-react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
+import { TagBadge } from '@/components/ui/tag-badge'
 import { formatCount } from '@/lib/utils'
+import { indexInstanceTags, useInstanceTags } from '@/lib/use-instance-tags'
 import type { components } from '@/lib/schema'
 
 type Agent = components['schemas']['Agent']
@@ -15,6 +17,8 @@ interface AgentCardProps {
 export function AgentCard({ agent }: AgentCardProps) {
   const lv = agent.latest_version
   const to = `/agents/${agent.namespace}/${agent.slug}`
+  const { data: tagData } = useInstanceTags()
+  const tagIndex = indexInstanceTags(tagData?.items)
 
   return (
     <Card className="flex flex-col hover:shadow-md transition-shadow group relative">
@@ -50,6 +54,15 @@ export function AgentCard({ agent }: AgentCardProps) {
           </Link>
           /{agent.slug}
         </div>
+
+        {/* Instance tags of the latest version */}
+        {(agent.tags ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {(agent.tags ?? []).map((slug) => (
+              <TagBadge key={slug} slug={slug} tag={tagIndex.get(slug)} className="text-[10px] px-1.5 py-0" />
+            ))}
+          </div>
+        )}
 
         {/* Skills count + top tags */}
         {lv?.skills && lv.skills.length > 0 && (
