@@ -187,3 +187,18 @@ export function packageToConfigParams(
     url: pkg.transport.url ?? '',
   }
 }
+
+/**
+ * Parse a remote endpoint entry (the version's `remotes` array) into
+ * MCPConfigParams. Remotes are connection-only: no command, just a URL.
+ */
+export function remoteToConfigParams(
+  serverName: string,
+  remote: { type: string; url: string },
+): MCPConfigParams {
+  return {
+    serverName,
+    transport: remote.type as MCPConfigParams['transport'],
+    url: remote.url,
+  }
+}

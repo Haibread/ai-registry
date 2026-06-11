@@ -104,7 +104,13 @@ export default function MCPDetailPage() {
   const remotePackages = (lv?.packages ?? []).filter(
     (p) => isRemoteTransport(p.transport.type) && !!p.transport.url,
   )
-  const hasRemote = remotePackages.length > 0
+  // Connection targets for hosted servers: first-class remote endpoints
+  // (lv.remotes) plus any remote-transport package that carries a URL.
+  const remoteEndpoints = [
+    ...(lv?.remotes ?? []).map((r) => ({ type: r.type, url: r.url })),
+    ...remotePackages.map((p) => ({ type: p.transport.type, url: p.transport.url! })),
+  ]
+  const hasRemote = remoteEndpoints.length > 0
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -211,31 +217,31 @@ export default function MCPDetailPage() {
                 title={hasRemote ? 'Connection & Runtime' : 'Runtime & Capabilities'}
               />
               <div className="rounded-xl border bg-card overflow-hidden shadow-xs">
-                {/* Endpoint URL hero rows — one per remote package.
-                    Most servers have a single package; when multiple exist
+                {/* Endpoint URL hero rows — one per connection target.
+                    Most servers have a single endpoint; when multiple exist
                     we stack them so every connection target is visible. */}
-                {remotePackages.map((pkg, i) => (
+                {remoteEndpoints.map((ep, i) => (
                   <div
                     key={`endpoint-${i}`}
-                    className={i < remotePackages.length - 1 ? 'border-b' : ''}
+                    className={i < remoteEndpoints.length - 1 ? 'border-b' : ''}
                   >
                     <StatTile
                       className="px-5 py-4"
-                      label={remotePackages.length > 1 ? `Endpoint URL (${pkg.transport.type})` : 'Endpoint URL'}
+                      label={remoteEndpoints.length > 1 ? `Endpoint URL (${ep.type})` : 'Endpoint URL'}
                       icon={<Link2 />}
                       tooltip={getFieldExplanation('endpoint_url') ?? undefined}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <a
-                          href={pkg.transport.url}
+                          href={ep.url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-mono text-xs hover:underline truncate"
                         >
-                          {pkg.transport.url}
+                          {ep.url}
                         </a>
                         <CopyButton
-                          value={pkg.transport.url!}
+                          value={ep.url}
                           label="Copy endpoint URL"
                           onCopy={recordCopy}
                         />
@@ -353,15 +359,30 @@ export default function MCPDetailPage() {
 
           {/* ── Installation Tab ── */}
           <TabsContent value="installation" className="mt-6 space-y-6 max-w-3xl mx-auto">
-            {lv?.packages && lv.packages.length > 0 ? (
+            {(lv?.packages?.length ?? 0) > 0 || (lv?.remotes?.length ?? 0) > 0 ? (
               <>
                 <div className="space-y-3">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <Package className="h-4 w-4" aria-hidden="true" />
-                    {lv.packages.every(p => isRemoteTransport(p.transport.type)) ? 'Connection' : 'Installation'}
+                    {(lv?.packages ?? []).every(p => isRemoteTransport(p.transport.type)) ? 'Connection' : 'Installation'}
                   </h2>
                   <div className="space-y-4">
-                    {lv.packages.map((pkg, i) => {
+                    {(lv?.remotes ?? []).map((remote, i) => (
+                      <div key={`remote-${i}`} className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="secondary" className="text-xs">remote</Badge>
+                          <Badge variant="outline" className="text-xs">{remote.type}</Badge>
+                          {getFieldExplanation(remote.type) && (
+                            <TooltipInfo content={getFieldExplanation(remote.type)!} />
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Endpoint URL</p>
+                          <InstallCommand command={remote.url} onCopy={recordCopy} />
+                        </div>
+                      </div>
+                    ))}
+                    {(lv?.packages ?? []).map((pkg, i) => {
                       const remote = isRemoteTransport(pkg.transport.type)
                       return (
                         <div key={i} className="space-y-1.5">
@@ -392,19 +413,20 @@ export default function MCPDetailPage() {
                 <Separator />
                 <MCPConfigGenerator
                   serverName={data.slug}
-                  packages={lv.packages.map((p) => ({
+                  packages={(lv?.packages ?? []).map((p) => ({
                     registryType: p.registryType,
                     identifier: p.identifier,
                     version: p.version,
                     transport: { type: p.transport.type, url: p.transport.url },
                   }))}
+                  remotes={(lv?.remotes ?? []).map((r) => ({ type: r.type, url: r.url }))}
                 />
               </>
             ) : (
               <EmptyState
                 icon={<Package className="h-8 w-8 text-muted-foreground" />}
                 title="No packages available"
-                description="This server has no published packages yet."
+                description="This server has no published packages or remote endpoints yet."
               />
             )}
           </TabsContent>

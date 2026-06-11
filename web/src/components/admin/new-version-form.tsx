@@ -16,8 +16,12 @@ import {
 import { authFetch } from '@/auth/tokens'
 import { ToolsEditor } from './tools-editor'
 import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
+import type { components } from '@/lib/schema'
 
 type Kind = 'mcp' | 'agent'
+
+type MCPVersion = components['schemas']['MCPServerVersion']
+type AgentVersion = components['schemas']['AgentVersion']
 
 // Kept in sync with the equivalents in pages/admin/{mcp,agents}/new.tsx. The
 // second copy is tolerable under the rule of three; extract to a shared module
@@ -55,6 +59,10 @@ interface NewVersionFormProps {
   kind: Kind
   namespace: string
   slug: string
+  /** Most recent existing version of the resource. Its values seed the form
+   *  so authoring v(n+1) starts from v(n) — a small delta — instead of a
+   *  blank slate. Omit on resources with no versions yet. */
+  prefill?: MCPVersion | AgentVersion
   /** Called after a draft version is created so the parent can refetch + close. */
   onCreated: (version: string) => void
   onCancel: () => void
@@ -70,6 +78,20 @@ async function problemTitle(res: Response, fallback: string): Promise<string> {
     /* body not JSON — keep fallback */
   }
   return `${fallback} (HTTP ${res.status})`
+}
+
+/** "1.2.3" → "1.2.4": suggested next version when seeding from a previous
+ *  release. Empty (let the author type) when the prior version is unparsable. */
+function bumpPatch(version: string | undefined): string {
+  const m = version?.match(/^(\d+)\.(\d+)\.(\d+)/)
+  if (!m) return ''
+  return `${m[1]}.${m[2]}.${Number(m[3]) + 1}`
+}
+
+/** Pretty-print a JSON-object field for a textarea default; '' when absent/empty. */
+function jsonDefault(obj: Record<string, unknown> | undefined): string {
+  if (!obj || Object.keys(obj).length === 0) return ''
+  return JSON.stringify(obj, null, 2)
 }
 
 /** Parse an optional JSON-object field; throws a friendly error on malformed input. */
@@ -92,10 +114,29 @@ function parseJsonObject(raw: string, label: string): Record<string, unknown> | 
 // it to the versions endpoint. It deliberately stops at "draft": submitting for
 // review (and approve/reject) stay on the existing Submit button / review queue,
 // so the create → submit → approve lifecycle has one owner per step.
-export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: NewVersionFormProps) {
-  const [runtime, setRuntime] = useState('stdio')
-  const [pkgRegistryType, setPkgRegistryType] = useState('npm')
-  const [authScheme, setAuthScheme] = useState('_none')
+export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCancel }: NewVersionFormProps) {
+  // Narrow the prefill once per kind; the wrong-kind cast can't happen because
+  // the parent passes versions of the same resource it renders.
+  const mcpPrefill = kind === 'mcp' ? (prefill as MCPVersion | undefined) : undefined
+  const agentPrefill = kind === 'agent' ? (prefill as AgentVersion | undefined) : undefined
+  const prefillPkg = mcpPrefill?.packages?.[0]
+  const prefillRemote = mcpPrefill?.remotes?.[0]
+  const prefillSkill = agentPrefill?.skills?.[0]
+  // `authentication` items are untyped objects in the schema; scheme is the
+  // only key this form writes, so read it back defensively.
+  const prefillScheme = (agentPrefill?.authentication?.[0] as { scheme?: string } | undefined)
+    ?.scheme
+  const prefillProvider = agentPrefill?.provider as
+    | { organization?: string; url?: string }
+    | undefined
+  const defaultModes = (dir: 'default_input_modes' | 'default_output_modes', mode: string) =>
+    agentPrefill ? (agentPrefill[dir] ?? []).includes(mode) : mode === 'text/plain'
+
+  const [runtime, setRuntime] = useState<string>(mcpPrefill?.runtime ?? 'stdio')
+  const [pkgRegistryType, setPkgRegistryType] = useState(prefillPkg?.registryType ?? 'npm')
+  const [authScheme, setAuthScheme] = useState(
+    AUTH_SCHEME_OPTIONS.some((o) => o.value === prefillScheme) ? prefillScheme! : '_none',
+  )
   const [error, setError] = useState<string | null>(null)
   // Unsaved-changes guard (P2.5) — this form is the worst loss case (a
   // hand-built tools list dies on one stray sidebar click).
@@ -126,6 +167,11 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
               ]
             : []
 
+        // The remote-endpoint input only renders for non-stdio transports, so
+        // fd.get returns null on stdio — hence the `?? ''` before trimming.
+        const remoteUrl = ((fd.get('remote_url') as string | null) ?? '').trim()
+        const remotes = remoteUrl ? [{ type: runtime, url: remoteUrl }] : []
+
         // Parse tools client-side so structural mistakes surface here rather
         // than as a generic 422; the backend validator re-checks on write.
         const toolsRaw = ((fd.get('tools') as string) ?? '').trim()
@@ -149,6 +195,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             runtime,
             protocol_version: protocolVersion || '2025-03-26',
             ...(packages.length > 0 ? { packages } : {}),
+            ...(remotes.length > 0 ? { remotes } : {}),
             ...(tools !== undefined ? { tools } : {}),
             ...(capabilities ? { capabilities } : {}),
           }),
@@ -243,6 +290,12 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
     >
       <DirtyFormGuard when={dirty} />
       <h3 className="text-base font-semibold">New version</h3>
+      {prefill && (
+        <p className="text-xs text-muted-foreground">
+          Pre-filled from <span className="font-mono">v{prefill.version}</span> — adjust what
+          changed and pick the new version number.
+        </p>
+      )}
 
       {error && (
         <div
@@ -263,6 +316,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             id="version"
             name="version"
             placeholder="1.0.0"
+            defaultValue={bumpPatch(prefill?.version)}
             required
             pattern="^\d+\.\d+\.\d+.*"
             title="Semantic version, e.g. 1.0.0"
@@ -274,6 +328,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             id="protocol_version"
             name="protocol_version"
             placeholder={kind === 'mcp' ? '2025-03-26' : '0.2.1'}
+            defaultValue={prefill?.protocol_version ?? ''}
           />
         </div>
       </div>
@@ -295,6 +350,23 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
               </SelectContent>
             </Select>
           </div>
+
+          {runtime !== 'stdio' && (
+            <div className="space-y-1.5">
+              <Label htmlFor="remote_url">Remote endpoint URL</Label>
+              <Input
+                id="remote_url"
+                name="remote_url"
+                type="url"
+                placeholder="https://mcp.example.com/sse"
+                defaultValue={prefillRemote?.url ?? ''}
+              />
+              <p className="text-xs text-muted-foreground">
+                Where clients reach the hosted server directly — no package
+                needed for a purely remote server.
+              </p>
+            </div>
+          )}
 
           <fieldset className="space-y-3 rounded-md border p-3">
             <legend className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -318,17 +390,33 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="pkg_identifier">Package identifier</Label>
-                <Input id="pkg_identifier" name="pkg_identifier" placeholder="@scope/name" />
+                <Input
+                  id="pkg_identifier"
+                  name="pkg_identifier"
+                  placeholder="@scope/name"
+                  defaultValue={prefillPkg?.identifier ?? ''}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="pkg_version">Package version</Label>
-                <Input id="pkg_version" name="pkg_version" placeholder="1.0.0 or latest" />
+                <Input
+                  id="pkg_version"
+                  name="pkg_version"
+                  placeholder="1.0.0 or latest"
+                  defaultValue={prefillPkg?.version ?? ''}
+                />
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="pkg_url">Package URL</Label>
-                <Input id="pkg_url" name="pkg_url" type="url" placeholder="https://…" />
+                <Input
+                  id="pkg_url"
+                  name="pkg_url"
+                  type="url"
+                  placeholder="https://…"
+                  defaultValue={prefillPkg?.transport?.url ?? ''}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="pkg_registry_base_url">Registry base URL</Label>
@@ -337,12 +425,13 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
                   name="pkg_registry_base_url"
                   type="url"
                   placeholder="https://registry.npmjs.org"
+                  defaultValue={prefillPkg?.registryBaseUrl ?? ''}
                 />
               </div>
             </div>
           </fieldset>
 
-          <ToolsEditor name="tools" />
+          <ToolsEditor name="tools" initialTools={mcpPrefill?.tools ?? []} />
 
           <div className="space-y-1.5">
             <Label htmlFor="capabilities" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -354,6 +443,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
               rows={4}
               spellCheck={false}
               placeholder={'{\n  "tools": { "listChanged": true }\n}'}
+              defaultValue={jsonDefault(mcpPrefill?.capabilities)}
               className={jsonTextareaClass}
             />
           </div>
@@ -369,6 +459,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
               name="endpoint_url"
               type="url"
               placeholder="https://agent.example.com"
+              defaultValue={agentPrefill?.endpoint_url ?? ''}
               required
             />
           </div>
@@ -380,20 +471,40 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="skill_id">Skill ID</Label>
-                <Input id="skill_id" name="skill_id" placeholder="summarize" />
+                <Input
+                  id="skill_id"
+                  name="skill_id"
+                  placeholder="summarize"
+                  defaultValue={prefillSkill?.id ?? ''}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="skill_name">Skill name</Label>
-                <Input id="skill_name" name="skill_name" placeholder="Summarize text" />
+                <Input
+                  id="skill_name"
+                  name="skill_name"
+                  placeholder="Summarize text"
+                  defaultValue={prefillSkill?.name ?? ''}
+                />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="skill_description">Skill description</Label>
-              <Input id="skill_description" name="skill_description" placeholder="What the skill does" />
+              <Input
+                id="skill_description"
+                name="skill_description"
+                placeholder="What the skill does"
+                defaultValue={prefillSkill?.description ?? ''}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="skill_tags">Skill tags (comma-separated)</Label>
-              <Input id="skill_tags" name="skill_tags" placeholder="text, nlp" />
+              <Input
+                id="skill_tags"
+                name="skill_tags"
+                placeholder="text, nlp"
+                defaultValue={prefillSkill?.tags?.join(', ') ?? ''}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="skill_examples">Skill examples (one per line)</Label>
@@ -403,6 +514,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
                 rows={3}
                 spellCheck={false}
                 placeholder={'Summarize this article\nGive me a TL;DR of the docs'}
+                defaultValue={prefillSkill?.examples?.join('\n') ?? ''}
                 className={jsonTextareaClass}
               />
             </div>
@@ -435,7 +547,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
                   <input
                     type="checkbox"
                     name={`input_mode_${v}`}
-                    defaultChecked={v === 'text/plain'}
+                    defaultChecked={defaultModes('default_input_modes', v)}
                   />
                   <span className="font-mono">{v}</span>
                 </label>
@@ -450,7 +562,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
                   <input
                     type="checkbox"
                     name={`output_mode_${v}`}
-                    defaultChecked={v === 'text/plain'}
+                    defaultChecked={defaultModes('default_output_modes', v)}
                   />
                   <span className="font-mono">{v}</span>
                 </label>
@@ -465,21 +577,44 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="provider_organization">Provider organization</Label>
-                <Input id="provider_organization" name="provider_organization" placeholder="Acme Inc." />
+                <Input
+                  id="provider_organization"
+                  name="provider_organization"
+                  placeholder="Acme Inc."
+                  defaultValue={prefillProvider?.organization ?? ''}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="provider_url">Provider URL</Label>
-                <Input id="provider_url" name="provider_url" type="url" placeholder="https://acme.example.com" />
+                <Input
+                  id="provider_url"
+                  name="provider_url"
+                  type="url"
+                  placeholder="https://acme.example.com"
+                  defaultValue={prefillProvider?.url ?? ''}
+                />
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="documentation_url">Documentation URL</Label>
-                <Input id="documentation_url" name="documentation_url" type="url" placeholder="https://docs.example.com" />
+                <Input
+                  id="documentation_url"
+                  name="documentation_url"
+                  type="url"
+                  placeholder="https://docs.example.com"
+                  defaultValue={agentPrefill?.documentation_url ?? ''}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="icon_url">Icon URL</Label>
-                <Input id="icon_url" name="icon_url" type="url" placeholder="https://…/icon.png" />
+                <Input
+                  id="icon_url"
+                  name="icon_url"
+                  type="url"
+                  placeholder="https://…/icon.png"
+                  defaultValue={agentPrefill?.icon_url ?? ''}
+                />
               </div>
             </div>
           </fieldset>
@@ -494,6 +629,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
               rows={4}
               spellCheck={false}
               placeholder={'{\n  "streaming": true,\n  "pushNotifications": false\n}'}
+              defaultValue={jsonDefault(agentPrefill?.capabilities)}
               className={jsonTextareaClass}
             />
           </div>

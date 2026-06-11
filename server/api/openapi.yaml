@@ -3386,6 +3386,22 @@ components:
         transport:
           $ref: "#/components/schemas/PackageTransport"
 
+    RemoteEntry:
+      type: object
+      description: >
+        A directly reachable endpoint for a hosted (remote) MCP server,
+        mirroring the `remotes` array of the MCP registry server.json. Unlike
+        a package there is no installable artifact — clients connect straight
+        to the URL using the given transport.
+      required: [type, url]
+      properties:
+        type:
+          type: string
+          enum: [http, sse, streamable_http]
+        url:
+          type: string
+          format: uri
+
     MCPTool:
       type: object
       description: >
@@ -3428,6 +3444,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PackageEntry"
+        remotes:
+          type: array
+          description: Remote endpoints for hosted deployments of this server.
+          items:
+            $ref: "#/components/schemas/RemoteEntry"
         capabilities:
           type: object
           additionalProperties: true
@@ -3557,6 +3578,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PackageEntry"
+        remotes:
+          type: array
+          description: Remote endpoints for hosted deployments of this server.
+          items:
+            $ref: "#/components/schemas/RemoteEntry"
         capabilities:
           type: object
           additionalProperties: true
@@ -3652,6 +3678,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PackageEntry"
+        remotes:
+          type: array
+          description: Remote endpoints for hosted deployments of this server.
+          items:
+            $ref: "#/components/schemas/RemoteEntry"
         capabilities:
           type: object
           additionalProperties: true
@@ -4237,6 +4268,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PackageEntry"
+        remotes:
+          type: array
+          description: Remote endpoints for hosted deployments of this server.
+          items:
+            $ref: "#/components/schemas/RemoteEntry"
         capabilities:
           type: object
           additionalProperties: true
@@ -4338,6 +4374,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PackageEntry"
+        remotes:
+          type: array
+          description: Remote endpoints for hosted deployments of this server.
+          items:
+            $ref: "#/components/schemas/RemoteEntry"
         capabilities:
           type: object
           additionalProperties: true

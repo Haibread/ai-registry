@@ -117,6 +117,12 @@ test.describe('MCP server lifecycle (UI create → publish → edit → version 
     // ADD a second version through the New version form, exercising the rich
     // fields (capabilities JSON + package registry base URL + tools).
     await page.getByRole('button', { name: 'New version' }).click()
+    // The form seeds itself from v1.0.0: patch-bumped version suggestion and
+    // the previous package identifier, so authoring v2 is a delta, not a
+    // blank slate.
+    await expect(page.getByText(/Pre-filled from\s*v1\.0\.0/)).toBeVisible()
+    await expect(page.locator('input[name="version"]')).toHaveValue('1.0.1')
+    await expect(page.locator('input[name="pkg_identifier"]')).toHaveValue('@e2e/weather')
     await page.fill('input[name="version"]', '2.0.0')
     await page.fill('input[name="pkg_identifier"]', '@e2e/weather')
     await page.fill('input[name="pkg_version"]', '2.0.0')
@@ -161,6 +167,60 @@ test.describe('MCP server lifecycle (UI create → publish → edit → version 
     // GONE — the entry no longer resolves.
     const gone = await apiGet(page, `/api/v1/mcp/servers/${pub.slug}/${slug}`)
     expect(gone.status()).toBe(404)
+  })
+})
+
+// ── 1b. Hosted (remote URL-only) MCP server ────────────────────────────────────
+
+test.describe('Remote MCP server (URL-only) authoring', () => {
+  test('creates a hosted server from the New form and surfaces the endpoint publicly', async ({ browser }) => {
+    const page = await pageAs(browser, 'admin')
+    const pub = await seedPublisher(page, 'mcp-remote')
+    const slug = `hosted-${RUN}`
+    const endpoint = 'https://mcp.example.test/hosted/sse'
+
+    // Scope the admin area so the New form pre-selects the publisher.
+    await page.goto('/admin')
+    await page.getByRole('combobox', { name: /switch publisher/i }).click()
+    await page.getByRole('option', { name: pub.name }).click()
+
+    await page.goto('/admin/mcp/new')
+    await expect(page.locator('#namespace-select')).toContainText(pub.slug)
+    await page.fill('input[name="slug"]', slug)
+    await page.fill('input[name="name"]', `Hosted Search ${RUN}`)
+    await page.fill('input[name="version"]', '1.0.0')
+
+    // The remote endpoint field only appears for non-stdio transports.
+    await expect(page.locator('input[name="remote_url"]')).toHaveCount(0)
+    await page.locator('#runtime-select').click()
+    await page.getByRole('option', { name: /SSE/ }).click()
+    await page.fill('input[name="remote_url"]', endpoint)
+    // No package fields filled — a hosted server needs only the URL.
+    await page.getByRole('button', { name: 'Create MCP Server' }).click()
+    await page.waitForURL(new RegExp(`/admin/mcp/${pub.slug}/${slug}`))
+
+    // The version persisted the remotes array (and no fabricated package).
+    const vres = await apiGet(page, `/api/v1/mcp/servers/${pub.slug}/${slug}/versions/1.0.0`)
+    expect(vres.status()).toBe(200)
+    const v = await vres.json()
+    expect(v.remotes).toEqual([{ type: 'sse', url: endpoint }])
+    expect(v.packages ?? []).toEqual([])
+
+    // Make the entry public, then check the public detail page leads with
+    // the connection surface for a hosted server.
+    const vis = await apiPost(page, `/api/v1/mcp/servers/${pub.slug}/${slug}/visibility`, {
+      visibility: 'public',
+    })
+    expect(vis.ok(), `make public: ${await vis.text()}`).toBeTruthy()
+
+    await page.goto(`/mcp/${pub.slug}/${slug}`)
+    await expect(page.getByText('Connection & Runtime')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(endpoint).first()).toBeVisible()
+
+    // Installation tab renders the endpoint and the host-config generator.
+    await page.getByRole('tab', { name: 'Installation' }).click()
+    await expect(page.getByRole('heading', { name: 'Connection' })).toBeVisible()
+    await expect(page.getByText('Host Configuration')).toBeVisible()
   })
 })
 

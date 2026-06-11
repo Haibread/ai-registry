@@ -246,6 +246,9 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
           kind={kind}
           namespace={namespace}
           slug={slug}
+          // Versions come back newest-first (created_at DESC), so [0] is the
+          // latest authored version — the natural baseline for the next one.
+          prefill={items[0]}
           onCreated={() => {
             setCreating(false)
             invalidate()

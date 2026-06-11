@@ -37,8 +37,10 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * Parse and validate the raw tools text.
  *
  * An empty / whitespace-only string is valid and yields an empty array (the
- * field is optional). Unknown properties on a tool are preserved untouched so a
- * round-trip through the Form tab is lossless.
+ * field is optional). The MCP spec's `tools/list` response spells the schema
+ * `inputSchema`; that alias is adopted into our `input_schema` field so a
+ * pasted live response keeps its schemas. Other unknown properties on a tool
+ * are preserved untouched so a round-trip through the Form tab is lossless.
  */
 export function parseTools(raw: string): ToolsResult {
   const trimmed = raw.trim()
@@ -56,6 +58,7 @@ export function parseTools(raw: string): ToolsResult {
   }
 
   const seen = new Set<string>()
+  const tools: MCPTool[] = []
   for (let i = 0; i < parsed.length; i++) {
     const tool = parsed[i]
     const at = `tools[${i}]`
@@ -77,12 +80,23 @@ export function parseTools(raw: string): ToolsResult {
     if (tool.input_schema !== undefined && !isPlainObject(tool.input_schema)) {
       return { ok: false, error: { message: "input_schema must be a JSON object.", path: `${at}.input_schema` } }
     }
+    if (tool.inputSchema !== undefined && !isPlainObject(tool.inputSchema)) {
+      return { ok: false, error: { message: "inputSchema must be a JSON object.", path: `${at}.inputSchema` } }
+    }
     if (tool.annotations !== undefined && !isPlainObject(tool.annotations)) {
       return { ok: false, error: { message: "annotations must be a JSON object.", path: `${at}.annotations` } }
     }
+
+    // Adopt the spec spelling when ours is absent; drop the alias either way
+    // so the stored tool never carries two competing schema keys.
+    const { inputSchema, ...rest } = tool
+    if (rest.input_schema === undefined && inputSchema !== undefined) {
+      rest.input_schema = inputSchema
+    }
+    tools.push(rest as MCPTool)
   }
 
-  return { ok: true, tools: parsed as MCPTool[] }
+  return { ok: true, tools }
 }
 
 /** Serialize tools for the JSON tab / the hidden form input. Empty → "". */

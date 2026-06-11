@@ -20,10 +20,12 @@ export function ServerCard({ server }: ServerCardProps) {
   // Show at most one ecosystem badge to avoid visual noise
   const ecosystem = lv?.packages?.[0] ? ecosystemLabel(lv.packages[0].registryType) : null
 
-  // For non-stdio transports, surface the transport type + endpoint URL on the card
+  // For non-stdio transports, surface the transport type + endpoint URL on the
+  // card. First-class remote endpoints win over remote-transport package URLs.
+  const remote = lv?.remotes?.[0] ?? null
   const remotePkg = lv?.packages?.find(p => isRemoteTransport(p.transport.type) && p.transport.url) ?? null
-  const endpointUrl = remotePkg?.transport.url ?? null
-  const transportType = remotePkg?.transport.type ?? null
+  const endpointUrl = remote?.url ?? remotePkg?.transport.url ?? null
+  const transportType = remote?.type ?? remotePkg?.transport.type ?? null
 
   // `tools` is a first-class JSONB array on the latest version (see
   // migration 000007). Hide the chip when the field is absent or empty —

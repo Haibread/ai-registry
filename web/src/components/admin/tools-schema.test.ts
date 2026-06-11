@@ -96,6 +96,28 @@ describe("parseTools", () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error.path).toBe("tools[0].description")
   })
+
+  it("adopts the spec's inputSchema spelling into input_schema", () => {
+    const r = parseTools(JSON.stringify([{ name: "x", inputSchema: { type: "object" } }]))
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.tools).toEqual([{ name: "x", input_schema: { type: "object" } }])
+  })
+
+  it("prefers an explicit input_schema over the alias and drops the alias", () => {
+    const r = parseTools(
+      JSON.stringify([
+        { name: "x", input_schema: { type: "object" }, inputSchema: { type: "string" } },
+      ]),
+    )
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.tools).toEqual([{ name: "x", input_schema: { type: "object" } }])
+  })
+
+  it("rejects a non-object inputSchema alias with a path", () => {
+    const r = parseTools(JSON.stringify([{ name: "x", inputSchema: "no" }]))
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error.path).toBe("tools[0].inputSchema")
+  })
 })
 
 describe("serializeTools", () => {

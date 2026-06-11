@@ -4,6 +4,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"time"
 )
@@ -81,6 +82,7 @@ type MCPServerVersion struct {
 	Version         string          `json:"version"` // semver
 	Runtime         Runtime         `json:"runtime"`
 	Packages        json.RawMessage `json:"packages,omitempty"`     // MCP packages array
+	Remotes         json.RawMessage `json:"remotes,omitempty"`      // MCP remotes array (hosted endpoints)
 	Capabilities    json.RawMessage `json:"capabilities,omitempty"` // MCP capabilities object (capability-negotiation flags)
 	Tools           json.RawMessage `json:"tools,omitempty"`        // []MCPTool — publisher-declared tool list
 	ProtocolVersion string          `json:"protocol_version"`
@@ -130,6 +132,15 @@ type PackageEntry struct {
 // Transport holds the transport configuration for a package entry.
 type Transport struct {
 	Type string `json:"type"`
+}
+
+// RemoteEntry represents one entry in the MCP remotes array — a directly
+// reachable endpoint of a hosted server. Mirrors the `remotes` array of the
+// MCP registry server.json. Used for structural validation only; stored as
+// raw JSONB.
+type RemoteEntry struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
 }
 
 // slugRe matches valid registry slugs: lowercase alphanumeric and hyphens,
@@ -201,6 +212,45 @@ func ValidatePackages(raw json.RawMessage) error {
 		}
 		if !validTransports[e.Transport.Type] {
 			return fmt.Errorf("packages[%d].transport.type %q is not valid (must be stdio, http, sse, or streamable-http)", i, e.Transport.Type)
+		}
+	}
+	return nil
+}
+
+// validRemoteTransports is the set of transport types allowed in a remotes
+// entry — every runtime except stdio, which by definition is not remote.
+// Both the MCP spec's hyphenated spelling and our underscore runtime enum
+// are accepted, mirroring ValidatePackages.
+var validRemoteTransports = map[string]bool{
+	"http": true, "sse": true, "streamable-http": true, "streamable_http": true,
+}
+
+// ValidateRemotes checks that the remotes JSONB is a non-empty array and
+// that each entry has a valid transport type and an absolute http(s) URL.
+func ValidateRemotes(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("remotes must not be empty")
+	}
+	var entries []RemoteEntry
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return fmt.Errorf("remotes must be a JSON array: %w", err)
+	}
+	if len(entries) == 0 {
+		return fmt.Errorf("remotes must contain at least one entry")
+	}
+	for i, e := range entries {
+		if e.Type == "" {
+			return fmt.Errorf("remotes[%d].type is required", i)
+		}
+		if !validRemoteTransports[e.Type] {
+			return fmt.Errorf("remotes[%d].type %q is not valid (must be http, sse, or streamable-http)", i, e.Type)
+		}
+		if e.URL == "" {
+			return fmt.Errorf("remotes[%d].url is required", i)
+		}
+		u, err := url.Parse(e.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("remotes[%d].url %q is not a valid absolute http(s) URL", i, e.URL)
 		}
 	}
 	return nil

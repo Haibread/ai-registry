@@ -266,6 +266,12 @@ mcp_servers:
             transport:
               type: "sse"
               url: "https://mcp.anthropic.com/computer-use/sse"
+        # Hosted deployment of the same server — clients connect straight to
+        # the URL, no package install. A version may carry packages, remotes,
+        # or both; a remotes-only version is valid (hosted-only server).
+        remotes:
+          - type: "sse"
+            url: "https://mcp.anthropic.com/computer-use/sse"
 
   # anthropic/memory — npm, HTTP transport, deprecated
   - publisher: "anthropic"

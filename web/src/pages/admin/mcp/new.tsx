@@ -127,6 +127,11 @@ export default function AdminMCPNew() {
           }]
         : []
 
+      // The remote-endpoint input only renders for non-stdio transports, so
+      // formData.get returns null on stdio — hence the `?? ''` before trimming.
+      const remoteUrl = ((formData.get('remote_url') as string | null) ?? '').trim()
+      const remotes = remoteUrl ? [{ type: runtime, url: remoteUrl }] : []
+
       // `tools` — client-side JSON parse so structural mistakes surface here
       // instead of as a generic 422 from the backend. Empty string → omit.
       // The backend validator (domain.ValidateTools) re-checks on write.
@@ -153,6 +158,7 @@ export default function AdminMCPNew() {
           runtime,
           protocol_version: protocolVersion,
           ...(packages.length > 0 ? { packages } : {}),
+          ...(remotes.length > 0 ? { remotes } : {}),
           ...(tools !== undefined ? { tools } : {}),
         }),
       })
@@ -359,9 +365,25 @@ export default function AdminMCPNew() {
               </Select>
               <p className="text-xs text-muted-foreground">
                 Use <strong>stdio</strong> for local process servers (npx/uvx).
-                Use <strong>SSE</strong>, <strong>HTTP</strong>, or <strong>Streamable HTTP</strong> for remote servers — those require a package URL below.
+                Use <strong>SSE</strong>, <strong>HTTP</strong>, or <strong>Streamable HTTP</strong> for remote servers — those take an endpoint URL below.
               </p>
             </div>
+
+            {runtime !== 'stdio' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="remote_url">Remote endpoint URL</Label>
+                <Input
+                  id="remote_url"
+                  name="remote_url"
+                  type="url"
+                  placeholder="https://mcp.example.com/sse"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Where clients reach the hosted server directly — no package
+                  needed for a purely remote server.
+                </p>
+              </div>
+            )}
 
             {/* ── Package ──────────────────────────────────────────────── */}
             <div className="rounded-md border border-dashed p-4 space-y-3">
@@ -406,10 +428,12 @@ export default function AdminMCPNew() {
                   id="pkg_url"
                   name="pkg_url"
                   type="url"
-                  placeholder="https://… (required for SSE / HTTP / Streamable HTTP)"
+                  placeholder="https://…"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Leave blank for stdio servers. Required for remote transports.
+                  Transport URL of the server this package runs, if it serves a
+                  remote transport. For a hosted server with no package, use the
+                  remote endpoint URL above instead.
                 </p>
               </div>
             </div>

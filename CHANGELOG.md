@@ -6,6 +6,34 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **The new-version form pre-fills from the previous version.** Authoring
+  v(n+1) starts from v(n) instead of a blank slate: transport, remote
+  endpoint, package fields, capabilities, the tools list, protocol version —
+  and for agents the endpoint, skill, auth scheme, modes, and provider
+  metadata — are seeded from the latest version, with a patch-bumped
+  version suggestion and a visible "Pre-filled from vX.Y.Z" note.
+
+- **The tools editor explains how to dump `tools/list` from a running
+  server.** A "How do I get this list from my server?" panel below the
+  editor offers copy-ready recipes for three situations: the MCP Inspector
+  CLI (Node), a plain `curl` Streamable-HTTP handshake for remote servers,
+  and a raw JSON-RPC stdin pipe for local servers — the latter two need no
+  Node at all. The paste paths now accept the commands' output verbatim:
+  the `{"tools": […]}` JSON-RPC envelope is unwrapped in the JSON tab too,
+  and the MCP spec's `inputSchema` spelling is adopted into `input_schema`
+  (previously it was silently carried as an unknown key and never shown).
+
+- **Remote MCP servers carry a first-class endpoint URL.** MCP server
+  versions gain a `remotes` array (`[{type, url}]`, mirroring the MCP
+  registry server.json) so a hosted server no longer needs a fabricated
+  package entry to record where clients connect. The create-version API
+  validates the entries (non-stdio transport, absolute http(s) URL), the
+  admin create forms show a "Remote endpoint URL" field for non-stdio
+  transports, the public detail page lists remotes under Connection /
+  Installation, the host-config generator emits `url`-style snippets for
+  them, and the list `transport` filter matches remotes as well as
+  packages. Bootstrap specs accept `remotes:` per version.
+
 - **Authors can ask for a public release with their submission.** The
   submit-for-review endpoints accept an optional `{"request_public": true}`
   body; approving such a submission publishes the version AND flips the
