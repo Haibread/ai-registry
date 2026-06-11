@@ -126,6 +126,11 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
               ]
             : []
 
+        // The remote-endpoint input only renders for non-stdio transports, so
+        // fd.get returns null on stdio — hence the `?? ''` before trimming.
+        const remoteUrl = ((fd.get('remote_url') as string | null) ?? '').trim()
+        const remotes = remoteUrl ? [{ type: runtime, url: remoteUrl }] : []
+
         // Parse tools client-side so structural mistakes surface here rather
         // than as a generic 422; the backend validator re-checks on write.
         const toolsRaw = ((fd.get('tools') as string) ?? '').trim()
@@ -149,6 +154,7 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
             runtime,
             protocol_version: protocolVersion || '2025-03-26',
             ...(packages.length > 0 ? { packages } : {}),
+            ...(remotes.length > 0 ? { remotes } : {}),
             ...(tools !== undefined ? { tools } : {}),
             ...(capabilities ? { capabilities } : {}),
           }),
@@ -295,6 +301,22 @@ export function NewVersionForm({ kind, namespace, slug, onCreated, onCancel }: N
               </SelectContent>
             </Select>
           </div>
+
+          {runtime !== 'stdio' && (
+            <div className="space-y-1.5">
+              <Label htmlFor="remote_url">Remote endpoint URL</Label>
+              <Input
+                id="remote_url"
+                name="remote_url"
+                type="url"
+                placeholder="https://mcp.example.com/sse"
+              />
+              <p className="text-xs text-muted-foreground">
+                Where clients reach the hosted server directly — no package
+                needed for a purely remote server.
+              </p>
+            </div>
+          )}
 
           <fieldset className="space-y-3 rounded-md border p-3">
             <legend className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">

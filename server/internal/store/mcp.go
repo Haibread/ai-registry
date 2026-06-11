@@ -32,6 +32,7 @@ type LatestMCPVersion struct {
 	Runtime         domain.Runtime
 	ProtocolVersion string
 	Packages        json.RawMessage
+	Remotes         json.RawMessage
 	Capabilities    json.RawMessage
 	Tools           json.RawMessage
 	PublishedAt     *time.Time
@@ -142,24 +143,25 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		countArgN++
 	}
 
-	// Transport filter — checks that at least one package in the latest version
-	// has the requested transport type. The condition is applied after the
-	// lateral join, so we add it to a post-join filter list.
+	// Transport filter — checks that at least one package OR remote endpoint
+	// in the latest version has the requested transport type. The condition is
+	// applied after the lateral join, so we add it to a post-join filter list.
 	var postJoinFilter string
 	var postJoinFilterCount string
 	if p.Transport != "" {
 		postJoinFilter += fmt.Sprintf(
-			" AND lv.packages @> $%d::jsonb",
-			argN,
+			" AND (lv.packages @> $%d::jsonb OR lv.remotes @> $%d::jsonb)",
+			argN, argN+1,
 		)
 		postJoinFilterCount += fmt.Sprintf(
-			" AND lv.packages @> $%d::jsonb",
-			countArgN,
+			" AND (lv.packages @> $%d::jsonb OR lv.remotes @> $%d::jsonb)",
+			countArgN, countArgN+1,
 		)
 		transportJSON := fmt.Sprintf(`[{"transport":{"type":"%s"}}]`, p.Transport)
-		filterArgs = append(filterArgs, transportJSON)
-		argN++
-		countArgN++
+		remoteJSON := fmt.Sprintf(`[{"type":"%s"}]`, p.Transport)
+		filterArgs = append(filterArgs, transportJSON, remoteJSON)
+		argN += 2
+		countArgN += 2
 	}
 	if p.PublishedSince != nil {
 		postJoinFilter += fmt.Sprintf(
@@ -293,11 +295,11 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
 		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
-		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.tools, lv.published_at
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.remotes, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
-		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.tools, v.published_at
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.remotes, v.capabilities, v.tools, v.published_at
 		    FROM mcp_server_versions v
 		    WHERE v.server_id = s.id AND %s
 		    ORDER BY v.published_at DESC
@@ -322,6 +324,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 			lvRuntime      *string
 			lvProto        *string
 			lvPackages     []byte
+			lvRemotes      []byte
 			lvCapabilities []byte
 			lvTools        []byte
 			lvPublishedAt  *time.Time
@@ -331,7 +334,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 			&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 			&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
 			&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
-			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvTools, &lvPublishedAt,
+			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvRemotes, &lvCapabilities, &lvTools, &lvPublishedAt,
 		); err != nil {
 			recordErr(span, err)
 			return nil, 0, fmt.Errorf("scanning mcp server row: %w", err)
@@ -342,6 +345,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 				Runtime:         domain.Runtime(*lvRuntime),
 				ProtocolVersion: *lvProto,
 				Packages:        json.RawMessage(lvPackages),
+				Remotes:         json.RawMessage(lvRemotes),
 				Capabilities:    json.RawMessage(lvCapabilities),
 				Tools:           json.RawMessage(lvTools),
 				PublishedAt:     lvPublishedAt,
@@ -361,7 +365,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
-		    SELECT v.version, v.packages
+		    SELECT v.version, v.packages, v.remotes
 		    FROM mcp_server_versions v
 		    WHERE v.server_id = s.id AND %s
 		    ORDER BY v.published_at DESC
@@ -389,11 +393,11 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
 		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
-		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.tools, lv.published_at
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.remotes, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
-		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.tools, v.published_at
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.remotes, v.capabilities, v.tools, v.published_at
 		    FROM mcp_server_versions v
 		    WHERE v.server_id = s.id AND v.published_at IS NOT NULL
 		    ORDER BY v.published_at DESC
@@ -411,6 +415,7 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 		lvRuntime      *string
 		lvProto        *string
 		lvPackages     []byte
+		lvRemotes      []byte
 		lvCapabilities []byte
 		lvTools        []byte
 		lvPublishedAt  *time.Time
@@ -420,7 +425,7 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 		&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
 		&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
-		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvTools, &lvPublishedAt,
+		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvRemotes, &lvCapabilities, &lvTools, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
@@ -436,6 +441,7 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 			Runtime:         domain.Runtime(*lvRuntime),
 			ProtocolVersion: *lvProto,
 			Packages:        json.RawMessage(lvPackages),
+			Remotes:         json.RawMessage(lvRemotes),
 			Capabilities:    json.RawMessage(lvCapabilities),
 			Tools:           json.RawMessage(lvTools),
 			PublishedAt:     lvPublishedAt,
@@ -454,11 +460,11 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified, s.tags,
 		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
-		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.capabilities, lv.tools, lv.published_at
+		       lv.version, lv.runtime, lv.protocol_version, lv.packages, lv.remotes, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
 		LEFT JOIN LATERAL (
-		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.capabilities, v.tools, v.published_at
+		    SELECT v.version, v.runtime, v.protocol_version, v.packages, v.remotes, v.capabilities, v.tools, v.published_at
 		    FROM mcp_server_versions v
 		    WHERE v.server_id = s.id AND v.published_at IS NOT NULL
 		    ORDER BY v.published_at DESC
@@ -472,6 +478,7 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 		lvRuntime      *string
 		lvProto        *string
 		lvPackages     []byte
+		lvRemotes      []byte
 		lvCapabilities []byte
 		lvTools        []byte
 		lvPublishedAt  *time.Time
@@ -481,7 +488,7 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 		&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
 		&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
-		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvCapabilities, &lvTools, &lvPublishedAt,
+		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvRemotes, &lvCapabilities, &lvTools, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
@@ -497,6 +504,7 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 			Runtime:         domain.Runtime(*lvRuntime),
 			ProtocolVersion: *lvProto,
 			Packages:        json.RawMessage(lvPackages),
+			Remotes:         json.RawMessage(lvRemotes),
 			Capabilities:    json.RawMessage(lvCapabilities),
 			Tools:           json.RawMessage(lvTools),
 			PublishedAt:     lvPublishedAt,
@@ -584,7 +592,7 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string, public
 		where += " AND published_at IS NOT NULL"
 	}
 	rows, err := db.Pool.Query(ctx, `
-		SELECT id, server_id, version, runtime, packages, capabilities, tools,
+		SELECT id, server_id, version, runtime, packages, remotes, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
 		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
@@ -629,7 +637,7 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string,
 		where += " AND published_at IS NOT NULL"
 	}
 	row := db.Pool.QueryRow(ctx, `
-		SELECT id, server_id, version, runtime, packages, capabilities, tools,
+		SELECT id, server_id, version, runtime, packages, remotes, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
 		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
@@ -656,7 +664,7 @@ func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*
 	defer span.End()
 
 	row := db.Pool.QueryRow(ctx, `
-		SELECT id, server_id, version, runtime, packages, capabilities, tools,
+		SELECT id, server_id, version, runtime, packages, remotes, capabilities, tools,
 		       protocol_version, coalesce(checksum,''), coalesce(signature,''),
 		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
@@ -685,6 +693,7 @@ type CreateMCPServerVersionParams struct {
 	Version         string
 	Runtime         domain.Runtime
 	Packages        json.RawMessage
+	Remotes         json.RawMessage
 	Capabilities    json.RawMessage
 	Tools           json.RawMessage
 	ProtocolVersion string
@@ -701,6 +710,9 @@ func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersi
 	if len(p.Packages) == 0 {
 		p.Packages = json.RawMessage("[]")
 	}
+	if len(p.Remotes) == 0 {
+		p.Remotes = json.RawMessage("[]")
+	}
 	if len(p.Capabilities) == 0 {
 		p.Capabilities = json.RawMessage("{}")
 	}
@@ -713,10 +725,10 @@ func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersi
 
 	_, err := db.Pool.Exec(ctx, `
 		INSERT INTO mcp_server_versions
-		    (id, server_id, version, runtime, packages, capabilities, tools,
+		    (id, server_id, version, runtime, packages, remotes, capabilities, tools,
 		     protocol_version, checksum, signature)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		id, p.ServerID, p.Version, p.Runtime, p.Packages, p.Capabilities, p.Tools,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		id, p.ServerID, p.Version, p.Runtime, p.Packages, p.Remotes, p.Capabilities, p.Tools,
 		p.ProtocolVersion, p.Checksum, p.Signature,
 	)
 	if err != nil {
@@ -735,6 +747,7 @@ func (db *DB) CreateMCPServerVersion(ctx context.Context, p CreateMCPServerVersi
 		Version:         p.Version,
 		Runtime:         p.Runtime,
 		Packages:        p.Packages,
+		Remotes:         p.Remotes,
 		Capabilities:    p.Capabilities,
 		Tools:           p.Tools,
 		ProtocolVersion: p.ProtocolVersion,
@@ -869,7 +882,7 @@ func (db *DB) GetPublisherBySlug(ctx context.Context, slug string) (id string, e
 }
 
 // scanVersion scans one mcp_server_versions row from any pgx scanner.
-// Column order must match SELECT: id, server_id, version, runtime, packages, capabilities, tools,
+// Column order must match SELECT: id, server_id, version, runtime, packages, remotes, capabilities, tools,
 // protocol_version, checksum, signature, status, published_at, created_at, updated_at, status_message, status_changed_at
 func scanVersion(s interface {
 	Scan(...any) error
@@ -877,7 +890,7 @@ func scanVersion(s interface {
 	var v domain.MCPServerVersion
 	err := s.Scan(
 		&v.ID, &v.ServerID, &v.Version, &v.Runtime,
-		&v.Packages, &v.Capabilities, &v.Tools,
+		&v.Packages, &v.Remotes, &v.Capabilities, &v.Tools,
 		&v.ProtocolVersion, &v.Checksum, &v.Signature,
 		&v.Status, &v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
 		&v.StatusMessage, &v.StatusChangedAt,
@@ -940,7 +953,7 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 		UPDATE mcp_server_versions
 		SET status=$1, status_message=$2, status_changed_at=now()
 		WHERE server_id=$3 AND published_at IS NOT NULL
-		RETURNING id, server_id, version, runtime, packages, capabilities, tools,
+		RETURNING id, server_id, version, runtime, packages, remotes, capabilities, tools,
 		          protocol_version, coalesce(checksum,''), coalesce(signature,''),
 		          status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
 		          review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),

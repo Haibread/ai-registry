@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { MCP_HOSTS, packageToConfigParams } from './mcp-host-configs'
+import { MCP_HOSTS, packageToConfigParams, remoteToConfigParams } from './mcp-host-configs'
 
 describe('MCP host configs', () => {
   it('defines at least 4 hosts', () => {
@@ -70,6 +70,29 @@ describe('packageToConfigParams', () => {
     })
     expect(result.transport).toBe('streamable_http')
     expect(result.url).toBe('https://example.com/mcp')
+  })
+})
+
+describe('remoteToConfigParams', () => {
+  it('maps a remote endpoint to url-only params', () => {
+    const result = remoteToConfigParams('my-server', {
+      type: 'sse',
+      url: 'https://mcp.example.com/sse',
+    })
+    expect(result.transport).toBe('sse')
+    expect(result.url).toBe('https://mcp.example.com/sse')
+    expect(result.command).toBeUndefined()
+  })
+
+  it('generates a url config block end-to-end', () => {
+    const params = remoteToConfigParams('srv', {
+      type: 'streamable_http',
+      url: 'https://mcp.example.com/mcp',
+    })
+    const host = MCP_HOSTS.find((h) => h.name === 'Claude Code')!
+    const result = JSON.parse(host.generate(params))
+    expect(result.mcpServers['srv'].url).toBe('https://mcp.example.com/mcp')
+    expect(result.mcpServers['srv'].command).toBeUndefined()
   })
 })
 

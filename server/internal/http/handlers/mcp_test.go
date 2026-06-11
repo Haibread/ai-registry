@@ -587,6 +587,67 @@ func TestMCPHandler_CreateVersion_NoPackages(t *testing.T) {
 	}
 }
 
+// TestMCPHandler_CreateVersion_WithRemotes verifies that a hosted-only server
+// version — no packages, just a `remotes` endpoint — is accepted and the
+// remotes array round-trips through the create response. This is the admin-UI
+// "specify a URL for a remote MCP server" flow.
+func TestMCPHandler_CreateVersion_WithRemotes(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "ns-cvr", "srv-cvr")
+
+	body := map[string]any{
+		"version":          "1.0.0",
+		"runtime":          "sse",
+		"protocol_version": "2025-01-01",
+		"remotes":          json.RawMessage(`[{"type":"sse","url":"https://mcp.example.com/sse"}]`),
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvr/srv-cvr/versions",
+		bytes.NewBuffer(b))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Remotes []struct {
+			Type string `json:"type"`
+			URL  string `json:"url"`
+		} `json:"remotes"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Remotes) != 1 {
+		t.Fatalf("remotes len = %d, want 1; body: %s", len(resp.Remotes), rec.Body.String())
+	}
+	if resp.Remotes[0].Type != "sse" || resp.Remotes[0].URL != "https://mcp.example.com/sse" {
+		t.Errorf("remotes[0] = %+v, want {sse https://mcp.example.com/sse}", resp.Remotes[0])
+	}
+}
+
+// TestMCPHandler_CreateVersion_BadRemotes rejects a structurally invalid
+// remotes payload (missing url) with a 422 validation-error.
+func TestMCPHandler_CreateVersion_BadRemotes(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "ns-cvbr", "srv-cvbr")
+
+	payload := `{"version":"1.0.0","runtime":"sse","protocol_version":"2025-01-01","remotes":[{"type":"sse"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvbr/srv-cvbr/versions",
+		bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+}
+
 func TestMCPHandler_CreateVersion_MissingFields(t *testing.T) {
 	resetTables(t)
 	seedMCPServer(t, "ns-cvmf", "srv-cvmf")

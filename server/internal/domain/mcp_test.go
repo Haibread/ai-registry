@@ -160,6 +160,89 @@ func TestValidatePackages(t *testing.T) {
 	}
 }
 
+func TestValidateRemotes(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{
+			name:  "valid sse remote",
+			input: `[{"type":"sse","url":"https://mcp.example.com/sse"}]`,
+		},
+		{
+			name:  "valid streamable_http remote",
+			input: `[{"type":"streamable_http","url":"https://mcp.example.com/mcp"}]`,
+		},
+		{
+			name:  "valid spec-spelling streamable-http remote",
+			input: `[{"type":"streamable-http","url":"https://mcp.example.com/mcp"}]`,
+		},
+		{
+			name:  "valid http remote with plain http scheme",
+			input: `[{"type":"http","url":"http://localhost:8080/mcp"}]`,
+		},
+		{
+			name:  "multiple remotes",
+			input: `[{"type":"sse","url":"https://a.example.com/sse"},{"type":"http","url":"https://b.example.com/mcp"}]`,
+		},
+		{
+			name:    "empty array",
+			input:   `[]`,
+			wantErr: true,
+		},
+		{
+			name:    "not an array",
+			input:   `{"type":"sse","url":"https://a.example.com"}`,
+			wantErr: true,
+		},
+		{
+			name:    "empty JSON",
+			input:   ``,
+			wantErr: true,
+		},
+		{
+			name:    "missing type",
+			input:   `[{"url":"https://mcp.example.com/sse"}]`,
+			wantErr: true,
+		},
+		{
+			name:    "stdio is not a remote transport",
+			input:   `[{"type":"stdio","url":"https://mcp.example.com"}]`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid transport type",
+			input:   `[{"type":"grpc","url":"https://mcp.example.com"}]`,
+			wantErr: true,
+		},
+		{
+			name:    "missing url",
+			input:   `[{"type":"sse"}]`,
+			wantErr: true,
+		},
+		{
+			name:    "relative url",
+			input:   `[{"type":"sse","url":"/sse"}]`,
+			wantErr: true,
+		},
+		{
+			name:    "non-http scheme",
+			input:   `[{"type":"sse","url":"ftp://mcp.example.com/sse"}]`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := domain.ValidateRemotes(json.RawMessage(tt.input))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateRemotes() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateServerName(t *testing.T) {
 	tests := []struct {
 		name    string

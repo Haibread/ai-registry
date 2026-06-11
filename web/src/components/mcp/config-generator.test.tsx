@@ -35,17 +35,54 @@ describe('MCPConfigGenerator', () => {
     expect(screen.getByText(/\.vscode\/mcp\.json/)).toBeInTheDocument()
   })
 
-  it('shows package selector when multiple packages', () => {
+  it('shows connection selector when multiple packages', () => {
     const packages = [
       npmPackage,
       { registryType: 'pypi', identifier: 'test-py', version: '2.0.0', transport: { type: 'stdio' as const } },
     ]
     render(<MCPConfigGenerator serverName="test" packages={packages} />)
-    expect(screen.getByRole('combobox', { name: /select package/i })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /select connection/i })).toBeInTheDocument()
   })
 
-  it('does not show package selector for single package', () => {
+  it('does not show connection selector for single package', () => {
     render(<MCPConfigGenerator serverName="test" packages={[npmPackage]} />)
-    expect(screen.queryByRole('combobox', { name: /select package/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /select connection/i })).not.toBeInTheDocument()
+  })
+
+  it('generates a url config from a remote endpoint with no packages', () => {
+    render(
+      <MCPConfigGenerator
+        serverName="test"
+        packages={[]}
+        remotes={[{ type: 'sse', url: 'https://mcp.example.com/sse' }]}
+      />,
+    )
+    expect(screen.getByText(/https:\/\/mcp\.example\.com\/sse/)).toBeInTheDocument()
+    expect(screen.queryByText(/npx/)).not.toBeInTheDocument()
+  })
+
+  it('lists both packages and remotes in the connection selector', () => {
+    render(
+      <MCPConfigGenerator
+        serverName="test"
+        packages={[npmPackage]}
+        remotes={[{ type: 'streamable_http', url: 'https://mcp.example.com/mcp' }]}
+      />,
+    )
+    const select = screen.getByRole('combobox', { name: /select connection/i })
+    expect(select).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: /@acme\/test-server \(stdio\)/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: /https:\/\/mcp\.example\.com\/mcp \(streamable_http\)/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('renders nothing when both packages and remotes are empty', () => {
+    const { container } = render(
+      <MCPConfigGenerator serverName="test" packages={[]} remotes={[]} />,
+    )
+    expect(container.innerHTML).toBe('')
   })
 })
