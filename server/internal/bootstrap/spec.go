@@ -80,6 +80,10 @@ type MCPVersionSpec struct {
 	StatusMessage   string        `yaml:"status_message"   json:"status_message"`
 	ProtocolVersion string        `yaml:"protocol_version" json:"protocol_version"`
 	Packages        []PackageSpec `yaml:"packages"         json:"packages"`
+	// Remotes lists directly reachable endpoints of a hosted server,
+	// mirroring the `remotes` array of the MCP registry server.json. A
+	// version needs at least one package or one remote.
+	Remotes []RemoteSpec `yaml:"remotes" json:"remotes"`
 	// Capabilities is the free-form MCP capabilities object
 	// (tools / resources / prompts / logging / …). Stored as JSONB.
 	//
@@ -119,6 +123,14 @@ type PackageSpec struct {
 type TransportSpec struct {
 	Type string `yaml:"type"            json:"type"`
 	URL  string `yaml:"url,omitempty"   json:"url,omitempty"`
+}
+
+// RemoteSpec describes one remote endpoint of a hosted MCP server.
+// Mirrors domain.RemoteEntry — kept separate so YAML decoding stays
+// decoupled from the domain package.
+type RemoteSpec struct {
+	Type string `yaml:"type" json:"type"`
+	URL  string `yaml:"url"  json:"url"`
 }
 
 // AgentSpec describes an agent and all its versions.

@@ -8,7 +8,7 @@
 
 import { useState } from 'react'
 import { CopyButton } from '@/components/ui/copy-button'
-import { MCP_HOSTS, packageToConfigParams } from '@/lib/mcp-host-configs'
+import { MCP_HOSTS, packageToConfigParams, remoteToConfigParams } from '@/lib/mcp-host-configs'
 
 interface Package {
   registryType: string
@@ -17,20 +17,36 @@ interface Package {
   transport: { type: string; url?: string }
 }
 
+interface Remote {
+  type: string
+  url: string
+}
+
 interface MCPConfigGeneratorProps {
   serverName: string
   packages: Package[]
+  remotes?: Remote[]
 }
 
-export function MCPConfigGenerator({ serverName, packages }: MCPConfigGeneratorProps) {
+export function MCPConfigGenerator({ serverName, packages, remotes = [] }: MCPConfigGeneratorProps) {
   const [hostIndex, setHostIndex] = useState(0)
-  const [pkgIndex, setPkgIndex] = useState(0)
+  const [sourceIndex, setSourceIndex] = useState(0)
 
-  if (packages.length === 0) return null
+  // Unified connection sources: installable packages plus remote endpoints.
+  const sources = [
+    ...packages.map((p) => ({
+      label: `${p.identifier} (${p.transport.type})`,
+      params: packageToConfigParams(serverName, p),
+    })),
+    ...remotes.map((r) => ({
+      label: `${r.url} (${r.type})`,
+      params: remoteToConfigParams(serverName, r),
+    })),
+  ]
+  if (sources.length === 0) return null
 
   const host = MCP_HOSTS[hostIndex]
-  const pkg = packages[pkgIndex]
-  const params = packageToConfigParams(serverName, pkg)
+  const params = sources[Math.min(sourceIndex, sources.length - 1)].params
   const snippet = host.generate(params)
 
   return (
@@ -55,17 +71,17 @@ export function MCPConfigGenerator({ serverName, packages }: MCPConfigGeneratorP
           ))}
         </select>
 
-        {/* Package selector (only shown if multiple packages) */}
-        {packages.length > 1 && (
+        {/* Connection selector (only shown if multiple packages/remotes) */}
+        {sources.length > 1 && (
           <select
-            value={pkgIndex}
-            onChange={(e) => setPkgIndex(Number(e.target.value))}
+            value={sourceIndex}
+            onChange={(e) => setSourceIndex(Number(e.target.value))}
             className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-            aria-label="Select package"
+            aria-label="Select connection"
           >
-            {packages.map((p, i) => (
+            {sources.map((s, i) => (
               <option key={i} value={i}>
-                {p.identifier} ({p.transport.type})
+                {s.label}
               </option>
             ))}
           </select>

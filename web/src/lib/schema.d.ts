@@ -1952,6 +1952,13 @@ export interface components {
             version: string;
             transport: components["schemas"]["PackageTransport"];
         };
+        /** @description A directly reachable endpoint for a hosted (remote) MCP server, mirroring the `remotes` array of the MCP registry server.json. Unlike a package there is no installable artifact — clients connect straight to the URL using the given transport. */
+        RemoteEntry: {
+            /** @enum {string} */
+            type: "http" | "sse" | "streamable_http";
+            /** Format: uri */
+            url: string;
+        };
         /** @description Publisher-declared tool exposed by an MCP server. This is a registry extension — the MCP spec itself returns the live tool list at runtime via the `tools/list` method. Storing the declared list here lets the UI show tool counts and descriptions without connecting to a running server. Structural requirements: `name` is required and unique within the enclosing array; `input_schema`, if present, must be a JSON Schema object. */
         MCPTool: {
             /** @description Unique tool name within the server */
@@ -1973,6 +1980,8 @@ export interface components {
             runtime: "stdio" | "http" | "sse" | "streamable_http";
             protocol_version: string;
             packages?: components["schemas"]["PackageEntry"][];
+            /** @description Remote endpoints for hosted deployments of this server. */
+            remotes?: components["schemas"]["RemoteEntry"][];
             /** @description MCP capability-negotiation object (e.g. `{tools:{listChanged:true}}`). NOT a list of tools — see the `tools` field for that. */
             capabilities?: {
                 [key: string]: unknown;
@@ -2036,6 +2045,8 @@ export interface components {
             runtime: "stdio" | "http" | "sse" | "streamable_http";
             protocol_version: string;
             packages?: components["schemas"]["PackageEntry"][];
+            /** @description Remote endpoints for hosted deployments of this server. */
+            remotes?: components["schemas"]["RemoteEntry"][];
             capabilities?: {
                 [key: string]: unknown;
             };
@@ -2090,6 +2101,8 @@ export interface components {
             runtime: "stdio" | "http" | "sse" | "streamable_http";
             protocol_version: string;
             packages?: components["schemas"]["PackageEntry"][];
+            /** @description Remote endpoints for hosted deployments of this server. */
+            remotes?: components["schemas"]["RemoteEntry"][];
             capabilities?: {
                 [key: string]: unknown;
             };
@@ -2371,6 +2384,8 @@ export interface components {
             title?: string;
             version?: string;
             packages?: components["schemas"]["PackageEntry"][];
+            /** @description Remote endpoints for hosted deployments of this server. */
+            remotes?: components["schemas"]["RemoteEntry"][];
             capabilities?: {
                 [key: string]: unknown;
             };
@@ -2420,6 +2435,8 @@ export interface components {
             title?: string;
             protocolVersion: string;
             packages?: components["schemas"]["PackageEntry"][];
+            /** @description Remote endpoints for hosted deployments of this server. */
+            remotes?: components["schemas"]["RemoteEntry"][];
             capabilities?: {
                 [key: string]: unknown;
             };

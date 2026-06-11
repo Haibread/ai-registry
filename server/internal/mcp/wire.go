@@ -56,6 +56,7 @@ type ServerDetail struct {
 	Title        string          `json:"title,omitempty"`
 	Version      string          `json:"version,omitempty"`
 	Packages     json.RawMessage `json:"packages,omitempty"`
+	Remotes      json.RawMessage `json:"remotes,omitempty"`
 	Capabilities json.RawMessage `json:"capabilities,omitempty"`
 	Repository   *Repository     `json:"repository,omitempty"`
 	WebsiteURL   string          `json:"websiteUrl,omitempty"`
@@ -79,6 +80,7 @@ type PublishRequest struct {
 	Version         string          `json:"version"`
 	Title           string          `json:"title,omitempty"`
 	Packages        json.RawMessage `json:"packages"`
+	Remotes         json.RawMessage `json:"remotes,omitempty"`
 	Capabilities    json.RawMessage `json:"capabilities,omitempty"`
 	ProtocolVersion string          `json:"protocolVersion"`
 	Repository      *Repository     `json:"repository,omitempty"`
@@ -156,6 +158,7 @@ func ToServerResponse(srv store.MCPServerRow, ver *domain.MCPServerVersion, isLa
 	if ver != nil {
 		detail.Version = ver.Version
 		detail.Packages = ver.Packages
+		detail.Remotes = ver.Remotes
 		detail.Capabilities = ver.Capabilities
 		if ver.PublishedAt != nil {
 			official.PublishedAt = ver.PublishedAt

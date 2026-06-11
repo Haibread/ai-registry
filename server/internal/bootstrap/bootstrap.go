@@ -418,7 +418,14 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 	if err != nil {
 		return fmt.Errorf("marshalling packages: %w", err)
 	}
-	runtime := deriveRuntime(v.Packages)
+	var remotes json.RawMessage
+	if len(v.Remotes) > 0 {
+		remotes, err = json.Marshal(v.Remotes)
+		if err != nil {
+			return fmt.Errorf("marshalling remotes: %w", err)
+		}
+	}
+	runtime := deriveRuntime(v.Packages, v.Remotes)
 	protocolVersion := v.ProtocolVersion
 	if protocolVersion == "" {
 		protocolVersion = "2025-03-26"
@@ -437,6 +444,7 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 		Version:         v.Version,
 		Runtime:         runtime,
 		Packages:        packages,
+		Remotes:         remotes,
 		Capabilities:    capabilities,
 		Tools:           tools,
 		ProtocolVersion: protocolVersion,
@@ -703,12 +711,17 @@ func isEmptyJSONArray(raw []byte) bool {
 	return len(v) == 0
 }
 
-// deriveRuntime infers the server runtime from the first package's transport type.
-func deriveRuntime(packages []PackageSpec) domain.Runtime {
-	if len(packages) == 0 {
-		return domain.RuntimeStdio
+// deriveRuntime infers the server runtime from the first package's transport
+// type, falling back to the first remote's type for hosted-only servers.
+func deriveRuntime(packages []PackageSpec, remotes []RemoteSpec) domain.Runtime {
+	transport := ""
+	switch {
+	case len(packages) > 0:
+		transport = packages[0].Transport.Type
+	case len(remotes) > 0:
+		transport = remotes[0].Type
 	}
-	switch strings.ToLower(packages[0].Transport.Type) {
+	switch strings.ToLower(transport) {
 	case "http":
 		return domain.RuntimeHTTP
 	case "sse":
@@ -783,8 +796,8 @@ func validateSpec(s *Spec) error {
 			if v.Version == "" {
 				errs = append(errs, fmt.Sprintf("%s.versions[%d]: version is required", prefix, j))
 			}
-			if len(v.Packages) == 0 {
-				errs = append(errs, fmt.Sprintf("%s.versions[%d]: at least one package is required", prefix, j))
+			if len(v.Packages) == 0 && len(v.Remotes) == 0 {
+				errs = append(errs, fmt.Sprintf("%s.versions[%d]: at least one package or remote is required", prefix, j))
 			}
 		}
 	}

@@ -6,6 +6,17 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Remote MCP servers carry a first-class endpoint URL.** MCP server
+  versions gain a `remotes` array (`[{type, url}]`, mirroring the MCP
+  registry server.json) so a hosted server no longer needs a fabricated
+  package entry to record where clients connect. The create-version API
+  validates the entries (non-stdio transport, absolute http(s) URL), the
+  admin create forms show a "Remote endpoint URL" field for non-stdio
+  transports, the public detail page lists remotes under Connection /
+  Installation, the host-config generator emits `url`-style snippets for
+  them, and the list `transport` filter matches remotes as well as
+  packages. Bootstrap specs accept `remotes:` per version.
+
 - **Authors can ask for a public release with their submission.** The
   submit-for-review endpoints accept an optional `{"request_public": true}`
   body; approving such a submission publishes the version AND flips the

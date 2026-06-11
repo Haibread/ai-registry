@@ -361,6 +361,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Version         string          `json:"version"`
 		Runtime         string          `json:"runtime"`
 		Packages        json.RawMessage `json:"packages"`
+		Remotes         json.RawMessage `json:"remotes"`
 		Capabilities    json.RawMessage `json:"capabilities"`
 		Tools           json.RawMessage `json:"tools"`
 		ProtocolVersion string          `json:"protocol_version"`
@@ -384,6 +385,14 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// remotes is optional too — a stdio-only server has none, a hosted-only
+	// server has no packages. Validate structure only when entries are present.
+	if len(body.Remotes) > 0 {
+		if err := domain.ValidateRemotes(body.Remotes); err != nil {
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+			return
+		}
+	}
 	if err := domain.ValidateCapabilities(body.Capabilities); err != nil {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
@@ -398,6 +407,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Version:         body.Version,
 		Runtime:         domain.Runtime(body.Runtime),
 		Packages:        body.Packages,
+		Remotes:         body.Remotes,
 		Capabilities:    body.Capabilities,
 		Tools:           body.Tools,
 		ProtocolVersion: body.ProtocolVersion,
@@ -752,11 +762,17 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 		if len(tools) == 0 {
 			tools = json.RawMessage("[]")
 		}
+		// Same guard as `tools`: never emit JSON null for an array field.
+		remotes := lv.Remotes
+		if len(remotes) == 0 {
+			remotes = json.RawMessage("[]")
+		}
 		m["latest_version"] = map[string]any{
 			"version":          lv.Version,
 			"runtime":          string(lv.Runtime),
 			"protocol_version": lv.ProtocolVersion,
 			"packages":         lv.Packages,
+			"remotes":          remotes,
 			"capabilities":     lv.Capabilities,
 			"tools":            tools,
 			"published_at":     lv.PublishedAt,
