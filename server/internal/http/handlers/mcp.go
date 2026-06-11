@@ -364,6 +364,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Remotes         json.RawMessage `json:"remotes"`
 		Capabilities    json.RawMessage `json:"capabilities"`
 		Tools           json.RawMessage `json:"tools"`
+		Tags            []string        `json:"tags"`
 		ProtocolVersion string          `json:"protocol_version"`
 		Checksum        string          `json:"checksum"`
 		Signature       string          `json:"signature"`
@@ -401,6 +402,10 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
+	tags, ok := validateVersionTags(w, r, h.db, body.Tags)
+	if !ok {
+		return
+	}
 
 	v, err := h.db.CreateMCPServerVersion(r.Context(), store.CreateMCPServerVersionParams{
 		ServerID:        srv.ID,
@@ -410,6 +415,7 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Remotes:         body.Remotes,
 		Capabilities:    body.Capabilities,
 		Tools:           body.Tools,
+		Tags:            tags,
 		ProtocolVersion: body.ProtocolVersion,
 		Checksum:        body.Checksum,
 		Signature:       body.Signature,
@@ -767,6 +773,12 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 		if len(remotes) == 0 {
 			remotes = json.RawMessage("[]")
 		}
+		// Same guard as `tools` and `remotes`: never emit JSON null for an
+		// array field.
+		lvTags := lv.Tags
+		if lvTags == nil {
+			lvTags = []string{}
+		}
 		m["latest_version"] = map[string]any{
 			"version":          lv.Version,
 			"runtime":          string(lv.Runtime),
@@ -775,6 +787,7 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 			"remotes":          remotes,
 			"capabilities":     lv.Capabilities,
 			"tools":            tools,
+			"tags":             lvTags,
 			"published_at":     lv.PublishedAt,
 		}
 	}

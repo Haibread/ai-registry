@@ -346,6 +346,7 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Provider           json.RawMessage `json:"provider"`
 		DocumentationURL   string          `json:"documentation_url"`
 		IconURL            string          `json:"icon_url"`
+		Tags               []string        `json:"tags"`
 		ProtocolVersion    string          `json:"protocol_version"`
 	}
 	if !decodeJSON(w, r, &body) {
@@ -372,6 +373,10 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
+	tags, ok := validateVersionTags(w, r, h.db, body.Tags)
+	if !ok {
+		return
+	}
 
 	v, err := h.db.CreateAgentVersion(r.Context(), store.CreateAgentVersionParams{
 		AgentID:            agent.ID,
@@ -385,6 +390,7 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		Provider:           body.Provider,
 		DocumentationURL:   body.DocumentationURL,
 		IconURL:            body.IconURL,
+		Tags:               tags,
 		ProtocolVersion:    body.ProtocolVersion,
 	})
 	if errors.Is(err, store.ErrConflict) {
@@ -776,6 +782,11 @@ func agentToResponse(a *store.AgentRow) map[string]any {
 		"updated_at":  a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if lv := a.LatestVersion; lv != nil {
+		// Never emit JSON null for an array field.
+		lvTags := lv.Tags
+		if lvTags == nil {
+			lvTags = []string{}
+		}
 		m["latest_version"] = map[string]any{
 			"version":              lv.Version,
 			"endpoint_url":         lv.EndpointURL,
@@ -784,6 +795,7 @@ func agentToResponse(a *store.AgentRow) map[string]any {
 			"default_output_modes": lv.DefaultOutputModes,
 			"authentication":       lv.Authentication,
 			"protocol_version":     lv.ProtocolVersion,
+			"tags":                 lvTags,
 			"published_at":         lv.PublishedAt,
 		}
 	}

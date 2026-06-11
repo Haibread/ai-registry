@@ -58,6 +58,7 @@ type AgentVersion struct {
 	Provider           json.RawMessage `json:"provider,omitempty"` // AgentProvider
 	DocumentationURL   string          `json:"documentation_url,omitempty"`
 	IconURL            string          `json:"icon_url,omitempty"`
+	Tags               []string        `json:"tags"` // instance-tag slugs ticked on this version
 	ProtocolVersion    string          `json:"protocol_version"`
 	Status             VersionStatus   `json:"status"` // active | deprecated | deleted
 	StatusMessage      string          `json:"status_message,omitempty"`

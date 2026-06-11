@@ -247,6 +247,18 @@ export default defineConfig({
       dependencies: ["setup"],
       testMatch: /user-access\.spec\.ts/,
     },
+    // Instance-tag vocabulary: Server-Admin curation on /admin/tags, the
+    // publisher ticking a tag on a version, the public chip + catalog filter,
+    // and the 422 / 409 guard rails. Mutates DB state → sequential worker.
+    {
+      name: "instance-tags",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      dependencies: ["setup"],
+      testMatch: /(^|\/)tags\.spec\.ts$/,
+    },
     {
       name: "request-public",
       use: {

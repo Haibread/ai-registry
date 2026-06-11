@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/haibread/ai-registry/internal/domain"
 )
 
 // Config holds all runtime configuration for the server.
@@ -30,6 +33,29 @@ type Config struct {
 	// (top-level `bootstrap_file`), or the `--bootstrap-file` CLI flag —
 	// the flag wins over both. See `deploy/bootstrap.example.yaml`.
 	BootstrapFile string
+
+	// InstanceTags is the config-managed portion of the instance-wide tag
+	// vocabulary. Reconciled into the database at every startup: each listed
+	// tag is created or updated (and flagged managed → read-only via the
+	// API), and previously managed tags that are no longer listed are
+	// released to admin-UI ownership. Settable via env (INSTANCE_TAGS, a
+	// JSON array) or YAML (top-level `instance_tags`); default empty (the
+	// vocabulary is then curated solely through the admin API/UI).
+	InstanceTags []InstanceTagSpec
+}
+
+// InstanceTagSpec is one entry of the config-managed tag vocabulary. The
+// YAML config file (`instance_tags:`) and the INSTANCE_TAGS env var (a JSON
+// array — a structured list cannot be a flat scalar) both decode into it.
+type InstanceTagSpec struct {
+	Slug        string `yaml:"slug"        json:"slug"`
+	Name        string `yaml:"name"        json:"name"`
+	Description string `yaml:"description" json:"description"`
+	// Color defaults to "gray" when omitted.
+	Color string `yaml:"color" json:"color"`
+	// Active defaults to true when omitted; set false to ship the tag
+	// deactivated (visible on old versions, not tickable on new ones).
+	Active *bool `yaml:"active" json:"active"`
 }
 
 // AuthConfig holds OIDC/Keycloak settings.
@@ -269,6 +295,7 @@ type fileConfig struct {
 	Log           fileLogConfig      `yaml:"log"`
 	Auth          fileAuthConfig     `yaml:"auth"`
 	BootstrapFile string             `yaml:"bootstrap_file"`
+	InstanceTags  []InstanceTagSpec  `yaml:"instance_tags"`
 }
 
 // defaultFileConfig returns a fileConfig pre-populated with the same defaults
@@ -388,6 +415,12 @@ func Load(configFile string) (*Config, error) {
 		BootstrapFile: envString("BOOTSTRAP_FILE", fc.BootstrapFile),
 	}
 
+	tags, err := envInstanceTags("INSTANCE_TAGS", fc.InstanceTags)
+	if err != nil {
+		return nil, err
+	}
+	cfg.InstanceTags = tags
+
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -452,10 +485,46 @@ func (c *Config) validate() error {
 	if c.Auth.OIDCAudience != "" && !oidcEnabled {
 		return fmt.Errorf("OIDC_AUDIENCE requires OIDC to be enabled (set OIDC_CLIENT_ID and OIDC_CLIENT_SECRET)")
 	}
+
+	// Config-managed instance tags fail fast at boot — a typo'd color or a
+	// duplicate slug must not surface as a half-reconciled vocabulary.
+	seenTags := make(map[string]struct{}, len(c.InstanceTags))
+	for i, t := range c.InstanceTags {
+		if t.Slug == "" || t.Name == "" {
+			return fmt.Errorf("instance_tags[%d]: slug and name are required", i)
+		}
+		if err := domain.ValidateSlug(t.Slug); err != nil {
+			return fmt.Errorf("instance_tags[%d]: %w", i, err)
+		}
+		if t.Color != "" {
+			if err := domain.ValidateTagColor(t.Color); err != nil {
+				return fmt.Errorf("instance_tags[%d]: %w", i, err)
+			}
+		}
+		if _, dup := seenTags[t.Slug]; dup {
+			return fmt.Errorf("instance_tags[%d]: duplicate slug %q", i, t.Slug)
+		}
+		seenTags[t.Slug] = struct{}{}
+	}
 	return nil
 }
 
 // ── env helpers ───────────────────────────────────────────────────────────────
+
+// envInstanceTags parses the INSTANCE_TAGS env var as a JSON array of tag
+// specs. A structured list cannot follow the comma-separated convention of
+// the other slice env vars, so JSON is the env-side encoding.
+func envInstanceTags(key string, def []InstanceTagSpec) ([]InstanceTagSpec, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return def, nil
+	}
+	var tags []InstanceTagSpec
+	if err := json.Unmarshal([]byte(v), &tags); err != nil {
+		return nil, fmt.Errorf("config: %s must be a JSON array of {slug, name, description, color, active}: %w", key, err)
+	}
+	return tags, nil
+}
 
 func envString(key, def string) string {
 	if v := os.Getenv(key); v != "" {

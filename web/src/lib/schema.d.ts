@@ -617,6 +617,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the instance-wide tag vocabulary
+         * @description Returns the full vocabulary, active and deactivated tags alike (each carries an `active` flag). Deactivated tags cannot be ticked on new versions but remain visible on versions that already carry them, so clients need the whole list to resolve display names and colors; pickers should offer only `active` tags.
+         */
+        get: operations["listInstanceTags"];
+        put?: never;
+        /** Define a new instance tag (Server Admin) */
+        post: operations["createInstanceTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an unused instance tag (Server Admin)
+         * @description Hard-deletes a tag that no version references. A tag carried by any version (published versions are immutable) cannot be deleted — the endpoint returns 409; deactivate it via PATCH instead. Config-managed tags (`managed: true`) also answer 409 — remove them from the server configuration instead.
+         */
+        delete: operations["deleteInstanceTag"];
+        options?: never;
+        head?: never;
+        /**
+         * Update an instance tag (Server Admin)
+         * @description Updates the display fields (`name`, `description`, `color`) or toggles `active`. The slug is the tag's identity on frozen version rows and is immutable. Deactivating a tag hides it from new publishes; versions that already carry it are unaffected. Config-managed tags (`managed: true`) are read-only here — 409.
+         */
+        patch: operations["updateInstanceTag"];
+        trace?: never;
+    };
     "/api/v1/mcp/servers": {
         parameters: {
             query?: never;
@@ -1974,6 +2019,46 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        InstanceTag: {
+            /** @description Immutable identifier, referenced by version `tags` arrays (lowercase letters, digits, and hyphens). */
+            slug: string;
+            /** @description Display name (e.g. "Early Access") */
+            name: string;
+            description?: string;
+            /**
+             * @description UI badge color hint
+             * @enum {string}
+             */
+            color?: "gray" | "red" | "orange" | "yellow" | "green" | "teal" | "blue" | "indigo" | "purple" | "pink";
+            /** @description Deactivated tags cannot be ticked on new versions but remain visible on versions that already carry them. */
+            active: boolean;
+            /** @description True when the tag is reconciled from the server configuration (`INSTANCE_TAGS` env / `instance_tags` config key) at startup. Managed tags are read-only via the API — PATCH and DELETE answer 409; change the configuration instead. */
+            managed?: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        InstanceTagList: {
+            items: components["schemas"]["InstanceTag"][];
+        };
+        CreateInstanceTagRequest: {
+            slug: string;
+            name: string;
+            description?: string;
+            /**
+             * @default gray
+             * @enum {string}
+             */
+            color: "gray" | "red" | "orange" | "yellow" | "green" | "teal" | "blue" | "indigo" | "purple" | "pink";
+        };
+        UpdateInstanceTagRequest: {
+            name?: string;
+            description?: string;
+            /** @enum {string} */
+            color?: "gray" | "red" | "orange" | "yellow" | "green" | "teal" | "blue" | "indigo" | "purple" | "pink";
+            active?: boolean;
+        };
         MCPServerLatestVersion: {
             version: string;
             /** @enum {string} */
@@ -1988,6 +2073,8 @@ export interface components {
             };
             /** @description Publisher-declared list of tools this server exposes. */
             tools?: components["schemas"]["MCPTool"][];
+            /** @description Instance-tag slugs ticked on this version. */
+            tags?: string[];
             /** Format: date-time */
             published_at?: string;
         };
@@ -2013,6 +2100,7 @@ export interface components {
             featured: boolean;
             /** @default false */
             verified: boolean;
+            /** @description Instance-tag slugs of the latest published version (tags are ticked per version from the Server-Admin-curated vocabulary; see GET /api/v1/tags). Empty until a version is published. */
             tags?: string[];
             /** @description Long-form README content (Markdown) */
             readme?: string;
@@ -2052,6 +2140,8 @@ export interface components {
             };
             /** @description Publisher-declared list of tools this server exposes. */
             tools?: components["schemas"]["MCPTool"][];
+            /** @description Instance-tag slugs ticked on this version (immutable once published). Resolve display name/color via GET /api/v1/tags. */
+            tags?: string[];
             checksum?: string;
             signature?: string;
             /** @enum {string} */
@@ -2110,6 +2200,8 @@ export interface components {
             tools?: components["schemas"]["MCPTool"][];
             checksum?: string;
             signature?: string;
+            /** @description Instance-tag slugs to tick on this version. Each must be an active tag from GET /api/v1/tags (422 otherwise). Frozen with the version at publish. */
+            tags?: string[];
         };
         AgentSkill: {
             id: string;
@@ -2126,6 +2218,8 @@ export interface components {
             default_output_modes?: string[];
             authentication?: Record<string, never>[];
             protocol_version?: string;
+            /** @description Instance-tag slugs ticked on this version. */
+            tags?: string[];
             /** Format: date-time */
             published_at?: string;
         };
@@ -2148,6 +2242,7 @@ export interface components {
             featured: boolean;
             /** @default false */
             verified: boolean;
+            /** @description Instance-tag slugs of the latest published version (tags are ticked per version from the Server-Admin-curated vocabulary; see GET /api/v1/tags). Empty until a version is published. */
             tags?: string[];
             /** @description Long-form README content (Markdown) */
             readme?: string;
@@ -2186,6 +2281,8 @@ export interface components {
             documentation_url?: string;
             icon_url?: string;
             protocol_version?: string;
+            /** @description Instance-tag slugs ticked on this version (immutable once published). Resolve display name/color via GET /api/v1/tags. */
+            tags?: string[];
             /** @enum {string} */
             status: "active" | "deprecated" | "deleted";
             status_message?: string;
@@ -2231,6 +2328,8 @@ export interface components {
             documentation_url?: string;
             icon_url?: string;
             protocol_version?: string;
+            /** @description Instance-tag slugs to tick on this version. Each must be an active tag from GET /api/v1/tags (422 otherwise). Frozen with the version at publish. */
+            tags?: string[];
         };
         PatchVersionStatusRequest: {
             /** @enum {string} */
@@ -3608,6 +3707,109 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listInstanceTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tag vocabulary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceTagList"];
+                };
+            };
+        };
+    };
+    createInstanceTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInstanceTagRequest"];
+            };
+        };
+        responses: {
+            /** @description Tag created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceTag"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    deleteInstanceTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tag deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateInstanceTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInstanceTagRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceTag"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
     listMCPServers: {
         parameters: {
             query?: {
@@ -3631,7 +3833,7 @@ export interface operations {
                 sort?: "created_at_desc" | "updated_at_desc" | "published_at_desc" | "name_asc" | "name_desc";
                 /** @description Filter by featured status */
                 featured?: boolean;
-                /** @description Filter by tag (exact match, single tag) */
+                /** @description Filter by instance-tag slug carried by the latest published version (exact match, single tag) */
                 tag?: string;
                 /** @description Filter to entries whose latest version was published after this ISO 8601 date-time (e.g. 2025-01-01T00:00:00Z) */
                 published_since?: string;
@@ -4486,7 +4688,7 @@ export interface operations {
                 sort?: "created_at_desc" | "updated_at_desc" | "published_at_desc" | "name_asc" | "name_desc";
                 /** @description Filter by featured status */
                 featured?: boolean;
-                /** @description Filter by tag (exact match, single tag) */
+                /** @description Filter by instance-tag slug carried by the latest published version (exact match, single tag) */
                 tag?: string;
                 /** @description Filter to entries whose latest version was published after this ISO 8601 date-time (e.g. 2025-01-01T00:00:00Z) */
                 published_since?: string;

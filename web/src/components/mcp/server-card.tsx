@@ -4,7 +4,9 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge, StatusBadge, VerifiedBadge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/copy-button'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
+import { TagBadge } from '@/components/ui/tag-badge'
 import { formatCount, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
+import { indexInstanceTags, useInstanceTags } from '@/lib/use-instance-tags'
 import type { components } from '@/lib/schema'
 
 type MCPServer = components['schemas']['MCPServer']
@@ -16,6 +18,8 @@ interface ServerCardProps {
 export function ServerCard({ server }: ServerCardProps) {
   const lv = server.latest_version
   const to = `/mcp/${server.namespace}/${server.slug}`
+  const { data: tagData } = useInstanceTags()
+  const tagIndex = indexInstanceTags(tagData?.items)
 
   // Show at most one ecosystem badge to avoid visual noise
   const ecosystem = lv?.packages?.[0] ? ecosystemLabel(lv.packages[0].registryType) : null
@@ -68,7 +72,7 @@ export function ServerCard({ server }: ServerCardProps) {
           /{server.slug}
         </div>
 
-        {/* Runtime + one ecosystem chip */}
+        {/* Runtime + one ecosystem chip + instance tags of the latest version */}
         {lv && (
           <div className="flex flex-wrap gap-1 pt-1">
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
@@ -79,6 +83,9 @@ export function ServerCard({ server }: ServerCardProps) {
                 {ecosystem}
               </Badge>
             )}
+            {(server.tags ?? []).map((slug) => (
+              <TagBadge key={slug} slug={slug} tag={tagIndex.get(slug)} className="text-[10px] px-1.5 py-0" />
+            ))}
           </div>
         )}
 

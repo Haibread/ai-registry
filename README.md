@@ -22,6 +22,7 @@ A single place to publish, discover, and evaluate AI ecosystem building blocks. 
 - Browse, search, filter, and inspect MCP servers by namespace, runtime (stdio / http / sse), ecosystem (npm / pypi / oci / …), verification status, and tags.
 - First-class `tools[]` field per version — the publisher-declared tool list, distinct from the MCP spec's `capabilities.tools` negotiation flag. Tool cards render name, description, input schema, and annotations on the detail page.
 - View/copy counters, freshness indicators, report-entry workflow.
+- **Instance-wide tags** — Server Admins curate a registry-wide tag vocabulary (`GET /api/v1/tags`, managed on `/admin/tags`: slug, display name, description, badge color, active flag). Publishers tick tags from it when creating a version (validated server-side, frozen with the published version); entries surface their latest published version's tags as colored chips and the catalog filters on `?tag=`. In-use tags are deactivated rather than deleted, so frozen versions keep resolving. The vocabulary can also be defined declaratively (`instance_tags` config key / `INSTANCE_TAGS` env JSON / Helm `api.instanceTags`): config-listed tags are reconciled on startup and become read-only in the UI/API until removed from the configuration.
 
 ### Agent Registry
 

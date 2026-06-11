@@ -85,6 +85,7 @@ type MCPServerVersion struct {
 	Remotes         json.RawMessage `json:"remotes,omitempty"`      // MCP remotes array (hosted endpoints)
 	Capabilities    json.RawMessage `json:"capabilities,omitempty"` // MCP capabilities object (capability-negotiation flags)
 	Tools           json.RawMessage `json:"tools,omitempty"`        // []MCPTool — publisher-declared tool list
+	Tags            []string        `json:"tags"`                   // instance-tag slugs ticked on this version
 	ProtocolVersion string          `json:"protocol_version"`
 	Checksum        string          `json:"checksum,omitempty"`
 	Signature       string          `json:"signature,omitempty"`

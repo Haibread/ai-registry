@@ -22,7 +22,9 @@ import { authFetch } from '@/auth/tokens'
 import { problemMessage } from '@/lib/utils'
 import { SlugField } from '@/components/admin/slug-field'
 import { ToolsEditor } from '@/components/admin/tools-editor'
+import { InstanceTagPicker } from '@/components/admin/instance-tag-picker'
 import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
+import { collectInstanceTags } from '@/lib/use-instance-tags'
 
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'stdio (local process)' },
@@ -148,6 +150,8 @@ export default function AdminMCPNew() {
         }
       }
 
+      const instanceTags = collectInstanceTags(formData)
+
       const versionRes = await authFetch(`/api/v1/mcp/servers/${ns}/${slug}/versions`, {
         method: 'POST',
         headers: {
@@ -160,6 +164,7 @@ export default function AdminMCPNew() {
           ...(packages.length > 0 ? { packages } : {}),
           ...(remotes.length > 0 ? { remotes } : {}),
           ...(tools !== undefined ? { tools } : {}),
+          ...(instanceTags.length > 0 ? { tags: instanceTags } : {}),
         }),
       })
       if (!versionRes.ok) {
@@ -346,6 +351,8 @@ export default function AdminMCPNew() {
                 />
               </div>
             </div>
+
+            <InstanceTagPicker />
 
             <div className="space-y-1.5">
               <Label htmlFor="runtime-select">

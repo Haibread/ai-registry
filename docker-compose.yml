@@ -122,6 +122,9 @@ services:
       # Mount the example bootstrap file and enable it automatically. Remove or
       # override BOOTSTRAP_FILE in .env to disable.
       BOOTSTRAP_FILE: ${BOOTSTRAP_FILE:-/etc/ai-registry/bootstrap.yaml}
+      # Config-managed instance tags (JSON array; see deploy/config.example.yaml).
+      # Empty → the vocabulary is curated solely through the admin UI.
+      INSTANCE_TAGS: ${INSTANCE_TAGS:-}
     volumes:
       - ./deploy/bootstrap.example.yaml:/etc/ai-registry/bootstrap.yaml:ro
     ports:

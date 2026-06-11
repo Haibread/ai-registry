@@ -20,6 +20,8 @@ tags:
     description: MCP server registry (v1)
   - name: agents
     description: AI agent registry (v1)
+  - name: tags
+    description: Instance-wide tag vocabulary (curated by Server Admins)
   - name: audit
     description: Audit log (admin only)
 
@@ -928,6 +930,126 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── Instance tags ──────────────────────────────────────────────────────────
+
+  /api/v1/tags:
+    get:
+      operationId: listInstanceTags
+      summary: List the instance-wide tag vocabulary
+      description: >
+        Returns the full vocabulary, active and deactivated tags alike (each
+        carries an `active` flag). Deactivated tags cannot be ticked on new
+        versions but remain visible on versions that already carry them, so
+        clients need the whole list to resolve display names and colors;
+        pickers should offer only `active` tags.
+      tags: [tags]
+      responses:
+        "200":
+          description: Tag vocabulary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceTagList"
+    post:
+      operationId: createInstanceTag
+      summary: Define a new instance tag (Server Admin)
+      tags: [tags]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInstanceTagRequest"
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceTag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/tags/{slug}:
+    patch:
+      operationId: updateInstanceTag
+      summary: Update an instance tag (Server Admin)
+      description: >
+        Updates the display fields (`name`, `description`, `color`) or toggles
+        `active`. The slug is the tag's identity on frozen version rows and is
+        immutable. Deactivating a tag hides it from new publishes; versions
+        that already carry it are unaffected. Config-managed tags
+        (`managed: true`) are read-only here — 409.
+      tags: [tags]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInstanceTagRequest"
+      responses:
+        "200":
+          description: Updated tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceTag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteInstanceTag
+      summary: Delete an unused instance tag (Server Admin)
+      description: >
+        Hard-deletes a tag that no version references. A tag carried by any
+        version (published versions are immutable) cannot be deleted — the
+        endpoint returns 409; deactivate it via PATCH instead. Config-managed
+        tags (`managed: true`) also answer 409 — remove them from the server
+        configuration instead.
+      tags: [tags]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Tag deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   # ── MCP Servers ───────────────────────────────────────────────────────────
 
   /api/v1/mcp/servers:
@@ -995,7 +1117,9 @@ paths:
             type: boolean
         - name: tag
           in: query
-          description: Filter by tag (exact match, single tag)
+          description: >-
+            Filter by instance-tag slug carried by the latest published
+            version (exact match, single tag)
           schema:
             type: string
         - name: published_since
@@ -1752,7 +1876,9 @@ paths:
             type: boolean
         - name: tag
           in: query
-          description: Filter by tag (exact match, single tag)
+          description: >-
+            Filter by instance-tag slug carried by the latest published
+            version (exact match, single tag)
           schema:
             type: string
         - name: published_since
@@ -3429,6 +3555,81 @@ components:
           additionalProperties: true
           description: MCP spec tool annotations (e.g. destructive, idempotent)
 
+    InstanceTag:
+      type: object
+      required: [slug, name, active, created_at, updated_at]
+      properties:
+        slug:
+          type: string
+          description: >
+            Immutable identifier, referenced by version `tags` arrays
+            (lowercase letters, digits, and hyphens).
+        name:
+          type: string
+          description: Display name (e.g. "Early Access")
+        description:
+          type: string
+        color:
+          type: string
+          description: UI badge color hint
+          enum: [gray, red, orange, yellow, green, teal, blue, indigo, purple, pink]
+        active:
+          type: boolean
+          description: >
+            Deactivated tags cannot be ticked on new versions but remain
+            visible on versions that already carry them.
+        managed:
+          type: boolean
+          description: >
+            True when the tag is reconciled from the server configuration
+            (`INSTANCE_TAGS` env / `instance_tags` config key) at startup.
+            Managed tags are read-only via the API — PATCH and DELETE answer
+            409; change the configuration instead.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InstanceTagList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InstanceTag"
+
+    CreateInstanceTagRequest:
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z0-9-]+$"
+        name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+          enum: [gray, red, orange, yellow, green, teal, blue, indigo, purple, pink]
+          default: gray
+
+    UpdateInstanceTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+          enum: [gray, red, orange, yellow, green, teal, blue, indigo, purple, pink]
+        active:
+          type: boolean
+
     MCPServerLatestVersion:
       type: object
       required: [version, runtime, protocol_version]
@@ -3460,6 +3661,11 @@ components:
           description: Publisher-declared list of tools this server exposes.
           items:
             $ref: "#/components/schemas/MCPTool"
+        tags:
+          type: array
+          description: Instance-tag slugs ticked on this version.
+          items:
+            type: string
         published_at:
           type: string
           format: date-time
@@ -3512,6 +3718,10 @@ components:
           default: false
         tags:
           type: array
+          description: >
+            Instance-tag slugs of the latest published version (tags are
+            ticked per version from the Server-Admin-curated vocabulary;
+            see GET /api/v1/tags). Empty until a version is published.
           items:
             type: string
         readme:
@@ -3591,6 +3801,13 @@ components:
           description: Publisher-declared list of tools this server exposes.
           items:
             $ref: "#/components/schemas/MCPTool"
+        tags:
+          type: array
+          description: >
+            Instance-tag slugs ticked on this version (immutable once
+            published). Resolve display name/color via GET /api/v1/tags.
+          items:
+            type: string
         checksum:
           type: string
         signature:
@@ -3695,6 +3912,14 @@ components:
           type: string
         signature:
           type: string
+        tags:
+          type: array
+          description: >
+            Instance-tag slugs to tick on this version. Each must be an
+            active tag from GET /api/v1/tags (422 otherwise). Frozen with
+            the version at publish.
+          items:
+            type: string
 
     # ── Agents ──────────────────────────────────────────────────────────────
 
@@ -3743,6 +3968,11 @@ components:
             type: object
         protocol_version:
           type: string
+        tags:
+          type: array
+          description: Instance-tag slugs ticked on this version.
+          items:
+            type: string
         published_at:
           type: string
           format: date-time
@@ -3789,6 +4019,10 @@ components:
           default: false
         tags:
           type: array
+          description: >
+            Instance-tag slugs of the latest published version (tags are
+            ticked per version from the Server-Admin-curated vocabulary;
+            see GET /api/v1/tags). Empty until a version is published.
           items:
             type: string
         readme:
@@ -3869,6 +4103,13 @@ components:
           type: string
         protocol_version:
           type: string
+        tags:
+          type: array
+          description: >
+            Instance-tag slugs ticked on this version (immutable once
+            published). Resolve display name/color via GET /api/v1/tags.
+          items:
+            type: string
         status:
           type: string
           # AgentVersion lifecycle mirrors MCPServerVersion: a version
@@ -3964,6 +4205,14 @@ components:
           type: string
         protocol_version:
           type: string
+        tags:
+          type: array
+          description: >
+            Instance-tag slugs to tick on this version. Each must be an
+            active tag from GET /api/v1/tags (422 otherwise). Frozen with
+            the version at publish.
+          items:
+            type: string
 
     PatchVersionStatusRequest:
       type: object

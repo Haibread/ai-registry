@@ -52,6 +52,22 @@ log:
 # this YAML key and the BOOTSTRAP_FILE env var.
 bootstrap_file: ""
 
+# Config-managed portion of the instance-wide tag vocabulary, reconciled into
+# the database on every startup. Listed tags are created or updated and are
+# read-only in the admin UI/API while listed here; removing an entry releases
+# the tag to admin-UI ownership (it is never deleted — published versions may
+# carry it). Per entry: `slug` (immutable identity), `name` (display name),
+# optional `description`, optional `color` (gray, red, orange, yellow, green,
+# teal, blue, indigo, purple, pink; default gray), optional `active`
+# (default true). Env equivalent: INSTANCE_TAGS, a JSON array of the same
+# objects. Default: empty (the vocabulary is curated solely via the admin UI).
+# instance_tags:
+#   - slug: free
+#     name: Free
+#     description: No cost to use
+#     color: green
+instance_tags: []
+
 auth:
   # [REQUIRED] OIDC issuer URL (must match `iss` claim in JWTs).
   oidc_issuer: ""

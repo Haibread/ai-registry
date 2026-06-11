@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ResourceIcon } from '@/components/ui/resource-icon'
 import { Button } from '@/components/ui/button'
 import { getPublicClient } from '@/lib/api-client'
+import { useInstanceTags } from '@/lib/use-instance-tags'
 
 export default function MCPListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -19,18 +20,20 @@ export default function MCPListPage() {
   const status = searchParams.get('status') ?? undefined
   const transport = searchParams.get('transport') ?? undefined
   const registryType = searchParams.get('registry_type') ?? undefined
+  const tag = searchParams.get('tag') ?? undefined
   const sort = searchParams.get('sort') ?? undefined
 
   const api = getPublicClient()
   const { data, isLoading } = useQuery({
-    queryKey: ['mcp-servers', { q, cursor, namespace, status, transport, registry_type: registryType, sort }],
+    queryKey: ['mcp-servers', { q, cursor, namespace, status, transport, registry_type: registryType, tag, sort }],
     queryFn: () => api.GET('/api/v1/mcp/servers', {
-      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined, transport: transport as 'stdio' | 'sse' | 'streamable_http' | undefined, registry_type: registryType, sort: sort as 'created_at_desc' | 'updated_at_desc' | 'name_asc' | 'name_desc' | undefined } },
+      params: { query: { q, cursor, limit: 20, namespace, status: status as 'draft' | 'published' | 'deprecated' | undefined, transport: transport as 'stdio' | 'sse' | 'streamable_http' | undefined, registry_type: registryType, tag, sort: sort as 'created_at_desc' | 'updated_at_desc' | 'name_asc' | 'name_desc' | undefined } },
     }).then(r => r.data),
   })
+  const { data: tagData } = useInstanceTags()
 
   const servers = data?.items ?? []
-  const hasFilters = !!(q || namespace || status || transport || registryType || sort)
+  const hasFilters = !!(q || namespace || status || transport || registryType || tag || sort)
 
   const buildNextParams = () => {
     const p = new URLSearchParams(searchParams)
@@ -63,6 +66,7 @@ export default function MCPListPage() {
               searchPlaceholder="Search servers…"
               transportOptions={['stdio', 'sse', 'streamable_http']}
               registryTypeOptions={['npm', 'pypi', 'docker', 'cargo', 'go']}
+              tagOptions={(tagData?.items ?? []).map((t) => ({ value: t.slug, label: t.name }))}
               sortOptions={[
                 { value: '', label: 'Newest first' },
                 { value: 'updated_at_desc', label: 'Recently updated' },

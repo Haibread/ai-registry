@@ -117,6 +117,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	groupH := handlers.NewGroupHandlers(deps.DB, deps.DB)
 	userH := handlers.NewUserHandlers(deps.DB, deps.DB)
 	grantH := handlers.NewGrantHandlers(deps.DB, deps.DB)
+	tagH := handlers.NewTagHandlers(deps.DB, deps.DB)
 	meH := handlers.NewMeHandlers(deps.DB)
 
 	// resolvePublisherSlug maps the {slug} path param to a publisher id for
@@ -257,6 +258,18 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		// per-publisher Reviewer sees only the publishers they review, anyone
 		// else gets 403) and filters results per-publisher.
 		r.Get("/review-queue", revH.ListReviewQueue)
+
+		// Instance-wide tag vocabulary. Reads are public — the publish forms
+		// and the catalog tag filter need the list without a session — while
+		// curation (create / update / delete) is Server-Admin-only. Publishers
+		// tick tags on their versions through the version-create endpoints,
+		// which validate the slugs against this vocabulary.
+		r.Route("/tags", func(r chi.Router) {
+			r.With(publicRL).Get("/", tagH.List)
+			r.With(auth.RequireAdmin).Post("/", tagH.Create)
+			r.With(auth.RequireAdmin).Patch("/{slug}", tagH.Update)
+			r.With(auth.RequireAdmin).Delete("/{slug}", tagH.Delete)
+		})
 
 		// Publishers
 		r.Route("/publishers", func(r chi.Router) {

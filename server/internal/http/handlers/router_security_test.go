@@ -89,6 +89,9 @@ func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 		{http.MethodGet, "/api/v1/stats"},
 		{http.MethodGet, "/api/v1/audit"},
 		{http.MethodGet, "/api/v1/users/some-id/grants"},
+		{http.MethodPost, "/api/v1/tags"},
+		{http.MethodPatch, "/api/v1/tags/some-tag"},
+		{http.MethodDelete, "/api/v1/tags/some-tag"},
 	}
 
 	for _, route := range routes {
