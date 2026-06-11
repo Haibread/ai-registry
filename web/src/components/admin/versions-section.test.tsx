@@ -50,15 +50,22 @@ vi.mock('@/auth/useMe', () => ({
 
 import { VersionsSection } from './versions-section'
 
-function renderSection(kind: 'mcp' | 'agent' = 'mcp') {
+function renderSection(kind: 'mcp' | 'agent' = 'mcp', entryVisibility: 'public' | 'private' = 'private') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <VersionsSection kind={kind} namespace="acme" slug="weather" />
+        <VersionsSection kind={kind} namespace="acme" slug="weather" entryVisibility={entryVisibility} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+// Click through the submit confirmation (submit is no longer one bare click —
+// the dialog hosts the author's public-release request).
+function confirmSubmitDialog() {
+  const dialog = document.querySelector('dialog')!
+  fireEvent.click(within(dialog).getByRole('button', { name: /^submit for review$/i }))
 }
 
 const draftV1 = {
@@ -137,26 +144,65 @@ describe('VersionsSection', () => {
     expect(await screen.findByText(/missing docs/i)).toBeInTheDocument()
   })
 
-  it('Submit on a draft posts to the typed mcp submit endpoint', async () => {
+  it('Submit on a draft confirms first, then posts to the typed mcp submit endpoint', async () => {
     renderSection('mcp')
     const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
     fireEvent.click(submitButtons[0])
+    // One click must not submit — the dialog names the entry + version.
+    expect(mockPOST).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: /submit acme\/weather v1\.0\.0 for review\?/i })).toBeInTheDocument()
+    confirmSubmitDialog()
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/submit',
-        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } } },
+        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } }, body: undefined },
       )
     })
+  })
+
+  it('the submit dialog carries the public-release request on a private entry', async () => {
+    renderSection('mcp', 'private')
+    const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
+    fireEvent.click(submitButtons[0])
+    const checkbox = screen.getByLabelText(/also request making this entry public/i)
+    fireEvent.click(checkbox)
+    confirmSubmitDialog()
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/submit',
+        {
+          params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } },
+          body: { request_public: true },
+        },
+      )
+    })
+  })
+
+  it('offers no public-release request on an already-public entry', async () => {
+    renderSection('mcp', 'public')
+    const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
+    fireEvent.click(submitButtons[0])
+    expect(screen.getByRole('heading', { name: /submit acme\/weather v1\.0\.0 for review\?/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/also request making this entry public/i)).not.toBeInTheDocument()
+  })
+
+  it('flags a pending submission that requested a public release', async () => {
+    mockGET.mockResolvedValue({
+      data: { items: [{ ...pendingV2, request_public: true }] },
+    })
+    renderSection('mcp')
+    expect(await screen.findByText(/public on approval/i)).toBeInTheDocument()
   })
 
   it('Resubmit on a rejected version posts to submit (clears reason on the server)', async () => {
     renderSection('mcp')
     const resubmitButton = await screen.findByRole('button', { name: /^resubmit$/i })
     fireEvent.click(resubmitButton)
+    confirmSubmitDialog()
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/submit',
-        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.2.0' } } },
+        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.2.0' } }, body: undefined },
       )
     })
   })
@@ -177,10 +223,11 @@ describe('VersionsSection', () => {
     renderSection('agent')
     const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
     fireEvent.click(submitButtons[0])
+    confirmSubmitDialog()
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/agents/{namespace}/{slug}/versions/{version}/submit',
-        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } } },
+        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } }, body: undefined },
       )
     })
   })
@@ -236,6 +283,7 @@ describe('VersionsSection', () => {
     renderSection('mcp')
     const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
     fireEvent.click(submitButtons[0])
+    confirmSubmitDialog()
     expect(
       await screen.findByText(/edited since this page loaded/i),
     ).toBeInTheDocument()

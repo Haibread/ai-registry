@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { GitPullRequestArrow, CheckCircle2, AlertCircle, Send, Undo2, Plus, Rocket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { TableSkeleton } from '@/components/ui/table-skeleton'
@@ -28,6 +30,10 @@ interface VersionsSectionProps {
    *  versions "published" in the domain model — annotate so the two badges
    *  don't read as a contradiction (J4). */
   entryStatus?: 'draft' | 'published' | 'deprecated' | 'deleted'
+  /** Visibility of the owning entry. When private, the submit dialog offers
+   *  the author-side release intent: "also make this entry public when
+   *  approved" (request_public). */
+  entryVisibility?: 'public' | 'private'
 }
 
 // review_state → badge variant + label.
@@ -63,7 +69,7 @@ function friendlyProblem(error: unknown, fallback: string): string {
   return e.detail ?? fallback
 }
 
-export function VersionsSection({ kind, namespace, slug, entryStatus }: VersionsSectionProps) {
+export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisibility }: VersionsSectionProps) {
   const perms = usePermissions()
   // Submit/withdraw are publisher Editor actions. Approve/reject of a submitted
   // version live on the review queue; the direct Publish below is the Reviewer's
@@ -77,6 +83,10 @@ export function VersionsSection({ kind, namespace, slug, entryStatus }: Versions
   // Version awaiting publish confirmation; `pending` selects the verb
   // ("Approve & publish" for a pending_review row, "Publish" for a draft).
   const [publishTarget, setPublishTarget] = useState<{ version: string; pending: boolean } | null>(null)
+  // Version awaiting submit confirmation, plus the author's release intent
+  // for it (the "also make this entry public when approved" checkbox).
+  const [submitTarget, setSubmitTarget] = useState<string | null>(null)
+  const [requestPublic, setRequestPublic] = useState(false)
 
   const queryKey = ['admin-versions', kind, namespace, slug]
   // The resource detail page caches the entry (incl. latest_version); refresh
@@ -107,25 +117,31 @@ export function VersionsSection({ kind, namespace, slug, entryStatus }: Versions
   // ── Submit / withdraw mutations (publisher actions) ────────────────────
 
   const submitMutation = useMutation({
-    mutationFn: async (version: string) => {
+    mutationFn: async ({ version, makePublic }: { version: string; makePublic: boolean }) => {
       setActionError(null)
       // openapi-fetch's POST is string-literal-typed per path; the two
-      // branches are structurally identical (no body, same params).
+      // branches are structurally identical (same params, same optional
+      // body carrying the author's release intent).
+      const body = makePublic ? { request_public: true } : undefined
       const result =
         kind === 'mcp'
           ? await api.POST(
               '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/submit',
-              { params: { path: { namespace, slug, version } } },
+              { params: { path: { namespace, slug, version } }, body },
             )
           : await api.POST(
               '/api/v1/agents/{namespace}/{slug}/versions/{version}/submit',
-              { params: { path: { namespace, slug, version } } },
+              { params: { path: { namespace, slug, version } }, body },
             )
       if (result.error) throw new Error(friendlyProblem(result.error, 'Submit failed.'))
-      return version
+      return { version, makePublic }
     },
-    onSuccess: (version) => {
-      toast.success(`v${version} sent for review`)
+    onSuccess: ({ version, makePublic }) => {
+      toast.success(
+        makePublic
+          ? `v${version} sent for review — approval also makes the entry public`
+          : `v${version} sent for review`,
+      )
       invalidate()
       queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
     },
@@ -292,6 +308,15 @@ export function VersionsSection({ kind, namespace, slug, entryStatus }: Versions
                         (entry deprecated)
                       </span>
                     )}
+                    {isPending && v.request_public && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs whitespace-nowrap"
+                        title="The submitter asked for this entry to be made public when the version is approved"
+                      >
+                        public on approval
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm">
                     {v.submitted_at ? (
@@ -339,7 +364,10 @@ export function VersionsSection({ kind, namespace, slug, entryStatus }: Versions
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => submitMutation.mutate(v.version)}
+                          onClick={() => {
+                            setRequestPublic(false)
+                            setSubmitTarget(v.version)
+                          }}
                           disabled={submitMutation.isPending || withdrawMutation.isPending}
                         >
                           <Send className="h-4 w-4" />
@@ -379,6 +407,47 @@ export function VersionsSection({ kind, namespace, slug, entryStatus }: Versions
             })}
           </TableBody>
         </Table>
+      )}
+
+      {submitTarget && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => { if (!o) setSubmitTarget(null) }}
+          title={`Submit ${namespace}/${slug} v${submitTarget} for review?`}
+          description={
+            <span className="block space-y-2">
+              <span className="block">
+                A reviewer approves or rejects it before it&apos;s published.
+              </span>
+              {/* The release intent belongs to the author, declared at submit
+                  time — not a decision dropped on the reviewer (J1). Only
+                  meaningful while the entry is private. */}
+              {entryVisibility === 'private' && (
+                <span className="flex items-start gap-2">
+                  <Checkbox
+                    id="request-public"
+                    checked={requestPublic}
+                    onChange={(e) => setRequestPublic(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor="request-public" className="cursor-pointer font-normal leading-snug">
+                    Also request making this entry public when approved
+                    <span className="block text-xs text-muted-foreground mt-0.5">
+                      The entry is private — without this, the approved version
+                      stays visible to members only.
+                    </span>
+                  </Label>
+                </span>
+              )}
+            </span>
+          }
+          confirmLabel="Submit for review"
+          isPending={submitMutation.isPending}
+          onConfirm={() => {
+            submitMutation.mutate({ version: submitTarget, makePublic: requestPublic })
+            setSubmitTarget(null)
+          }}
+        />
       )}
 
       {publishTarget && (

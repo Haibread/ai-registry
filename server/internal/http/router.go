@@ -240,6 +240,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 			r.With(auth.RequireAdmin).Get("/", userH.ListUsers)
 			r.With(auth.RequireAdmin).Post("/", userH.CreateUser)
 			r.With(auth.RequireAdmin).Get("/{id}", userH.GetUser)
+			r.With(auth.RequireAdmin).Get("/{id}/grants", userH.GetUserGrants)
 			r.With(auth.RequireAdmin).Patch("/{id}", userH.PatchUser)
 			r.Post("/{id}/set-password", userH.SetPassword)
 		})

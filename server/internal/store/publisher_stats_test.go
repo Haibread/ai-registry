@@ -71,7 +71,7 @@ func TestGetPublisherStats(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
 	}
-	if err := sharedDB.SubmitMCPVersion(ctx, draftSrv.ID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, draftSrv.ID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("SubmitMCPVersion: %v", err)
 	}
 

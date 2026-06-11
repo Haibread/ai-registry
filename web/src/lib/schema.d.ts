@@ -416,6 +416,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{id}/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a user's effective role grants (Server Admin)
+         * @description Aggregates every role grant contributing to a user's access — grants attached directly to the user plus grants inherited from groups the user is a local member of. Grants bound to IdP claim groups are matched per-request from the sign-in token and are NOT included; a federated user may hold additional roles when their token names a group slug.
+         */
+        get: operations["getUserGrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/grants": {
         parameters: {
             query?: never;
@@ -800,7 +820,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an MCP server version for review */
+        /**
+         * Submit an MCP server version for review
+         * @description The optional body carries the author's release intent: with `request_public: true`, approving this submission also flips the owning entry's visibility to public (atomically with the approval). Withdrawing the submission drops the request; a resubmission states it afresh.
+         */
         post: operations["submitMCPVersion"];
         delete?: never;
         options?: never;
@@ -834,7 +857,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending MCP server version (reviewer) */
+        /**
+         * Approve a pending MCP server version (reviewer)
+         * @description Publishes the version. When the submission carried `request_public: true`, the owning entry's visibility flips to public in the same transaction.
+         */
         post: operations["approveMCPVersion"];
         delete?: never;
         options?: never;
@@ -1190,7 +1216,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an agent version for review */
+        /**
+         * Submit an agent version for review
+         * @description The optional body carries the author's release intent: with `request_public: true`, approving this submission also flips the owning entry's visibility to public (atomically with the approval). Withdrawing the submission drops the request; a resubmission states it afresh.
+         */
         post: operations["submitAgentVersion"];
         delete?: never;
         options?: never;
@@ -1224,7 +1253,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending agent version (reviewer) */
+        /**
+         * Approve a pending agent version (reviewer)
+         * @description Publishes the version. When the submission carried `request_public: true`, the owning entry's visibility flips to public in the same transaction.
+         */
         post: operations["approveAgentVersion"];
         delete?: never;
         options?: never;
@@ -1662,6 +1694,30 @@ export interface components {
             /** @enum {string} */
             role: "viewer" | "editor" | "reviewer" | "admin";
         };
+        /** @description One role grant contributing to a user's access. `via: direct` is a grant attached to the user; `via: group` is inherited from a group the user is a local member of (the group fields identify it). Publisher fields are empty for a global (all-publishers) grant. */
+        UserAccessGrant: {
+            id: string;
+            /** @enum {string} */
+            role: "viewer" | "editor" | "reviewer" | "admin";
+            /** @description Empty for a global (all-publishers) grant. */
+            publisher_id?: string;
+            publisher_slug?: string;
+            publisher_name?: string;
+            /** @enum {string} */
+            source: "api" | "config";
+            /** @enum {string} */
+            via: "direct" | "group";
+            group_id?: string;
+            group_slug?: string;
+            group_name?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description A user's effective access — the Server Admin flag plus every role grant held directly or through local group membership. Roles a federated user gains from IdP claim groups at sign-in are not listed. */
+        UserAccess: {
+            is_server_admin: boolean;
+            items: components["schemas"]["UserAccessGrant"][];
+        };
         /** @description An effective role grant held by the caller. Per-publisher grants carry the publisher slug/name; a global (all-publishers) grant leaves the publisher fields empty. */
         MeGrant: {
             /** @enum {string} */
@@ -1760,6 +1816,11 @@ export interface components {
             next_cursor?: string;
             total_count?: number;
         };
+        /** @description Optional submit-for-review body. Omitting the body (or the field) means no public-release request. */
+        SubmitVersionRequest: {
+            /** @description Ask for the owning entry to be made public when this submission is approved. Ignored (no-op) if the entry is already public by approval time. */
+            request_public?: boolean;
+        };
         ApproveRequest: {
             /**
              * @description Revision the reviewer last loaded. The server compares this
@@ -1829,6 +1890,11 @@ export interface components {
              *     concurrency token passed back on approve/reject).
              */
             revision?: number;
+            /**
+             * @description Present on `*_version` items only — the author asked for the
+             *     entry to be made public when this submission is approved.
+             */
+            request_public?: boolean;
             /** Format: date-time */
             submitted_at: string;
             /** @description JWT subject of the submitter (UUID). */
@@ -2007,6 +2073,8 @@ export interface components {
             review_decision?: "approved" | "rejected";
             /** @description Free-text reason persisted on the rejected version row. */
             rejection_reason?: string;
+            /** @description Author's release intent for the in-flight submission — approval also makes the owning entry public. Set on submit, cleared on withdraw. */
+            request_public?: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2124,6 +2192,8 @@ export interface components {
             /** @enum {string} */
             review_decision?: "approved" | "rejected";
             rejection_reason?: string;
+            /** @description Author's release intent for the in-flight submission — approval also makes the owning entry public. Set on submit, cleared on withdraw. */
+            request_public?: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3133,6 +3203,31 @@ export interface operations {
             422: components["responses"]["ValidationError"];
         };
     };
+    getUserGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user's effective grants */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAccess"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listGlobalGrants: {
         parameters: {
             query?: never;
@@ -3964,7 +4059,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubmitVersionRequest"];
+            };
+        };
         responses: {
             /** @description submitted */
             204: {
@@ -4812,7 +4911,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubmitVersionRequest"];
+            };
+        };
         responses: {
             /** @description submitted */
             204: {

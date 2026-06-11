@@ -48,6 +48,13 @@ export async function apiGet(page: Page, path: string): Promise<APIResponse> {
   return page.request.get(path, { headers: await authHeaders(page) })
 }
 
+export async function apiPut(page: Page, path: string, data: unknown): Promise<APIResponse> {
+  return page.request.put(path, {
+    headers: await authHeaders(page, { 'Content-Type': 'application/json' }),
+    data,
+  })
+}
+
 export async function apiPatch(page: Page, path: string, data: unknown): Promise<APIResponse> {
   return page.request.patch(path, {
     headers: await authHeaders(page, { 'Content-Type': 'application/json' }),

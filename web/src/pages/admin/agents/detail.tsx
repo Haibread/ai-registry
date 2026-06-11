@@ -498,7 +498,7 @@ export default function AdminAgentDetail() {
       <Separator />
 
       <div id="versions-section">
-        <VersionsSection kind="agent" namespace={data.namespace} slug={data.slug} entryStatus={data.status} />
+        <VersionsSection kind="agent" namespace={data.namespace} slug={data.slug} entryStatus={data.status} entryVisibility={data.visibility} />
       </div>
 
       <Separator />

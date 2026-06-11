@@ -130,6 +130,34 @@ func (h *UserHandlers) GetUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, u)
 }
 
+// GetUserGrants: GET /api/v1/users/{id}/grants — the user's effective access:
+// direct grants ∪ grants via local group membership, plus the Server Admin
+// flag. Roles a federated user gains from IdP claim groups at sign-in are
+// resolved per-request and cannot be listed here.
+func (h *UserHandlers) GetUserGrants(w http.ResponseWriter, r *http.Request) {
+	u, err := h.db.GetUserByID(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found", "user does not exist", r.URL.Path)
+		return
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	grants, err := h.db.ListUserAccess(r.Context(), u.ID)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	if grants == nil {
+		grants = []store.UserAccessGrant{}
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"is_server_admin": u.IsServerAdmin,
+		"items":           grants,
+	})
+}
+
 // PatchUser: PATCH /api/v1/users/{id} — display name, disabled, is_server_admin.
 func (h *UserHandlers) PatchUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

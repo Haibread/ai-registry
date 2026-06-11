@@ -71,6 +71,7 @@ test.describe('Admin review UI', () => {
     const row = page.locator('tr', { hasText: VER1 })
     await expect(row).toBeVisible()
     await row.getByRole('button', { name: /^submit$/i }).click()
+    await confirmDialog(page, /^submit for review$/i)
 
     // After submit, the row's state badge flips to "pending review" and
     // the action button becomes Withdraw.
@@ -122,6 +123,7 @@ test.describe('Admin review UI', () => {
     await page.goto(`/admin/mcp/${PUB}/${MCP}`)
     const detailRow = page.locator('tr', { hasText: VER1 })
     await detailRow.getByRole('button', { name: /^resubmit$/i }).click()
+    await confirmDialog(page, /^submit for review$/i)
     await expect(detailRow.getByText(/pending review/i)).toBeVisible({ timeout: 10_000 })
 
     await page.goto('/admin/review')

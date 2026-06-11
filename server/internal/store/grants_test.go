@@ -313,6 +313,80 @@ func TestListGrantsForPrincipal(t *testing.T) {
 	}
 }
 
+// TestListUserAccess verifies the per-user access aggregate: direct grants and
+// grants inherited via local group membership are returned with their display
+// enrichment, while grants on groups the user is NOT a local member of (claim
+// groups) and other users' grants stay out.
+func TestListUserAccess(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+
+	pubA := insertPublisher(t, "acme", "Acme Corp")
+
+	user, err := sharedDB.CreateUser(ctx, store.CreateUserParams{Email: "dev@acme.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	other, err := sharedDB.CreateUser(ctx, store.CreateUserParams{Email: "other@acme.test"})
+	if err != nil {
+		t.Fatalf("CreateUser other: %v", err)
+	}
+	editors, err := sharedDB.CreateGroup(ctx, store.CreateGroupParams{Slug: "acme-editors", Name: "Acme Editors"})
+	if err != nil {
+		t.Fatalf("CreateGroup editors: %v", err)
+	}
+	claimOnly, err := sharedDB.CreateGroup(ctx, store.CreateGroupParams{Slug: "claim-reviewers", Name: "Claim Reviewers"})
+	if err != nil {
+		t.Fatalf("CreateGroup claimOnly: %v", err)
+	}
+	if err := sharedDB.AddGroupMember(ctx, editors.ID, user.ID); err != nil {
+		t.Fatalf("AddGroupMember: %v", err)
+	}
+
+	// In scope: a direct per-publisher grant, a direct global grant, and a
+	// group grant via local membership.
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalUser, PrincipalID: user.ID, PublisherID: pubA, Role: domain.RoleViewer})
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalUser, PrincipalID: user.ID, Role: domain.RoleReviewer, Source: domain.GrantSourceConfig})
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalGroup, PrincipalID: editors.ID, PublisherID: pubA, Role: domain.RoleEditor})
+	// Out of scope: a claim-only group's grant and another user's grant.
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalGroup, PrincipalID: claimOnly.ID, PublisherID: pubA, Role: domain.RoleAdmin})
+	mustGrant(t, store.CreateGrantParams{PrincipalType: domain.PrincipalUser, PrincipalID: other.ID, PublisherID: pubA, Role: domain.RoleAdmin})
+
+	grants, err := sharedDB.ListUserAccess(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("ListUserAccess: %v", err)
+	}
+	if len(grants) != 3 {
+		t.Fatalf("got %d grants, want 3: %+v", len(grants), grants)
+	}
+
+	var sawDirect, sawGlobal, sawViaGroup bool
+	for _, g := range grants {
+		switch {
+		case g.Via == "direct" && g.PublisherID == pubA:
+			sawDirect = true
+			if g.Role != domain.RoleViewer || g.PublisherSlug != "acme" || g.PublisherName != "Acme Corp" || g.GroupID != "" {
+				t.Errorf("direct grant = %+v, want viewer on acme with no group", g)
+			}
+		case g.Via == "direct" && g.PublisherID == "":
+			sawGlobal = true
+			if g.Role != domain.RoleReviewer || g.Source != domain.GrantSourceConfig || g.PublisherSlug != "" {
+				t.Errorf("global grant = %+v, want config-sourced reviewer with empty publisher", g)
+			}
+		case g.Via == "group":
+			sawViaGroup = true
+			if g.Role != domain.RoleEditor || g.GroupSlug != "acme-editors" || g.GroupName != "Acme Editors" || g.PublisherSlug != "acme" {
+				t.Errorf("group grant = %+v, want editor via acme-editors on acme", g)
+			}
+		default:
+			t.Errorf("unexpected grant: %+v", g)
+		}
+	}
+	if !sawDirect || !sawGlobal || !sawViaGroup {
+		t.Errorf("missing grants: direct=%v global=%v viaGroup=%v", sawDirect, sawGlobal, sawViaGroup)
+	}
+}
+
 // assertStringSet checks got contains exactly the want values, order-independent.
 func assertStringSet(t *testing.T, got []string, want ...string) {
 	t.Helper()

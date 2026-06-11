@@ -617,10 +617,17 @@ everything else → `ErrorState` with retry.
 > Keys nav marked "planned"; `/admin/help/roles` role matrix linked from
 > the grants editor; "rev N" badge explains itself.
 >
-> **Deferred, with reasons:** per-user access view (needs a new
-> grants-by-user API aggregate — API-first); command palette (explicitly
-> backlog in the report); date-format mix kept deliberately (lists short,
-> audit full, activity relative).
+> **Deferred, with reasons:** command palette (explicitly backlog in the
+> report); date-format mix kept deliberately (lists short, audit full,
+> activity relative).
+>
+> ✅ **RESOLVED (2026-06-10, follow-up).** Per-user access view shipped:
+> `GET /api/v1/users/{id}/grants` aggregates direct grants ∪ grants via
+> local group membership (enriched with publisher/group handles), and the
+> admin user detail page renders an "Access" section — role/scope/via
+> table with drill-down links, a Server Admin callout, and an explicit
+> caveat that IdP-claim-derived roles are matched at sign-in and cannot
+> be listed from local state.
 
 ### Component vocabulary
 - Three form-control dialects coexist: Radix `Select` (forms), native `<select>`
@@ -738,6 +745,14 @@ implement; no UI-only features).
    versioned diff, etc. Scope question.
 3. **Reviewer-first review queue.** P2.4 fixes the landing; a deeper investment (filters,
    diffs, batch decisions) is a roadmap question.
+
+> ✅ **RESOLVED (2026-06-10, follow-up): the J1 "approved but invisible" gap.**
+> Owner decision: the release intent belongs to the **author**, not the
+> reviewer. Submit-for-review now takes an optional `request_public` flag
+> ("create and ask for publish") — offered in the submit dialog and create
+> forms while the entry is private. Approval publishes the version and makes
+> the entry public atomically; the queue row and the approve confirm both
+> announce the bigger blast radius; withdraw/reject leave the entry private.
 
 ---
 

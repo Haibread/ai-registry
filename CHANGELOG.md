@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Authors can ask for a public release with their submission.** The
+  submit-for-review endpoints accept an optional `{"request_public": true}`
+  body; approving such a submission publishes the version AND flips the
+  entry's visibility to public in the same transaction (a no-op if it's
+  already public). Withdrawing drops the request; a resubmission states it
+  afresh. In the admin UI the submit dialog and the create forms offer the
+  option on private entries, the pending version row and the review queue
+  show a "public on approval" badge, and the reviewer's approve confirm
+  spells out that the entry goes public.
+
+- **Per-user access view.** New `GET /api/v1/users/{id}/grants` (Server
+  Admin) aggregates every role grant contributing to a user's access —
+  attached directly or inherited through local group membership — enriched
+  with publisher and group handles. The admin user detail page shows it as
+  an "Access" section (role / scope / via, with drill-down links), flags
+  Server Admins, and notes that roles from IdP claim groups are matched at
+  sign-in and aren't listed.
+
 ## v0.4.0-rc7 — 2026-06-10
 
 ### Added

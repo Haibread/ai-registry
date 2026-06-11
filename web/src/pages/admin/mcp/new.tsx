@@ -169,8 +169,17 @@ export default function AdminMCPNew() {
       let warning: string | undefined
       if (formData.get('publish') === 'on') {
         const action = canReview ? 'publish' : 'submit'
+        // Author-side release intent: the submission carries the request to
+        // make the (private-by-default) entry public on approval.
+        const requestPublic = action === 'submit' && formData.get('request_public') === 'on'
         const res = await authFetch(`/api/v1/mcp/servers/${ns}/${slug}/versions/${version}/${action}`, {
           method: 'POST',
+          ...(requestPublic
+            ? {
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ request_public: true }),
+              }
+            : {}),
         })
         if (!res.ok) {
           const fallback = `Version created, but ${action} failed (HTTP ${res.status}).`
@@ -433,6 +442,25 @@ export default function AdminMCPNew() {
                 <p className="text-xs text-muted-foreground pl-6">
                   A reviewer approves it before it goes live.
                 </p>
+              )}
+              {!canReview && (
+                <div className="pl-6 pt-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="request_public"
+                      name="request_public"
+                      type="checkbox"
+                      className="h-4 w-4 rounded border border-input accent-primary"
+                    />
+                    <Label htmlFor="request_public" className="cursor-pointer font-normal">
+                      Also ask for the entry to be made public when approved
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-6">
+                    New entries start private — without this, the approved
+                    version stays visible to members only.
+                  </p>
+                </div>
               )}
             </div>
           </CardContent>

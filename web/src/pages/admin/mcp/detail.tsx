@@ -461,7 +461,7 @@ export default function AdminMCPDetail() {
       <Separator />
 
       <div id="versions-section">
-        <VersionsSection kind="mcp" namespace={data.namespace} slug={data.slug} entryStatus={data.status} />
+        <VersionsSection kind="mcp" namespace={data.namespace} slug={data.slug} entryStatus={data.status} entryVisibility={data.visibility} />
       </div>
 
       <Separator />

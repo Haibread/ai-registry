@@ -66,7 +66,7 @@ func TestSubmitMCPVersion_DraftToPending(t *testing.T) {
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
 
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 	state, _, _, pa := readReviewState(t, ctx, srvID, "1.0.0")
@@ -83,7 +83,7 @@ func TestSubmitMCPVersion_RejectedToPendingClearsReason(t *testing.T) {
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
 
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	if err := sharedDB.RejectMCPVersion(ctx, srvID, "1.0.0", 1, "needs more docs", reviewer()); err != nil {
@@ -94,7 +94,7 @@ func TestSubmitMCPVersion_RejectedToPendingClearsReason(t *testing.T) {
 	}
 
 	// Re-submit clears the reason and flips back to pending.
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("re-submit: %v", err)
 	}
 	state, _, reason, _ := readReviewState(t, ctx, srvID, "1.0.0")
@@ -110,10 +110,10 @@ func TestSubmitMCPVersion_AlreadyPendingIs409Equivalent(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("first submit: %v", err)
 	}
-	err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor())
+	err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor())
 	if !errors.Is(err, store.ErrReviewStateMismatch) {
 		t.Errorf("err = %v, want ErrReviewStateMismatch", err)
 	}
@@ -133,10 +133,10 @@ func TestSubmitMCPVersion_StackingRejectedByPartialUniqueIndex(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create v1.1.0: %v", err)
 	}
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit v1.0.0: %v", err)
 	}
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.1.0", actor()); !errors.Is(err, store.ErrConflict) {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.1.0", false, actor()); !errors.Is(err, store.ErrConflict) {
 		t.Errorf("expected ErrConflict (stacking pending_review), got %v", err)
 	}
 }
@@ -144,7 +144,7 @@ func TestSubmitMCPVersion_StackingRejectedByPartialUniqueIndex(t *testing.T) {
 func TestSubmitMCPVersion_NotFound(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
-	if err := sharedDB.SubmitMCPVersion(ctx, "01J0NOPE0000000000000NOPE0", "1.0.0", actor()); !errors.Is(err, store.ErrNotFound) {
+	if err := sharedDB.SubmitMCPVersion(ctx, "01J0NOPE0000000000000NOPE0", "1.0.0", false, actor()); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestWithdrawMCPVersion_PendingToDraft(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	if err := sharedDB.WithdrawMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
@@ -183,11 +183,11 @@ func TestApproveMCPVersion_HappyPath(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 
-	if err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer()); err != nil {
+	if _, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer()); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	state, _, _, pa := readReviewState(t, ctx, srvID, "1.0.0")
@@ -213,10 +213,10 @@ func TestApproveMCPVersion_RevisionMismatch(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 99, reviewer())
+	_, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 99, reviewer())
 	if !errors.Is(err, store.ErrReviewRevisionMismatch) {
 		t.Errorf("err = %v, want ErrReviewRevisionMismatch", err)
 	}
@@ -226,7 +226,7 @@ func TestApproveMCPVersion_StateMismatchOnDraft(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer())
+	_, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer())
 	if !errors.Is(err, store.ErrReviewStateMismatch) {
 		t.Errorf("err = %v, want ErrReviewStateMismatch on Draft approve", err)
 	}
@@ -235,7 +235,7 @@ func TestApproveMCPVersion_StateMismatchOnDraft(t *testing.T) {
 func TestApproveMCPVersion_NotFound(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
-	err := sharedDB.ApproveMCPVersion(ctx, "01J0NOPE0000000000000NOPE0", "1.0.0", 1, reviewer())
+	_, err := sharedDB.ApproveMCPVersion(ctx, "01J0NOPE0000000000000NOPE0", "1.0.0", 1, reviewer())
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
@@ -245,17 +245,17 @@ func TestApproveMCPVersion_TwoReviewersRace(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	// First reviewer wins.
-	if err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer()); err != nil {
+	if _, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer()); err != nil {
 		t.Fatalf("first approve: %v", err)
 	}
 	// Second reviewer tries on the same revision but the row is no longer
 	// in pending_review — the diagnostic SELECT picks it up as
 	// already-published per the cross-field check.
-	err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer())
+	_, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer())
 	if !errors.Is(err, store.ErrAlreadyPublished) && !errors.Is(err, store.ErrReviewStateMismatch) {
 		t.Errorf("err = %v, want ErrAlreadyPublished or ErrReviewStateMismatch", err)
 	}
@@ -267,7 +267,7 @@ func TestRejectMCPVersion_HappyPath(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 
@@ -287,7 +287,7 @@ func TestRejectMCPVersion_RevisionMismatch(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	err := sharedDB.RejectMCPVersion(ctx, srvID, "1.0.0", 99, "bad", reviewer())
@@ -350,7 +350,7 @@ func TestSubmitAgentVersion_DraftToPending(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	state, _, _, _ := readAgentReviewState(t, ctx, agID, "0.1.0")
@@ -363,10 +363,10 @@ func TestApproveAgentVersion_HappyPath(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	if err := sharedDB.ApproveAgentVersion(ctx, agID, "0.1.0", 1, reviewer()); err != nil {
+	if _, err := sharedDB.ApproveAgentVersion(ctx, agID, "0.1.0", 1, reviewer()); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	state, _, _, pa := readAgentReviewState(t, ctx, agID, "0.1.0")
@@ -392,10 +392,10 @@ func TestApproveAgentVersion_RevisionMismatch(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	err := sharedDB.ApproveAgentVersion(ctx, agID, "0.1.0", 99, reviewer())
+	_, err := sharedDB.ApproveAgentVersion(ctx, agID, "0.1.0", 99, reviewer())
 	if !errors.Is(err, store.ErrReviewRevisionMismatch) {
 		t.Errorf("err = %v, want ErrReviewRevisionMismatch", err)
 	}
@@ -405,7 +405,7 @@ func TestRejectAgentVersion_HappyPath(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	if err := sharedDB.RejectAgentVersion(ctx, agID, "0.1.0", 1, "needs polish", reviewer()); err != nil {
@@ -424,7 +424,7 @@ func TestWithdrawAgentVersion_PendingToDraft(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	agID := seedDraftAgentVersion(t, ctx, "acme", "planner", "0.1.0")
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	if err := sharedDB.WithdrawAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
@@ -532,7 +532,7 @@ func TestListReviewQueue_UnionsAllFourSources(t *testing.T) {
 
 	// MCP version: pending_review.
 	srvA := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvA, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvA, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit mcp version: %v", err)
 	}
 	// MCP deletion: pending request.
@@ -542,7 +542,7 @@ func TestListReviewQueue_UnionsAllFourSources(t *testing.T) {
 	}
 	// Agent version: pending_review.
 	agA := seedDraftAgentVersion(t, ctx, "initech", "planner", "0.1.0")
-	if err := sharedDB.SubmitAgentVersion(ctx, agA, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agA, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit agent version: %v", err)
 	}
 	// Agent deletion: pending request.
@@ -553,10 +553,10 @@ func TestListReviewQueue_UnionsAllFourSources(t *testing.T) {
 
 	// Approved versions and rejected ones must not appear in the queue.
 	srvC := seedDraftMCPVersion(t, ctx, "soylent", "ignored", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvC, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvC, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit ignored: %v", err)
 	}
-	if err := sharedDB.ApproveMCPVersion(ctx, srvC, "1.0.0", 1, reviewer()); err != nil {
+	if _, err := sharedDB.ApproveMCPVersion(ctx, srvC, "1.0.0", 1, reviewer()); err != nil {
 		t.Fatalf("approve ignored: %v", err)
 	}
 
@@ -587,11 +587,11 @@ func TestListReviewQueue_FiltersByPublisher(t *testing.T) {
 	ctx := context.Background()
 
 	srvA := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvA, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvA, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit acme: %v", err)
 	}
 	srvB := seedDraftMCPVersion(t, ctx, "globex", "planner", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvB, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvB, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit globex: %v", err)
 	}
 
@@ -634,10 +634,10 @@ func TestApproveMCPDeletion_HidesFromPublicReads(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit version: %v", err)
 	}
-	if err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer()); err != nil {
+	if _, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer()); err != nil {
 		t.Fatalf("approve version: %v", err)
 	}
 	// Make the entry public so the default PublicOnly filter would
@@ -705,14 +705,14 @@ func TestVersionPublicReadFilter_HidesPendingAndRejected(t *testing.T) {
 	mkVer("1.2.0")
 
 	// 1.0.0 → published.
-	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit 1.0.0: %v", err)
 	}
-	if err := sharedDB.ApproveMCPVersion(ctx, srv.ID, "1.0.0", 1, reviewer()); err != nil {
+	if _, err := sharedDB.ApproveMCPVersion(ctx, srv.ID, "1.0.0", 1, reviewer()); err != nil {
 		t.Fatalf("approve 1.0.0: %v", err)
 	}
 	// 1.1.0 → pending_review.
-	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.1.0", false, actor()); err != nil {
 		t.Fatalf("submit 1.1.0: %v", err)
 	}
 	// 1.2.0 → rejected. Need to withdraw 1.1.0 first since the partial
@@ -720,14 +720,14 @@ func TestVersionPublicReadFilter_HidesPendingAndRejected(t *testing.T) {
 	if err := sharedDB.WithdrawMCPVersion(ctx, srv.ID, "1.1.0", actor()); err != nil {
 		t.Fatalf("withdraw 1.1.0: %v", err)
 	}
-	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.2.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.2.0", false, actor()); err != nil {
 		t.Fatalf("submit 1.2.0: %v", err)
 	}
 	if err := sharedDB.RejectMCPVersion(ctx, srv.ID, "1.2.0", 1, "no", reviewer()); err != nil {
 		t.Fatalf("reject 1.2.0: %v", err)
 	}
 	// Restore 1.1.0 to pending_review for the leak test.
-	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srv.ID, "1.1.0", false, actor()); err != nil {
 		t.Fatalf("re-submit 1.1.0: %v", err)
 	}
 
@@ -799,15 +799,15 @@ func TestSubmitAgentVersion_DiagnoseHelpers(t *testing.T) {
 
 	// Submit twice → second hits diagnoseAgentReviewMiss because the
 	// row is no longer in 'none'/'rejected'.
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("first submit: %v", err)
 	}
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); !errors.Is(err, store.ErrReviewStateMismatch) {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); !errors.Is(err, store.ErrReviewStateMismatch) {
 		t.Errorf("err = %v, want ErrReviewStateMismatch via diagnoseAgentReviewMiss", err)
 	}
 
 	// SubmitAgentVersion with unknown id → diagnoseAgentReviewMiss returns NotFound.
-	if err := sharedDB.SubmitAgentVersion(ctx, "01J0NOPE0000000000000NOPE0", "0.1.0", actor()); !errors.Is(err, store.ErrNotFound) {
+	if err := sharedDB.SubmitAgentVersion(ctx, "01J0NOPE0000000000000NOPE0", "0.1.0", false, actor()); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
@@ -826,7 +826,7 @@ func TestRejectAgentVersion_DiagnoseHelpersNonTx(t *testing.T) {
 
 	// Submit then reject with stale revision → revision-mismatch via
 	// the same path.
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	if err := sharedDB.RejectAgentVersion(ctx, agID, "0.1.0", 99, "stale", reviewer()); !errors.Is(err, store.ErrReviewRevisionMismatch) {
@@ -884,10 +884,10 @@ func TestSubmitAgentVersion_StackingRejectedByPartialUniqueIndex(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create v0.2.0: %v", err)
 	}
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit v0.1.0: %v", err)
 	}
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.2.0", actor()); !errors.Is(err, store.ErrConflict) {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.2.0", false, actor()); !errors.Is(err, store.ErrConflict) {
 		t.Errorf("expected ErrConflict, got %v", err)
 	}
 }
@@ -904,7 +904,7 @@ func TestForceDeleteMCP_ClearsReviewQueueResidue(t *testing.T) {
 	ctx := context.Background()
 
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
-	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
 		t.Fatalf("submit version: %v", err)
 	}
 	if err := sharedDB.RequestMCPDeletion(ctx, srvID, actor()); err != nil {
@@ -966,7 +966,7 @@ func TestForceDeleteAgent_ClearsReviewQueueResidue(t *testing.T) {
 	ctx := context.Background()
 
 	agID := seedDraftAgentVersion(t, ctx, "umbrella", "sweeper", "0.1.0")
-	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", actor()); err != nil {
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", false, actor()); err != nil {
 		t.Fatalf("submit version: %v", err)
 	}
 	if err := sharedDB.RequestAgentDeletion(ctx, agID, actor()); err != nil {
@@ -1014,5 +1014,161 @@ func TestListReviewQueue_ExcludesLegacyZombies(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Errorf("legacy zombie surfaced in queue: %+v", items)
+	}
+}
+
+// ── Request-public release intent ────────────────────────────────────────
+
+// readVisibility returns the entry's visibility column for side-effect asserts.
+func readVisibility(t *testing.T, ctx context.Context, table, id string) string {
+	t.Helper()
+	var v string
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT visibility FROM `+table+` WHERE id=$1`, id).Scan(&v); err != nil {
+		t.Fatalf("read visibility: %v", err)
+	}
+	return v
+}
+
+// TestApproveMCPVersion_RequestPublicFlipsVisibility: a submission with
+// request_public makes the (private) entry public atomically on approval.
+func TestApproveMCPVersion_RequestPublicFlipsVisibility(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", true, actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	if v := readVisibility(t, ctx, "mcp_servers", srvID); v != "private" {
+		t.Fatalf("visibility before approve = %q, want private", v)
+	}
+
+	madePublic, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer())
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if !madePublic {
+		t.Error("madePublic = false, want true")
+	}
+	if v := readVisibility(t, ctx, "mcp_servers", srvID); v != "public" {
+		t.Errorf("visibility after approve = %q, want public", v)
+	}
+}
+
+// TestApproveMCPVersion_NoRequestKeepsPrivate: without the request, approval
+// publishes the version but the entry stays private.
+func TestApproveMCPVersion_NoRequestKeepsPrivate(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	madePublic, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer())
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if madePublic {
+		t.Error("madePublic = true, want false")
+	}
+	if v := readVisibility(t, ctx, "mcp_servers", srvID); v != "private" {
+		t.Errorf("visibility = %q, want private", v)
+	}
+}
+
+// TestWithdrawMCPVersion_DropsRequestPublic: withdrawing evaporates the
+// request — a later plain resubmit + approve must NOT make the entry public.
+func TestWithdrawMCPVersion_DropsRequestPublic(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", true, actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	if err := sharedDB.WithdrawMCPVersion(ctx, srvID, "1.0.0", actor()); err != nil {
+		t.Fatalf("withdraw: %v", err)
+	}
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", false, actor()); err != nil {
+		t.Fatalf("resubmit: %v", err)
+	}
+	madePublic, err := sharedDB.ApproveMCPVersion(ctx, srvID, "1.0.0", 1, reviewer())
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if madePublic {
+		t.Error("madePublic = true after withdraw+plain resubmit, want false")
+	}
+	if v := readVisibility(t, ctx, "mcp_servers", srvID); v != "private" {
+		t.Errorf("visibility = %q, want private", v)
+	}
+}
+
+// TestApproveAgentVersion_RequestPublicFlipsVisibility is the agent twin of
+// the MCP test, and also asserts an already-public entry reports
+// madePublic=false (no-op, not an error).
+func TestApproveAgentVersion_RequestPublicFlipsVisibility(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	agID := seedDraftAgentVersion(t, ctx, "acme", "helper", "0.1.0")
+
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.1.0", true, actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	madePublic, err := sharedDB.ApproveAgentVersion(ctx, agID, "0.1.0", 1, reviewer())
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if !madePublic {
+		t.Error("madePublic = false, want true")
+	}
+	if v := readVisibility(t, ctx, "agents", agID); v != "public" {
+		t.Errorf("visibility = %q, want public", v)
+	}
+
+	// Second version with the request on a now-public entry: no-op.
+	if _, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
+		AgentID:         agID,
+		Version:         "0.2.0",
+		EndpointURL:     "https://agents.example.com/helper",
+		Skills:          json.RawMessage(`[]`),
+		Authentication:  json.RawMessage(`[]`),
+		ProtocolVersion: "0.3.0",
+	}); err != nil {
+		t.Fatalf("create second version: %v", err)
+	}
+	if err := sharedDB.SubmitAgentVersion(ctx, agID, "0.2.0", true, actor()); err != nil {
+		t.Fatalf("submit second: %v", err)
+	}
+	madePublic, err = sharedDB.ApproveAgentVersion(ctx, agID, "0.2.0", 1, reviewer())
+	if err != nil {
+		t.Fatalf("approve second: %v", err)
+	}
+	if madePublic {
+		t.Error("madePublic = true on an already-public entry, want false")
+	}
+}
+
+// TestListReviewQueue_CarriesRequestPublic: the queue surfaces the author's
+// intent so the reviewer sees the blast radius before approving.
+func TestListReviewQueue_CarriesRequestPublic(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
+
+	if err := sharedDB.SubmitMCPVersion(ctx, srvID, "1.0.0", true, actor()); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	items, err := sharedDB.ListReviewQueue(ctx, store.ListReviewQueueParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListReviewQueue: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("queue items = %d, want 1: %+v", len(items), items)
+	}
+	if !items[0].RequestPublic {
+		t.Error("RequestPublic = false on the queue item, want true")
 	}
 }

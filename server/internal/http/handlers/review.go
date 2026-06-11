@@ -50,6 +50,27 @@ func reviewActor(r *http.Request) store.Actor {
 	return store.Actor{Subject: subject, Email: email}
 }
 
+// submitBody is the optional submit-for-review request body. request_public
+// records the author's release intent: approval also makes the entry public.
+// An empty body (the pre-existing call shape) means no request.
+type submitBody struct {
+	RequestPublic bool `json:"request_public"`
+}
+
+// decodeOptionalSubmitBody tolerates the historical empty-body submit call
+// while parsing the optional request_public flag when a body is present.
+// Returns ok=false after writing a 422 for a malformed body.
+func decodeOptionalSubmitBody(w http.ResponseWriter, r *http.Request) (submitBody, bool) {
+	var body submitBody
+	if r.ContentLength == 0 {
+		return body, true
+	}
+	if !decodeJSON(w, r, &body) {
+		return body, false
+	}
+	return body, true
+}
+
 // writeReviewProblem maps a workflow store error to a discriminated 409
 // (or 404) response. The slug values match the type-URI suffixes
 // documented in the OpenAPI spec under
@@ -192,6 +213,7 @@ func (h *ReviewHandlers) ListReviewQueue(w http.ResponseWriter, r *http.Request)
 		if it.Version != "" {
 			entry["version"] = it.Version
 			entry["revision"] = it.Revision
+			entry["request_public"] = it.RequestPublic
 		}
 		// Entry-change items carry the change id, the action, the revision
 		// (for the approve/reject optimistic-concurrency token), and the
@@ -216,10 +238,16 @@ func (h *ReviewHandlers) ListReviewQueue(w http.ResponseWriter, r *http.Request)
 // ── MCP server version flow ─────────────────────────────────────────────
 
 // SubmitMCPVersion: POST /api/v1/mcp/servers/{ns}/{slug}/versions/{ver}/submit
+// Optional body: {"request_public": true} — ask for the entry to be made
+// public when the submission is approved.
 func (h *ReviewHandlers) SubmitMCPVersion(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
 	ver := chi.URLParam(r, "version")
+	body, ok := decodeOptionalSubmitBody(w, r)
+	if !ok {
+		return
+	}
 	srv, err := h.db.GetMCPServer(r.Context(), ns, slug, false)
 	if errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusNotFound, "not-found",
@@ -230,7 +258,7 @@ func (h *ReviewHandlers) SubmitMCPVersion(w http.ResponseWriter, r *http.Request
 		internalError(w, r, err)
 		return
 	}
-	if err := h.db.SubmitMCPVersion(r.Context(), srv.ID, ver, reviewActor(r)); err != nil {
+	if err := h.db.SubmitMCPVersion(r.Context(), srv.ID, ver, body.RequestPublic, reviewActor(r)); err != nil {
 		if writeReviewProblem(w, r, err) {
 			return
 		}
@@ -242,7 +270,7 @@ func (h *ReviewHandlers) SubmitMCPVersion(w http.ResponseWriter, r *http.Request
 		ActorSubject: subject, ActorEmail: email,
 		Action: domain.ActionMCPVersionSubmitted, ResourceType: "mcp_server_version",
 		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
-		Metadata: map[string]any{"version": ver},
+		Metadata: map[string]any{"version": ver, "request_public": body.RequestPublic},
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -307,7 +335,8 @@ func (h *ReviewHandlers) ApproveMCPVersion(w http.ResponseWriter, r *http.Reques
 		internalError(w, r, err)
 		return
 	}
-	if err := h.db.ApproveMCPVersion(r.Context(), srv.ID, ver, body.Revision, reviewActor(r)); err != nil {
+	madePublic, err := h.db.ApproveMCPVersion(r.Context(), srv.ID, ver, body.Revision, reviewActor(r))
+	if err != nil {
 		if writeReviewProblem(w, r, err) {
 			return
 		}
@@ -319,7 +348,7 @@ func (h *ReviewHandlers) ApproveMCPVersion(w http.ResponseWriter, r *http.Reques
 		ActorSubject: subject, ActorEmail: email,
 		Action: domain.ActionMCPVersionApproved, ResourceType: "mcp_server_version",
 		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
-		Metadata: map[string]any{"version": ver, "revision": body.Revision},
+		Metadata: map[string]any{"version": ver, "revision": body.Revision, "made_public": madePublic},
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -488,10 +517,16 @@ func (h *ReviewHandlers) RejectMCPDeletion(w http.ResponseWriter, r *http.Reques
 // ── Agent version flow ──────────────────────────────────────────────────
 
 // SubmitAgentVersion: POST /api/v1/agents/{ns}/{slug}/versions/{ver}/submit
+// Optional body: {"request_public": true} — ask for the entry to be made
+// public when the submission is approved.
 func (h *ReviewHandlers) SubmitAgentVersion(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	slug := chi.URLParam(r, "slug")
 	ver := chi.URLParam(r, "version")
+	body, ok := decodeOptionalSubmitBody(w, r)
+	if !ok {
+		return
+	}
 	ag, err := h.db.GetAgent(r.Context(), ns, slug, false)
 	if errors.Is(err, store.ErrNotFound) {
 		problem.Write(w, http.StatusNotFound, "not-found",
@@ -502,7 +537,7 @@ func (h *ReviewHandlers) SubmitAgentVersion(w http.ResponseWriter, r *http.Reque
 		internalError(w, r, err)
 		return
 	}
-	if err := h.db.SubmitAgentVersion(r.Context(), ag.ID, ver, reviewActor(r)); err != nil {
+	if err := h.db.SubmitAgentVersion(r.Context(), ag.ID, ver, body.RequestPublic, reviewActor(r)); err != nil {
 		if writeReviewProblem(w, r, err) {
 			return
 		}
@@ -514,7 +549,7 @@ func (h *ReviewHandlers) SubmitAgentVersion(w http.ResponseWriter, r *http.Reque
 		ActorSubject: subject, ActorEmail: email,
 		Action: domain.ActionAgentVersionSubmitted, ResourceType: "agent_version",
 		ResourceID: ag.ID, ResourceNS: ns, ResourceSlug: slug,
-		Metadata: map[string]any{"version": ver},
+		Metadata: map[string]any{"version": ver, "request_public": body.RequestPublic},
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -579,7 +614,8 @@ func (h *ReviewHandlers) ApproveAgentVersion(w http.ResponseWriter, r *http.Requ
 		internalError(w, r, err)
 		return
 	}
-	if err := h.db.ApproveAgentVersion(r.Context(), ag.ID, ver, body.Revision, reviewActor(r)); err != nil {
+	madePublic, err := h.db.ApproveAgentVersion(r.Context(), ag.ID, ver, body.Revision, reviewActor(r))
+	if err != nil {
 		if writeReviewProblem(w, r, err) {
 			return
 		}
@@ -591,7 +627,7 @@ func (h *ReviewHandlers) ApproveAgentVersion(w http.ResponseWriter, r *http.Requ
 		ActorSubject: subject, ActorEmail: email,
 		Action: domain.ActionAgentVersionApproved, ResourceType: "agent_version",
 		ResourceID: ag.ID, ResourceNS: ns, ResourceSlug: slug,
-		Metadata: map[string]any{"version": ver, "revision": body.Revision},
+		Metadata: map[string]any{"version": ver, "revision": body.Revision, "made_public": madePublic},
 	})
 	w.WriteHeader(http.StatusNoContent)
 }

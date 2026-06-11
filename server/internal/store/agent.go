@@ -444,7 +444,7 @@ func (db *DB) ListAgentVersions(ctx context.Context, agentID string, publicOnly 
 		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
-		       coalesce(review_decision,''), coalesce(rejection_reason,'')
+		       coalesce(review_decision,''), coalesce(rejection_reason,''), request_public
 		FROM agent_versions
 		`+where+`
 		ORDER BY created_at DESC`, agentID)
@@ -488,7 +488,7 @@ func (db *DB) GetAgentVersion(ctx context.Context, agentID, version string, publ
 		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
-		       coalesce(review_decision,''), coalesce(rejection_reason,'')
+		       coalesce(review_decision,''), coalesce(rejection_reason,''), request_public
 		FROM agent_versions
 		`+where, agentID, version)
 
@@ -516,7 +516,7 @@ func (db *DB) GetLatestPublishedAgentVersion(ctx context.Context, agentID string
 		       protocol_version, status, coalesce(status_message,''), status_changed_at, published_at, created_at, updated_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
-		       coalesce(review_decision,''), coalesce(rejection_reason,'')
+		       coalesce(review_decision,''), coalesce(rejection_reason,''), request_public
 		FROM agent_versions
 		WHERE agent_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -758,7 +758,7 @@ func (db *DB) SetAllAgentVersionsStatus(ctx context.Context, agentID string, sta
 		          published_at, created_at, updated_at,
 		          review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		          reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
-		          coalesce(review_decision,''), coalesce(rejection_reason,'')`,
+		          coalesce(review_decision,''), coalesce(rejection_reason,''), request_public`,
 		status, statusMessage, agentID)
 	if err != nil {
 		recordErr(span, err)
@@ -946,7 +946,7 @@ func scanAgentVersion(s interface{ Scan(...any) error }) (domain.AgentVersion, e
 		&v.PublishedAt, &v.CreatedAt, &v.UpdatedAt,
 		&v.ReviewState, &v.Revision, &v.SubmittedAt, &v.SubmittedBy, &v.SubmittedByEmail,
 		&v.ReviewedAt, &v.ReviewedBy, &v.ReviewedByEmail,
-		&v.ReviewDecision, &v.RejectionReason,
+		&v.ReviewDecision, &v.RejectionReason, &v.RequestPublic,
 	)
 	return v, err
 }

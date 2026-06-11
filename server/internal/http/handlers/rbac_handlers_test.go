@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/haibread/ai-registry/internal/auth"
+	"github.com/haibread/ai-registry/internal/domain"
 	"github.com/haibread/ai-registry/internal/http/handlers"
 	"github.com/haibread/ai-registry/internal/store"
 )
@@ -37,6 +38,7 @@ func newUserRouter() *chi.Mux {
 	r.Get("/api/v1/users", h.ListUsers)
 	r.Post("/api/v1/users", h.CreateUser)
 	r.Get("/api/v1/users/{id}", h.GetUser)
+	r.Get("/api/v1/users/{id}/grants", h.GetUserGrants)
 	r.Patch("/api/v1/users/{id}", h.PatchUser)
 	r.Post("/api/v1/users/{id}/set-password", h.SetPassword)
 	return r
@@ -308,6 +310,107 @@ func TestUserHandler_CreateDuplicateConflict(t *testing.T) {
 	router.ServeHTTP(rec, jsonReq(http.MethodPost, "/api/v1/users", `{"email":"DUP@example.com"}`))
 	if rec.Code != http.StatusConflict {
 		t.Errorf("duplicate email: %d, want 409", rec.Code)
+	}
+}
+
+// TestUserHandler_GetUserGrants verifies the access aggregate: the Server
+// Admin flag plus direct and local-group-membership grants, 404 on an unknown
+// user, and an empty (non-null) items array for a user with no grants.
+func TestUserHandler_GetUserGrants(t *testing.T) {
+	resetTables(t)
+	router := newUserRouter()
+	ctx := context.Background()
+
+	pubID := seedPublisher(t, "acme", "Acme Corp")
+	u, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "dev@acme.test"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	g, err := testDB.CreateGroup(ctx, store.CreateGroupParams{Slug: "acme-editors", Name: "Acme Editors"})
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	if err := testDB.AddGroupMember(ctx, g.ID, u.ID); err != nil {
+		t.Fatalf("AddGroupMember: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalUser, PrincipalID: u.ID, PublisherID: pubID, Role: domain.RoleViewer,
+	}); err != nil {
+		t.Fatalf("CreateGrant user: %v", err)
+	}
+	if _, err := testDB.CreateGrant(ctx, store.CreateGrantParams{
+		PrincipalType: domain.PrincipalGroup, PrincipalID: g.ID, PublisherID: pubID, Role: domain.RoleEditor,
+	}); err != nil {
+		t.Fatalf("CreateGrant group: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/users/"+u.ID+"/grants", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get grants: %d; %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		IsServerAdmin bool `json:"is_server_admin"`
+		Items         []struct {
+			Role          string `json:"role"`
+			Via           string `json:"via"`
+			PublisherSlug string `json:"publisher_slug"`
+			GroupSlug     string `json:"group_slug"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.IsServerAdmin {
+		t.Error("is_server_admin should be false")
+	}
+	if len(body.Items) != 2 {
+		t.Fatalf("items = %d, want 2: %+v", len(body.Items), body.Items)
+	}
+	for _, it := range body.Items {
+		switch it.Via {
+		case "direct":
+			if it.Role != "viewer" || it.PublisherSlug != "acme" || it.GroupSlug != "" {
+				t.Errorf("direct item = %+v, want viewer on acme without group", it)
+			}
+		case "group":
+			if it.Role != "editor" || it.GroupSlug != "acme-editors" {
+				t.Errorf("group item = %+v, want editor via acme-editors", it)
+			}
+		default:
+			t.Errorf("unexpected via %q", it.Via)
+		}
+	}
+
+	// A user with no grants gets an empty array, not null.
+	bare, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "bare@acme.test", IsServerAdmin: true})
+	if err != nil {
+		t.Fatalf("CreateUser bare: %v", err)
+	}
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/users/"+bare.ID+"/grants", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get bare grants: %d", rec.Code)
+	}
+	var raw struct {
+		IsServerAdmin bool             `json:"is_server_admin"`
+		Items         *json.RawMessage `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode bare: %v", err)
+	}
+	if !raw.IsServerAdmin {
+		t.Error("is_server_admin should be true for bare admin user")
+	}
+	if raw.Items == nil || string(*raw.Items) != "[]" {
+		t.Errorf("items = %v, want []", raw.Items)
+	}
+
+	// Unknown user → 404.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/users/ghost/grants", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("unknown user: %d, want 404", rec.Code)
 	}
 }
 

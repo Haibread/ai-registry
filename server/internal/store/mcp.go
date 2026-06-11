@@ -589,7 +589,7 @@ func (db *DB) ListMCPServerVersions(ctx context.Context, serverID string, public
 		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
-		       coalesce(review_decision,''), coalesce(rejection_reason,'')
+		       coalesce(review_decision,''), coalesce(rejection_reason,''), request_public
 		FROM mcp_server_versions
 		`+where+`
 		ORDER BY created_at DESC`, serverID)
@@ -634,7 +634,7 @@ func (db *DB) GetMCPServerVersion(ctx context.Context, serverID, version string,
 		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
-		       coalesce(review_decision,''), coalesce(rejection_reason,'')
+		       coalesce(review_decision,''), coalesce(rejection_reason,''), request_public
 		FROM mcp_server_versions
 		`+where, serverID, version)
 
@@ -661,7 +661,7 @@ func (db *DB) GetLatestPublishedVersion(ctx context.Context, serverID string) (*
 		       status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
 		       review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		       reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
-		       coalesce(review_decision,''), coalesce(rejection_reason,'')
+		       coalesce(review_decision,''), coalesce(rejection_reason,''), request_public
 		FROM mcp_server_versions
 		WHERE server_id = $1 AND published_at IS NOT NULL
 		ORDER BY published_at DESC
@@ -883,7 +883,7 @@ func scanVersion(s interface {
 		&v.StatusMessage, &v.StatusChangedAt,
 		&v.ReviewState, &v.Revision, &v.SubmittedAt, &v.SubmittedBy, &v.SubmittedByEmail,
 		&v.ReviewedAt, &v.ReviewedBy, &v.ReviewedByEmail,
-		&v.ReviewDecision, &v.RejectionReason,
+		&v.ReviewDecision, &v.RejectionReason, &v.RequestPublic,
 	)
 	return v, err
 }
@@ -945,7 +945,7 @@ func (db *DB) SetAllVersionsStatus(ctx context.Context, serverID string, status 
 		          status, published_at, created_at, updated_at, coalesce(status_message,''), status_changed_at,
 		          review_state, revision, submitted_at, coalesce(submitted_by,''), coalesce(submitted_by_email,''),
 		          reviewed_at, coalesce(reviewed_by,''), coalesce(reviewed_by_email,''),
-		          coalesce(review_decision,''), coalesce(rejection_reason,'')`,
+		          coalesce(review_decision,''), coalesce(rejection_reason,''), request_public`,
 		status, statusMessage, serverID)
 	if err != nil {
 		recordErr(span, err)
