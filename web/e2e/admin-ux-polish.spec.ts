@@ -127,7 +127,7 @@ test.describe('Admin UX polish', () => {
     expect(report.status(), `file report: ${await report.text()}`).toBe(201)
 
     await admin.goto('/admin/reports')
-    const row = admin.locator('li', { hasText: `e2e polish ${RUN}` })
+    const row = admin.locator('li:not([data-sonner-toast])', { hasText: `e2e polish ${RUN}` })
     await expect(row).toBeVisible({ timeout: 15_000 })
     const link = row.getByRole('link', { name: new RegExp(`Alpha Server.*${PUB}/alpha-server`) })
     await expect(link).toHaveAttribute('href', `/admin/mcp/${PUB}/alpha-server`)
@@ -137,7 +137,7 @@ test.describe('Admin UX polish', () => {
     // Triage it so the pending queue stays clean for other specs.
     // (The report stays in the DB as `dismissed`, which is fine.)
     await admin.goto('/admin/reports')
-    await admin.locator('li', { hasText: `e2e polish ${RUN}` }).getByRole('button', { name: /dismiss/i }).click()
+    await admin.locator('li:not([data-sonner-toast])', { hasText: `e2e polish ${RUN}` }).getByRole('button', { name: /dismiss/i }).click()
   })
 
   test('cleanup', async ({ browser }) => {

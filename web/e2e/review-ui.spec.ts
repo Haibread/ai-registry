@@ -86,7 +86,7 @@ test.describe('Admin review UI', () => {
     })
     // Scope to the seeded entry's row — the shared dev queue may hold other
     // pending items whose version badge is also "v1.0.0" (strict mode).
-    const row = page.locator('li', { hasText: `${PUB}/${MCP}` })
+    const row = page.locator('li:not([data-sonner-toast])', { hasText: `${PUB}/${MCP}` })
     await expect(row).toBeVisible()
     // Version + revision badges from the queue.
     await expect(row.getByText(`v${VER1}`)).toBeVisible()
@@ -98,7 +98,7 @@ test.describe('Admin review UI', () => {
     // Scope to the queue's version row; the trailing `.filter` excludes the
     // sonner success toast, which also contains the entry name (matches the
     // MCP-deletion row pattern below).
-    const row = page.locator('li', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP version/i })
+    const row = page.locator('li:not([data-sonner-toast])', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP version/i })
     await expect(row).toBeVisible()
     await row.getByRole('button', { name: /^reject$/i }).click()
 
@@ -127,7 +127,7 @@ test.describe('Admin review UI', () => {
     await expect(detailRow.getByText(/pending review/i)).toBeVisible({ timeout: 10_000 })
 
     await page.goto('/admin/review')
-    const queueRow = page.locator('li', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP version/i })
+    const queueRow = page.locator('li:not([data-sonner-toast])', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP version/i })
     await expect(queueRow).toBeVisible()
     await queueRow.getByRole('button', { name: /^approve$/i }).click()
     await confirmDialog(page, /approve & publish/i)
@@ -152,7 +152,7 @@ test.describe('Admin review UI', () => {
 
     // The review queue lists the deletion as a separate row.
     await page.goto('/admin/review')
-    const delRow = page.locator('li', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP deletion/i })
+    const delRow = page.locator('li:not([data-sonner-toast])', { hasText: `${PUB}/${MCP}` }).filter({ hasText: /MCP deletion/i })
     await expect(delRow).toBeVisible()
 
     // Approve the deletion through its destructive confirmation.

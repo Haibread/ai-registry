@@ -484,7 +484,7 @@ test.describe('Review workflow honors separation of duties', () => {
     const reviewer = await pageAs(browser, 'reviewer')
     await reviewer.goto('/admin/review')
     const queueRow = reviewer
-      .locator('li', { hasText: `${pub.slug}/${slug}` })
+      .locator('li:not([data-sonner-toast])', { hasText: `${pub.slug}/${slug}` })
       .filter({ hasText: /MCP version/i })
     await expect(queueRow).toBeVisible({ timeout: 15_000 })
     await queueRow.getByRole('button', { name: /^approve$/i }).click()
@@ -571,7 +571,7 @@ test.describe('Review workflow — withdraw, conflict, and cross-role reject', (
     const reviewer = await pageAs(browser, 'reviewer')
     await reviewer.goto('/admin/review')
     const queueRow = reviewer
-      .locator('li', { hasText: `${pub.slug}/${slug}` })
+      .locator('li:not([data-sonner-toast])', { hasText: `${pub.slug}/${slug}` })
       .filter({ hasText: /MCP version/i })
     await expect(queueRow).toBeVisible({ timeout: 15_000 })
     await queueRow.getByRole('button', { name: /^reject$/i }).click()
