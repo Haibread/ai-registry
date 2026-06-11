@@ -61,7 +61,7 @@ func resetDB(t *testing.T) {
 	t.Helper()
 	_, err := sharedDB.Pool.Exec(context.Background(),
 		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers,
-		          role_grants, group_members, groups, users, audit_log RESTART IDENTITY CASCADE`)
+		          role_grants, group_members, groups, users, audit_log, instance_tags RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("truncating tables: %v", err)
 	}
@@ -799,8 +799,24 @@ agents:
 	if !srv.Verified {
 		t.Error("server verified = false, want true")
 	}
-	if len(srv.Tags) != 2 || srv.Tags[0] != "official" || srv.Tags[1] != "featured" {
-		t.Errorf("server tags = %v, want [official featured]", srv.Tags)
+	// Tags live on version rows; the entry derives them from the latest
+	// published version, normalized (deduped + sorted).
+	if len(srv.Tags) != 2 || srv.Tags[0] != "featured" || srv.Tags[1] != "official" {
+		t.Errorf("server tags = %v, want [featured official]", srv.Tags)
+	}
+	// The referenced slugs were auto-created in the vocabulary.
+	vocab, err := sharedDB.ListInstanceTags(ctx)
+	if err != nil {
+		t.Fatalf("ListInstanceTags() error = %v", err)
+	}
+	seenSlugs := make(map[string]bool, len(vocab))
+	for _, tag := range vocab {
+		seenSlugs[tag.Slug] = true
+	}
+	for _, want := range []string{"official", "featured", "demo", "a2a"} {
+		if !seenSlugs[want] {
+			t.Errorf("instance tag %q not auto-created by bootstrap", want)
+		}
 	}
 	if srv.Readme == "" {
 		t.Error("server readme is empty, want non-empty markdown")
@@ -829,8 +845,8 @@ agents:
 	if !agent.Verified {
 		t.Error("agent verified = false, want true")
 	}
-	if len(agent.Tags) != 2 || agent.Tags[0] != "demo" || agent.Tags[1] != "a2a" {
-		t.Errorf("agent tags = %v, want [demo a2a]", agent.Tags)
+	if len(agent.Tags) != 2 || agent.Tags[0] != "a2a" || agent.Tags[1] != "demo" {
+		t.Errorf("agent tags = %v, want [a2a demo]", agent.Tags)
 	}
 	if agent.Readme == "" {
 		t.Error("agent readme is empty, want non-empty markdown")
@@ -908,8 +924,8 @@ agents:
 		t.Fatalf("GetMCPServer() error = %v", err)
 	}
 	if _, err := sharedDB.Pool.Exec(ctx,
-		`UPDATE mcp_servers SET featured=false, verified=false, tags=$1, readme=$2 WHERE id=$3`,
-		[]string{"admin-tag"}, "admin readme", srv.ID,
+		`UPDATE mcp_servers SET featured=false, verified=false, readme=$1 WHERE id=$2`,
+		"admin readme", srv.ID,
 	); err != nil {
 		t.Fatalf("admin update (mcp): %v", err)
 	}
@@ -919,8 +935,8 @@ agents:
 		t.Fatalf("GetAgent() error = %v", err)
 	}
 	if _, err := sharedDB.Pool.Exec(ctx,
-		`UPDATE agents SET featured=false, verified=false, tags=$1, readme=$2 WHERE id=$3`,
-		[]string{"admin-tag"}, "admin readme", agent.ID,
+		`UPDATE agents SET featured=false, verified=false, readme=$1 WHERE id=$2`,
+		"admin readme", agent.ID,
 	); err != nil {
 		t.Fatalf("admin update (agent): %v", err)
 	}
@@ -940,8 +956,10 @@ agents:
 	if srvAfter.Verified {
 		t.Error("mcp server: bootstrap clobbered admin verified=false")
 	}
-	if len(srvAfter.Tags) != 1 || srvAfter.Tags[0] != "admin-tag" {
-		t.Errorf("mcp server: tags = %v, want [admin-tag]", srvAfter.Tags)
+	// Entry tags derive from the published version's frozen tags, which the
+	// re-run must not have touched either.
+	if len(srvAfter.Tags) != 1 || srvAfter.Tags[0] != "bootstrap-tag" {
+		t.Errorf("mcp server: tags = %v, want [bootstrap-tag]", srvAfter.Tags)
 	}
 	if srvAfter.Readme != "admin readme" {
 		t.Errorf("mcp server: readme = %q, want %q", srvAfter.Readme, "admin readme")
@@ -957,8 +975,8 @@ agents:
 	if agentAfter.Verified {
 		t.Error("agent: bootstrap clobbered admin verified=false")
 	}
-	if len(agentAfter.Tags) != 1 || agentAfter.Tags[0] != "admin-tag" {
-		t.Errorf("agent: tags = %v, want [admin-tag]", agentAfter.Tags)
+	if len(agentAfter.Tags) != 1 || agentAfter.Tags[0] != "bootstrap-tag" {
+		t.Errorf("agent: tags = %v, want [bootstrap-tag]", agentAfter.Tags)
 	}
 	if agentAfter.Readme != "admin readme" {
 		t.Errorf("agent: readme = %q, want %q", agentAfter.Readme, "admin readme")
