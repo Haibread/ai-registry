@@ -32,6 +32,11 @@ global:
   # its autoscaling is enabled).
   replicaCount: 1
 
+  # -- Number of old ReplicaSets every Deployment keeps around for rollback.
+  # The Kubernetes default of 10 piles up stale ReplicaSets nobody rolls back
+  # to; 3 is enough history for a realistic rollback.
+  revisionHistoryLimit: 3
+
   # -- (object) Extra annotations merged into every workload's pod template.
   podAnnotations: {}
   # -- (object) Extra labels merged into every workload's pod template.
