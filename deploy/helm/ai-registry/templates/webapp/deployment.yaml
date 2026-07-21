@@ -10,6 +10,7 @@ spec:
   {{- if not $v.autoscaling.enabled }}
   replicas: {{ $v.replicaCount }}
   {{- end }}
+  revisionHistoryLimit: {{ $v.revisionHistoryLimit }}
   selector:
     matchLabels:
       {{- include "ai-registry.webapp.selectorLabels" . | nindent 6 }}
