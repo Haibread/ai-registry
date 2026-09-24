@@ -5,7 +5,7 @@
 # Pin the builder to the native BUILDPLATFORM so multi-arch builds cross-compile
 # with the Go toolchain (GOARCH=$TARGETARCH below) instead of running the whole
 # toolchain under QEMU emulation — much faster and avoids emulation flakiness.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 
 WORKDIR /src
 
