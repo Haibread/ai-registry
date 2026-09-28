@@ -50,17 +50,18 @@ global:
   affinity: {}
 
   # -- Pod-level security context applied to all workloads. Defaults to the
-  # Kubernetes Pod Security Standards "restricted" profile; components override
-  # `runAsUser`/`runAsGroup`/`fsGroup` to match their image's non-root user.
+  # Kubernetes Pod Security Standards "restricted" profile. UID/GID 65532 is the
+  # `USER` baked into both the server (distroless `nonroot`) and the web image;
+  # IDs stay above 10000 so a container user never aliases a host account.
   podSecurityContext:
     # -- Forbid running any container as UID 0.
     runAsNonRoot: true
     # -- UID every container runs as.
-    runAsUser: 1000
+    runAsUser: 65532
     # -- Primary GID every container runs as.
-    runAsGroup: 1000
+    runAsGroup: 65532
     # -- Supplemental GID owning mounted volumes.
-    fsGroup: 1000
+    fsGroup: 65532
     seccompProfile:
       # -- Use the runtime's default seccomp profile.
       type: RuntimeDefault
@@ -105,6 +106,46 @@ global:
   # -- Writable directory mounted as an `emptyDir` so the read-only-root
   # filesystem container has a scratch `/tmp`.
   tmpDir: /tmp
+
+  # -- NetworkPolicies restricting who may reach the api and webapp pods. Off
+  # by default. When enabled, the api accepts traffic only from the webapp
+  # pods, `ingressControllerPeers`, `api.networkPolicy.metricsScraperPeers` and
+  # `extraIngress`; the webapp only from `ingressControllerPeers` and
+  # `extraIngress`. Kubelet probes are not affected.
+  networkPolicy:
+    # -- Render a NetworkPolicy per component.
+    enabled: false
+    # -- NetworkPolicy peers (`from` entries) for the ingress controller or
+    # Gateway data plane in front of the chart. The default matches every pod in
+    # the `ingress-nginx` namespace; replace the list for another controller.
+    ingressControllerPeers:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+    # -- (list) Extra NetworkPolicy ingress rules appended as-is, e.g. to let
+    # in-cluster API clients reach the api pods.
+    extraIngress: []
+    # -- Egress side of the NetworkPolicies.
+    egress:
+      # -- Restrict egress too. Off → all egress stays allowed, so OIDC
+      # discovery, OTLP export and an external database keep working. On → DNS
+      # (if `allowDns`), the api → webapp/CNPG paths the chart knows about, and
+      # `extraRules` only.
+      enabled: false
+      # -- Allow DNS (UDP/TCP 53) to the pods selected by `dnsPeers`.
+      allowDns: true
+      # -- NetworkPolicy peers (`to` entries) serving cluster DNS.
+      dnsPeers:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      # -- (list) Extra NetworkPolicy egress rules appended as-is — an external
+      # database, the OIDC issuer, the OTLP collector, … e.g.
+      # `[{to: [{ipBlock: {cidr: 203.0.113.10/32}}], ports: [{port: 443, protocol: TCP}]}]`.
+      extraRules: []
 
   # -- (list) Extra environment variables injected into every workload
   # container. Example:
@@ -333,17 +374,6 @@ api:
       # -- Ephemeral-storage limit (an unbounded write cannot fill the node).
       ephemeral-storage: 256Mi
 
-  # -- Pod-level security context overrides for the server. Merged over
-  # `global.podSecurityContext`; matches the distroless `nonroot` user
-  # (UID/GID 65532).
-  podSecurityContext:
-    # -- UID of the distroless `nonroot` user.
-    runAsUser: 65532
-    # -- GID of the distroless `nonroot` user.
-    runAsGroup: 65532
-    # -- fsGroup matching the distroless `nonroot` user.
-    fsGroup: 65532
-
   # -- Liveness probe (full probe object — override any field).
   livenessProbe:
     httpGet:
@@ -398,6 +428,20 @@ api:
     annotations: {}
     # -- (string) Override the ServiceAccount name. Unset → `<fullname>-server`.
     name: ~
+
+  # -- Server-only NetworkPolicy settings, merged over `global.networkPolicy`.
+  networkPolicy:
+    # -- NetworkPolicy peers (`from` entries) allowed to scrape `/metrics`.
+    # NetworkPolicy filters ports, not paths, so these peers reach the whole
+    # api port. The default matches Prometheus pods in the `monitoring`
+    # namespace; replace the list to match your Prometheus.
+    metricsScraperPeers:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: monitoring
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: prometheus
 
   # ── Prometheus ServiceMonitor ────────────────────────────────────────────
   # Opt-in resource for the Prometheus Operator (requires its CRDs in-cluster).
@@ -458,17 +502,6 @@ webapp:
       memory: 128Mi
       # -- Ephemeral-storage limit.
       ephemeral-storage: 128Mi
-
-  # -- Pod-level security context overrides for the web SPA. Merged over
-  # `global.podSecurityContext`; matches the `nginx` user (UID/GID 101) in
-  # nginxinc/nginx-unprivileged.
-  podSecurityContext:
-    # -- UID of the nginx-unprivileged `nginx` user.
-    runAsUser: 101
-    # -- GID of the nginx-unprivileged `nginx` user.
-    runAsGroup: 101
-    # -- fsGroup matching the nginx-unprivileged `nginx` user.
-    fsGroup: 101
 
   # -- Liveness probe (full probe object — override any field).
   livenessProbe:

@@ -61,4 +61,6 @@ render "${oidc[@]}" \
   --set api.serviceMonitor.enabled=true \
   --set api.podDisruptionBudget.enabled=true \
   --set webapp.podDisruptionBudget.enabled=true \
+  --set global.networkPolicy.enabled=true \
+  --set global.networkPolicy.egress.enabled=true \
   | kubeconform_check

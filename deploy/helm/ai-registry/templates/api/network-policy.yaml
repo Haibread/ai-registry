@@ -1,0 +1,61 @@
+{{- $v := include "ai-registry.api.values" . | fromYaml -}}
+{{- if $v.networkPolicy.enabled -}}
+{{- $np := $v.networkPolicy -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-registry.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-registry.api.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ai-registry.api.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    {{- if $np.egress.enabled }}
+    - Egress
+    {{- end }}
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "ai-registry.webapp.selectorLabels" . | nindent 14 }}
+        {{- with $np.ingressControllerPeers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with $np.metricsScraperPeers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - port: http
+          protocol: TCP
+    {{- with $np.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- if $np.egress.enabled }}
+  egress:
+    {{- if $np.egress.allowDns }}
+    - to:
+        {{- toYaml $np.egress.dnsPeers | nindent 8 }}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    {{- end }}
+    {{- if .Values.cnpg.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: {{ include "ai-registry.cnpg.clusterName" . }}
+      ports:
+        - port: 5432
+          protocol: TCP
+    {{- end }}
+    {{- with $np.egress.extraRules }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}
