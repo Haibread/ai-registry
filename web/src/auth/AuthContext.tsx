@@ -1,12 +1,12 @@
-// AuthContext is the single source of auth *state* and the login/logout actions.
-// Auth is a registry-issued bearer token (access + refresh): the SPA holds the
-// access token in memory and the refresh token in storage (see auth/tokens.ts),
-// and attaches `Authorization: Bearer …` on every API call. "Am I signed in?"
-// is answered by a GET /api/v1/me fetch held here in state (not react-query),
-// which keeps the global <Header> off the query layer. `usePermissions` (admin
-// role gating) reads this `me`. OIDC is brokered server-side: org sign-in is a
-// redirect to /api/v1/auth/oidc/login; the callback bounces back with a one-time
-// handoff code in the URL fragment, which we exchange for tokens on load.
+// AuthContext is the single source of auth *state* and the login/logout
+// actions. Auth is a registry-issued bearer token (access + refresh): the SPA
+// keeps both in localStorage (see auth/tokens.ts) and attaches `Authorization:
+// Bearer …` on every API call. "Am I signed in?" is answered by a GET
+// /api/v1/me fetch held here in state (not react-query), which keeps the global
+// <Header> off the query layer. `usePermissions` (admin role gating) reads this
+// `me`. OIDC is brokered server-side: org sign-in is a redirect to
+// /api/v1/auth/oidc/login; the callback bounces back with a one-time handoff
+// code in the URL fragment, which we exchange for tokens on load.
 /* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
