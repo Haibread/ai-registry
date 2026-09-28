@@ -138,7 +138,7 @@ func (db *DB) ListAgents(ctx context.Context, p ListAgentsParams) ([]AgentRow, i
 		)
 		filterArgs = append(filterArgs, tsQuery)
 		argN++
-		countArgN++ //nolint:ineffassign // kept in lockstep with argN so any arg appended below stays correctly numbered
+		countArgN++ //nolint:ineffassign,staticcheck // kept in lockstep with argN so any arg appended below stays correctly numbered
 	}
 
 	// Snapshot filterArgs before cursor / ORDER-BY args so the COUNT query

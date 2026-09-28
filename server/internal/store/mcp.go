@@ -279,7 +279,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		// Count query arg (uses countArgN for its own numbering)
 		lateralCountCond += fmt.Sprintf(" AND v.version = $%d", countArgN)
 		countArgs = append(countArgs, p.VersionFilter)
-		countArgN++ //nolint:ineffassign // kept in lockstep with argN so any arg appended below stays correctly numbered
+		countArgN++ //nolint:ineffassign,staticcheck // kept in lockstep with argN so any arg appended below stays correctly numbered
 		// Only include servers that actually have this version.
 		whereClause += " AND lv.version IS NOT NULL"
 		filterWhere += " AND lv.version IS NOT NULL" // also for count query
