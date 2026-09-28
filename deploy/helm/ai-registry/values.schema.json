@@ -1,0 +1,474 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai-registry chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["global", "api", "webapp", "ingress", "httpRoute", "cnpg"],
+  "properties": {
+    "global": {
+      "description": "Values shared by more than one component. Left open to unknown keys: Helm shares `global` with parent and sibling charts, so an umbrella chart's own globals land here.",
+      "type": "object",
+      "required": [
+        "image",
+        "replicaCount",
+        "revisionHistoryLimit",
+        "podSecurityContext",
+        "securityContext",
+        "autoscaling",
+        "podDisruptionBudget",
+        "tmpDir"
+      ],
+      "properties": {
+        "nameOverride": { "$ref": "#/definitions/nullableString" },
+        "fullnameOverride": { "$ref": "#/definitions/nullableString" },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pullPolicy"],
+          "properties": {
+            "pullPolicy": { "$ref": "#/definitions/pullPolicy" }
+          }
+        },
+        "imagePullSecrets": { "$ref": "#/definitions/imagePullSecrets" },
+        "replicaCount": { "$ref": "#/definitions/replicaCount" },
+        "revisionHistoryLimit": { "$ref": "#/definitions/revisionHistoryLimit" },
+        "podAnnotations": { "$ref": "#/definitions/stringMap" },
+        "podLabels": { "$ref": "#/definitions/stringMap" },
+        "nodeSelector": { "$ref": "#/definitions/stringMap" },
+        "tolerations": { "$ref": "#/definitions/objectList" },
+        "affinity": { "$ref": "#/definitions/openObject" },
+        "podSecurityContext": { "$ref": "#/definitions/podSecurityContext" },
+        "securityContext": { "$ref": "#/definitions/openObject" },
+        "autoscaling": {
+          "allOf": [{ "$ref": "#/definitions/autoscaling" }],
+          "required": ["enabled", "minReplicas", "maxReplicas", "targetCPUUtilizationPercentage"]
+        },
+        "podDisruptionBudget": {
+          "allOf": [{ "$ref": "#/definitions/podDisruptionBudget" }],
+          "required": ["enabled", "minAvailable"]
+        },
+        "tmpDir": { "$ref": "#/definitions/absolutePath" },
+        "extraEnv": { "$ref": "#/definitions/extraEnv" },
+        "extraVolumes": { "$ref": "#/definitions/extraVolumes" },
+        "extraVolumeMounts": { "$ref": "#/definitions/extraVolumeMounts" }
+      }
+    },
+
+    "api": {
+      "description": "Backend Go HTTP service. Accepts every per-component `global.*` key as an override.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image",
+        "oidcEnabled",
+        "localLogin",
+        "database",
+        "logLevel",
+        "bootstrap",
+        "service",
+        "resources",
+        "livenessProbe",
+        "readinessProbe",
+        "startupProbe",
+        "serviceAccount",
+        "serviceMonitor"
+      ],
+      "properties": {
+        "image": { "$ref": "#/definitions/componentImage" },
+        "imagePullSecrets": { "$ref": "#/definitions/imagePullSecrets" },
+        "replicaCount": { "$ref": "#/definitions/replicaCount" },
+        "revisionHistoryLimit": { "$ref": "#/definitions/revisionHistoryLimit" },
+        "podAnnotations": { "$ref": "#/definitions/stringMap" },
+        "podLabels": { "$ref": "#/definitions/stringMap" },
+        "nodeSelector": { "$ref": "#/definitions/stringMap" },
+        "tolerations": { "$ref": "#/definitions/objectList" },
+        "affinity": { "$ref": "#/definitions/openObject" },
+        "podSecurityContext": { "$ref": "#/definitions/podSecurityContext" },
+        "securityContext": { "$ref": "#/definitions/openObject" },
+        "autoscaling": { "$ref": "#/definitions/autoscaling" },
+        "podDisruptionBudget": { "$ref": "#/definitions/podDisruptionBudget" },
+        "tmpDir": { "$ref": "#/definitions/absolutePath" },
+        "extraEnv": { "$ref": "#/definitions/extraEnv" },
+        "extraVolumes": { "$ref": "#/definitions/extraVolumes" },
+        "extraVolumeMounts": { "$ref": "#/definitions/extraVolumeMounts" },
+
+        "oidcEnabled": { "type": "boolean" },
+        "oidcIssuer": { "$ref": "#/definitions/nullableString" },
+        "oidcInternalUrl": { "$ref": "#/definitions/nullableString" },
+        "oidcJwksUrl": { "$ref": "#/definitions/nullableString" },
+        "oidcClientId": { "$ref": "#/definitions/nullableString" },
+        "oidcClientSecret": { "$ref": "#/definitions/nullableString" },
+        "oidcClientSecretExistingSecret": { "$ref": "#/definitions/nullableString" },
+        "oidcRedirectUrl": { "$ref": "#/definitions/nullableString" },
+        "oidcScopes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "authGroupsClaim": { "$ref": "#/definitions/nullableString" },
+        "oidcRolesClaim": { "$ref": "#/definitions/nullableString" },
+        "oidcAdminRole": { "$ref": "#/definitions/nullableString" },
+        "authReviewerGroup": { "$ref": "#/definitions/nullableString" },
+
+        "jwtSigningKey": { "$ref": "#/definitions/nullableString" },
+        "jwtSigningKeyExistingSecret": { "$ref": "#/definitions/nullableString" },
+        "jwtSigningSeed": {
+          "description": "The server rejects a seed shorter than 32 characters.",
+          "type": ["string", "null"],
+          "minLength": 32
+        },
+        "jwtSigningSeedExistingSecret": { "$ref": "#/definitions/nullableString" },
+        "accessTokenTtl": { "$ref": "#/definitions/nullableDuration" },
+        "refreshTokenTtl": { "$ref": "#/definitions/nullableDuration" },
+        "authSweepInterval": { "$ref": "#/definitions/nullableDuration" },
+
+        "localLogin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "bootstrapAdmin"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "bootstrapAdmin": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "email": { "$ref": "#/definitions/nullableString" },
+                "password": { "$ref": "#/definitions/nullableString" },
+                "existingSecret": { "$ref": "#/definitions/nullableString" }
+              }
+            }
+          }
+        },
+
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxConns", "minConns"],
+          "properties": {
+            "url": { "$ref": "#/definitions/nullableString" },
+            "existingSecret": { "$ref": "#/definitions/nullableString" },
+            "maxConns": { "type": "integer", "minimum": 1 },
+            "minConns": { "type": "integer", "minimum": 0 }
+          }
+        },
+
+        "corsAllowedOrigins": { "$ref": "#/definitions/nullableString" },
+        "trustedProxyCIDR": { "$ref": "#/definitions/nullableString" },
+        "publicBaseURL": { "$ref": "#/definitions/nullableString" },
+
+        "logLevel": {
+          "description": "The server silently falls back to info on an unknown level.",
+          "enum": ["debug", "info", "warn", "error"]
+        },
+        "otlpEndpoint": { "$ref": "#/definitions/nullableString" },
+
+        "bootstrap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "mountPath"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "sampleData": { "type": "boolean" },
+            "content": { "$ref": "#/definitions/nullableString" },
+            "mountPath": { "$ref": "#/definitions/absolutePath" }
+          }
+        },
+
+        "instanceTags": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slug", "name"],
+            "properties": {
+              "slug": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "description": { "type": "string" },
+              "color": {
+                "enum": ["gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"]
+              },
+              "active": { "type": "boolean" }
+            }
+          }
+        },
+
+        "service": { "$ref": "#/definitions/service" },
+        "resources": { "$ref": "#/definitions/resources" },
+        "livenessProbe": { "$ref": "#/definitions/openObject" },
+        "readinessProbe": { "$ref": "#/definitions/openObject" },
+        "startupProbe": { "$ref": "#/definitions/openObject" },
+        "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
+
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "namespace": { "$ref": "#/definitions/nullableString" },
+            "path": { "type": ["string", "null"], "pattern": "^/" },
+            "interval": { "$ref": "#/definitions/nullablePrometheusDuration" },
+            "scrapeTimeout": { "$ref": "#/definitions/nullablePrometheusDuration" },
+            "additionalLabels": { "$ref": "#/definitions/stringMap" },
+            "relabelings": { "$ref": "#/definitions/objectList" },
+            "metricRelabelings": { "$ref": "#/definitions/objectList" }
+          }
+        }
+      }
+    },
+
+    "webapp": {
+      "description": "Frontend SPA served by nginx. Accepts every per-component `global.*` key as an override.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "service", "resources", "livenessProbe", "readinessProbe", "serviceAccount"],
+      "properties": {
+        "image": { "$ref": "#/definitions/componentImage" },
+        "imagePullSecrets": { "$ref": "#/definitions/imagePullSecrets" },
+        "replicaCount": { "$ref": "#/definitions/replicaCount" },
+        "revisionHistoryLimit": { "$ref": "#/definitions/revisionHistoryLimit" },
+        "podAnnotations": { "$ref": "#/definitions/stringMap" },
+        "podLabels": { "$ref": "#/definitions/stringMap" },
+        "nodeSelector": { "$ref": "#/definitions/stringMap" },
+        "tolerations": { "$ref": "#/definitions/objectList" },
+        "affinity": { "$ref": "#/definitions/openObject" },
+        "podSecurityContext": { "$ref": "#/definitions/podSecurityContext" },
+        "securityContext": { "$ref": "#/definitions/openObject" },
+        "autoscaling": { "$ref": "#/definitions/autoscaling" },
+        "podDisruptionBudget": { "$ref": "#/definitions/podDisruptionBudget" },
+        "tmpDir": { "$ref": "#/definitions/absolutePath" },
+        "extraEnv": { "$ref": "#/definitions/extraEnv" },
+        "extraVolumes": { "$ref": "#/definitions/extraVolumes" },
+        "extraVolumeMounts": { "$ref": "#/definitions/extraVolumeMounts" },
+
+        "apiUrl": { "$ref": "#/definitions/nullableString" },
+        "service": { "$ref": "#/definitions/service" },
+        "resources": { "$ref": "#/definitions/resources" },
+        "livenessProbe": { "$ref": "#/definitions/openObject" },
+        "readinessProbe": { "$ref": "#/definitions/openObject" },
+        "serviceAccount": { "$ref": "#/definitions/serviceAccount" }
+      }
+    },
+
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "host", "tls"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "$ref": "#/definitions/nullableString" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "host": { "type": "string", "minLength": 1 },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "secretName": { "$ref": "#/definitions/nullableString" }
+          }
+        }
+      }
+    },
+
+    "httpRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "gatewayRef"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "gatewayRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "$ref": "#/definitions/nullableString" },
+            "namespace": { "$ref": "#/definitions/nullableString" },
+            "sectionName": { "$ref": "#/definitions/nullableString" }
+          }
+        },
+        "host": { "$ref": "#/definitions/nullableString" },
+        "annotations": { "$ref": "#/definitions/stringMap" }
+      }
+    },
+
+    "cnpg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "instances",
+        "storageSize",
+        "postgresVersion",
+        "initdb",
+        "postgresql",
+        "enableSuperuserAccess",
+        "resources"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "instances": { "type": "integer", "minimum": 1 },
+        "storageSize": { "$ref": "#/definitions/quantity" },
+        "postgresVersion": {
+          "description": "A string: `--set cnpg.postgresVersion=17` yields an int and breaks the image tag; use `--set-string`.",
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "initdb": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["database", "owner"],
+          "properties": {
+            "database": { "type": "string", "minLength": 1 },
+            "owner": { "type": "string", "minLength": 1 }
+          }
+        },
+        "postgresql": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["parameters"],
+          "properties": {
+            "parameters": {
+              "description": "Any PostgreSQL GUC. CNPG only accepts string values.",
+              "allOf": [{ "$ref": "#/definitions/stringMap" }]
+            }
+          }
+        },
+        "enableSuperuserAccess": { "type": "boolean" },
+        "resources": { "$ref": "#/definitions/resources" }
+      }
+    }
+  },
+
+  "definitions": {
+    "nullableString": { "type": ["string", "null"] },
+    "nullableDuration": {
+      "description": "A Go duration, e.g. `15m` or `1h30m`.",
+      "type": ["string", "null"],
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+    },
+    "nullablePrometheusDuration": {
+      "description": "A Prometheus duration, e.g. `30s` or `1m`.",
+      "type": ["string", "null"],
+      "pattern": "^([0-9]+(ms|s|m|h|d|w|y))+$"
+    },
+    "absolutePath": { "type": "string", "pattern": "^/" },
+    "quantity": {
+      "description": "A Kubernetes resource quantity, e.g. `5Gi`.",
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?(m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
+    },
+    "openObject": { "type": "object" },
+    "objectList": { "type": "array", "items": { "type": "object" } },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] },
+    "componentImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "$ref": "#/definitions/nullableString" },
+        "pullPolicy": { "$ref": "#/definitions/pullPolicy" }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "replicaCount": { "type": "integer", "minimum": 0 },
+    "revisionHistoryLimit": { "type": "integer", "minimum": 0 },
+    "podSecurityContext": {
+      "type": "object",
+      "properties": {
+        "runAsNonRoot": { "type": "boolean" },
+        "runAsUser": { "type": "integer", "minimum": 0 },
+        "runAsGroup": { "type": "integer", "minimum": 0 },
+        "fsGroup": { "type": "integer", "minimum": 0 },
+        "seccompProfile": { "type": "object" }
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minReplicas": { "type": "integer", "minimum": 1 },
+        "maxReplicas": { "type": "integer", "minimum": 1 },
+        "targetCPUUtilizationPercentage": { "type": "integer", "minimum": 1 },
+        "targetMemoryUtilizationPercentage": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^[0-9]+%$" }
+          ]
+        }
+      }
+    },
+    "extraEnv": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "extraVolumes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "extraVolumeMounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "mountPath"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "mountPath": { "$ref": "#/definitions/absolutePath" }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "port"],
+      "properties": {
+        "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "requests": { "type": "object" },
+        "limits": { "type": "object" }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create"],
+      "properties": {
+        "create": { "type": "boolean" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "name": { "$ref": "#/definitions/nullableString" }
+      }
+    }
+  }
+}

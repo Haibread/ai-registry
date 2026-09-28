@@ -160,6 +160,11 @@ New behaviour comes with tests at the right layer: unit tests for logic, an
 integration test for a new handler or query, a Playwright spec for a new admin
 flow. A bug fix comes with the test that would have caught it.
 
+A chart value added to or changed in
+[values.yaml](deploy/helm/ai-registry/values.yaml) is updated in
+[values.schema.json](deploy/helm/ai-registry/values.schema.json) in the same
+change; Helm validates every install, upgrade, render and lint against it.
+
 ### Changing the API
 
 1. Edit [server/api/openapi.yaml](server/api/openapi.yaml).
@@ -201,7 +206,7 @@ pre-commit run golangci-lint --all-files
 | `gofmt` | Go formatting | auto-fixed, re-stage |
 | `go-vet`, `golangci-lint` | Go correctness and lint ([server/.golangci.yml](server/.golangci.yml)) | by hand |
 | `web-eslint`, `web-tsc` | SPA lint and type-check (needs `npm ci` in `web/`) | by hand |
-| `helm-lint` | chart validity | by hand |
+| `helm-lint` | chart validity, `values.yaml` against `values.schema.json` | by hand |
 | `helm-docs` | chart README matches `values.yaml` | auto-regenerated, re-stage |
 | `hadolint` | Dockerfiles | by hand |
 | `actionlint` | GitHub workflows | by hand |
