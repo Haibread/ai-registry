@@ -245,9 +245,12 @@ the callback and the SPA keeps tokens out of URLs and browser history.
 no CSRF surface and no CSRF middleware. The price is that the SPA must hold the
 tokens in JavaScript-reachable storage, which makes XSS hygiene (CSP, no raw
 HTML rendering) load-bearing. The SPA's CSP therefore allows scripts and
-`fetch` to its own origin only, with no inline script and no `eval`. Tabs share
-that storage and serialise refreshes through a Web Lock, so two tabs never
-present the same single-use refresh token.
+`fetch` to its own origin only, with no inline script and no `eval`. nginx
+sets that CSP only on what it serves itself; proxied responses (the API, the
+`/docs` reference) carry the server's own policy alone, since a browser
+enforces every CSP it receives. Tabs share that storage and serialise
+refreshes through a Web Lock, so two tabs never present the same single-use
+refresh token.
 
 **Refresh tokens are single-use and stored hashed.** `refresh_tokens` never
 holds a raw token, and presenting an already-rotated refresh token revokes its

@@ -127,9 +127,11 @@ iterating, `npm run test:coverage` for a report.
 test/nginx/routing.sh
 ```
 
-Runs [web/nginx.conf](web/nginx.conf) in the web image's nginx base (Docker
-required, no build) and checks that `/metrics` answers 404 instead of being
-proxied to the server.
+Runs [web/nginx.conf](web/nginx.conf) in the web image's nginx base in front
+of a stub backend (Docker required, no build). It checks that `/metrics`
+answers 404 instead of being proxied to the server, that the SPA gets its
+security headers, and that proxied responses keep the backend's headers
+without the SPA's stacked on top.
 
 ### End to end
 

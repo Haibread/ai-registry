@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest'
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
 
 function cspDirectives(): Map<string, string[]> {
-  const match = read('../../nginx.conf').match(/add_header\s+Content-Security-Policy\s+"([^"]+)"/)
-  if (!match) throw new Error('no Content-Security-Policy header in nginx.conf')
+  const match = read('../../nginx.conf').match(/map\s+\$upstream_addr\s+\$spa_csp\s*\{\s*""\s+"([^"]+)"/)
+  if (!match) throw new Error('no $spa_csp map in nginx.conf')
   return new Map(
     match[1]
       .split(';')
