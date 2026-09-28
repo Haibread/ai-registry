@@ -19,8 +19,9 @@ clients (read-only user UI, authenticated admin UI).
   returned in the response body and sent as `Authorization: Bearer` (no
   cookie). Interactive login is either local email+password or server-brokered
   OIDC. Authorization is publisher-scoped RBAC enforced in server middleware.
-- **OpenAPI**: hand-written OpenAPI 3.1 spec is the source of truth; server
-  types and the TS client are generated from it.
+- **OpenAPI**: hand-written OpenAPI 3.1 spec is the source of truth; the TS
+  client is generated from it, and a contract test keeps the chi routes in
+  bijection with it.
 - **Observability**: OpenTelemetry for traces, metrics, and logs, exported via
   OTLP. Handlers are traced; DB calls produce child spans; structured logs
   carry `trace_id` / `span_id`.
@@ -36,7 +37,8 @@ clients (read-only user UI, authenticated admin UI).
   `api/` (embedded OpenAPI spec), `migrations/`, `cmd/`.
 - `web/` — the SPA (pages in `src/pages/`).
 - `deploy/` — ops (compose files, Helm, example configs).
-- `docs/`, `design.md` — design notes.
+- `ARCHITECTURE.md` — design and rationale; `CONTRIBUTING.md` — dev loop,
+  tests, CI; `docs/` — operations docs.
 
 ## Non-negotiables
 

@@ -1,0 +1,231 @@
+# Contributing
+
+Open an issue or a pull request on
+[GitHub](https://github.com/Haibread/ai-registry). The short version: branch
+from `main`, change the OpenAPI spec before the code when you touch the API,
+keep `pre-commit run --all-files` and the test suites green, and open a PR.
+
+How the system fits together is in [ARCHITECTURE.md](ARCHITECTURE.md); running
+it is in [README.md](README.md#getting-started).
+
+## Development setup
+
+### Tooling
+
+| Tool | Version | Used for |
+| --- | --- | --- |
+| Go | as in [server/go.mod](server/go.mod) | server build and tests |
+| Node.js + npm | 24 | SPA build, tests, lint |
+| Docker + Compose plugin | recent | integration tests (testcontainers), local stack |
+| pre-commit | ≥ 3.2 | commit gate |
+| golangci-lint | v2.12.2 | `golangci-lint` hook |
+| helm | 3.x | `helm-lint` hook, chart rendering |
+| helm-docs | v1.14.2 | `helm-docs` hook |
+| hadolint | v2.12.0 | `hadolint` hook |
+| actionlint | v1.7.12 | `actionlint` hook |
+
+The versions are the ones CI installs. Go and Node come from their upstream
+installers: [go.dev/doc/install](https://go.dev/doc/install) and
+[nodejs.org/en/download](https://nodejs.org/en/download). The rest:
+
+```bash
+pipx install pre-commit
+```
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+```
+
+```bash
+go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.14.2
+```
+
+```bash
+go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+hadolint:
+
+**macOS**
+
+```bash
+brew install hadolint
+```
+
+**Linux** — download the `hadolint-Linux-x86_64` (or `-arm64`) binary of
+[v2.12.0](https://github.com/hadolint/hadolint/releases/tag/v2.12.0) onto your
+`PATH`.
+
+### Bootstrap
+
+From a fresh clone:
+
+```bash
+cd web && npm ci
+```
+
+```bash
+pre-commit install
+```
+
+The setup is good when this passes:
+
+```bash
+pre-commit run --all-files
+```
+
+## Running the tests
+
+Three layers, each with different needs.
+
+### Server — unit and integration
+
+```bash
+cd server && go test -race ./...
+```
+
+Table-driven unit tests cover `domain`, `auth`, `config` and the middleware.
+Repository and handler tests start a throwaway PostgreSQL with
+[testcontainers](https://golang.testcontainers.org/), so **Docker must be
+running**. A single package or test:
+
+```bash
+cd server && go test -run TestRefreshToken_ReuseRevokesLineage ./internal/store/
+```
+
+CI fails when total Go coverage drops below **70 %**. To see where you stand:
+
+```bash
+cd server && go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | tail -1
+```
+
+The contract suites are part of `go test ./...`; they assert that the OpenAPI
+operations and the chi routes match one-to-one, that every write route is
+guarded, and that emitted Agent Cards conform to the pinned A2A schema. Adding
+a route without its spec entry, or the reverse, fails them.
+
+### Web — unit and component
+
+```bash
+cd web && npm test
+```
+
+Vitest with Testing Library, no services needed. `npm run test:watch` while
+iterating, `npm run test:coverage` for a report.
+
+### End to end
+
+Playwright drives the SPA against a real server and Keycloak. Start the local
+stack, then run the suite against it (default base URL
+`http://localhost:3000`, override with `E2E_BASE_URL`):
+
+```bash
+docker compose --profile dev up -d --build
+```
+
+```bash
+cd web && npx playwright install chromium
+```
+
+```bash
+cd web && npm run test:e2e
+```
+
+The test users are the dev realm's
+([deploy/keycloak-realm-dev.json](deploy/keycloak-realm-dev.json)); override
+them with `E2E_<ROLE>_EMAIL` / `E2E_<ROLE>_PASSWORD`. A k6 smoke test lives in
+[test/load/](test/load/README.md).
+
+### What a change needs
+
+New behaviour comes with tests at the right layer: unit tests for logic, an
+integration test for a new handler or query, a Playwright spec for a new admin
+flow. A bug fix comes with the test that would have caught it.
+
+### Changing the API
+
+1. Edit [server/api/openapi.yaml](server/api/openapi.yaml).
+2. Regenerate the TypeScript client — CI fails if the committed file differs:
+
+   ```bash
+   cd web && npm run generate
+   ```
+
+3. Implement the handler and route; the contract suite tells you if they
+   disagree with the spec.
+
+A schema change is a new file pair in [server/migrations/](server/migrations/)
+(`NNNNNN_name.up.sql` / `.down.sql`). Migrations are forward-only: never edit
+one that has been merged.
+
+## Pre-commit hooks
+
+Hooks must pass before you push; CI runs the same set, so skipping them locally
+only moves the failure somewhere slower. `--no-verify` and `SKIP=` are not a
+fix — correct the code, or change the rule in
+[.pre-commit-config.yaml](.pre-commit-config.yaml) in the same PR and say why.
+
+```bash
+pre-commit run --all-files
+```
+
+```bash
+pre-commit run golangci-lint --all-files
+```
+
+| Hook | Checks | Fix |
+| --- | --- | --- |
+| `trailing-whitespace`, `end-of-file-fixer` | whitespace | auto-fixed, re-stage |
+| `check-yaml`, `check-merge-conflict`, `check-added-large-files`, `detect-private-key` | YAML syntax, conflict markers, large files, private keys | by hand |
+| `gitleaks` | secrets in the diff | remove the secret, rotate it |
+| `gofmt` | Go formatting | auto-fixed, re-stage |
+| `go-vet`, `golangci-lint` | Go correctness and lint ([server/.golangci.yml](server/.golangci.yml)) | by hand |
+| `web-eslint`, `web-tsc` | SPA lint and type-check (needs `npm ci` in `web/`) | by hand |
+| `helm-lint` | chart validity | by hand |
+| `helm-docs` | chart README matches `values.yaml` | auto-regenerated, re-stage |
+| `hadolint` | Dockerfiles | by hand |
+| `actionlint` | GitHub workflows | by hand |
+
+## Continuous integration
+
+Workflows live in [.github/workflows/](.github/workflows/). The only secret
+they use is the built-in `GITHUB_TOKEN`, so fork PRs run Lint, Quality and the
+Docker build like any other.
+
+| Workflow | Triggers on | What it does | Reproduce locally |
+| --- | --- | --- | --- |
+| [Lint](.github/workflows/lint.yml) | PR to `main`, manual | `pre-commit run --all-files` | `pre-commit run --all-files` |
+| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm test`; `helm template` over several value sets + kubeconform; e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
+| [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build only. Push to `main` or a `v*.*.*` tag: build, push to GHCR, Trivy scan | multi-arch (`amd64`, `arm64`) server and web images | `docker build server` and `docker build -f web/Dockerfile .` |
+| [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | packages and pushes the chart to GHCR as OCI | `helm package deploy/helm/ai-registry` |
+| [Release](.github/workflows/release.yml) | a successful Docker run for a `v*` tag | GitHub Release from the matching `CHANGELOG.md` section | — |
+
+A PR is ready to merge when Lint and Quality are green.
+
+### Releases
+
+Application and chart are versioned independently:
+
+- a **`v1.2.3`** tag publishes the server and web images at that version and
+  cuts the GitHub Release from its `CHANGELOG.md` section;
+- a **`chart-1.2.3`** tag publishes the chart at that version, with the
+  `appVersion` committed in
+  [Chart.yaml](deploy/helm/ai-registry/Chart.yaml).
+
+## Submitting a change
+
+- Branch from `main` as `feat/<topic>`, `fix/<topic>`, `docs/<topic>` or
+  `chore/<topic>`.
+- Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
+  (`feat:`, `fix:`, `docs:`, `chore:`, `test:`), as in `git log --oneline`.
+- Update [ARCHITECTURE.md](ARCHITECTURE.md), the README or
+  [deploy/config.example.yaml](deploy/config.example.yaml) in the same PR when
+  the change affects them. A new setting goes in
+  [server/internal/config/config.go](server/internal/config/config.go), the
+  example config and [deploy/.env.example](deploy/.env.example) together.
+- Label the PR by kind (`enhancement`, `bug`, `documentation`, `dependencies`,
+  `security`).
