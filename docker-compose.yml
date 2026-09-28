@@ -215,7 +215,7 @@ services:
 
   # ── OTel Collector (observability profile) ──────────────────────────────────
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.153.0
+    image: otel/opentelemetry-collector-contrib:0.161.0
     profiles:
       - observability
     restart: unless-stopped
