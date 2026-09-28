@@ -346,7 +346,9 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
 - **Migrations are forward-only.** Down files exist for local convenience;
   production never runs them.
 - **Every setting resolves env → YAML file → default**, and is documented in
-  [deploy/config.example.yaml](deploy/config.example.yaml).
+  [deploy/config.example.yaml](deploy/config.example.yaml). A value that does
+  not parse or is out of range stops the server at startup; it never falls
+  back to the default.
 - **`PUBLIC_BASE_URL` must be set** for the well-known endpoints: without it
   they answer `500` rather than advertise `localhost`.
 

@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -801,6 +802,170 @@ func TestLoad_AuthSweepInterval(t *testing.T) {
 				t.Errorf("SweepInterval = %v, want %v", cfg.Auth.SweepInterval, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoad_InvalidEnvValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+		want  []string
+	}{
+		{"int not a number", "DATABASE_MAX_CONNS", "abc", []string{"DATABASE_MAX_CONNS", `"abc"`}},
+		{"int with unit", "PUBLIC_RATE_LIMIT_RPM", "100/m", []string{"PUBLIC_RATE_LIMIT_RPM", `"100/m"`}},
+		{"bool yes", "AUTH_LOCAL_LOGIN_ENABLED", "yes", []string{"AUTH_LOCAL_LOGIN_ENABLED", `"yes"`}},
+		{"duration without unit", "ACCESS_TOKEN_TTL", "15", []string{"ACCESS_TOKEN_TTL", `"15"`}},
+		{"duration garbage", "HTTP_READ_TIMEOUT", "soon", []string{"HTTP_READ_TIMEOUT", `"soon"`}},
+		{"instance tags not JSON", "INSTANCE_TAGS", "not-json", []string{"INSTANCE_TAGS"}},
+		{"negative timeout", "HTTP_IDLE_TIMEOUT", "-1s", []string{"HTTP_IDLE_TIMEOUT", "negative"}},
+		{"drain delay without unit", "SHUTDOWN_DRAIN_DELAY", "5", []string{"SHUTDOWN_DRAIN_DELAY", `"5"`}},
+		{"zero access TTL", "ACCESS_TOKEN_TTL", "0s", []string{"ACCESS_TOKEN_TTL", "positive"}},
+		{"negative refresh TTL", "REFRESH_TOKEN_TTL", "-1h", []string{"REFRESH_TOKEN_TTL", "positive"}},
+		{"zero rate limit", "PUBLIC_RATE_LIMIT_RPM", "0", []string{"PUBLIC_RATE_LIMIT_RPM", "positive"}},
+		{"negative rate limit", "PUBLIC_RATE_LIMIT_RPM", "-5", []string{"PUBLIC_RATE_LIMIT_RPM", "positive"}},
+		{"zero max conns", "DATABASE_MAX_CONNS", "0", []string{"DATABASE_MAX_CONNS"}},
+		{"max conns overflows int32", "DATABASE_MAX_CONNS", "4294967296", []string{"DATABASE_MAX_CONNS"}},
+		{"min conns above max", "DATABASE_MIN_CONNS", "30", []string{"DATABASE_MIN_CONNS"}},
+		{"negative min conns", "DATABASE_MIN_CONNS", "-1", []string{"DATABASE_MIN_CONNS"}},
+		{"unknown log level", "LOG_LEVEL", "DEBUG", []string{"LOG_LEVEL", `"DEBUG"`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+			t.Setenv("CONFIG_FILE", "")
+			t.Setenv(tt.key, tt.value)
+			_, err := config.Load("")
+			if err == nil {
+				t.Fatalf("Load() with %s=%q = nil error, want an error", tt.key, tt.value)
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("error %q does not mention %s", err, w)
+				}
+			}
+		})
+	}
+}
+
+func TestLoad_InvalidFileValue(t *testing.T) {
+	tests := []struct {
+		name string
+		file string
+		want []string
+	}{
+		{"duration without unit", "http:\n  read_timeout: \"30\"\n", []string{"http.read_timeout", `"30"`}},
+		{"ttl garbage", "auth:\n  refresh_token_ttl: \"forever\"\n", []string{"auth.refresh_token_ttl", `"forever"`}},
+		{"sweep interval garbage", "auth:\n  sweep_interval: \"often\"\n", []string{"auth.sweep_interval", `"often"`}},
+		{"negative drain delay", "http:\n  shutdown_drain_delay: \"-1s\"\n", []string{"http.shutdown_drain_delay", "negative"}},
+		{"negative ttl", "auth:\n  access_token_ttl: \"-5m\"\n", []string{"auth.access_token_ttl", "positive"}},
+		{"min above max", "database:\n  max_conns: 2\n  min_conns: 3\n", []string{"database.min_conns"}},
+		{"zero rate limit", "http:\n  public_rate_limit_rpm: 0\n", []string{"http.public_rate_limit_rpm"}},
+		{"unknown log level", "log:\n  level: \"verbose\"\n", []string{"log.level", `"verbose"`}},
+		{"int as string", "database:\n  max_conns: \"many\"\n", []string{"line 2", "many"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+			t.Setenv("CONFIG_FILE", "")
+			_, err := config.Load(writeConfigFile(t, tt.file))
+			if err == nil {
+				t.Fatalf("Load() = nil error, want an error")
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("error %q does not mention %s", err, w)
+				}
+			}
+		})
+	}
+}
+
+func TestLoad_ValidParsedValues(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+	t.Setenv("CONFIG_FILE", "")
+	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "1")
+	t.Setenv("HTTP_READ_TIMEOUT", "0s")
+	t.Setenv("ACCESS_TOKEN_TTL", "90s")
+	t.Setenv("DATABASE_MAX_CONNS", "10")
+	t.Setenv("DATABASE_MIN_CONNS", "10")
+	t.Setenv("LOG_LEVEL", "warn")
+	path := writeConfigFile(t, "auth:\n  refresh_token_ttl: \"24h\"\nhttp:\n  idle_timeout: \"1m30s\"\n")
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	tests := []struct {
+		name string
+		got  any
+		want any
+	}{
+		{"bool", cfg.Auth.LocalLoginEnabled, true},
+		{"zero timeout means none", cfg.HTTP.ReadTimeout, time.Duration(0)},
+		{"env duration", cfg.Auth.AccessTokenTTL, 90 * time.Second},
+		{"file duration", cfg.Auth.RefreshTokenTTL, 24 * time.Hour},
+		{"compound file duration", cfg.HTTP.IdleTimeout, 90 * time.Second},
+		{"max conns", cfg.Database.MaxConns, int32(10)},
+		{"min conns equal to max", cfg.Database.MinConns, int32(10)},
+		{"log level", cfg.Log.Level, "warn"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("got %v, want %v", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoad_ReportsEveryInvalidValue(t *testing.T) {
+	t.Setenv("CONFIG_FILE", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("DATABASE_MAX_CONNS", "abc")
+	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "yes")
+	t.Setenv("ACCESS_TOKEN_TTL", "15")
+	path := writeConfigFile(t, "http:\n  write_timeout: \"30\"\n")
+
+	_, err := config.Load(path)
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	for _, w := range []string{"DATABASE_URL", "DATABASE_MAX_CONNS", "AUTH_LOCAL_LOGIN_ENABLED", "ACCESS_TOKEN_TTL", "http.write_timeout"} {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("error %q does not mention %s", err, w)
+		}
+	}
+}
+
+func TestLoad_ErrorNeverEchoesSecrets(t *testing.T) {
+	secrets := map[string]string{
+		"DATABASE_URL":                  "postgres://u:dsn-secret-marker@db/x",
+		"OIDC_CLIENT_SECRET":            "client-secret-marker",
+		"AUTH_BOOTSTRAP_ADMIN_PASSWORD": "password-marker",
+		"JWT_SIGNING_KEY":               "signing-key-marker",
+		"JWT_SIGNING_SEED":              "signing-seed-marker",
+	}
+	for k, v := range secrets {
+		t.Setenv(k, v)
+	}
+	t.Setenv("CONFIG_FILE", "")
+	// Half-configured OIDC and an audience without a broker both name secret
+	// settings; the bad values make sure every other error path runs too.
+	t.Setenv("OIDC_AUDIENCE", "registry")
+	t.Setenv("DATABASE_MAX_CONNS", "abc")
+	t.Setenv("ACCESS_TOKEN_TTL", "15")
+	t.Setenv("AUTH_LOCAL_LOGIN_ENABLED", "no-thanks")
+	t.Setenv("INSTANCE_TAGS", "{")
+
+	_, err := config.Load("")
+	if err == nil {
+		t.Fatal("Load() = nil error, want an error")
+	}
+	for k, v := range secrets {
+		if strings.Contains(err.Error(), v) || strings.Contains(err.Error(), "marker") {
+			t.Errorf("error leaks the value of %s: %q", k, err)
+		}
 	}
 }
 

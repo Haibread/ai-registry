@@ -5,7 +5,8 @@
 # CONFIG_FILE=/path/to/config.yaml.
 #
 # Environment variables always take precedence over values in this file.
-# Missing keys fall back to built-in defaults (shown below).
+# Missing keys fall back to built-in defaults (shown below). A value that does
+# not parse or is out of range stops the server at startup.
 # ============================================================================
 
 http:
