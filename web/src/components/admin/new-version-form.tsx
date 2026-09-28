@@ -135,6 +135,7 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
     agentPrefill ? (agentPrefill[dir] ?? []).includes(mode) : mode === 'text/plain'
 
   const [runtime, setRuntime] = useState<string>(mcpPrefill?.runtime ?? 'stdio')
+  const [remoteUrl, setRemoteUrl] = useState(prefillRemote?.url ?? '')
   const [pkgRegistryType, setPkgRegistryType] = useState(prefillPkg?.registryType ?? 'npm')
   const [authScheme, setAuthScheme] = useState(
     AUTH_SCHEME_OPTIONS.some((o) => o.value === prefillScheme) ? prefillScheme! : '_none',
@@ -366,7 +367,8 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
                 name="remote_url"
                 type="url"
                 placeholder="https://mcp.example.com/sse"
-                defaultValue={prefillRemote?.url ?? ''}
+                value={remoteUrl}
+                onChange={(e) => setRemoteUrl(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
                 Where clients reach the hosted server directly — no package
@@ -438,7 +440,19 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
             </div>
           </fieldset>
 
-          <ToolsEditor name="tools" initialTools={mcpPrefill?.tools ?? []} />
+          <ToolsEditor
+            name="tools"
+            initialTools={mcpPrefill?.tools ?? []}
+            discovery={{
+              namespace,
+              transport: runtime,
+              remoteUrl,
+              onUseEndpoint: (url) => {
+                setRemoteUrl(url)
+                setDirty(true)
+              },
+            }}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor="capabilities" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

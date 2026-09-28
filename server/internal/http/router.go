@@ -57,6 +57,12 @@ type RouterDeps struct {
 	// Draining is set on shutdown to make /readyz fail while the server keeps
 	// serving. Nil in tests that never shut down.
 	Draining *atomic.Bool
+	// ToolDiscoverer lists a remote MCP server's tools. Nil disables
+	// POST /api/v1/mcp/tool-discoveries (503).
+	ToolDiscoverer handlers.ToolDiscoverer
+	// ToolDiscoveryRateLimitRPM is the per-IP discovery budget per minute.
+	// Zero falls back to 30.
+	ToolDiscoveryRateLimitRPM int
 }
 
 // NewRouter builds and returns the fully wrapped HTTP handler: the chi router
@@ -124,6 +130,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	grantH := handlers.NewGrantHandlers(deps.DB, deps.DB)
 	tagH := handlers.NewTagHandlers(deps.DB, deps.DB)
 	meH := handlers.NewMeHandlers(deps.DB)
+	discoveryH := handlers.NewToolDiscoveryHandlers(deps.DB, deps.ToolDiscoverer, deps.Metrics)
 
 	// resolvePublisherSlug maps the {slug} path param to a publisher id for
 	// RequirePublisherRole on the per-publisher grants routes.
@@ -361,6 +368,16 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				r.With(requireReviewerNS).Post("/change-request/reject", revH.RejectMCPChange)
 			})
 		})
+
+		// Tool discovery makes an outbound connection per call, so it has a
+		// budget of its own, far below the public read limit. The Editor check
+		// is in-handler: the publisher is in the body.
+		discoveryRLMax := deps.ToolDiscoveryRateLimitRPM
+		if discoveryRLMax <= 0 {
+			discoveryRLMax = 30
+		}
+		discoveryRL := middleware.RateLimit(discoveryRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
+		r.With(discoveryRL).Post("/mcp/tool-discoveries", discoveryH.Discover)
 
 		// Agents
 		r.Route("/agents", func(r chi.Router) {

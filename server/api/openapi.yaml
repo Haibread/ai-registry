@@ -1303,6 +1303,76 @@ paths:
 
   # ── MCP Servers ───────────────────────────────────────────────────────────
 
+  /api/v1/mcp/tool-discoveries:
+    post:
+      operationId: discoverMCPTools
+      summary: List the tools a remote MCP server exposes
+      description: |
+        Connects to a remote MCP server on the caller's behalf, runs the MCP
+        handshake and reads every `tools/list` page, so an authoring form can
+        pre-fill a version's `tools`. Nothing is stored.
+
+        The endpoint is guessed from `url`: the URL as given, then with a `/mcp`
+        and a `/sse` path suffix unless the path already ends with one. On each
+        candidate the transport the path names (or else `transport`) is tried
+        first, then the other one. The first candidate that completes the
+        handshake wins; a 401/403 stops the search.
+
+        The registry refuses to connect to loopback, private, link-local and
+        other reserved addresses unless the deployment allows them, and only
+        anonymous connections are made. Requires Editor on `namespace` (or
+        Server Admin).
+      tags:
+        - mcp
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMCPToolDiscoveryRequest"
+      responses:
+        "200":
+          description: The server answered; its tools are listed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPToolDiscovery"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: |
+            Invalid request. Inspect `type`:
+              .../errors/validation-error   the body is malformed or `namespace` does not exist
+              .../errors/blocked-address    the URL resolves to an address the registry will not connect to
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          description: |
+            The remote server could not be used. Inspect `type`:
+              .../errors/no-mcp-server           no candidate completed the MCP handshake
+              .../errors/upstream-unauthorized   the server requires authentication
+              .../errors/too-many-tools          the server lists more tools than the registry accepts
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "504":
+          description: The discovery did not finish within the configured timeout
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
   /api/v1/mcp/servers:
     get:
       operationId: listMCPServers
@@ -4388,6 +4458,95 @@ components:
           type: object
           additionalProperties: true
           description: MCP spec tool annotations (e.g. destructive, idempotent)
+
+    CreateMCPToolDiscoveryRequest:
+      type: object
+      required:
+        - namespace
+        - url
+        - transport
+      properties:
+        namespace:
+          type: string
+          description: Publisher the discovery is made for; the caller needs Editor on it.
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: The remote URL as declared on the version.
+        transport:
+          type: string
+          enum:
+            - http
+            - sse
+            - streamable_http
+          description: The declared transport, tried first. `http` means `streamable_http`.
+
+    MCPToolDiscoveryAttempt:
+      type: object
+      required:
+        - url
+        - transport
+        - status
+      properties:
+        url:
+          type: string
+          format: uri
+        transport:
+          type: string
+          enum:
+            - sse
+            - streamable_http
+        status:
+          type: integer
+          description: HTTP status of the first response, 0 when none arrived.
+        error:
+          type: string
+          description: Why the attempt failed; absent on the attempt that succeeded.
+
+    MCPToolDiscovery:
+      type: object
+      required:
+        - endpoint
+        - attempts
+        - protocol_version
+        - tools
+      properties:
+        endpoint:
+          type: object
+          description: The candidate that answered. It may differ from the declared URL.
+          required:
+            - url
+            - transport
+          properties:
+            url:
+              type: string
+              format: uri
+            transport:
+              type: string
+              enum:
+                - sse
+                - streamable_http
+        attempts:
+          type: array
+          description: Every attempt made, in order, the successful one last.
+          items:
+            $ref: "#/components/schemas/MCPToolDiscoveryAttempt"
+        server_info:
+          type: object
+          required:
+            - name
+          properties:
+            name:
+              type: string
+            version:
+              type: string
+        protocol_version:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPTool"
 
     InstanceTag:
       type: object

@@ -71,6 +71,7 @@ export default function AdminMCPNew() {
   // placeholder. Drive the trigger label ourselves from the chosen publisher.
   const selectedPublisher = publishers.find((p) => p.slug === namespace)
   const [runtime, setRuntime] = useState('stdio')
+  const [remoteUrl, setRemoteUrl] = useState('')
   const [pkgRegistryType, setPkgRegistryType] = useState('npm')
   const [formError, setFormError] = useState<CreateError | null>(null)
   // Unsaved-changes guard: any input change marks the form dirty;
@@ -384,6 +385,8 @@ export default function AdminMCPNew() {
                   name="remote_url"
                   type="url"
                   placeholder="https://mcp.example.com/sse"
+                  value={remoteUrl}
+                  onChange={(e) => setRemoteUrl(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
                   Where clients reach the hosted server directly — no package
@@ -453,7 +456,18 @@ export default function AdminMCPNew() {
                 structured cards (Form) or a raw JSON array (JSON); either way it
                 emits a hidden `tools` input the FormData submit handler reads. */}
             <div className="rounded-md border border-dashed p-4">
-              <ToolsEditor name="tools" />
+              <ToolsEditor
+                name="tools"
+                discovery={{
+                  namespace,
+                  transport: runtime,
+                  remoteUrl,
+                  onUseEndpoint: (url) => {
+                    setRemoteUrl(url)
+                    setDirty(true)
+                  },
+                }}
+              />
             </div>
 
             <div className="space-y-1">

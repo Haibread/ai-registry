@@ -283,3 +283,31 @@ change, follow §5 to roll it forward instead.
 - Open an incident channel; post every action you take (timestamped).
 - Once resolved, write a postmortem within 48 hours under
   `docs/postmortems/<date>-<slug>.md`.
+
+---
+
+## 13. "Fetch from server" failing
+
+**Symptoms**
+
+- Authors report that "Fetch from server" in the MCP forms fails for servers
+  that answer from their own machine.
+- Metric `registry_mcp_tool_discoveries_total` climbs with
+  `outcome="timeout"`, `"no_mcp_server"` or `"blocked_address"`.
+
+**Triage**
+
+- `timeout` / `no_mcp_server` for every server: the api pod has no route to
+  the internet. With `global.networkPolicy.egress.enabled`, allow the MCP
+  hosts (TCP 443) in `egress.extraRules`. Discovery ignores `HTTP_PROXY`, so a
+  proxy-only egress cannot serve it.
+- `blocked_address` for a server on the internal network: the registry refuses
+  loopback, private and link-local addresses by design. Allow its range with
+  `TOOL_DISCOVERY_ALLOWED_CIDRS` (through `api.extraEnv`).
+- `429` for one author: the per-IP budget is `TOOL_DISCOVERY_RATE_LIMIT_RPM`
+  (30 rpm per replica by default).
+
+**Remediation**
+
+- Turn the feature off with `TOOL_DISCOVERY_ENABLED=false`: the endpoint then
+  answers 503 and authors enter tools by hand.
