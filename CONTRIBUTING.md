@@ -15,7 +15,7 @@ it is in [README.md](README.md#getting-started).
 | Tool | Version | Used for |
 | --- | --- | --- |
 | Go | as in [server/go.mod](server/go.mod) | server build and tests |
-| Node.js + npm | 24 | SPA build, tests, lint |
+| Node.js + npm | 26 | SPA build, tests, lint |
 | Docker + Compose plugin | recent | integration tests (testcontainers), local stack |
 | pre-commit | ≥ 3.2 | commit gate |
 | golangci-lint | v2.12.2 | `golangci-lint` hook |
