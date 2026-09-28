@@ -1,7 +1,7 @@
 /**
- * Role matrix — a short reference for what each role can actually do
- * (UI/UX review P3: the grants/members surfaces used the role names without
- * ever defining them). Linked from the Members page and the grants editor.
+ * Role matrix — a short reference for what each role can actually do, since
+ * the grants/members surfaces use the role names without defining them.
+ * Linked from the Members page and the grants editor.
  */
 
 import { Link } from 'react-router-dom'

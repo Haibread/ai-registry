@@ -50,8 +50,8 @@ test.describe('Admin UX polish', () => {
     const admin = await pageAs(browser, 'admin')
     await admin.goto(`/admin/mcp?namespace=${PUB}`)
 
-    // The name cell is a link straight to the entry — Manage is no longer
-    // the only navigation affordance.
+    // The name cell is a link straight to the entry — Manage is not the only
+    // navigation affordance.
     const nameLink = admin.getByRole('link', { name: 'Alpha Server' })
     await expect(nameLink).toBeVisible({ timeout: 15_000 })
     await expect(nameLink).toHaveAttribute('href', `/admin/mcp/${PUB}/alpha-server`)

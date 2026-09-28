@@ -140,7 +140,7 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
     AUTH_SCHEME_OPTIONS.some((o) => o.value === prefillScheme) ? prefillScheme! : '_none',
   )
   const [error, setError] = useState<string | null>(null)
-  // Unsaved-changes guard (P2.5) — this form is the worst loss case (a
+  // Unsaved-changes guard — this form is the worst loss case (a
   // hand-built tools list dies on one stray sidebar click).
   const [dirty, setDirty] = useState(false)
 

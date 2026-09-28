@@ -1,12 +1,11 @@
 /**
- * ConfirmDialog — the shared confirmation primitive for consequential actions
- * (UI/UX review P1.4/P2.1). A themed, keyboard-accessible replacement for
- * window.confirm: native <dialog> (focus trap + Esc for free), named action
+ * ConfirmDialog — the shared confirmation primitive for consequential actions.
+ * A themed, keyboard-accessible replacement for window.confirm: native <dialog> (focus trap + Esc for free), named action
  * and consequence, destructive styling when warranted.
  *
  * Controlled: the caller owns `open` and renders the dialog near the
  * triggering button. `m-auto` is load-bearing — Tailwind's preflight resets
- * the margin that normally centers a modal <dialog> (see review finding J3b).
+ * the margin that normally centers a modal <dialog>.
  */
 
 import { useEffect, useRef } from 'react'

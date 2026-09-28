@@ -280,8 +280,8 @@ func TestLoadSpec_ExampleYAML(t *testing.T) {
 	if len(spec.Agents) == 0 {
 		t.Error("example has zero agents; expected at least one")
 	}
-	// Sanity-check that at least one entry exercises the v0.2 fields,
-	// otherwise the example isn't demonstrating what the release notes claim.
+	// Sanity-check that at least one entry exercises each optional metadata
+	// field, otherwise the example isn't demonstrating them.
 	var featured, tagged, withReadme, withCaps bool
 	for _, s := range spec.MCPServers {
 		if s.Featured {

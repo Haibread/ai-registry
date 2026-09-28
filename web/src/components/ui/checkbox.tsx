@@ -1,10 +1,9 @@
 /**
- * Checkbox — the shared checkbox primitive (UI/UX review P3).
+ * Checkbox — the shared checkbox primitive.
  *
  * A styled native <input type="checkbox"> rather than a Radix widget: native
  * checkboxes keep form semantics, label association, and keyboard behavior
- * for free. This wrapper adds the design system's focus ring (the bare
- * inputs previously had no focus styling at all) and supports the
+ * for free. This wrapper adds the design system's focus ring and supports the
  * indeterminate state for "some rows selected" table headers.
  */
 

@@ -25,13 +25,11 @@ type PublisherResolver func(r *http.Request) (publisherID string, err error)
 
 // RequirePublisherRole returns chi middleware that authorizes a write/review
 // request against the caller's effective role on the target publisher.
-// It is the per-publisher replacement for the old
-// workspace-group write gate.
 //
 // The check is a capability check over the role lattice (domain.Satisfies),
 // not a threshold: Editor satisfies an Editor requirement, Reviewer satisfies
-// a Reviewer requirement, Admin satisfies both, and Server Admin satisfies
-// everything (short-circuited up front). Must be chained after Authenticate
+// a Reviewer requirement, Admin satisfies Editor but not Reviewer, and Server
+// Admin satisfies everything (short-circuited up front). Must be chained after Authenticate
 // with a PrincipalStore configured.
 func RequirePublisherRole(rs RoleStore, required domain.Role, resolve PublisherResolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

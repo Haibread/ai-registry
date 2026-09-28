@@ -121,7 +121,7 @@ describe('AdminAgentList', () => {
   })
 
   it('calls GET with params derived from the URL', async () => {
-    // cursor is no longer read from the URL — it is the infinite-query page
+    // cursor is not read from the URL — it is the infinite-query page
     // param, so the first page sends cursor: undefined.
     renderPage([
       '/admin/agents?q=rev&namespace=acme&status=draft&visibility=private',

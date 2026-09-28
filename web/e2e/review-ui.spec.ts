@@ -8,7 +8,7 @@
  * contract drift the unit tests with mocked clients can't.
  *
  * Prerequisites: same as the other admin specs (docker-compose dev
- * stack; the setup project populates e2e/.auth/*.json session cookies).
+ * stack; the setup project populates e2e/.auth/*.json access tokens).
  *
  * Run:  npm run test:e2e -- --project=review-ui
  */

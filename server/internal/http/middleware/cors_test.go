@@ -38,11 +38,6 @@ func TestCORS_OriginInAllowList(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != origin {
 		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, origin)
 	}
-	// An exact (non-wildcard) origin echo is paired with Allow-Credentials: true
-	// for an allow-listed origin; a wildcard never is.
-	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
-		t.Errorf("Access-Control-Allow-Credentials = %q, want \"true\" for an exact allowlisted origin", got)
-	}
 	if got := rec.Header().Get("Vary"); got != "Origin" {
 		t.Errorf("Vary = %q, want %q to prevent cross-origin cache poisoning", got, "Origin")
 	}
@@ -137,34 +132,25 @@ func TestCORS_Wildcard(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rec.Code)
 	}
-	// H4: a wildcard allowlist must emit literal "*", not echo the origin.
-	// Echoing origin while wildcard is configured paired with Allow-Credentials
-	// would be a browser-rejected misconfig; emitting "*" makes the public
-	// intent explicit and prevents any credentialed request from succeeding.
+	// A wildcard allowlist emits a literal "*" rather than echoing the origin.
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
 		t.Errorf("Access-Control-Allow-Origin = %q, want %q (wildcard allowlist)", got, "*")
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "" {
-		t.Errorf("Access-Control-Allow-Credentials = %q, want unset (invalid with wildcard)", got)
-	}
 }
 
-// TestCORS_CredentialsOnlyForExactOrigin locks in the invariant:
-// Allow-Credentials is emitted ONLY for an exact allowlisted origin echo, NEVER
-// alongside the "*" wildcard (which the browser rejects with credentials and
-// which we reserve for an unauthenticated public mirror).
-func TestCORS_CredentialsOnlyForExactOrigin(t *testing.T) {
+// TestCORS_NeverCredentialed locks in that Allow-Credentials is never sent:
+// auth is a bearer header, so no request needs ambient credentials.
+func TestCORS_NeverCredentialed(t *testing.T) {
 	cases := []struct {
-		name     string
-		allow    []string
-		origin   string
-		method   string
-		wantCred string
+		name   string
+		allow  []string
+		origin string
+		method string
 	}{
-		{"GET exact origin", []string{"http://example.com"}, "http://example.com", http.MethodGet, "true"},
-		{"preflight exact origin", []string{"http://example.com"}, "http://example.com", http.MethodOptions, "true"},
-		{"GET wildcard", []string{"*"}, "http://any-origin.com", http.MethodGet, ""},
-		{"preflight wildcard", []string{"*"}, "http://any-origin.com", http.MethodOptions, ""},
+		{"GET exact origin", []string{"http://example.com"}, "http://example.com", http.MethodGet},
+		{"preflight exact origin", []string{"http://example.com"}, "http://example.com", http.MethodOptions},
+		{"GET wildcard", []string{"*"}, "http://any-origin.com", http.MethodGet},
+		{"preflight wildcard", []string{"*"}, "http://any-origin.com", http.MethodOptions},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -173,8 +159,11 @@ func TestCORS_CredentialsOnlyForExactOrigin(t *testing.T) {
 			req.Header.Set("Origin", tc.origin)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
-			if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != tc.wantCred {
-				t.Errorf("Access-Control-Allow-Credentials = %q, want %q", got, tc.wantCred)
+			if got := rec.Header().Get("Access-Control-Allow-Origin"); got == "" {
+				t.Fatal("expected Access-Control-Allow-Origin to be set")
+			}
+			if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+				t.Errorf("Access-Control-Allow-Credentials = %q, want unset", got)
 			}
 		})
 	}

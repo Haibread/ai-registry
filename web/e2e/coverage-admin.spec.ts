@@ -19,7 +19,6 @@ import { apiPost, confirmDialog } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 
-// Deletes ride the session cookie shared by page.request.
 async function apiDelete(page: Page, path: string) {
   return page.request.delete(path)
 }

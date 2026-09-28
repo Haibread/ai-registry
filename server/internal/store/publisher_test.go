@@ -351,8 +351,7 @@ func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 }
 
 // TestDeletePublisher_SweepsTombstonedChildren verifies that the
-// publisher-delete tombstone sweep (scoped by publisher_id after workspaces
-// were removed) reaches every soft-deleted resource owned by the publisher.
+// publisher-delete tombstone sweep (scoped by publisher_id) reaches every soft-deleted resource owned by the publisher.
 func TestDeletePublisher_SweepsTombstonedChildren(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

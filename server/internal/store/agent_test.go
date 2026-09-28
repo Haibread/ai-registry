@@ -71,8 +71,8 @@ func TestCreateAgent_ConflictOnDuplicateSlug(t *testing.T) {
 	}
 }
 
-// TestCreateAgent_SlugUniquenessIsPerPublisher verifies that after workspaces
-// are removed (migration 000013), the unique key is (publisher_id, slug): two
+// TestCreateAgent_SlugUniquenessIsPerPublisher verifies that the unique key
+// is (publisher_id, slug): two
 // different publishers may each expose an agent with the same slug, but a
 // duplicate within one publisher conflicts.
 func TestCreateAgent_SlugUniquenessIsPerPublisher(t *testing.T) {

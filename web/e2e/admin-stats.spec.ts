@@ -3,16 +3,17 @@
  *
  * Regression tests for the admin dashboard statistics panel.
  *
- * Root causes previously observed:
- *  1. /api/v1/stats didn't exist — dashboard fell back to "—" for all counts.
- *  2. Keycloak 26 doesn't include realm_access.roles in access tokens unless
- *     explicitly configured — server returned 401 → frontend silently showed "—".
+ * Failure modes guarded against:
+ *  1. /api/v1/stats unreachable — the dashboard falls back to "—" for all counts.
+ *  2. Keycloak 26 omits realm_access.roles from access tokens unless
+ *     explicitly configured — the server returns 401 and the frontend
+ *     silently shows "—".
  *
  * These tests verify that:
  *  a) The stats panel shows numeric values (never "—") after login.
  *  b) No error banner is rendered.
  *  c) All three keys (mcp_servers, agents, publishers) are present in the API
- *     response when called with the session Bearer token.
+ *     response when called with the Bearer access token.
  */
 
 import { test, expect } from '@playwright/test'

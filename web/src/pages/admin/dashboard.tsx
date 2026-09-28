@@ -30,7 +30,7 @@ export default function AdminDashboard() {
   }
   // A reviewer with only a global grant has no publisher to scope to, but
   // does have work to do — land them on their queue, not "No publishers
-  // yet" (P2.4).
+  // yet".
   if (perms.isReviewerAnywhere) {
     return <ReviewerLanding />
   }

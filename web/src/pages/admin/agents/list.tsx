@@ -78,13 +78,9 @@ export default function AdminAgentList() {
       enabled: true,
     })
 
-  // Defensive client-side filter: older server builds return soft-deleted
-  // agents (status='deleted') from /api/v1/agents when no status filter is
-  // passed. Newer server builds exclude them by default at the store layer,
-  // but the admin UI should never surface tombstoned rows regardless.
-  // Cast through string: 'deleted' is no longer in the published schema union,
-  // but older server builds may still return it. The defensive filter must
-  // outlive the type narrowing, so we widen the comparison explicitly.
+  // Defensive filter: the admin UI never surfaces soft-deleted rows, even
+  // from a server build that returns them. 'deleted' is not in the schema's
+  // status union, hence the cast through string.
   const agents = (data?.pages.flatMap((p) => p?.items ?? []) ?? []).filter(
     (a) => (a.status as string) !== 'deleted',
   )
@@ -130,7 +126,7 @@ export default function AdminAgentList() {
     })
   }
 
-  // Bulk deprecate/delete confirm through the shared dialog (P2.1) — the
+  // Bulk deprecate/delete confirm through the shared dialog — the
   // pending kind also selects the dialog copy.
   const [bulkConfirm, setBulkConfirm] = useState<'deprecate' | 'delete' | null>(null)
 

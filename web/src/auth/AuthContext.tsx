@@ -129,7 +129,7 @@ async function consumeOIDCHandoff(): Promise<boolean> {
     // Resume the deep link that triggered the sign-in; with none, land on the
     // admin console rather than the public homepage the server's
     // post-login redirect points at — whoever completes an interactive
-    // sign-in came to work in the console (UI/UX review J3). The router is
+    // sign-in came to work in the console. The router is
     // already mounted on the callback page by the time this async exchange
     // finishes, and it cannot see a bare replaceState — the popstate event
     // makes it re-read the location and render the destination.

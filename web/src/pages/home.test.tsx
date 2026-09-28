@@ -64,7 +64,7 @@ describe('HomePage', () => {
 
   it('exposes an MCP Servers entry point via the header nav', () => {
     renderHome()
-    // Header nav link; the hero no longer duplicates this CTA.
+    // Header nav link; the hero does not duplicate this CTA.
     const links = screen.getAllByRole('link', { name: /mcp servers/i })
     expect(links.some((l) => l.getAttribute('href') === '/mcp')).toBe(true)
   })

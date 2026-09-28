@@ -279,7 +279,7 @@ func unauthorizedToken(w http.ResponseWriter, r *http.Request) {
 
 // loginLimiter is a small in-memory failed-attempt limiter keyed by email. It is
 // best-effort (per-process, not shared across replicas) — enough to blunt online
-// password guessing. Durable/distributed lockout is future work.
+// password guessing.
 type loginLimiter struct {
 	mu       sync.Mutex
 	attempts map[string]*attemptRecord

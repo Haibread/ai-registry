@@ -28,7 +28,7 @@ interface VersionsSectionProps {
   slug: string
   /** Lifecycle status of the owning entry. A deprecated entry keeps its
    *  versions "published" in the domain model — annotate so the two badges
-   *  don't read as a contradiction (J4). */
+   *  don't read as a contradiction. */
   entryStatus?: 'draft' | 'published' | 'deprecated' | 'deleted'
   /** Visibility of the owning entry. When private, the submit dialog offers
    *  the author-side release intent: "also make this entry public when
@@ -217,7 +217,7 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
       </div>
       {/* The review-queue page is reviewer-only — linking an editor there
           lands on "Failed to load" (403), so the link is reserved for callers
-          who can actually open it (J1 step 3). */}
+          who can actually open it. */}
       {canReview ? (
         <p className="text-sm text-muted-foreground">
           Drafts are authored here and sent for reviewer approval.
@@ -393,7 +393,7 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
                       {canReview && !v.published_at && (
                         // Same verb as the review queue when the version is
                         // pending review — "Approve & publish" — so the two
-                        // surfaces are recognisably the same action (J2).
+                        // surfaces are recognisably the same action.
                         <Button
                           size="sm"
                           onClick={() => setPublishTarget({ version: v.version, pending: isPending })}
@@ -423,7 +423,7 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
                 A reviewer approves or rejects it before it&apos;s published.
               </span>
               {/* The release intent belongs to the author, declared at submit
-                  time — not a decision dropped on the reviewer (J1). Only
+                  time — not a decision dropped on the reviewer. Only
                   meaningful while the entry is private. */}
               {entryVisibility === 'private' && (
                 <span className="flex items-start gap-2">

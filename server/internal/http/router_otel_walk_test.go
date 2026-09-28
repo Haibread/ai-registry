@@ -24,9 +24,7 @@ import (
 //
 // Goal: codify CLAUDE.md's "every HTTP handler must be traced" promise as a
 // machine-checkable contract that fails CI if a future router change drops
-// instrumentation on any route — including routes added after this test was
-// written. Previously the assertion was only as strong as the four-route
-// allow-list in router_otel_test.go.
+// instrumentation on any route, including newly added ones.
 //
 // What we do NOT assert here:
 //

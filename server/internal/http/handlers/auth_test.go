@@ -462,7 +462,7 @@ func TestOIDCLogin_RedirectsToIdP_NoCookie(t *testing.T) {
 		}
 	}
 	if c := rec.Result().Cookies(); len(c) != 0 {
-		t.Errorf("login must not set a cookie anymore, got %d", len(c))
+		t.Errorf("login must not set a cookie, got %d", len(c))
 	}
 	if len(st.requests) != 1 {
 		t.Errorf("login should persist exactly one auth request, got %d", len(st.requests))

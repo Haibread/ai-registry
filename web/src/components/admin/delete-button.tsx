@@ -16,8 +16,8 @@ interface DeleteButtonProps {
 
 // Solid destructive styling: this is the irreversible break-glass path
 // (admin force-delete, bypassing the review workflow), so its weight matches
-// its blast radius — unlike the reversible Deprecate, which stays quiet. The
-// previous muted-red outline read as disabled (UI/UX review P2.1/P3).
+// its blast radius — unlike the reversible Deprecate, which stays quiet. A
+// muted-red outline reads as disabled.
 export function DeleteButton({
   onDelete,
   entityName,

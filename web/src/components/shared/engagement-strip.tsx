@@ -5,12 +5,8 @@
  * Rendered borderless and muted-foreground-sized so it reads as a footnote
  * on detail pages rather than a headline. Engagement numbers are de-
  * emphasized here because the real value of a registry entry is its
- * tools/skills/capabilities, not its vanity counts.
- *
- * Historical note: this component was previously named `ActivityStrip`.
- * It was renamed to `EngagementStrip` so the "Activity" label could be
- * reclaimed by the per-entry lifecycle feed (creation, publish, deprecate,
- * etc.) which is a more meaningful use of that word.
+ * tools/skills/capabilities, not its vanity counts. "Activity" names the
+ * per-entry lifecycle feed (creation, publish, deprecate, …), not this strip.
  */
 
 import { Eye, Download, Sparkles, RefreshCw } from 'lucide-react'

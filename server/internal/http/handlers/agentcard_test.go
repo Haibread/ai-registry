@@ -33,12 +33,12 @@ func newAgentCardRouter(publicBaseURL string) *chi.Mux {
 
 // ─── A2A JSON Schema conformance ────────────────────────────────────────────
 //
-// CLAUDE.md Resolved Decision G pins the A2A Agent Card shape to the
-// a2a-project/a2a June 2025 commit. The schema file at
-// server/api/a2a-agent-card.schema.json is the machine-checkable version of
-// that decision — any regression in internal/agents/card.go that drops a
-// required field, mis-types a capability flag, or emits a security scheme
-// outside the CLAUDE.md decision-K allow-list will fail validation here.
+// The A2A Agent Card shape is pinned to the A2A specification as of June
+// 2025. The schema file at server/api/a2a-agent-card.schema.json is the
+// machine-checkable version of that pin — any regression in
+// internal/agents/card.go that drops a required field, mis-types a capability
+// flag, or emits a security scheme outside the allowed four types will fail
+// validation here.
 
 var (
 	a2aSchemaOnce sync.Once
@@ -287,8 +287,7 @@ func TestAgentCardHandler_PerAgentCard_A2AConformance(t *testing.T) {
 
 // TestAgentCardHandler_GlobalAgentCard_A2AConformance proves the registry's
 // own agent card (served at /.well-known/agent-card.json) is A2A-compliant
-// too. Per CLAUDE.md Resolved Decision H, the global card makes the registry
-// a first-class A2A citizen — an invalid card here would break discovery
+// too. The global card makes the registry a first-class A2A citizen — an invalid card here would break discovery
 // clients that crawl the registry via A2A.
 func TestAgentCardHandler_GlobalAgentCard_A2AConformance(t *testing.T) {
 	resetTables(t)

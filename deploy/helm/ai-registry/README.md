@@ -69,7 +69,7 @@ A centralized registry for AI ecosystem artifacts (MCP servers and AI agents)
 | api.podSecurityContext.fsGroup | int | `65532` | fsGroup matching the distroless `nonroot` user. |
 | api.podSecurityContext.runAsGroup | int | `65532` | GID of the distroless `nonroot` user. |
 | api.podSecurityContext.runAsUser | int | `65532` | UID of the distroless `nonroot` user. |
-| api.publicBaseURL | string | `nil` | [REQUIRED] Public-facing base URL of the deployment (what clients use), e.g. "https://registry.example.com". Used by the A2A global agent card and OAuth protected-resource metadata. |
+| api.publicBaseURL | string | `nil` | [REQUIRED] Public-facing base URL of the deployment (what clients use), e.g. "https://registry.example.com". Used by the A2A global agent card, as the access-token issuer and to derive the OIDC redirects. |
 | api.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/readyz","port":"http"},"initialDelaySeconds":5,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe (full probe object — override any field). |
 | api.readinessProbe.failureThreshold | int | `3` | Consecutive failures before the pod is marked unready. |
 | api.readinessProbe.httpGet.path | string | `"/readyz"` | Path polled for readiness. |

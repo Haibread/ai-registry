@@ -783,8 +783,7 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 	if lv := srv.LatestVersion; lv != nil {
 		// `tools` is always an array at the DB layer (NOT NULL DEFAULT '[]'),
 		// so we can emit it directly. Emit even when empty so the UI can
-		// distinguish "declared zero tools" from "endpoint didn't include the
-		// field" in a future transport refactor.
+		// distinguish "declared zero tools" from "field absent".
 		tools := lv.Tools
 		if len(tools) == 0 {
 			tools = json.RawMessage("[]")

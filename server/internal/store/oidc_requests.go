@@ -10,8 +10,7 @@ import (
 )
 
 // ── OIDC login-transaction state ─────────────────────────────────────────────
-// Replaces the former HttpOnly transaction cookie. The browser only ever sees
-// the opaque `state`; its hash is the lookup key, and the row is consumed
+// The browser only ever sees the opaque `state`; its hash is the lookup key, and the row is consumed
 // (deleted) by the callback.
 
 // CreateOIDCAuthRequestParams holds the login-transaction state. StateHash is

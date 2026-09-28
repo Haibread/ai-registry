@@ -362,10 +362,9 @@ func upsertMCPServer(ctx context.Context, db *store.DB, publisherID, publisherSl
 				},
 			})
 		}
-		// Apply v0.2 metadata fields (featured / verified / readme) via
-		// direct SQL — the CreateMCPServer helper predates these columns.
-		// Tags moved to version rows (migration 000022); spec tags are
-		// applied per version below.
+		// CreateMCPServer does not take featured / verified / readme, so they are
+		// set with direct SQL. Tags live on version rows and are applied
+		// per version below.
 		if s.Featured || s.Verified || s.Readme != "" {
 			if _, err := db.Pool.Exec(ctx,
 				`UPDATE mcp_servers
@@ -610,10 +609,9 @@ func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug s
 				},
 			})
 		}
-		// Apply v0.2 metadata fields (featured / verified / readme) via
-		// direct SQL — the CreateAgent helper predates these columns.
-		// Tags moved to version rows (migration 000022); spec tags are
-		// applied per version below.
+		// CreateAgent does not take featured / verified / readme, so they are
+		// set with direct SQL. Tags live on version rows and are applied
+		// per version below.
 		if a.Featured || a.Verified || a.Readme != "" {
 			if _, err := db.Pool.Exec(ctx,
 				`UPDATE agents

@@ -34,9 +34,9 @@ type RouterDeps struct {
 	// reads on /api/v1, in requests per minute. Zero falls back to 1000.
 	PublicRateLimitRPM int
 	// PublicBaseURL is the externally reachable URL of this deployment.
-	// Threaded into the well-known endpoints (oauth-protected-resource,
-	// global agent-card). Empty triggers HTTP 500 in those handlers rather
-	// than silently advertising localhost.
+	// Threaded into the global agent card and the OIDC post-login/logout
+	// redirects. Empty makes the agent-card handler return HTTP 500 rather
+	// than silently advertise localhost.
 	PublicBaseURL string
 	// Tokens mints / verifies registry access tokens (Ed25519 JWTs). Nil only in
 	// route-walk tests, which makes Authenticate a pass-through.
@@ -138,8 +138,8 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	// segment IS its owning publisher's slug, so the publisher is resolved from
 	// the slug — not from the resource's publisher_id column — which keeps the
 	// authorization decision a single publishers lookup. Writes require Editor,
-	// per-resource approvals require Reviewer; Admin and Server Admin satisfy
-	// either via the lattice.
+	// per-resource approvals require Reviewer. Admin satisfies Editor but not
+	// Reviewer; Server Admin short-circuits both.
 	resolvePublisherByNamespace := func(r *http.Request) (string, error) {
 		pub, err := deps.DB.GetPublisher(r.Context(), chi.URLParam(r, "namespace"))
 		if err != nil {
@@ -311,7 +311,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 				// Edits require Editor on the owning publisher.
 				// Admin override is built in.
 				r.With(requireMCPServerNS).Patch("/", mcpH.PatchServer)
-				// Legacy direct delete is admin-only: it bypasses the
+				// Direct delete is admin-only: it bypasses the
 				// change-approval workflow (deletion-request /
 				// deletion-request/approve). Publisher Editors must use
 				// the workflow path; admins keep this as a

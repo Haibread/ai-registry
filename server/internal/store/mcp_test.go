@@ -68,9 +68,8 @@ func TestCreateMCPServer_ConflictOnDuplicateSlug(t *testing.T) {
 	}
 }
 
-// TestCreateMCPServer_SlugUniquenessIsPerPublisher verifies that after
-// workspaces are removed (migration 000013), the unique key is
-// (publisher_id, slug) — so two different publishers may each expose a server
+// TestCreateMCPServer_SlugUniquenessIsPerPublisher verifies that the unique
+// key is (publisher_id, slug) — so two different publishers may each expose a server
 // with the same slug, but a duplicate within one publisher is still rejected.
 func TestCreateMCPServer_SlugUniquenessIsPerPublisher(t *testing.T) {
 	resetDB(t)

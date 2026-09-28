@@ -17,7 +17,7 @@ export default function AdminGroupNew() {
   const api = useAuthClient()
   const navigate = useNavigate()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  // Unsaved-changes guard (P2.5).
+  // Unsaved-changes guard.
   const [dirty, setDirty] = useState(false)
 
   const mutation = useMutation({

@@ -21,8 +21,8 @@ const oidcAuthRequestTTL = 5 * time.Minute
 const handoffCodeTTL = 60 * time.Second
 
 // oidcStore is the store slice the OIDC handlers need: federated user
-// resolution + the login-transaction and handoff-code persistence that replace
-// the former cookies. *store.DB satisfies it.
+// resolution + the login-transaction and handoff-code persistence.
+// *store.DB satisfies it.
 type oidcStore interface {
 	auth.PrincipalStore
 	TouchLastSeen(ctx context.Context, id string) error

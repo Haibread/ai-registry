@@ -1,9 +1,8 @@
 name: Lint
 
 # Single static-analysis gate: runs the repo's full pre-commit hook set on
-# every pull request (and on demand). Everything that used to live in its own
-# CI job is a pre-commit hook, so one `pre-commit run --all-files` with no SKIP
-# now covers them all:
+# every pull request (and on demand). Every static check is a pre-commit hook,
+# so one `pre-commit run --all-files` with no SKIP covers them all:
 #   gitleaks (secret scan), gofmt, go vet, golangci-lint, eslint, tsc,
 #   helm lint, helm-docs, hadolint, actionlint, plus the hygiene hooks.
 # The tooling those system hooks shell out to is installed below before the run.
@@ -89,7 +88,6 @@ jobs:
       - name: Install pre-commit
         run: pipx install pre-commit
 
-      # No SKIP: the dedicated jobs that used to mirror these hooks are gone, so
-      # the full hook set runs here.
+      # No SKIP: no other job runs these hooks, so the full set runs here.
       - name: Run hooks
         run: pre-commit run --all-files --show-diff-on-failure --color always

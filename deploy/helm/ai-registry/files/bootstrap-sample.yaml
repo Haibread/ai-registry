@@ -13,7 +13,7 @@
 #
 # Supported formats: .yaml / .yml / .json
 #
-# This example also showcases the v0.2 fields:
+# This example also showcases the optional metadata fields:
 #   • featured   — flag an entry for the home page carousel
 #   • verified   — officially vetted badge
 #   • tags       — free-form labels surfaced in listing filters

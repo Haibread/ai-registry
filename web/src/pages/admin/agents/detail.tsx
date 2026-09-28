@@ -39,7 +39,7 @@ export default function AdminAgentDetail() {
         params: { path: { namespace: ns!, slug: slug! } },
       })
       // Carry the HTTP status so the error branch can tell a real 404 from
-      // a server error or network failure (P2.6).
+      // a server error or network failure.
       if (error || !data) throw new HTTPError(problemMessage(error, 'Failed to load this agent.'), response?.status)
       return data
     },
@@ -194,7 +194,7 @@ export default function AdminAgentDetail() {
       />
 
       {/* Editors get the pipeline spelled out once: nothing else in the UI
-          explains that publish and make-public are separate reviewed steps (J1). */}
+          explains that publish and make-public are separate reviewed steps. */}
       {perms.canEdit(ns) && !perms.isServerAdmin && data.visibility === 'private' && (
         <p className="text-sm text-muted-foreground max-w-prose">
           How this goes live: author a version, submit it for review, a
@@ -235,7 +235,7 @@ export default function AdminAgentDetail() {
         <dt className="text-muted-foreground">Namespace / Slug</dt>
         <dd className="font-mono">{data.namespace}/{data.slug}</dd>
         {/* Every editable field renders, with an explicit "—" for unset
-            values, so a reader can tell "not set" from "not shown" (P2.3). */}
+            values, so a reader can tell "not set" from "not shown". */}
         <dt className="text-muted-foreground">Description</dt>
         <dd className="max-w-prose">{data.description || <span className="text-muted-foreground">—</span>}</dd>
         {lv && (
