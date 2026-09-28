@@ -252,6 +252,14 @@ Application and chart are versioned independently:
   `appVersion` committed in
   [Chart.yaml](deploy/helm/ai-registry/Chart.yaml).
 
+### Dependency updates
+
+[Dependabot](.github/dependabot.yml) owns Go modules, npm, the Dockerfiles,
+the Compose file, GitHub Actions and the pre-commit hooks;
+[Renovate](renovate.json) only bumps the tool and image versions pinned inside
+workflow `run:` steps and service containers, which Dependabot cannot see. Both
+open PRs on Mondays; none is merged automatically.
+
 ## Submitting a change
 
 - Branch from `main` as `feat/<topic>`, `fix/<topic>`, `docs/<topic>` or

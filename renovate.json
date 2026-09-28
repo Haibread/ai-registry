@@ -3,88 +3,59 @@
   "extends": [
     "config:recommended"
   ],
+  "enabledManagers": ["custom.regex"],
   "timezone": "UTC",
   "schedule": ["before 6am on Monday"],
   "labels": ["dependencies"],
   "dependencyDashboard": true,
   "minimumReleaseAge": "3 days",
   "prConcurrentLimit": 5,
-  "packageRules": [
+  "customManagers": [
     {
-      "description": "Group all Go dependencies",
-      "matchManagers": ["gomod"],
-      "groupName": "Go dependencies",
-      "groupSlug": "go-deps"
+      "description": "Linters installed with `go install github.com/<owner>/<repo>/…@vX.Y.Z` in workflow run steps",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["go install github\\.com/(?<depName>[^/\\s]+/[^/@\\s]+)[^@\\s]*@(?<currentValue>v[^\\s]+)"],
+      "datasourceTemplate": "github-releases"
     },
     {
-      "description": "Group npm patch and minor updates",
-      "matchManagers": ["npm"],
-      "matchUpdateTypes": ["patch", "minor"],
-      "groupName": "Node dependencies (patch/minor)",
-      "groupSlug": "node-deps-safe"
+      "description": "Binaries downloaded from GitHub releases after a `version=X.Y.Z` line: `curl … https://github.com/<owner>/<repo>/releases/download/v${version}/…`",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["version=(?<currentValue>\\d[^\\s]*)\\s+curl [^\\n]*https://github\\.com/(?<depName>[^/]+/[^/]+)/releases/download/v\\$\\{version\\}/"],
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
     },
     {
-      "description": "Group Docker base images",
-      "matchManagers": ["dockerfile"],
-      "groupName": "Docker base images",
-      "groupSlug": "docker-images"
+      "description": "Binaries downloaded from a literal GitHub release URL: `https://github.com/<owner>/<repo>/releases/download/vX.Y.Z/…`",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["https://github\\.com/(?<depName>[^/]+/[^/]+)/releases/download/(?<currentValue>v\\d[^/]*)/"],
+      "datasourceTemplate": "github-releases"
     },
     {
-      "description": "Group docker-compose images",
-      "matchManagers": ["docker-compose"],
-      "groupName": "Docker Compose images",
-      "groupSlug": "docker-compose-images"
+      "description": "Keycloak image started with `docker run … quay.io/keycloak/keycloak:X.Y start-dev` in the e2e job",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["(?<depName>quay\\.io/keycloak/keycloak):(?<currentValue>[\\w.-]+) start-dev"],
+      "datasourceTemplate": "docker"
     },
     {
-      "description": "Group Tailwind CSS ecosystem — major requires manual CSS config migration",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["tailwindcss", "tailwind-merge"],
-      "groupName": "Tailwind CSS",
-      "groupSlug": "tailwind"
-    },
-    {
-      "description": "Keep @types/node pinned to the same major as the Node.js runtime (24)",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["@types/node"],
-      "allowedVersions": "^24.0.0"
-    },
-    {
-      "description": "openapi-typescript peer-dep declares typescript ^5.x — group with typescript so they upgrade together and the .npmrc note stays accurate",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["typescript", "openapi-typescript"],
-      "groupName": "TypeScript + openapi-typescript",
-      "groupSlug": "typescript-openapi"
-    },
-    {
-      "description": "Pin GitHub Actions to digest",
-      "matchManagers": ["github-actions"],
-      "pinDigests": true,
-      "groupName": "GitHub Actions",
-      "groupSlug": "github-actions"
-    },
-    {
-      "description": "OTel packages — keep in sync",
-      "matchManagers": ["gomod"],
-      "groupName": "OpenTelemetry Go",
-      "groupSlug": "otel-go",
-      "matchPackageNames": [
-        "go.opentelemetry.io/{/,}**"
-      ]
-    },
-    {
-      "description": "Group testcontainers modules",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": [
-        "github.com/testcontainers/testcontainers-go",
-        "github.com/testcontainers/testcontainers-go/modules/postgres"
-      ],
-      "groupName": "testcontainers",
-      "groupSlug": "testcontainers"
+      "description": "Service container images: `image: <name>:<tag>@sha256:<digest>` under a job's `services:`",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["\\s+image: (?<depName>[^:\\s]+):(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\\n"],
+      "datasourceTemplate": "docker"
     }
   ],
-  "vulnerabilityAlerts": {
-    "enabled": true,
-    "labels": ["security", "dependencies"]
-  },
-  "osvVulnerabilityAlerts": true
+  "packageRules": [
+    {
+      "description": "One PR for the CI linters and tools pinned in workflow run steps",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["github-releases"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "CI tools",
+      "groupSlug": "ci-tools"
+    }
+  ]
 }
