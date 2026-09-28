@@ -169,7 +169,7 @@ export interface paths {
         put?: never;
         /**
          * Rotate a refresh token into a fresh token pair
-         * @description Consumes the presented refresh token (single use) and returns a new access + refresh token pair. Replaying an already-rotated refresh token is treated as theft and revokes the whole lineage. The Server-Admin flag and group snapshot are re-read here, so a changed role propagates within one access-token lifetime.
+         * @description Consumes the presented refresh token (single use) and returns a new access + refresh token pair. Replaying an already-rotated refresh token is treated as theft and revokes the whole lineage. The new refresh token keeps the expiry of the one it replaces: a session lasts at most the refresh-token lifetime from login, after which the user logs in again. The local Server-Admin flag is re-read here, so a change to it propagates within one access-token lifetime; IdP group and admin-role claims are re-read only at login.
          */
         post: operations["refreshToken"];
         delete?: never;

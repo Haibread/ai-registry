@@ -76,7 +76,7 @@ A centralized registry for AI ecosystem artifacts (MCP servers and AI agents)
 | api.readinessProbe.initialDelaySeconds | int | `5` | Delay before the first readiness probe. |
 | api.readinessProbe.periodSeconds | int | `10` | Interval between readiness probes. |
 | api.readinessProbe.timeoutSeconds | int | `3` | Per-probe timeout. |
-| api.refreshTokenTtl | string | `nil` | Refresh-token lifetime (Go duration). Unset → server default (12h). |
+| api.refreshTokenTtl | string | `nil` | Absolute session lifetime from login (Go duration); refresh-token rotation does not extend it. Unset → server default (12h). |
 | api.resources | object | `{"limits":{"ephemeral-storage":"256Mi","memory":"256Mi"},"requests":{"cpu":"100m","ephemeral-storage":"64Mi","memory":"128Mi"}}` | Resource requests/limits sized for the registry workload. Requests cover CPU, memory and ephemeral storage; limits cap memory and ephemeral storage only — no CPU limit, as CFS throttling degrades latency worse than the oversubscription it prevents. |
 | api.resources.limits.ephemeral-storage | string | `"256Mi"` | Ephemeral-storage limit (an unbounded write cannot fill the node). |
 | api.resources.limits.memory | string | `"256Mi"` | Memory limit (a leak cannot take down the node). |

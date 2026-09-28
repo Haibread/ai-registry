@@ -31,7 +31,7 @@ func TestRefreshToken_CreateAndRotate(t *testing.T) {
 		t.Fatalf("CreateRefreshToken: %v", err)
 	}
 
-	row, err := sharedDB.RotateRefreshToken(ctx, "hash-1", "hash-2", time.Now().Add(time.Hour))
+	row, err := sharedDB.RotateRefreshToken(ctx, "hash-1", "hash-2")
 	if err != nil {
 		t.Fatalf("RotateRefreshToken: %v", err)
 	}
@@ -40,6 +40,33 @@ func TestRefreshToken_CreateAndRotate(t *testing.T) {
 	}
 	if row.RotatedFrom == nil {
 		t.Error("successor should record rotated_from")
+	}
+}
+
+func TestRefreshToken_RotationKeepsLineageExpiry(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	u := newUser(t, ctx, "lineage@x.test")
+
+	expiresAt := time.Now().Add(time.Second).Truncate(time.Microsecond)
+	if _, err := sharedDB.CreateRefreshToken(ctx, store.CreateRefreshTokenParams{
+		UserID: u.ID, TokenHash: "l1", AuthMethod: "oidc", ClaimAdmin: true,
+		ExpiresAt: expiresAt,
+	}); err != nil {
+		t.Fatalf("CreateRefreshToken: %v", err)
+	}
+
+	row, err := sharedDB.RotateRefreshToken(ctx, "l1", "l2")
+	if err != nil {
+		t.Fatalf("RotateRefreshToken: %v", err)
+	}
+	if !row.ExpiresAt.Equal(expiresAt) {
+		t.Errorf("successor expires_at = %v, want the lineage's %v", row.ExpiresAt, expiresAt)
+	}
+
+	time.Sleep(time.Until(expiresAt) + 50*time.Millisecond)
+	if _, err := sharedDB.RotateRefreshToken(ctx, "l2", "l3"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("rotate past lineage expiry err = %v, want ErrNotFound", err)
 	}
 }
 
@@ -72,7 +99,7 @@ func TestRefreshToken_ReuseRevokesLineage(t *testing.T) {
 	}
 
 	// First rotation succeeds and carries the snapshot forward.
-	row, err := sharedDB.RotateRefreshToken(ctx, "h1", "h2", time.Now().Add(time.Hour))
+	row, err := sharedDB.RotateRefreshToken(ctx, "h1", "h2")
 	if err != nil {
 		t.Fatalf("first rotate: %v", err)
 	}
@@ -81,11 +108,11 @@ func TestRefreshToken_ReuseRevokesLineage(t *testing.T) {
 	}
 
 	// Replaying the now-rotated h1 is reuse → ErrRefreshReuse + lineage revoked.
-	if _, err := sharedDB.RotateRefreshToken(ctx, "h1", "h3", time.Now().Add(time.Hour)); !errors.Is(err, store.ErrRefreshReuse) {
+	if _, err := sharedDB.RotateRefreshToken(ctx, "h1", "h3"); !errors.Is(err, store.ErrRefreshReuse) {
 		t.Fatalf("reuse rotate err = %v, want ErrRefreshReuse", err)
 	}
 	// The successor h2 must now be revoked too (whole lineage killed).
-	if _, err := sharedDB.RotateRefreshToken(ctx, "h2", "h4", time.Now().Add(time.Hour)); !errors.Is(err, store.ErrRefreshReuse) {
+	if _, err := sharedDB.RotateRefreshToken(ctx, "h2", "h4"); !errors.Is(err, store.ErrRefreshReuse) {
 		t.Fatalf("h2 after lineage revoke err = %v, want ErrRefreshReuse", err)
 	}
 }
@@ -95,7 +122,7 @@ func TestRefreshToken_RotateUnknownAndExpired(t *testing.T) {
 	ctx := context.Background()
 	u := newUser(t, ctx, "exp@x.test")
 
-	if _, err := sharedDB.RotateRefreshToken(ctx, "nope", "x", time.Now().Add(time.Hour)); !errors.Is(err, store.ErrNotFound) {
+	if _, err := sharedDB.RotateRefreshToken(ctx, "nope", "x"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("unknown rotate err = %v, want ErrNotFound", err)
 	}
 
@@ -105,7 +132,7 @@ func TestRefreshToken_RotateUnknownAndExpired(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateRefreshToken: %v", err)
 	}
-	if _, err := sharedDB.RotateRefreshToken(ctx, "old", "new", time.Now().Add(time.Hour)); !errors.Is(err, store.ErrNotFound) {
+	if _, err := sharedDB.RotateRefreshToken(ctx, "old", "new"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("expired rotate err = %v, want ErrNotFound", err)
 	}
 }

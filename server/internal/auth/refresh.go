@@ -11,7 +11,7 @@ import (
 // *store.DB satisfies it.
 type RefreshStore interface {
 	CreateRefreshToken(ctx context.Context, p store.CreateRefreshTokenParams) (*store.RefreshToken, error)
-	RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (*store.RefreshToken, error)
+	RotateRefreshToken(ctx context.Context, oldHash, newHash string) (*store.RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) (*store.RefreshToken, error)
 }
 
@@ -65,6 +65,8 @@ func (m *RefreshManager) Issue(ctx context.Context, p RefreshIssueParams) (strin
 
 // Rotate consumes raw and returns a successor raw token plus the carried-over
 // row (whose user/groups/admin the caller uses to mint a matching access token).
+// The successor keeps its predecessor's expiry, so a lineage ends one TTL after
+// login.
 // Maps store sentinels: store.ErrNotFound (unknown/expired) and
 // store.ErrRefreshReuse (theft — the whole lineage was revoked).
 func (m *RefreshManager) Rotate(ctx context.Context, raw string) (newRaw string, row *store.RefreshToken, err error) {
@@ -72,7 +74,7 @@ func (m *RefreshManager) Rotate(ctx context.Context, raw string) (newRaw string,
 	if err != nil {
 		return "", nil, err
 	}
-	row, err = m.store.RotateRefreshToken(ctx, hashToken(raw), hashToken(newRaw), time.Now().Add(m.ttl))
+	row, err = m.store.RotateRefreshToken(ctx, hashToken(raw), hashToken(newRaw))
 	if err != nil {
 		return "", nil, err
 	}

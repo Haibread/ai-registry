@@ -246,10 +246,14 @@ HTML rendering) load-bearing.
 **Refresh tokens are single-use and stored hashed.** `refresh_tokens` never
 holds a raw token, and presenting an already-rotated refresh token revokes its
 whole lineage, which turns token theft into a detectable, self-limiting event.
+A rotated token keeps its predecessor's expiry, so `REFRESH_TOKEN_TTL` is an
+absolute session lifetime from login, not a sliding window.
 
 **Tokens carry group membership, never roles.** At login the refresh token
 snapshots the IdP's group claim and admin-role flag, and every access token
-minted from it carries that snapshot. Per-publisher roles are grants stored in
+minted from it carries that snapshot. The snapshot is re-read only at login,
+and the refresh lifetime is absolute from login, so an IdP-side change takes
+effect within one `REFRESH_TOKEN_TTL`. Per-publisher roles are grants stored in
 the registry and resolved on every write, so the IdP does not dictate
 authorization and a revoked grant takes effect immediately rather than at token
 expiry. There are exactly two principal types: users and groups.
@@ -325,9 +329,8 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
   per-IP budget is N times the configured one, and it resets on restart.
 - Access tokens cannot be revoked before they expire; revocation acts on the
   refresh token, so a revoked session lives at most one access-token TTL.
-- IdP group membership and the admin-role flag are snapshotted at login and
-  carried across refresh-token rotations; a change on the IdP side takes
-  effect only when the user logs in again.
+- Changes on the IdP side (group membership, the admin-role flag) take effect
+  at the next login, at most `REFRESH_TOKEN_TTL` after the previous one.
 - Separation of duties rests on the role grants: nothing prevents one principal
   from holding both Editor and Reviewer on a publisher, and a publisher Admin
   can grant roles on it.

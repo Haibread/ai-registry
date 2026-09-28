@@ -114,4 +114,6 @@ auth:
   # a rotating refresh token. The Ed25519 signing key (JWT_SIGNING_KEY) is a
   # credential and is intentionally NOT settable here — supply it via env / secret.
   access_token_ttl: "15m"
+  # Absolute session lifetime from login; refresh-token rotation never extends
+  # it, so IdP claim changes are picked up at most this long after a login.
   refresh_token_ttl: "12h"

@@ -179,10 +179,11 @@ type AuthConfig struct {
 	// design (the refresh token carries longevity). Default 15m.
 	AccessTokenTTL time.Duration
 
-	// RefreshTokenTTL is how long a refresh token is valid before the user must
-	// re-authenticate. Default 12h. Kept short because OIDC claim group
-	// memberships are snapshotted at login and only re-read on a fresh login,
-	// so this bounds how long a revoked group membership keeps conferring roles.
+	// RefreshTokenTTL is the absolute session lifetime from login: rotated
+	// refresh tokens keep the original expiry, so the user must re-authenticate
+	// once it elapses. Default 12h. Kept short because OIDC group and admin
+	// claims are snapshotted at login and only re-read on a fresh login, so this
+	// bounds how long a revoked IdP membership keeps conferring roles.
 	RefreshTokenTTL time.Duration
 }
 
