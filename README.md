@@ -31,7 +31,8 @@ discover them.
 - **Observable** — OpenTelemetry traces, metrics and logs over OTLP.
 
 It hosts metadata only: it does not run, proxy or sandbox the servers and
-agents it lists.
+agents it lists. The one connection it makes to a listed server is the
+`tools/list` an author asks for from the MCP forms.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind
 it.
@@ -113,6 +114,15 @@ server upserts the publishers, MCP servers and agents it declares on every
 start. Existing rows are left untouched, except that newly declared `tools[]`
 are backfilled; role grants are managed through the API, not this file. See
 [deploy/bootstrap.example.yaml](deploy/bootstrap.example.yaml).
+
+#### Fetching an MCP server's tools
+
+On the MCP forms, "Fetch from server" lists the tools of the remote server at
+the version's Remote URL and merges the ones you tick into the tool list,
+which stays editable by hand. The server guesses the endpoint (`/mcp`, `/sse`)
+and connects anonymously; it refuses internal addresses unless
+`TOOL_DISCOVERY_ALLOWED_CIDRS` allows them. The `tool_discovery` block of
+[deploy/config.example.yaml](deploy/config.example.yaml) holds the settings.
 
 #### Registry-wide tags
 

@@ -224,6 +224,96 @@ test.describe('Remote MCP server (URL-only) authoring', () => {
   })
 })
 
+// ── 1c. Fetch tools from the server ────────────────────────────────────────────
+
+test.describe('Fetch tools from server', () => {
+  // The live stack cannot reach a public MCP server, so the discovery answer is
+  // stubbed at the browser; the server side is covered by the Go integration
+  // tests. What runs for real is the form, the review dialog and the save.
+  test('pre-fills tools from tools/list, keeps them hand-editable and saves them', async ({ browser }) => {
+    const page = await pageAs(browser, 'admin')
+    const pub = await seedPublisher(page, 'mcp-fetch')
+    const slug = `fetched-${RUN}`
+    const declared = 'https://mcp.example.test/github'
+
+    let sent: unknown
+    await page.route('**/api/v1/mcp/tool-discoveries', async (route) => {
+      sent = route.request().postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          endpoint: { url: `${declared}/mcp`, transport: 'streamable_http' },
+          attempts: [
+            { url: declared, transport: 'streamable_http', status: 404, error: 'HTTP 404' },
+            { url: `${declared}/mcp`, transport: 'streamable_http', status: 200 },
+          ],
+          server_info: { name: 'github-tools', version: '2.3.0' },
+          protocol_version: '2025-06-18',
+          tools: [
+            { name: 'list_issues', description: 'List issues.', input_schema: { type: 'object' }, annotations: { readOnlyHint: true } },
+            { name: 'merge_pull_request', description: 'Merge a pull request.', annotations: { destructiveHint: true } },
+          ],
+        }),
+      })
+    })
+
+    await page.goto('/admin')
+    await page.getByRole('combobox', { name: /switch publisher/i }).click()
+    await page.getByRole('option', { name: pub.name }).click()
+    await page.goto('/admin/mcp/new')
+    await expect(page.locator('#namespace-select')).toContainText(pub.slug)
+    await page.fill('input[name="slug"]', slug)
+    await page.fill('input[name="name"]', `Fetched ${RUN}`)
+    await page.fill('input[name="version"]', '1.0.0')
+
+    const fetchButton = page.getByRole('button', { name: 'Fetch from server' })
+    await expect(fetchButton).toBeDisabled()
+    await page.locator('#runtime-select').click()
+    await page.getByRole('option', { name: /Streamable HTTP/ }).click()
+    await page.fill('input[name="remote_url"]', declared)
+    await fetchButton.click()
+
+    const dialog = page.getByRole('dialog', { name: 'Tools found on server' })
+    await expect(dialog.getByText('github-tools 2.3.0 · protocol 2025-06-18 · 2 tools')).toBeVisible()
+    expect(sent).toEqual({ namespace: pub.slug, url: declared, transport: 'streamable_http' })
+    await dialog.getByRole('button', { name: 'Use this URL as Remote URL' }).click()
+    await expect(page.locator('input[name="remote_url"]')).toHaveValue(`${declared}/mcp`)
+    await dialog.getByRole('button', { name: 'Apply 2 changes' }).click()
+    await expect(dialog).toBeHidden()
+
+    // Hand edits after the fetch: reword one tool, add another.
+    await page.getByLabel('Tool 1 description').fill('List issues, open by default.')
+    await page.getByRole('button', { name: /add tool/i }).click()
+    await page.getByLabel('Tool 3 name').fill('hand_written')
+
+    await page.getByRole('button', { name: 'Create MCP Server' }).click()
+    await page.waitForURL(new RegExp(`/admin/mcp/${pub.slug}/${slug}`))
+
+    const vres = await apiGet(page, `/api/v1/mcp/servers/${pub.slug}/${slug}/versions/1.0.0`)
+    expect(vres.status()).toBe(200)
+    const v = await vres.json()
+    expect(v.remotes).toEqual([{ type: 'streamable_http', url: `${declared}/mcp` }])
+    expect(v.tools).toEqual([
+      { name: 'list_issues', description: 'List issues, open by default.', input_schema: { type: 'object' }, annotations: { readOnlyHint: true } },
+      { name: 'merge_pull_request', description: 'Merge a pull request.', annotations: { destructiveHint: true } },
+      { name: 'hand_written' },
+    ])
+  })
+
+  test('the API refuses to connect to an internal address', async ({ browser }) => {
+    const page = await pageAs(browser, 'admin')
+    const pub = await seedPublisher(page, 'mcp-fetch-ssrf')
+    const res = await apiPost(page, '/api/v1/mcp/tool-discoveries', {
+      namespace: pub.slug,
+      url: 'http://169.254.169.254/latest',
+      transport: 'streamable_http',
+    })
+    expect(res.status()).toBe(422)
+    expect((await res.json()).type).toBe('https://registry/errors/blocked-address')
+  })
+})
+
 // ── 2. List scoping to the switcher's selected publisher ───────────────────────
 
 test.describe('Admin list scopes to the selected publisher', () => {

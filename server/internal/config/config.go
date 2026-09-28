@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,8 @@ type Config struct {
 	OTel     OTelConfig
 	Log      LogConfig
 	Auth     AuthConfig
+
+	ToolDiscovery ToolDiscoveryConfig
 
 	// BootstrapFile is the optional path to a YAML/JSON file containing
 	// initial registry data (publishers, MCP servers, agents)
@@ -57,6 +60,24 @@ type InstanceTagSpec struct {
 	// Active defaults to true when omitted; set false to ship the tag
 	// deactivated (visible on old versions, not tickable on new ones).
 	Active *bool `yaml:"active" json:"active"`
+}
+
+// ToolDiscoveryConfig bounds the outbound connections the registry makes to
+// list a remote MCP server's tools on an author's behalf.
+type ToolDiscoveryConfig struct {
+	// Enabled turns POST /api/v1/mcp/tool-discoveries on. When false the
+	// route answers 503.
+	Enabled bool
+	// Timeout is the budget for one discovery, every endpoint guess included.
+	Timeout time.Duration
+	// AllowedCIDRs exempts ranges from the block on loopback, private,
+	// link-local and other reserved addresses, for MCP servers hosted on an
+	// internal network.
+	AllowedCIDRs []netip.Prefix
+	// MaxTools caps the number of tools one discovery reads.
+	MaxTools int
+	// RateLimitRPM is the per-IP budget of discoveries, per minute.
+	RateLimitRPM int
 }
 
 // AuthConfig holds OIDC/Keycloak settings.
@@ -298,14 +319,23 @@ type fileAuthConfig struct {
 	SweepInterval   string `yaml:"sweep_interval"`
 }
 
+type fileToolDiscoveryConfig struct {
+	Enabled      bool     `yaml:"enabled"`
+	Timeout      string   `yaml:"timeout"`
+	AllowedCIDRs []string `yaml:"allowed_cidrs"`
+	MaxTools     int      `yaml:"max_tools"`
+	RateLimitRPM int      `yaml:"rate_limit_rpm"`
+}
+
 type fileConfig struct {
-	HTTP          fileHTTPConfig     `yaml:"http"`
-	Database      fileDatabaseConfig `yaml:"database"`
-	OTel          fileOTelConfig     `yaml:"otel"`
-	Log           fileLogConfig      `yaml:"log"`
-	Auth          fileAuthConfig     `yaml:"auth"`
-	BootstrapFile string             `yaml:"bootstrap_file"`
-	InstanceTags  []InstanceTagSpec  `yaml:"instance_tags"`
+	HTTP          fileHTTPConfig          `yaml:"http"`
+	Database      fileDatabaseConfig      `yaml:"database"`
+	OTel          fileOTelConfig          `yaml:"otel"`
+	Log           fileLogConfig           `yaml:"log"`
+	Auth          fileAuthConfig          `yaml:"auth"`
+	ToolDiscovery fileToolDiscoveryConfig `yaml:"tool_discovery"`
+	BootstrapFile string                  `yaml:"bootstrap_file"`
+	InstanceTags  []InstanceTagSpec       `yaml:"instance_tags"`
 }
 
 // defaultFileConfig returns a fileConfig pre-populated with the same defaults
@@ -341,6 +371,12 @@ func defaultFileConfig() fileConfig {
 			AccessTokenTTL:  "15m",
 			RefreshTokenTTL: "12h",
 			SweepInterval:   "15m",
+		},
+		ToolDiscovery: fileToolDiscoveryConfig{
+			Enabled:      true,
+			Timeout:      "10s",
+			MaxTools:     500,
+			RateLimitRPM: 30,
 		},
 	}
 }
@@ -380,6 +416,7 @@ func Load(configFile string) (*Config, error) {
 	accessTokenTTL := p.duration("auth.access_token_ttl", fc.Auth.AccessTokenTTL, 15*time.Minute)
 	refreshTokenTTL := p.duration("auth.refresh_token_ttl", fc.Auth.RefreshTokenTTL, 12*time.Hour)
 	sweepInterval := p.duration("auth.sweep_interval", fc.Auth.SweepInterval, 15*time.Minute)
+	discoveryTimeout := p.duration("tool_discovery.timeout", fc.ToolDiscovery.Timeout, 10*time.Second)
 
 	maxConns := p.envInt("DATABASE_MAX_CONNS", fc.Database.MaxConns)
 	minConns := p.envInt("DATABASE_MIN_CONNS", fc.Database.MinConns)
@@ -440,6 +477,13 @@ func Load(configFile string) (*Config, error) {
 			AccessTokenTTL:         p.envDuration("ACCESS_TOKEN_TTL", accessTokenTTL),
 			RefreshTokenTTL:        p.envDuration("REFRESH_TOKEN_TTL", refreshTokenTTL),
 			SweepInterval:          p.envDuration("AUTH_SWEEP_INTERVAL", sweepInterval),
+		},
+		ToolDiscovery: ToolDiscoveryConfig{
+			Enabled:      p.envBool("TOOL_DISCOVERY_ENABLED", fc.ToolDiscovery.Enabled),
+			Timeout:      p.envDuration("TOOL_DISCOVERY_TIMEOUT", discoveryTimeout),
+			AllowedCIDRs: p.prefixes("TOOL_DISCOVERY_ALLOWED_CIDRS (tool_discovery.allowed_cidrs)", envStringSlice("TOOL_DISCOVERY_ALLOWED_CIDRS", fc.ToolDiscovery.AllowedCIDRs)),
+			MaxTools:     p.envInt("TOOL_DISCOVERY_MAX_TOOLS", fc.ToolDiscovery.MaxTools),
+			RateLimitRPM: p.envInt("TOOL_DISCOVERY_RATE_LIMIT_RPM", fc.ToolDiscovery.RateLimitRPM),
 		},
 		BootstrapFile: envString("BOOTSTRAP_FILE", fc.BootstrapFile),
 		InstanceTags:  p.envInstanceTags("INSTANCE_TAGS", fc.InstanceTags),
@@ -509,6 +553,16 @@ func (c *Config) validate(p *parser) {
 	case "debug", "info", "warn", "error":
 	default:
 		p.errorf("LOG_LEVEL (log.level) must be one of debug, info, warn, error, got %q", c.Log.Level)
+	}
+
+	if c.ToolDiscovery.Timeout <= 0 {
+		p.errorf("TOOL_DISCOVERY_TIMEOUT (tool_discovery.timeout) must be a positive duration, got %s", c.ToolDiscovery.Timeout)
+	}
+	if c.ToolDiscovery.MaxTools <= 0 {
+		p.errorf("TOOL_DISCOVERY_MAX_TOOLS (tool_discovery.max_tools) must be positive, got %d", c.ToolDiscovery.MaxTools)
+	}
+	if c.ToolDiscovery.RateLimitRPM <= 0 {
+		p.errorf("TOOL_DISCOVERY_RATE_LIMIT_RPM (tool_discovery.rate_limit_rpm) must be positive, got %d", c.ToolDiscovery.RateLimitRPM)
 	}
 
 	if c.HTTP.PublicRateLimitRPM <= 0 {
@@ -650,6 +704,19 @@ func (p *parser) duration(key, s string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+func (p *parser) prefixes(key string, raw []string) []netip.Prefix {
+	out := make([]netip.Prefix, 0, len(raw))
+	for _, r := range raw {
+		pfx, err := netip.ParsePrefix(strings.TrimSpace(r))
+		if err != nil {
+			p.errorf("%s: %q is not a CIDR (e.g. \"10.20.0.0/16\")", key, r)
+			continue
+		}
+		out = append(out, pfx.Masked())
+	}
+	return out
 }
 
 func envStringSlice(key string, def []string) []string {

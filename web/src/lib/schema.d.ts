@@ -668,6 +668,39 @@ export interface paths {
         patch: operations["updateInstanceTag"];
         trace?: never;
     };
+    "/api/v1/mcp/tool-discoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List the tools a remote MCP server exposes
+         * @description Connects to a remote MCP server on the caller's behalf, runs the MCP
+         *     handshake and reads every `tools/list` page, so an authoring form can
+         *     pre-fill a version's `tools`. Nothing is stored.
+         *
+         *     The endpoint is guessed from `url`: the URL as given, then with a `/mcp`
+         *     and a `/sse` path suffix unless the path already ends with one. On each
+         *     candidate the transport the path names (or else `transport`) is tried
+         *     first, then the other one. The first candidate that completes the
+         *     handshake wins; a 401/403 stops the search.
+         *
+         *     The registry refuses to connect to loopback, private, link-local and
+         *     other reserved addresses unless the deployment allows them, and only
+         *     anonymous connections are made. Requires Editor on `namespace` (or
+         *     Server Admin).
+         */
+        post: operations["discoverMCPTools"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcp/servers": {
         parameters: {
             query?: never;
@@ -2030,6 +2063,47 @@ export interface components {
             annotations?: {
                 [key: string]: unknown;
             };
+        };
+        CreateMCPToolDiscoveryRequest: {
+            /** @description Publisher the discovery is made for; the caller needs Editor on it. */
+            namespace: string;
+            /**
+             * Format: uri
+             * @description The remote URL as declared on the version.
+             */
+            url: string;
+            /**
+             * @description The declared transport, tried first. `http` means `streamable_http`.
+             * @enum {string}
+             */
+            transport: "http" | "sse" | "streamable_http";
+        };
+        MCPToolDiscoveryAttempt: {
+            /** Format: uri */
+            url: string;
+            /** @enum {string} */
+            transport: "sse" | "streamable_http";
+            /** @description HTTP status of the first response, 0 when none arrived. */
+            status: number;
+            /** @description Why the attempt failed; absent on the attempt that succeeded. */
+            error?: string;
+        };
+        MCPToolDiscovery: {
+            /** @description The candidate that answered. It may differ from the declared URL. */
+            endpoint: {
+                /** Format: uri */
+                url: string;
+                /** @enum {string} */
+                transport: "sse" | "streamable_http";
+            };
+            /** @description Every attempt made, in order, the successful one last. */
+            attempts: components["schemas"]["MCPToolDiscoveryAttempt"][];
+            server_info?: {
+                name: string;
+                version?: string;
+            };
+            protocol_version: string;
+            tools: components["schemas"]["MCPTool"][];
         };
         InstanceTag: {
             /** @description Immutable identifier, referenced by version `tags` arrays (lowercase letters, digits, and hyphens). */
@@ -3892,6 +3966,70 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
+        };
+    };
+    discoverMCPTools: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMCPToolDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description The server answered; its tools are listed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPToolDiscovery"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /**
+             * @description Invalid request. Inspect `type`:
+             *       .../errors/validation-error   the body is malformed or `namespace` does not exist
+             *       .../errors/blocked-address    the URL resolves to an address the registry will not connect to
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /**
+             * @description The remote server could not be used. Inspect `type`:
+             *       .../errors/no-mcp-server           no candidate completed the MCP handshake
+             *       .../errors/upstream-unauthorized   the server requires authentication
+             *       .../errors/too-many-tools          the server lists more tools than the registry accepts
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["ServiceUnavailable"];
+            /** @description The discovery did not finish within the configured timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listMCPServers: {

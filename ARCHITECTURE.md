@@ -22,6 +22,7 @@ flowchart LR
     pg[("PostgreSQL")]
     idp["OIDC provider<br/>(optional)"]
     otel["OTel Collector"]
+    mcpremote["Remote MCP servers<br/>(URLs authors declare)"]
 
     browser -->|"HTTPS, static assets"| web
     browser -->|"HTTPS JSON, Bearer token"| server
@@ -30,6 +31,7 @@ flowchart LR
     server -->|"pgx, SQL"| pg
     server -->|"Auth Code + PKCE, JWKS fetch"| idp
     server -->|"OTLP traces, metrics, logs"| otel
+    server -->|"MCP initialize + tools/list,<br/>anonymous, on an author's request"| mcpremote
 ```
 
 In Kubernetes the Ingress routes `/api` straight to the server and everything
@@ -64,6 +66,7 @@ flush. See [server/cmd/server/main.go](server/cmd/server/main.go).
 | [`internal/domain`](server/internal/domain/) | Entity types, the role lattice, validation, lifecycle rules. No I/O. |
 | [`internal/store`](server/internal/store/) | Hand-written SQL over `pgx`, migrations runner, seeding. Every query is traced. |
 | [`internal/agents`](server/internal/agents/) | Builds A2A Agent Cards from stored agent versions. |
+| [`internal/tooldiscovery`](server/internal/tooldiscovery/) | MCP client behind "Fetch from server": guesses a remote server's endpoint, runs `tools/list`, refuses internal addresses. Stores nothing. |
 | [`internal/bootstrap`](server/internal/bootstrap/) | Declarative YAML/JSON loader that upserts publishers, servers and agents. |
 | [`internal/config`](server/internal/config/) | Resolves every setting from env, YAML file, then default. |
 | [`internal/observability`](server/internal/observability/) | The one OTel SDK setup (tracer, meter, logger providers) and the metric definitions. |
@@ -314,6 +317,31 @@ and checked by conformance tests. `tools[]` on an MCP version is the
 publisher-declared tool list, distinct from the spec's `capabilities.tools`
 negotiation flag.
 
+**Tool discovery runs on the server, and only suggests.** `POST
+/api/v1/mcp/tool-discoveries` connects to the remote URL an author typed, with
+the official MCP Go SDK, and returns the tools it lists; the authoring form
+shows a diff against the list being edited and applies only the ticked rows.
+The browser could not make that call itself, since the SPA's CSP allows
+`fetch` to its own origin only, and putting it in the API keeps it available
+to non-UI clients. The endpoint is guessed rather
+than asked for: the declared URL, then with `/mcp` and `/sse` appended, each
+with the declared transport first and the other one second, as the MCP spec's
+backwards-compatibility procedure prescribes. Nothing is persisted: the result
+reaches the catalog only through the ordinary version-create call, so review,
+validation and immutability apply unchanged, and the tool list stays
+hand-editable before and after a fetch.
+
+**Outbound connections to author-supplied URLs go through an address guard.**
+The check runs in the dialer, on the address about to be connected to after DNS
+resolution, so a hostname that resolves or redirects to loopback, a private
+range, link-local (cloud metadata included) or another reserved block is
+refused, not just a literal IP in the URL. `TOOL_DISCOVERY_ALLOWED_CIDRS`
+exempts internal ranges for registries whose MCP servers are on the private
+network. Discovery ignores `HTTP_PROXY`, since through a proxy the guard would
+vet the proxy's address instead of the server's. Each call is bounded by a
+timeout, a tool count, a response size and its own per-IP rate limit, and
+requires Editor on the publisher it is made for.
+
 **UI choices.** No bundled webfont (system stacks keep first paint fast); plain
 `FormData` parsing rather than a form library, because the admin forms are
 simple; destructive actions use quiet styling plus a confirmation gate; the
@@ -349,6 +377,10 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
   [deploy/config.example.yaml](deploy/config.example.yaml). A value that does
   not parse or is out of range stops the server at startup; it never falls
   back to the default.
+- **The registry connects to an author-supplied URL only through
+  [`internal/tooldiscovery`](server/internal/tooldiscovery/)**, whose dialer
+  refuses internal addresses. Any new outbound call driven by user input goes
+  through the same guard.
 - **`PUBLIC_BASE_URL` must be set** for the well-known endpoints: without it
   they answer `500` rather than advertise `localhost`.
 
@@ -366,6 +398,12 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
 - There are no registry-native API keys: machine access requires an OIDC
   provider issuing tokens with the configured audience.
 - The catalog covers MCP servers and A2A agents only.
+- "Fetch from server" reaches only remote servers that accept anonymous
+  connections. A stdio server runs on the consumer's machine and a server
+  behind authentication rejects the registry, so their tools are entered by
+  hand or pasted from a `tools/list` output. It needs direct egress from the
+  server to the MCP host: it does not use an HTTP proxy, and with the chart's
+  egress NetworkPolicy on, the destination must be allowed in `extraRules`.
 - An entry describes a single deployment: one endpoint, transport, auth scheme
   and version. A server running in several environments is published as one
   entry per environment, because environments differ in URL, auth and often

@@ -1009,3 +1009,62 @@ http:
 		})
 	}
 }
+
+func TestLoad_ToolDiscovery(t *testing.T) {
+	yamlFile := writeConfigFile(t, `
+tool_discovery:
+  timeout: "4s"
+  allowed_cidrs: ["10.20.0.0/16"]
+  max_tools: 50
+`)
+	tests := []struct {
+		name    string
+		file    string
+		env     map[string]string
+		check   func(t *testing.T, c config.ToolDiscoveryConfig)
+		wantErr string
+	}{
+		{name: "defaults", check: func(t *testing.T, c config.ToolDiscoveryConfig) {
+			if !c.Enabled || c.Timeout != 10*time.Second || c.MaxTools != 500 || c.RateLimitRPM != 30 || len(c.AllowedCIDRs) != 0 {
+				t.Errorf("defaults = %+v", c)
+			}
+		}},
+		{name: "from YAML", file: yamlFile, check: func(t *testing.T, c config.ToolDiscoveryConfig) {
+			if c.Timeout != 4*time.Second || c.MaxTools != 50 || len(c.AllowedCIDRs) != 1 || c.AllowedCIDRs[0].String() != "10.20.0.0/16" {
+				t.Errorf("from YAML = %+v", c)
+			}
+		}},
+		{name: "env wins over YAML", file: yamlFile, env: map[string]string{
+			"TOOL_DISCOVERY_ENABLED":       "false",
+			"TOOL_DISCOVERY_ALLOWED_CIDRS": "192.168.1.7/24, fd00::/8",
+			"TOOL_DISCOVERY_MAX_TOOLS":     "20",
+		}, check: func(t *testing.T, c config.ToolDiscoveryConfig) {
+			if c.Enabled || c.MaxTools != 20 || len(c.AllowedCIDRs) != 2 || c.AllowedCIDRs[0].String() != "192.168.1.0/24" {
+				t.Errorf("env overrides = %+v", c)
+			}
+		}},
+		{name: "bad CIDR", env: map[string]string{"TOOL_DISCOVERY_ALLOWED_CIDRS": "10.0.0.1"}, wantErr: "TOOL_DISCOVERY_ALLOWED_CIDRS"},
+		{name: "zero timeout", env: map[string]string{"TOOL_DISCOVERY_TIMEOUT": "0s"}, wantErr: "TOOL_DISCOVERY_TIMEOUT"},
+		{name: "zero max tools", env: map[string]string{"TOOL_DISCOVERY_MAX_TOOLS": "0"}, wantErr: "TOOL_DISCOVERY_MAX_TOOLS"},
+		{name: "zero rate limit", env: map[string]string{"TOOL_DISCOVERY_RATE_LIMIT_RPM": "0"}, wantErr: "TOOL_DISCOVERY_RATE_LIMIT_RPM"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+			for _, k := range []string{"TOOL_DISCOVERY_ENABLED", "TOOL_DISCOVERY_TIMEOUT", "TOOL_DISCOVERY_ALLOWED_CIDRS", "TOOL_DISCOVERY_MAX_TOOLS", "TOOL_DISCOVERY_RATE_LIMIT_RPM"} {
+				t.Setenv(k, tt.env[k])
+			}
+			cfg, err := config.Load(tt.file)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want mention of %s", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			tt.check(t, cfg.ToolDiscovery)
+		})
+	}
+}

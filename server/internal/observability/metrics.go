@@ -24,6 +24,9 @@ type Metrics struct {
 
 	// Rate limiting
 	RateLimitHits metric.Int64Counter
+
+	// MCP tool discovery, by `outcome`
+	ToolDiscoveries metric.Int64Counter
 }
 
 // InitMetrics registers all metric instruments with the global MeterProvider.
@@ -81,6 +84,14 @@ func InitMetrics() (*Metrics, error) {
 		return nil, fmt.Errorf("creating registry.ratelimit.hits: %w", err)
 	}
 
+	toolDiscoveries, err := m.Int64Counter(
+		"registry.mcp.tool_discoveries",
+		metric.WithDescription("MCP tools/list discoveries run on an author's behalf, by outcome"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating registry.mcp.tool_discoveries: %w", err)
+	}
+
 	return &Metrics{
 		HTTPRequestsTotal:   reqTotal,
 		HTTPRequestDuration: reqDuration,
@@ -88,5 +99,6 @@ func InitMetrics() (*Metrics, error) {
 		AgentsTotal:         agentsTotal,
 		AuthFailures:        authFailures,
 		RateLimitHits:       rateLimitHits,
+		ToolDiscoveries:     toolDiscoveries,
 	}, nil
 }

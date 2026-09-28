@@ -8,6 +8,10 @@
  *     path.
  *   - "JSON" — a raw textarea, the paste-from-`tools/list` path.
  *
+ * Given a `discovery` source, a "Fetch from server" button asks the API to run
+ * `tools/list` against the version's remote URL and merges the reviewed result
+ * into the same state; the list stays hand-editable afterwards.
+ *
  * Both views funnel through {@link parseTools} / {@link serializeTools} so they
  * can never disagree about validity. The component emits a hidden
  * `<input name="tools">` carrying the serialized JSON, so the surrounding
@@ -21,7 +25,8 @@
  */
 
 import { useState } from "react"
-import { ChevronRight, Terminal } from "lucide-react"
+import { ChevronRight, RefreshCw, Terminal } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { CopyButton } from "@/components/ui/copy-button"
@@ -34,6 +39,7 @@ import {
   type MCPTool,
 } from "./tools-schema"
 import { ToolCardList } from "./tool-card-list"
+import { ToolsDiscoveryDialog, type DiscoveryRequest } from "./tools-discovery-dialog"
 
 type Mode = "form" | "json"
 
@@ -96,14 +102,35 @@ const jsonTextareaClass =
   "w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono shadow-xs " +
   "placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring resize-y"
 
+/** Where "Fetch from server" connects: the surrounding form's live values. */
+export interface ToolsDiscoverySource {
+  namespace: string
+  /** The form's transport (runtime); `stdio` disables fetching. */
+  transport: string
+  remoteUrl: string
+  /** Replaces the form's remote URL with the endpoint that answered. */
+  onUseEndpoint?: (url: string) => void
+}
+
 interface ToolsEditorProps {
   /** Form field name for the hidden input the parent FormData reads. */
   name?: string
   /** Initial tools, e.g. when editing an existing draft. Defaults to empty. */
   initialTools?: MCPTool[]
+  /** Enables "Fetch from server". */
+  discovery?: ToolsDiscoverySource
 }
 
-export function ToolsEditor({ name = "tools", initialTools = [] }: ToolsEditorProps) {
+function isHttpUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    return u.protocol === "http:" || u.protocol === "https:"
+  } catch {
+    return false
+  }
+}
+
+export function ToolsEditor({ name = "tools", initialTools = [], discovery }: ToolsEditorProps) {
   const [mode, setMode] = useState<Mode>("form")
   const [tools, setTools] = useState<MCPTool[]>(initialTools)
   // Live buffer for the JSON tab; only adopted into `tools` on a clean switch.
@@ -113,6 +140,8 @@ export function ToolsEditor({ name = "tools", initialTools = [] }: ToolsEditorPr
   // than a tooltip: three multi-line commands need copy buttons and must work
   // on touch, neither of which hover can offer.
   const [howToOpen, setHowToOpen] = useState(false)
+  const [discoveryOpen, setDiscoveryOpen] = useState(false)
+  const [appliedChanges, setAppliedChanges] = useState<number | null>(null)
 
   function handleModeChange(next: string) {
     const target = next as Mode
@@ -161,6 +190,38 @@ export function ToolsEditor({ name = "tools", initialTools = [] }: ToolsEditorPr
       : serializeTools(tools)
   const count = tools.length
 
+  // The list the fetch reconciles against: what the active tab shows.
+  const editedTools = jsonResult === null ? tools : jsonResult.ok ? jsonResult.tools : null
+  const remoteUrl = discovery?.remoteUrl.trim() ?? ""
+  const discoveryBlocker = !discovery
+    ? null
+    : discovery.transport === "stdio"
+      ? "A stdio server runs on the user's machine; the registry cannot reach it. Use the recipes below."
+      : !discovery.namespace
+        ? "Pick a publisher to fetch tools."
+        : !isHttpUrl(remoteUrl)
+          ? "Set a Remote URL to fetch tools."
+          : editedTools === null
+            ? "Fix the JSON to fetch tools."
+            : null
+  const discoveryRequest: DiscoveryRequest | null =
+    discovery && discoveryBlocker === null
+      ? {
+          namespace: discovery.namespace,
+          url: remoteUrl,
+          transport: discovery.transport as DiscoveryRequest["transport"],
+        }
+      : null
+
+  function applyFromServer(next: MCPTool[], changes: number) {
+    setTools(next)
+    if (mode === "json") {
+      setJsonText(serializeTools(next))
+      setJsonError(null)
+    }
+    setAppliedChanges(changes)
+  }
+
   return (
     <div className="space-y-2">
       {/* Bridge to the surrounding FormData form. */}
@@ -176,15 +237,51 @@ export function ToolsEditor({ name = "tools", initialTools = [] }: ToolsEditorPr
               </span>
             )}
           </Label>
-          <TabsList className="h-8">
-            <TabsTrigger value="form" className="text-xs">
-              Form
-            </TabsTrigger>
-            <TabsTrigger value="json" className="text-xs">
-              JSON
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex flex-wrap items-center gap-2">
+            {discovery && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={discoveryRequest === null}
+                aria-describedby="tools-discovery-hint"
+                onClick={() => {
+                  setAppliedChanges(null)
+                  setDiscoveryOpen(true)
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                Fetch from server
+              </Button>
+            )}
+            <TabsList className="h-8">
+              <TabsTrigger value="form" className="text-xs">
+                Form
+              </TabsTrigger>
+              <TabsTrigger value="json" className="text-xs">
+                JSON
+              </TabsTrigger>
+            </TabsList>
+          </div>
         </div>
+        {discovery && (
+          <p id="tools-discovery-hint" className="mt-1 text-xs text-muted-foreground">
+            {discoveryBlocker ?? (
+              <>
+                Fetch uses the Remote URL: <span className="break-all font-mono">{remoteUrl}</span>
+              </>
+            )}
+          </p>
+        )}
+        {appliedChanges !== null && (
+          <p role="status" className="mt-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+            <span className="font-medium">
+              {appliedChanges} {appliedChanges === 1 ? "change" : "changes"} applied from the server.
+            </span>{" "}
+            <span className="text-muted-foreground">Edit, remove or add tools below. The list is saved with the version.</span>
+          </p>
+        )}
 
         <TabsContent value="form">
           <ToolCardList tools={tools} onChange={setTools} />
@@ -214,6 +311,17 @@ export function ToolsEditor({ name = "tools", initialTools = [] }: ToolsEditorPr
           )}
         </TabsContent>
       </Tabs>
+
+      {discoveryRequest && editedTools && (
+        <ToolsDiscoveryDialog
+          open={discoveryOpen}
+          onOpenChange={setDiscoveryOpen}
+          request={discoveryRequest}
+          currentTools={editedTools}
+          onApply={applyFromServer}
+          onUseEndpoint={discovery?.onUseEndpoint}
+        />
+      )}
 
       {/* Outside the Tabs on purpose: the recipes feed both surfaces — the
           JSON textarea and the Form tab's "Paste from tools/list" button —

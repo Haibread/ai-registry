@@ -18,8 +18,10 @@ import (
 	"github.com/haibread/ai-registry/internal/bootstrap"
 	"github.com/haibread/ai-registry/internal/config"
 	registryhttp "github.com/haibread/ai-registry/internal/http"
+	"github.com/haibread/ai-registry/internal/http/handlers"
 	"github.com/haibread/ai-registry/internal/observability"
 	"github.com/haibread/ai-registry/internal/store"
+	"github.com/haibread/ai-registry/internal/tooldiscovery"
 )
 
 // Build metadata, injected at link time via -ldflags "-X main.Version=… …".
@@ -259,20 +261,34 @@ func run() error {
 
 	// ── HTTP server ──────────────────────────────────────────────────────────
 	var draining atomic.Bool
+	// A typed-nil *Discoverer must not be boxed into the interface: the router
+	// would then see discovery as enabled.
+	var toolDiscoverer handlers.ToolDiscoverer
+	if cfg.ToolDiscovery.Enabled {
+		toolDiscoverer = tooldiscovery.New(tooldiscovery.Config{
+			Timeout:          cfg.ToolDiscovery.Timeout,
+			MaxTools:         cfg.ToolDiscovery.MaxTools,
+			MaxResponseBytes: 8 << 20,
+			AllowedPrefixes:  cfg.ToolDiscovery.AllowedCIDRs,
+			ClientVersion:    Version,
+		}, logger)
+	}
 	handler := registryhttp.NewRouter(registryhttp.RouterDeps{
-		Logger:             logger,
-		DB:                 db,
-		Metrics:            metrics,
-		CORSOrigins:        cfg.HTTP.CORSOrigins,
-		TrustedProxy:       trustedProxy,
-		PublicRateLimitRPM: cfg.HTTP.PublicRateLimitRPM,
-		PublicBaseURL:      cfg.HTTP.PublicBaseURL,
-		Tokens:             tokenAuth,
-		Refresh:            refreshMgr,
-		OIDC:               oidcBroker,
-		LocalLoginEnabled:  cfg.Auth.LocalLoginEnabled,
-		OIDCEnabled:        oidcEnabled,
-		Draining:           &draining,
+		Logger:                    logger,
+		DB:                        db,
+		Metrics:                   metrics,
+		CORSOrigins:               cfg.HTTP.CORSOrigins,
+		TrustedProxy:              trustedProxy,
+		PublicRateLimitRPM:        cfg.HTTP.PublicRateLimitRPM,
+		PublicBaseURL:             cfg.HTTP.PublicBaseURL,
+		Tokens:                    tokenAuth,
+		Refresh:                   refreshMgr,
+		OIDC:                      oidcBroker,
+		LocalLoginEnabled:         cfg.Auth.LocalLoginEnabled,
+		OIDCEnabled:               oidcEnabled,
+		Draining:                  &draining,
+		ToolDiscoverer:            toolDiscoverer,
+		ToolDiscoveryRateLimitRPM: cfg.ToolDiscovery.RateLimitRPM,
 	})
 	srv := registryhttp.NewServer(handler, registryhttp.ServerConfig{
 		Addr:         cfg.HTTP.Addr,
