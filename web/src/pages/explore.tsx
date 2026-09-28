@@ -67,37 +67,23 @@ export default function ExplorePage() {
   const showMcp = type === 'all' || type === 'mcp'
   const showAgents = type === 'all' || type === 'agents'
 
+  const listQuery = {
+    q: q || undefined,
+    limit: type === 'all' ? 6 : 20,
+    sort: sort as 'created_at_desc' | 'updated_at_desc' | 'published_at_desc' | 'name_asc' | 'name_desc' | undefined,
+  }
+
   const { data: mcpData, isLoading: mcpLoading } = useQuery({
-    queryKey: ['explore-mcp', { q, sort }],
+    queryKey: ['explore-mcp', listQuery],
     queryFn: () =>
-      api
-        .GET('/api/v1/mcp/servers', {
-          params: {
-            query: {
-              q: q || undefined,
-              limit: type === 'all' ? 6 : 20,
-              sort: sort as 'created_at_desc' | 'updated_at_desc' | 'published_at_desc' | 'name_asc' | 'name_desc' | undefined,
-            },
-          },
-        })
-        .then((r) => r.data),
+      api.GET('/api/v1/mcp/servers', { params: { query: listQuery } }).then((r) => r.data),
     enabled: showMcp,
   })
 
   const { data: agentData, isLoading: agentLoading } = useQuery({
-    queryKey: ['explore-agents', { q, sort }],
+    queryKey: ['explore-agents', listQuery],
     queryFn: () =>
-      api
-        .GET('/api/v1/agents', {
-          params: {
-            query: {
-              q: q || undefined,
-              limit: type === 'all' ? 6 : 20,
-              sort: sort as 'created_at_desc' | 'updated_at_desc' | 'published_at_desc' | 'name_asc' | 'name_desc' | undefined,
-            },
-          },
-        })
-        .then((r) => r.data),
+      api.GET('/api/v1/agents', { params: { query: listQuery } }).then((r) => r.data),
     enabled: showAgents,
   })
 
