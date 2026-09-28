@@ -23,8 +23,9 @@ spec:
       {{- include "ai-registry.api.selectorLabels" . | nindent 6 }}
   endpoints:
     # /metrics is unauthenticated and served only on the api ClusterIP Service;
-    # the Ingress/HTTPRoute send it to nginx, which answers 404. Add a
-    # NetworkPolicy if you need to restrict pod-to-pod scraping.
+    # the Ingress/HTTPRoute send it to nginx, which answers 404. Set
+    # global.networkPolicy.enabled to restrict pod-to-pod scraping to
+    # api.networkPolicy.metricsScraperPeers.
     - port: http
       path: {{ .Values.api.serviceMonitor.path | default "/metrics" }}
       interval: {{ .Values.api.serviceMonitor.interval | default "30s" }}

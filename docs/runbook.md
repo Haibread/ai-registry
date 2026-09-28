@@ -51,7 +51,7 @@ Common root causes:
 | `failed to connect to database`             | Postgres unreachable / bad DSN      | §4  |
 | `migrations ... failed`                     | Migration SQL error                 | §5  |
 | `invalid TRUSTED_PROXY_CIDR`                | Bad config value                    | Correct `api.trustedProxyCIDR` in values.yaml |
-| `jwks ... no such host` / `fetch … timeout` | Cannot reach OIDC issuer            | Check `api.oidcJwksUrl`, DNS, NetworkPolicy |
+| `jwks ... no such host` / `fetch … timeout` | Cannot reach OIDC issuer            | Check `api.oidcJwksUrl`, DNS; with `global.networkPolicy.egress.enabled`, allow the issuer in `egress.extraRules` |
 | OOMKilled (in `kubectl describe`)           | Memory limit too low                | Raise `api.resources.limits.memory` |
 
 ---
@@ -109,7 +109,7 @@ kubectl run pg-probe --rm -it --image=postgres:18-alpine -- \
 |---------------------------------------------------|--------|
 | CNPG primary is not elected                       | `kubectl describe cluster <name>`; promote a replica if stuck |
 | Credentials rotated; api has old secret           | `kubectl rollout restart deploy/<fullname>-api` after updating the secret |
-| NetworkPolicy blocks api → DB                     | Review / loosen NetworkPolicy |
+| NetworkPolicy blocks api → DB                     | With `global.networkPolicy.egress.enabled`, CNPG is allowed; an external DB needs an `egress.extraRules` entry |
 | PVC full                                          | Raise `cnpg.storageSize` in values.yaml; CNPG resizes online |
 
 See §6 for backup / restore.

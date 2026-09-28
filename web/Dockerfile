@@ -21,13 +21,19 @@ COPY server/api/openapi.yaml /server/api/openapi.yaml
 # Generate TypeScript types from the OpenAPI spec, then build the SPA.
 # OIDC configuration is NOT baked in here — the SPA fetches /config.json at
 # runtime from the server, so a single image works across all environments.
-RUN npm run generate && npm run build
+RUN npm run generate && npm run build \
+ && mkdir /app/conf.d
 
 # ── Runtime (nginx) ───────────────────────────────────────────────────────────
 FROM nginxinc/nginx-unprivileged:alpine AS runner
 
-# Remove the default server block shipped with the image.
-RUN rm /etc/nginx/conf.d/default.conf
+# The entrypoint renders /etc/nginx/templates/ into conf.d at startup, so conf.d
+# must be writable by the runtime user. The base image owns it as uid 101 and
+# the build runs as 101, which can replace it but not chown it: swap it for an
+# empty directory copied in with the runtime ownership (this also drops the
+# stock default.conf server block).
+RUN rm -rf /etc/nginx/conf.d
+COPY --from=builder --chown=65532:65532 /app/conf.d/ /etc/nginx/conf.d/
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
@@ -39,9 +45,9 @@ COPY web/nginx.conf /etc/nginx/templates/default.conf.template
 # own variables ($host, $remote_addr, $proxy_add_x_forwarded_for, etc.).
 ENV NGINX_ENVSUBST_TEMPLATE_VARS=API_URL
 
-# Explicit non-root user (uid 101 = nginx in the unprivileged base). The base
-# already runs as 101, but stating it keeps the image safe under a runtime that
-# does not impose a securityContext (e.g. a plain `docker run`).
-USER 101
+# UID/GID above 10000 rather than the base image's 101, so the container user
+# never aliases a host account (Trivy KSV-0020/KSV-0021). nginx writes its pid
+# and temp files under /tmp, so conf.d is the only path it needs to own.
+USER 65532:65532
 
 EXPOSE 8080
