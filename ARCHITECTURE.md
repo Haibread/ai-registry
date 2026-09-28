@@ -241,7 +241,8 @@ the callback and the SPA keeps tokens out of URLs and browser history.
 **Bearer header, no cookie.** Credentials are never sent ambiently, so there is
 no CSRF surface and no CSRF middleware. The price is that the SPA must hold the
 tokens in JavaScript-reachable storage, which makes XSS hygiene (CSP, no raw
-HTML rendering) load-bearing.
+HTML rendering) load-bearing. The SPA's CSP therefore allows scripts and
+`fetch` to its own origin only, with no inline script and no `eval`.
 
 **Refresh tokens are single-use and stored hashed.** `refresh_tokens` never
 holds a raw token, and presenting an already-rotated refresh token revokes its
