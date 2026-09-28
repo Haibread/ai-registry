@@ -18,7 +18,7 @@ it is in [README.md](README.md#getting-started).
 | Node.js + npm | 24 | SPA build, tests, lint |
 | Docker + Compose plugin | recent | integration tests (testcontainers), local stack |
 | pre-commit | ≥ 3.2 | commit gate |
-| golangci-lint | v2.12.2 | `golangci-lint` hook |
+| golangci-lint | v2.14.0 | `golangci-lint` hook |
 | helm | v4.3.0 | `helm-lint` hook, chart rendering |
 | helm-docs | v1.14.2 | `helm-docs` hook |
 | hadolint | v2.12.0 | `hadolint` hook |
@@ -35,7 +35,7 @@ pipx install pre-commit
 ```
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.14.0
 ```
 
 ```bash
