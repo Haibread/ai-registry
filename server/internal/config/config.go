@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -352,7 +353,8 @@ func defaultFileConfig() fileConfig {
 //  3. Built-in defaults (lowest priority)
 //
 // Pass an empty string for configFile to rely solely on CONFIG_FILE or
-// defaults.
+// defaults. Any value that does not parse or is out of range is an error;
+// all such problems are reported together.
 func Load(configFile string) (*Config, error) {
 	// Resolve config file path.
 	if configFile == "" {
@@ -369,32 +371,44 @@ func Load(configFile string) (*Config, error) {
 		}
 	}
 
-	// Parse durations from file config (already defaulted above).
-	readTimeout := parseDurationDefault(fc.HTTP.ReadTimeout, 30*time.Second)
-	writeTimeout := parseDurationDefault(fc.HTTP.WriteTimeout, 30*time.Second)
-	idleTimeout := parseDurationDefault(fc.HTTP.IdleTimeout, 120*time.Second)
-	shutdownDrainDelay := parseDurationDefault(fc.HTTP.ShutdownDrainDelay, 5*time.Second)
-	accessTokenTTL := parseDurationDefault(fc.Auth.AccessTokenTTL, 15*time.Minute)
-	refreshTokenTTL := parseDurationDefault(fc.Auth.RefreshTokenTTL, 12*time.Hour)
-	sweepInterval := parseDurationDefault(fc.Auth.SweepInterval, 15*time.Minute)
+	var p parser
+
+	readTimeout := p.duration("http.read_timeout", fc.HTTP.ReadTimeout, 30*time.Second)
+	writeTimeout := p.duration("http.write_timeout", fc.HTTP.WriteTimeout, 30*time.Second)
+	idleTimeout := p.duration("http.idle_timeout", fc.HTTP.IdleTimeout, 120*time.Second)
+	shutdownDrainDelay := p.duration("http.shutdown_drain_delay", fc.HTTP.ShutdownDrainDelay, 5*time.Second)
+	accessTokenTTL := p.duration("auth.access_token_ttl", fc.Auth.AccessTokenTTL, 15*time.Minute)
+	refreshTokenTTL := p.duration("auth.refresh_token_ttl", fc.Auth.RefreshTokenTTL, 12*time.Hour)
+	sweepInterval := p.duration("auth.sweep_interval", fc.Auth.SweepInterval, 15*time.Minute)
+
+	maxConns := p.envInt("DATABASE_MAX_CONNS", fc.Database.MaxConns)
+	minConns := p.envInt("DATABASE_MIN_CONNS", fc.Database.MinConns)
+	switch {
+	case maxConns < 1 || maxConns > math.MaxInt32:
+		p.errorf("DATABASE_MAX_CONNS (database.max_conns) must be between 1 and %d, got %d", math.MaxInt32, maxConns)
+		maxConns, minConns = 1, 0
+	case minConns < 0 || minConns > maxConns:
+		p.errorf("DATABASE_MIN_CONNS (database.min_conns) must be between 0 and DATABASE_MAX_CONNS (%d), got %d", maxConns, minConns)
+		minConns = 0
+	}
 
 	// Build final config: env vars win over file values.
 	cfg := &Config{
 		HTTP: HTTPConfig{
 			Addr:               envString("HTTP_ADDR", fc.HTTP.Addr),
-			ReadTimeout:        envDuration("HTTP_READ_TIMEOUT", readTimeout),
-			WriteTimeout:       envDuration("HTTP_WRITE_TIMEOUT", writeTimeout),
-			IdleTimeout:        envDuration("HTTP_IDLE_TIMEOUT", idleTimeout),
+			ReadTimeout:        p.envDuration("HTTP_READ_TIMEOUT", readTimeout),
+			WriteTimeout:       p.envDuration("HTTP_WRITE_TIMEOUT", writeTimeout),
+			IdleTimeout:        p.envDuration("HTTP_IDLE_TIMEOUT", idleTimeout),
 			CORSOrigins:        envStringSlice("CORS_ALLOWED_ORIGINS", fc.HTTP.CORSOrigins),
 			TrustedProxyCIDR:   envString("TRUSTED_PROXY_CIDR", fc.HTTP.TrustedProxyCIDR),
-			PublicRateLimitRPM: envInt("PUBLIC_RATE_LIMIT_RPM", fc.HTTP.PublicRateLimitRPM),
+			PublicRateLimitRPM: p.envInt("PUBLIC_RATE_LIMIT_RPM", fc.HTTP.PublicRateLimitRPM),
 			PublicBaseURL:      envString("PUBLIC_BASE_URL", fc.HTTP.PublicBaseURL),
-			ShutdownDrainDelay: envDuration("SHUTDOWN_DRAIN_DELAY", shutdownDrainDelay),
+			ShutdownDrainDelay: p.envDuration("SHUTDOWN_DRAIN_DELAY", shutdownDrainDelay),
 		},
 		Database: DatabaseConfig{
 			URL:      envString("DATABASE_URL", fc.Database.URL),
-			MaxConns: int32(envInt("DATABASE_MAX_CONNS", fc.Database.MaxConns)),
-			MinConns: int32(envInt("DATABASE_MIN_CONNS", fc.Database.MinConns)),
+			MaxConns: int32(maxConns), //nolint:gosec // range-checked above
+			MinConns: int32(minConns), //nolint:gosec // range-checked above
 		},
 		OTel: OTelConfig{
 			ServiceName:    envString("OTEL_SERVICE_NAME", fc.OTel.ServiceName),
@@ -418,26 +432,22 @@ func Load(configFile string) (*Config, error) {
 			AdminRole:              envString("OIDC_ADMIN_ROLE", fc.Auth.AdminRole),
 			OIDCAudience:           envString("OIDC_AUDIENCE", fc.Auth.OIDCAudience),
 			ReviewerGroup:          envString("AUTH_REVIEWER_GROUP", fc.Auth.ReviewerGroup),
-			LocalLoginEnabled:      envBool("AUTH_LOCAL_LOGIN_ENABLED", fc.Auth.LocalLogin),
+			LocalLoginEnabled:      p.envBool("AUTH_LOCAL_LOGIN_ENABLED", fc.Auth.LocalLogin),
 			BootstrapAdminEmail:    envString("AUTH_BOOTSTRAP_ADMIN_EMAIL", fc.Auth.BootstrapAdminEmail),
 			BootstrapAdminPassword: envString("AUTH_BOOTSTRAP_ADMIN_PASSWORD", ""),
 			JWTSigningKey:          envString("JWT_SIGNING_KEY", ""),
 			JWTSigningSeed:         envString("JWT_SIGNING_SEED", ""),
-			AccessTokenTTL:         envDuration("ACCESS_TOKEN_TTL", accessTokenTTL),
-			RefreshTokenTTL:        envDuration("REFRESH_TOKEN_TTL", refreshTokenTTL),
-			SweepInterval:          envDuration("AUTH_SWEEP_INTERVAL", sweepInterval),
+			AccessTokenTTL:         p.envDuration("ACCESS_TOKEN_TTL", accessTokenTTL),
+			RefreshTokenTTL:        p.envDuration("REFRESH_TOKEN_TTL", refreshTokenTTL),
+			SweepInterval:          p.envDuration("AUTH_SWEEP_INTERVAL", sweepInterval),
 		},
 		BootstrapFile: envString("BOOTSTRAP_FILE", fc.BootstrapFile),
+		InstanceTags:  p.envInstanceTags("INSTANCE_TAGS", fc.InstanceTags),
 	}
 
-	tags, err := envInstanceTags("INSTANCE_TAGS", fc.InstanceTags)
-	if err != nil {
-		return nil, err
-	}
-	cfg.InstanceTags = tags
-
-	if err := cfg.validate(); err != nil {
-		return nil, err
+	cfg.validate(&p)
+	if len(p.errs) > 0 {
+		return nil, fmt.Errorf("invalid configuration: %w", errors.Join(p.errs...))
 	}
 	return cfg, nil
 }
@@ -463,9 +473,9 @@ func loadFile(path string, fc *fileConfig) error {
 	return nil
 }
 
-func (c *Config) validate() error {
+func (c *Config) validate(p *parser) {
 	if c.Database.URL == "" {
-		return fmt.Errorf("DATABASE_URL is required")
+		p.errorf("DATABASE_URL is required")
 	}
 
 	// OIDC is brokered only when a confidential client is fully configured
@@ -475,7 +485,7 @@ func (c *Config) validate() error {
 	hasClientID := c.Auth.OIDCClientID != ""
 	hasClientSecret := c.Auth.OIDCClientSecret != ""
 	if hasClientID != hasClientSecret {
-		return fmt.Errorf("OIDC is half-configured: set both OIDC_CLIENT_ID and OIDC_CLIENT_SECRET to enable OIDC, or neither to disable it")
+		p.errorf("OIDC is half-configured: set both OIDC_CLIENT_ID and OIDC_CLIENT_SECRET to enable OIDC, or neither to disable it")
 	}
 	oidcEnabled := hasClientID && hasClientSecret
 
@@ -483,26 +493,60 @@ func (c *Config) validate() error {
 	// id_token `iss` against it. Local-login-only deployments run without an IdP
 	// (decision N), so an empty issuer is valid when OIDC is off.
 	if oidcEnabled && c.Auth.OIDCIssuer == "" {
-		return fmt.Errorf("OIDC_ISSUER is required when OIDC is enabled (OIDC_CLIENT_ID and OIDC_CLIENT_SECRET are set)")
+		p.errorf("OIDC_ISSUER is required when OIDC is enabled (OIDC_CLIENT_ID and OIDC_CLIENT_SECRET are set)")
 	}
 
 	// At least one front door must be open, or no one can log in.
 	if !oidcEnabled && !c.Auth.LocalLoginEnabled {
-		return fmt.Errorf("no login method enabled: set AUTH_LOCAL_LOGIN_ENABLED=true, or configure OIDC (OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET)")
+		p.errorf("no login method enabled: set AUTH_LOCAL_LOGIN_ENABLED=true, or configure OIDC (OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET)")
 	}
 
 	if c.Auth.BootstrapAdminEmail != "" && c.Auth.BootstrapAdminPassword == "" {
-		return fmt.Errorf("AUTH_BOOTSTRAP_ADMIN_PASSWORD is required when AUTH_BOOTSTRAP_ADMIN_EMAIL is set")
+		p.errorf("AUTH_BOOTSTRAP_ADMIN_PASSWORD is required when AUTH_BOOTSTRAP_ADMIN_EMAIL is set")
 	}
 
-	if c.Auth.SweepInterval <= 0 {
-		return fmt.Errorf("AUTH_SWEEP_INTERVAL must be a positive duration, got %s", c.Auth.SweepInterval)
+	switch c.Log.Level {
+	case "debug", "info", "warn", "error":
+	default:
+		p.errorf("LOG_LEVEL (log.level) must be one of debug, info, warn, error, got %q", c.Log.Level)
+	}
+
+	if c.HTTP.PublicRateLimitRPM <= 0 {
+		p.errorf("PUBLIC_RATE_LIMIT_RPM (http.public_rate_limit_rpm) must be positive, got %d", c.HTTP.PublicRateLimitRPM)
+	}
+
+	// Zero means "no timeout" (or no drain); only a negative value is meaningless.
+	for _, t := range []struct {
+		name string
+		d    time.Duration
+	}{
+		{"HTTP_READ_TIMEOUT (http.read_timeout)", c.HTTP.ReadTimeout},
+		{"HTTP_WRITE_TIMEOUT (http.write_timeout)", c.HTTP.WriteTimeout},
+		{"HTTP_IDLE_TIMEOUT (http.idle_timeout)", c.HTTP.IdleTimeout},
+		{"SHUTDOWN_DRAIN_DELAY (http.shutdown_drain_delay)", c.HTTP.ShutdownDrainDelay},
+	} {
+		if t.d < 0 {
+			p.errorf("%s must not be negative, got %s", t.name, t.d)
+		}
+	}
+
+	for _, t := range []struct {
+		name string
+		d    time.Duration
+	}{
+		{"ACCESS_TOKEN_TTL (auth.access_token_ttl)", c.Auth.AccessTokenTTL},
+		{"REFRESH_TOKEN_TTL (auth.refresh_token_ttl)", c.Auth.RefreshTokenTTL},
+		{"AUTH_SWEEP_INTERVAL (auth.sweep_interval)", c.Auth.SweepInterval},
+	} {
+		if t.d <= 0 {
+			p.errorf("%s must be a positive duration, got %s", t.name, t.d)
+		}
 	}
 
 	// Accepting IdP service-account tokens requires the broker (its JWKS + issuer
 	// verify those tokens). An audience with no broker is a no-op misconfig.
 	if c.Auth.OIDCAudience != "" && !oidcEnabled {
-		return fmt.Errorf("OIDC_AUDIENCE requires OIDC to be enabled (set OIDC_CLIENT_ID and OIDC_CLIENT_SECRET)")
+		p.errorf("OIDC_AUDIENCE requires OIDC to be enabled (set OIDC_CLIENT_ID and OIDC_CLIENT_SECRET)")
 	}
 
 	// Config-managed instance tags fail fast at boot — a typo'd color or a
@@ -510,39 +554,50 @@ func (c *Config) validate() error {
 	seenTags := make(map[string]struct{}, len(c.InstanceTags))
 	for i, t := range c.InstanceTags {
 		if t.Slug == "" || t.Name == "" {
-			return fmt.Errorf("instance_tags[%d]: slug and name are required", i)
+			p.errorf("instance_tags[%d]: slug and name are required", i)
+			continue
 		}
 		if err := domain.ValidateSlug(t.Slug); err != nil {
-			return fmt.Errorf("instance_tags[%d]: %w", i, err)
+			p.errorf("instance_tags[%d]: %w", i, err)
 		}
 		if t.Color != "" {
 			if err := domain.ValidateTagColor(t.Color); err != nil {
-				return fmt.Errorf("instance_tags[%d]: %w", i, err)
+				p.errorf("instance_tags[%d]: %w", i, err)
 			}
 		}
 		if _, dup := seenTags[t.Slug]; dup {
-			return fmt.Errorf("instance_tags[%d]: duplicate slug %q", i, t.Slug)
+			p.errorf("instance_tags[%d]: duplicate slug %q", i, t.Slug)
 		}
 		seenTags[t.Slug] = struct{}{}
 	}
-	return nil
 }
 
 // ── env helpers ───────────────────────────────────────────────────────────────
 
+// parser collects every invalid setting so Load reports them all at once.
+// Only non-secret settings go through it: an error echoes the offending value.
+type parser struct {
+	errs []error
+}
+
+func (p *parser) errorf(format string, args ...any) {
+	p.errs = append(p.errs, fmt.Errorf(format, args...))
+}
+
 // envInstanceTags parses the INSTANCE_TAGS env var as a JSON array of tag
 // specs. A structured list cannot follow the comma-separated convention of
 // the other slice env vars, so JSON is the env-side encoding.
-func envInstanceTags(key string, def []InstanceTagSpec) ([]InstanceTagSpec, error) {
+func (p *parser) envInstanceTags(key string, def []InstanceTagSpec) []InstanceTagSpec {
 	v := os.Getenv(key)
 	if v == "" {
-		return def, nil
+		return def
 	}
 	var tags []InstanceTagSpec
 	if err := json.Unmarshal([]byte(v), &tags); err != nil {
-		return nil, fmt.Errorf("config: %s must be a JSON array of {slug, name, description, color, active}: %w", key, err)
+		p.errorf("%s must be a JSON array of {slug, name, description, color, active}: %w", key, err)
+		return def
 	}
-	return tags, nil
+	return tags
 }
 
 func envString(key, def string) string {
@@ -552,38 +607,49 @@ func envString(key, def string) string {
 	return def
 }
 
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		n, err := strconv.Atoi(v)
-		if err == nil {
-			return n
-		}
+func (p *parser) envInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
 	}
-	return def
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		p.errorf("%s: %q is not an integer", key, v)
+		return def
+	}
+	return n
 }
 
-// envBool reads a boolean env var, falling back to def when unset or
-// unparseable. Accepts the forms strconv.ParseBool understands
-// (1/t/T/TRUE/true/0/f/F/FALSE/false, …). Needed for knobs whose default is
-// true, where an explicit "false" must override the default.
-func envBool(key string, def bool) bool {
-	if v := os.Getenv(key); v != "" {
-		b, err := strconv.ParseBool(v)
-		if err == nil {
-			return b
-		}
+// envBool accepts the forms strconv.ParseBool understands
+// (1/t/T/TRUE/true/0/f/F/FALSE/false, …).
+func (p *parser) envBool(key string, def bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
 	}
-	return def
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		p.errorf("%s: %q is not a boolean (use true or false)", key, v)
+		return def
+	}
+	return b
 }
 
-func envDuration(key string, def time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		d, err := time.ParseDuration(v)
-		if err == nil {
-			return d
-		}
+func (p *parser) envDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
 	}
-	return def
+	return p.duration(key, v, def)
+}
+
+func (p *parser) duration(key, s string, def time.Duration) time.Duration {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		p.errorf("%s: %q is not a duration (use a unit, e.g. \"30s\", \"15m\", \"12h\")", key, s)
+		return def
+	}
+	return d
 }
 
 func envStringSlice(key string, def []string) []string {
@@ -598,16 +664,4 @@ func envStringSlice(key string, def []string) []string {
 		return result
 	}
 	return def
-}
-
-// parseDurationDefault parses s as a duration; returns def on parse failure.
-func parseDurationDefault(s string, def time.Duration) time.Duration {
-	if s == "" {
-		return def
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return def
-	}
-	return d
 }
