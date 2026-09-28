@@ -792,3 +792,105 @@ func TestReviewHandler_Submit_MalformedBodyIs422(t *testing.T) {
 		t.Errorf("unknown field: %d, want 422", rec.Code)
 	}
 }
+
+// principalCtx returns a context carrying a caller with the given user id; the
+// middleware-free routers here admit it whatever roles it would hold.
+func principalCtx(userID string, serverAdmin bool) context.Context {
+	return auth.ContextWithPrincipal(context.Background(), &auth.Principal{
+		UserID: userID, Email: userID + "@example.com", IsServerAdmin: serverAdmin,
+	})
+}
+
+func assertProblemType(t *testing.T, rec *httptest.ResponseRecorder, wantStatus int, slug string) {
+	t.Helper()
+	if rec.Code != wantStatus {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, wantStatus, rec.Body.String())
+	}
+	var p struct {
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if want := "https://registry/errors/" + slug; p.Type != want {
+		t.Errorf("type = %q, want %q", p.Type, want)
+	}
+}
+
+// TestReviewHandler_SelfApprovalForbidden pins separation of duties on every
+// queue: the submitter cannot approve their own change even when they hold
+// Reviewer, the refused attempt leaves the request pending, and a different
+// Reviewer can still approve it.
+func TestReviewHandler_SelfApprovalForbidden(t *testing.T) {
+	author := principalCtx("author-uuid", false)
+	other := principalCtx("reviewer-uuid", false)
+
+	cases := []struct {
+		name    string
+		seed    func(t *testing.T)
+		submit  string
+		approve string
+		body    string
+	}{
+		{
+			name:    "mcp version",
+			seed:    func(t *testing.T) { seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0") },
+			submit:  "/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit",
+			approve: "/api/v1/mcp/servers/acme/weather/versions/1.0.0/approve",
+			body:    `{"revision":1}`,
+		},
+		{
+			name:    "agent version",
+			seed:    func(t *testing.T) { seedDraftAgentForHandler(t, "acme", "planner", "0.1.0") },
+			submit:  "/api/v1/agents/acme/planner/versions/0.1.0/submit",
+			approve: "/api/v1/agents/acme/planner/versions/0.1.0/approve",
+			body:    `{"revision":1}`,
+		},
+		{
+			name:    "mcp deletion",
+			seed:    func(t *testing.T) { seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0") },
+			submit:  "/api/v1/mcp/servers/acme/weather/deletion-request",
+			approve: "/api/v1/mcp/servers/acme/weather/deletion-request/approve",
+		},
+		{
+			name:    "agent deletion",
+			seed:    func(t *testing.T) { seedDraftAgentForHandler(t, "acme", "planner", "0.1.0") },
+			submit:  "/api/v1/agents/acme/planner/deletion-request",
+			approve: "/api/v1/agents/acme/planner/deletion-request/approve",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetTables(t)
+			tc.seed(t)
+			r := newReviewRouter()
+
+			if rec := fire(r, author, http.MethodPost, tc.submit, ""); rec.Code >= 300 {
+				t.Fatalf("submit: %d, body: %s", rec.Code, rec.Body.String())
+			}
+			assertProblemType(t, fire(r, author, http.MethodPost, tc.approve, tc.body),
+				http.StatusForbidden, "self-approval-forbidden")
+			if rec := fire(r, other, http.MethodPost, tc.approve, tc.body); rec.Code != http.StatusNoContent {
+				t.Fatalf("approve by another reviewer: %d, body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestReviewHandler_ServerAdminMaySelfApprove pins the break-glass exception:
+// a Server Admin may approve their own submission.
+func TestReviewHandler_ServerAdminMaySelfApprove(t *testing.T) {
+	resetTables(t)
+	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
+	r := newReviewRouter()
+	admin := principalCtx("admin-uuid", true)
+
+	if rec := fire(r, admin, http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("submit: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := fire(r, admin, http.MethodPost,
+		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/approve", `{"revision":1}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d, body: %s", rec.Code, rec.Body.String())
+	}
+}

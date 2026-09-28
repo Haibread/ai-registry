@@ -400,3 +400,43 @@ func TestEntryChangeHandler_AgentEnqueueThenApprove(t *testing.T) {
 		t.Errorf("description = %q, want %q after approve", desc, "reviewed edit")
 	}
 }
+
+// TestEntryChangeHandler_SelfApprovalForbidden: the Editor who enqueued a
+// change cannot approve it, for either resource type; another Reviewer can.
+func TestEntryChangeHandler_SelfApprovalForbidden(t *testing.T) {
+	cases := []struct {
+		name    string
+		seed    func(t *testing.T)
+		enqueue string
+		approve string
+	}{
+		{
+			name:    "mcp",
+			seed:    func(t *testing.T) { seedPublishedMCPForHandler(t, "acme", "weather") },
+			enqueue: "/api/v1/mcp/servers/acme/weather/visibility",
+			approve: "/api/v1/mcp/servers/acme/weather/change-request/approve",
+		},
+		{
+			name:    "agent",
+			seed:    func(t *testing.T) { seedPublishedAgentForHandler(t, "acme", "assistant") },
+			enqueue: "/api/v1/agents/acme/assistant/visibility",
+			approve: "/api/v1/agents/acme/assistant/change-request/approve",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetTables(t)
+			tc.seed(t)
+			r := newEntryChangeRouter()
+
+			if rec := fire(r, editorCtx(), http.MethodPost, tc.enqueue, `{"visibility":"public"}`); rec.Code != http.StatusAccepted {
+				t.Fatalf("enqueue: %d, body: %s", rec.Code, rec.Body.String())
+			}
+			assertProblemType(t, fire(r, editorCtx(), http.MethodPost, tc.approve, `{"revision":1}`),
+				http.StatusForbidden, "self-approval-forbidden")
+			if rec := fire(r, principalCtx("reviewer-uuid", false), http.MethodPost, tc.approve, `{"revision":1}`); rec.Code != http.StatusNoContent {
+				t.Fatalf("approve by another reviewer: %d, body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}

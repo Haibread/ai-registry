@@ -32,12 +32,28 @@ var ErrReviewRevisionMismatch = errors.New("version revision was bumped since th
 // specific 409 type if desired.
 var ErrAlreadyPublished = errors.New("version is already published")
 
-// Actor identifies who performed a review action. The pair is
+// ErrSelfApproval is returned when an approve is attempted by the actor who
+// submitted the change. Maps to `self-approval-forbidden` (HTTP 403).
+var ErrSelfApproval = errors.New("the submitter of a change cannot approve it")
+
+// Actor identifies who performed a review action. Subject and Email are
 // denormalised into the version row's audit columns at action time so
-// later Keycloak email changes do not rewrite history.
+// later Keycloak email changes do not rewrite history. ServerAdmin marks the
+// break-glass principal, which is exempt from the self-approval refusal.
 type Actor struct {
-	Subject string
-	Email   string
+	Subject     string
+	Email       string
+	ServerAdmin bool
+}
+
+// refuseSelfApproval returns ErrSelfApproval when a is the submitter. Approve
+// paths call it inside their transaction, after the state checks, so a stale
+// or missing request still reports its own discriminated error first.
+func refuseSelfApproval(submittedBy string, a Actor) error {
+	if !a.ServerAdmin && submittedBy != "" && submittedBy == a.Subject {
+		return ErrSelfApproval
+	}
+	return nil
 }
 
 // ── MCP server versions: workflow ────────────────────────────────────────
@@ -131,7 +147,10 @@ func (db *DB) ApproveMCPVersion(ctx context.Context, serverID, version string, e
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var requestPublic bool
+	var (
+		requestPublic bool
+		submittedBy   string
+	)
 	err = tx.QueryRow(ctx, `
 		UPDATE mcp_server_versions
 		SET review_state      = 'none',
@@ -145,8 +164,8 @@ func (db *DB) ApproveMCPVersion(ctx context.Context, serverID, version string, e
 		  AND version      = $2
 		  AND review_state = 'pending_review'
 		  AND revision     = $5
-		RETURNING request_public`,
-		serverID, version, a.Subject, a.Email, expectedRevision).Scan(&requestPublic)
+		RETURNING request_public, coalesce(submitted_by, '')`,
+		serverID, version, a.Subject, a.Email, expectedRevision).Scan(&requestPublic, &submittedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Fall back to a discriminating SELECT so the caller can map the
 		// failure to the correct 409 type (or 404).
@@ -160,6 +179,10 @@ func (db *DB) ApproveMCPVersion(ctx context.Context, serverID, version string, e
 	if err != nil {
 		recordErr(span, err)
 		return false, fmt.Errorf("approving version: %w", err)
+	}
+	if err := refuseSelfApproval(submittedBy, a); err != nil {
+		recordErr(span, err)
+		return false, err
 	}
 
 	// Promote the parent entry from draft → published once the first
@@ -260,24 +283,41 @@ func (db *DB) RequestMCPDeletion(ctx context.Context, serverID string, a Actor) 
 // existing read-path filters (which all check `status != 'deleted'`)
 // exclude the row without further changes. The deletion_requested_*
 // columns are intentionally retained as audit.
-func (db *DB) ApproveMCPDeletion(ctx context.Context, serverID string, _ Actor) error {
+func (db *DB) ApproveMCPDeletion(ctx context.Context, serverID string, a Actor) error {
 	ctx, span := startSpan(ctx, "ApproveMCPDeletion")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx, `
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var requestedBy string
+	err = tx.QueryRow(ctx, `
 		UPDATE mcp_servers
 		SET deleted_at = NOW(),
 		    status     = 'deleted',
 		    updated_at = NOW()
 		WHERE id = $1
 		  AND deletion_requested_at IS NOT NULL
-		  AND deleted_at             IS NULL`, serverID)
+		  AND deleted_at             IS NULL
+		RETURNING coalesce(deletion_requested_by, '')`, serverID).Scan(&requestedBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return diagnoseMCPDeletionMiss(ctx, db, serverID)
+	}
 	if err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("approving mcp deletion: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return diagnoseMCPDeletionMiss(ctx, db, serverID)
+	if err := refuseSelfApproval(requestedBy, a); err != nil {
+		recordErr(span, err)
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("commit tx: %w", err)
 	}
 	return nil
 }
@@ -360,24 +400,41 @@ func (db *DB) RequestAgentDeletion(ctx context.Context, agentID string, a Actor)
 // ApproveAgentDeletion is the agent equivalent of ApproveMCPDeletion.
 // Sets both deleted_at and status='deleted' so existing read filters
 // keep working without any change.
-func (db *DB) ApproveAgentDeletion(ctx context.Context, agentID string, _ Actor) error {
+func (db *DB) ApproveAgentDeletion(ctx context.Context, agentID string, a Actor) error {
 	ctx, span := startSpan(ctx, "ApproveAgentDeletion")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx, `
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var requestedBy string
+	err = tx.QueryRow(ctx, `
 		UPDATE agents
 		SET deleted_at = NOW(),
 		    status     = 'deleted',
 		    updated_at = NOW()
 		WHERE id = $1
 		  AND deletion_requested_at IS NOT NULL
-		  AND deleted_at             IS NULL`, agentID)
+		  AND deleted_at             IS NULL
+		RETURNING coalesce(deletion_requested_by, '')`, agentID).Scan(&requestedBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return diagnoseAgentDeletionMiss(ctx, db, agentID)
+	}
 	if err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("approving agent deletion: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return diagnoseAgentDeletionMiss(ctx, db, agentID)
+	if err := refuseSelfApproval(requestedBy, a); err != nil {
+		recordErr(span, err)
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("commit tx: %w", err)
 	}
 	return nil
 }
@@ -768,7 +825,10 @@ func (db *DB) ApproveAgentVersion(ctx context.Context, agentID, version string, 
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var requestPublic bool
+	var (
+		requestPublic bool
+		submittedBy   string
+	)
 	err = tx.QueryRow(ctx, `
 		UPDATE agent_versions
 		SET review_state      = 'none',
@@ -782,8 +842,8 @@ func (db *DB) ApproveAgentVersion(ctx context.Context, agentID, version string, 
 		  AND version      = $2
 		  AND review_state = 'pending_review'
 		  AND revision     = $5
-		RETURNING request_public`,
-		agentID, version, a.Subject, a.Email, expectedRevision).Scan(&requestPublic)
+		RETURNING request_public, coalesce(submitted_by, '')`,
+		agentID, version, a.Subject, a.Email, expectedRevision).Scan(&requestPublic, &submittedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if err := diagnoseAgentApproveMissTx(ctx, tx, agentID, version, expectedRevision); err != nil {
 			recordErr(span, err)
@@ -794,6 +854,10 @@ func (db *DB) ApproveAgentVersion(ctx context.Context, agentID, version string, 
 	if err != nil {
 		recordErr(span, err)
 		return false, fmt.Errorf("approving agent version: %w", err)
+	}
+	if err := refuseSelfApproval(submittedBy, a); err != nil {
+		recordErr(span, err)
+		return false, err
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE agents SET status='published', updated_at=NOW() WHERE id=$1 AND status='draft'`,

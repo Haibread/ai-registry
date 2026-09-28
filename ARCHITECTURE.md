@@ -263,10 +263,16 @@ authorization and a revoked grant takes effect immediately rather than at token
 expiry. There are exactly two principal types: users and groups.
 
 **Reviewer is the only approver.** A publisher Admin can do everything except
-approve a change — separation of duties by default. Server Admin, derived from
-the configured IdP admin role or the local `is_server_admin` flag, is the
-break-glass exception and applies changes immediately (`200`) where an Editor's
-request is queued (`202`).
+approve a change — separation of duties by default. The rule holds per
+principal too: whoever submitted a version, a deletion request or an entry
+change cannot approve it, even holding Reviewer (`403
+self-approval-forbidden`), and nobody but a Server Admin can grant themselves a
+role (`403 self-grant-forbidden`). The submitter check runs inside the approve
+transaction against the recorded `submitted_by` / `deletion_requested_by`.
+Server Admin, derived from the configured IdP admin role or the local
+`is_server_admin` flag, is the break-glass exception: it applies changes
+immediately (`200`) where an Editor's request is queued (`202`), and may
+approve its own submissions.
 
 **Machine callers present IdP tokens directly.** When `OIDC_AUDIENCE` is set,
 an IdP-issued access token (for instance a Keycloak `client_credentials`
@@ -340,9 +346,9 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
   refresh token, so a revoked session lives at most one access-token TTL.
 - Changes on the IdP side (group membership, the admin-role flag) take effect
   at the next login, at most `REFRESH_TOKEN_TTL` after the previous one.
-- Separation of duties rests on the role grants: nothing prevents one principal
-  from holding both Editor and Reviewer on a publisher, and a publisher Admin
-  can grant roles on it.
+- Versions do not record who created them, so a principal holding both Editor
+  and Reviewer on a publisher can create a version and take it live through the
+  direct `publish` endpoint without a second pair of eyes.
 - There are no registry-native API keys: machine access requires an OIDC
   provider issuing tokens with the configured audience.
 - The catalog covers MCP servers and A2A agents only.

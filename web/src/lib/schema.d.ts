@@ -485,7 +485,7 @@ export interface paths {
         put?: never;
         /**
          * Grant a role on a publisher (publisher Admin or Server Admin)
-         * @description A publisher Admin may grant roles to individual users (`principal_type: user`). Granting to a group (`principal_type: group`) binds an IdP claim to a role and is reserved for Server Admins — a publisher Admin attempting it gets 403.
+         * @description A publisher Admin may grant roles to individual users (`principal_type: user`). Granting to a group (`principal_type: group`) binds an IdP claim to a role and is reserved for Server Admins — a publisher Admin attempting it gets 403. Only a Server Admin may grant a role to themselves; anyone else gets 403 `self-grant-forbidden`.
          */
         post: operations["createPublisherGrant"];
         delete?: never;
@@ -1969,6 +1969,7 @@ export interface components {
         /**
          * @description RFC 7807 problem detail returned by the change-approval
          *     workflow. Inspect `type` to discriminate the case:
+         *       .../errors/self-approval-forbidden         (403)
          *       .../errors/not-found                       (404)
          *       .../errors/review-state-mismatch           (409)
          *       .../errors/review-revision-mismatch        (409)
@@ -2605,6 +2606,19 @@ export interface components {
             };
             content: {
                 "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description Authenticated but lacks the Reviewer role on the owning publisher
+         *     (forbidden), or is the principal who submitted the change
+         *     (self-approval-forbidden). A Server Admin is exempt from the latter.
+         */
+        ReviewForbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["ReviewProblem"];
             };
         };
         /** @description Duplicate slug or version */
@@ -3488,7 +3502,18 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            /**
+             * @description forbidden (not a publisher Admin, or a group grant by a non-Server
+             *     Admin) | self-grant-forbidden (the caller is the grantee).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
@@ -4397,7 +4422,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ReviewForbidden"];
             404: components["responses"]["NotFound"];
             /**
              * @description review-state-mismatch (no longer pending) |
@@ -4507,7 +4532,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ReviewForbidden"];
             404: components["responses"]["NotFound"];
             /** @description no pending deletion request to approve */
             409: {
@@ -4582,7 +4607,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ReviewForbidden"];
             404: components["responses"]["NotFound"];
             /** @description no pending change, stale revision, or change no longer applicable */
             409: {
@@ -5245,7 +5270,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ReviewForbidden"];
             404: components["responses"]["NotFound"];
             /** @description review-state-mismatch | review-revision-mismatch | already-published */
             409: {
@@ -5351,7 +5376,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ReviewForbidden"];
             404: components["responses"]["NotFound"];
             /** @description no pending deletion request */
             409: {
@@ -5426,7 +5451,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ReviewForbidden"];
             404: components["responses"]["NotFound"];
             /** @description no pending change, stale revision, or change no longer applicable */
             409: {

@@ -140,6 +140,13 @@ func (h *GrantHandlers) CreatePublisherGrant(w http.ResponseWriter, r *http.Requ
 		problem.Write(w, http.StatusForbidden, "forbidden", groupGrantMsg, r.URL.Path)
 		return
 	}
+	callerID, _, _ := auth.IdentityFromContext(r.Context())
+	if domain.PrincipalType(body.PrincipalType) == domain.PrincipalUser && callerID != "" &&
+		body.PrincipalID == callerID && !auth.IsServerAdminFromContext(r.Context()) {
+		problem.Write(w, http.StatusForbidden, "self-grant-forbidden",
+			"you cannot grant a role to yourself; ask another publisher Admin or a Server Admin", r.URL.Path)
+		return
+	}
 	ok, err := h.principalExists(r, body)
 	if err != nil {
 		internalError(w, r, err)
