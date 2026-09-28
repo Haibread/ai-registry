@@ -368,7 +368,10 @@ export interface paths {
         /** List users (Server Admin) */
         get: operations["listUsers"];
         put?: never;
-        /** Create a local or invited user (Server Admin) */
+        /**
+         * Create a local or invited user (Server Admin)
+         * @description Omitting `password` creates an invited user with no local password. A supplied password shorter than 12 characters is rejected (422).
+         */
         post: operations["createUser"];
         delete?: never;
         options?: never;
@@ -394,7 +397,7 @@ export interface paths {
         head?: never;
         /**
          * Update a user's display name, disabled, or is_server_admin (Server Admin)
-         * @description Lockout protection: the caller cannot disable their own account or revoke their own Server Admin role (409) — another admin must do it.
+         * @description Lockout protection: the caller cannot disable their own account or revoke their own Server Admin role (409) — another admin must do it. Disabling the user or removing their Server Admin flag revokes all of their refresh tokens; access tokens already issued stay valid until they expire.
          */
         patch: operations["patchUser"];
         trace?: never;
@@ -408,7 +411,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Set a user's password (self or Server Admin) */
+        /**
+         * Set a user's password (self or Server Admin)
+         * @description The password must be at least 12 characters (422 otherwise). Setting it revokes all of the user's refresh tokens, including the caller's own when setting their own password; access tokens already issued stay valid until they expire.
+         */
         post: operations["setUserPassword"];
         delete?: never;
         options?: never;

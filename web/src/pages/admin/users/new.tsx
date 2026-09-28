@@ -19,8 +19,8 @@ export default function AdminUserNew() {
       const email = (formData.get('email') as string).trim()
       if (!email) throw new Error('Email is required.')
       const password = (formData.get('password') as string) || ''
-      if (password !== '' && password.length < 8) {
-        throw new Error('Password must be at least 8 characters (or leave it blank to invite without one).')
+      if (password !== '' && password.length < 12) {
+        throw new Error('Password must be at least 12 characters (or leave it blank to invite without one).')
       }
       const { error } = await api.POST('/api/v1/users', {
         body: {

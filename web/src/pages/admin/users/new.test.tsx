@@ -50,9 +50,9 @@ describe('AdminUserNew', () => {
   it('rejects a too-short password before calling the API', async () => {
     renderPage()
     await userEvent.type(screen.getByLabelText(/email/i), 'x@x.test')
-    await userEvent.type(screen.getByLabelText(/^password/i), 'short')
+    await userEvent.type(screen.getByLabelText(/^password/i), 'elevenchars')
     await userEvent.click(screen.getByRole('button', { name: /create user/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/at least 8/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/at least 12/i)
     expect(mockPOST).not.toHaveBeenCalled()
   })
 })

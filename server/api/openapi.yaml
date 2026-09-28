@@ -482,6 +482,9 @@ paths:
     post:
       operationId: createUser
       summary: Create a local or invited user (Server Admin)
+      description: >
+        Omitting `password` creates an invited user with no local password. A
+        supplied password shorter than 12 characters is rejected (422).
       tags: [rbac]
       security: [{ bearerAuth: [] }]
       requestBody:
@@ -526,6 +529,9 @@ paths:
       description: >
         Lockout protection: the caller cannot disable their own account or
         revoke their own Server Admin role (409) — another admin must do it.
+        Disabling the user or removing their Server Admin flag revokes all of
+        their refresh tokens; access tokens already issued stay valid until
+        they expire.
       tags: [rbac]
       security: [{ bearerAuth: [] }]
       requestBody:
@@ -548,6 +554,11 @@ paths:
     post:
       operationId: setUserPassword
       summary: Set a user's password (self or Server Admin)
+      description: >
+        The password must be at least 12 characters (422 otherwise). Setting it
+        revokes all of the user's refresh tokens, including the caller's own
+        when setting their own password; access tokens already issued stay
+        valid until they expire.
       tags: [rbac]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -3035,6 +3046,7 @@ components:
         password:
           type: string
           format: password
+          minLength: 12
           description: Optional; omit to create an invited user that cannot log in until a credential is set.
         is_server_admin: { type: boolean }
 
@@ -3049,7 +3061,7 @@ components:
       type: object
       required: [password]
       properties:
-        password: { type: string, format: password, minLength: 8 }
+        password: { type: string, format: password, minLength: 12 }
 
     RoleGrant:
       type: object

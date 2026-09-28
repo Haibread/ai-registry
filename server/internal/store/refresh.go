@@ -143,9 +143,7 @@ func (db *DB) RotateRefreshToken(ctx context.Context, oldHash, newHash string) (
 
 	// Reuse of an already-rotated token: revoke the whole lineage for this user.
 	if revokedAt != nil {
-		if _, rErr := tx.Exec(ctx,
-			`UPDATE refresh_tokens SET revoked_at = now()
-			 WHERE user_id = $1 AND revoked_at IS NULL`, userID); rErr != nil {
+		if _, rErr := tx.Exec(ctx, revokeUserRefreshTokensSQL, userID); rErr != nil {
 			recordErr(span, rErr)
 			return nil, fmt.Errorf("rotating refresh token: revoke lineage: %w", rErr)
 		}
@@ -215,14 +213,22 @@ func (db *DB) RevokeAllRefreshTokensForUser(ctx context.Context, userID string) 
 	ctx, span := startSpan(ctx, "RevokeAllRefreshTokensForUser")
 	defer span.End()
 
-	tag, err := db.Pool.Exec(ctx,
-		`UPDATE refresh_tokens SET revoked_at = now()
-		 WHERE user_id = $1 AND revoked_at IS NULL`, userID)
+	tag, err := db.Pool.Exec(ctx, revokeUserRefreshTokensSQL, userID)
 	if err != nil {
 		recordErr(span, err)
 		return 0, fmt.Errorf("revoking user refresh tokens: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+const revokeUserRefreshTokensSQL = `UPDATE refresh_tokens SET revoked_at = now()
+	WHERE user_id = $1 AND revoked_at IS NULL`
+
+func revokeUserRefreshTokens(ctx context.Context, tx pgx.Tx, userID string) error {
+	if _, err := tx.Exec(ctx, revokeUserRefreshTokensSQL, userID); err != nil {
+		return fmt.Errorf("revoking user refresh tokens: %w", err)
+	}
+	return nil
 }
 
 // DeleteExpiredRefreshTokens removes refresh tokens past expiry and returns the

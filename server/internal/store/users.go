@@ -267,7 +267,9 @@ func (db *DB) ListUsers(ctx context.Context, p ListUsersParams) ([]User, error) 
 }
 
 // UpdateUser patches the mutable fields of a user. Only non-nil params are
-// written. Returns ErrNotFound if the user does not exist.
+// written. Disabling the user or removing their Server Admin flag also revokes
+// every live refresh token in the same transaction. Returns ErrNotFound if the
+// user does not exist.
 func (db *DB) UpdateUser(ctx context.Context, id string, p UpdateUserParams) (*User, error) {
 	ctx, span := startSpan(ctx, "UpdateUser")
 	defer span.End()
@@ -292,22 +294,51 @@ func (db *DB) UpdateUser(ctx context.Context, id string, p UpdateUserParams) (*U
 	}
 	args = append(args, id)
 
-	u, err := db.scanUser(db.Pool.QueryRow(ctx, fmt.Sprintf(
-		`UPDATE users SET %s WHERE id = $%d RETURNING %s`,
-		strings.Join(sets, ", "), argN, userColumns), args...))
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("updating user: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var wasAdmin bool
+	err = tx.QueryRow(ctx, `SELECT is_server_admin FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&wasAdmin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		recordErr(span, ErrNotFound)
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		recordErr(span, err)
+		return nil, fmt.Errorf("updating user: select: %w", err)
+	}
+
+	u, err := db.scanUser(tx.QueryRow(ctx, fmt.Sprintf(
+		`UPDATE users SET %s WHERE id = $%d RETURNING %s`,
+		strings.Join(sets, ", "), argN, userColumns), args...))
+	if err != nil {
+		recordErr(span, err)
 		return nil, fmt.Errorf("updating user: %w", err)
+	}
+
+	disabled := p.Disabled != nil && *p.Disabled
+	demoted := wasAdmin && !u.IsServerAdmin
+	if disabled || demoted {
+		if err := revokeUserRefreshTokens(ctx, tx, id); err != nil {
+			recordErr(span, err)
+			return nil, fmt.Errorf("updating user: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return nil, fmt.Errorf("updating user: commit: %w", err)
 	}
 	return u, nil
 }
 
 // SetPasswordHash sets (or clears, when hash is empty) a user's argon2id
-// password hash. Returns ErrNotFound if the user does not exist.
+// password hash and revokes every live refresh token of the user in the same
+// transaction. Returns ErrNotFound if the user does not exist.
 func (db *DB) SetPasswordHash(ctx context.Context, id, hash string) error {
 	ctx, span := startSpan(ctx, "SetPasswordHash")
 	defer span.End()
@@ -316,7 +347,15 @@ func (db *DB) SetPasswordHash(ctx context.Context, id, hash string) error {
 	if hash != "" {
 		stored = hash
 	}
-	tag, err := db.Pool.Exec(ctx,
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("setting password hash: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx,
 		`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
 		stored, id)
 	if err != nil {
@@ -326,6 +365,14 @@ func (db *DB) SetPasswordHash(ctx context.Context, id, hash string) error {
 	if tag.RowsAffected() == 0 {
 		recordErr(span, ErrNotFound)
 		return ErrNotFound
+	}
+	if err := revokeUserRefreshTokens(ctx, tx, id); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("setting password hash: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		recordErr(span, err)
+		return fmt.Errorf("setting password hash: commit: %w", err)
 	}
 	return nil
 }

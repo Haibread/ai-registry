@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -474,6 +475,93 @@ func TestUserHandler_SetPassword(t *testing.T) {
 	router.ServeHTTP(rec, adminCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"adminsetpw123"}`)))
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("admin: %d, want 204", rec.Code)
+	}
+}
+
+func TestUserHandler_CreateShortPasswordRejected(t *testing.T) {
+	resetTables(t)
+	router := newUserRouter()
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, jsonReq(http.MethodPost, "/api/v1/users", `{"email":"short@example.com","password":"elevenchars"}`))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("11-char password: %d, want 422; %s", rec.Code, rec.Body.String())
+	}
+	if _, err := testDB.GetUserByEmail(context.Background(), "short@example.com"); err == nil {
+		t.Error("user must not be created when the password is rejected")
+	}
+}
+
+// TestUserHandler_CredentialOrAccessChangeRevokesSessions: a refresh token
+// issued before a password change, a disable or a Server Admin removal no
+// longer refreshes afterwards.
+func TestUserHandler_CredentialOrAccessChangeRevokesSessions(t *testing.T) {
+	adminCtx := func(r *http.Request) *http.Request {
+		ctx := auth.ContextWithClaims(r.Context(), &auth.OIDCClaims{})
+		ctx = auth.ContextWithPrincipal(ctx, &auth.Principal{UserID: "another-admin", IsServerAdmin: true})
+		return r.WithContext(ctx)
+	}
+
+	for _, tc := range []struct {
+		name, method, path, body string
+		want                     int
+	}{
+		{"set password", http.MethodPost, "/set-password", `{"password":"brandnewpass123"}`, http.StatusNoContent},
+		{"disable", http.MethodPatch, "", `{"disabled":true}`, http.StatusOK},
+		{"remove server admin", http.MethodPatch, "", `{"is_server_admin":false}`, http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetTables(t)
+			ctx := context.Background()
+			u, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "victim@example.com", IsServerAdmin: true})
+			if err != nil {
+				t.Fatalf("CreateUser: %v", err)
+			}
+			rm := auth.NewRefreshManager(testDB, time.Hour)
+			authH := handlers.NewAuthHandlers(testAuthority(t), rm, testDB, true)
+			stolen, err := rm.Issue(ctx, auth.RefreshIssueParams{UserID: u.ID, AuthMethod: "local"})
+			if err != nil {
+				t.Fatalf("Issue: %v", err)
+			}
+
+			rec := httptest.NewRecorder()
+			newUserRouter().ServeHTTP(rec, adminCtx(jsonReq(tc.method, "/api/v1/users/"+u.ID+tc.path, tc.body)))
+			if rec.Code != tc.want {
+				t.Fatalf("%s: %d, want %d; %s", tc.name, rec.Code, tc.want, rec.Body.String())
+			}
+
+			if rec := postRefresh(authH, stolen); rec.Code != http.StatusUnauthorized {
+				t.Errorf("refresh after %s: %d, want 401; %s", tc.name, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestUserHandler_PatchDisplayNameKeepsSessions: a change that touches neither
+// credentials nor access leaves refresh tokens alive.
+func TestUserHandler_PatchDisplayNameKeepsSessions(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	u, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "keep@example.com"})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	rm := auth.NewRefreshManager(testDB, time.Hour)
+	authH := handlers.NewAuthHandlers(testAuthority(t), rm, testDB, true)
+	tok, err := rm.Issue(ctx, auth.RefreshIssueParams{UserID: u.ID, AuthMethod: "local"})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	for _, body := range []string{`{"display_name":"Kept"}`, `{"is_server_admin":false}`, `{"disabled":false}`} {
+		rec := httptest.NewRecorder()
+		newUserRouter().ServeHTTP(rec, jsonReq(http.MethodPatch, "/api/v1/users/"+u.ID, body))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("patch %s: %d; %s", body, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := postRefresh(authH, tok); rec.Code != http.StatusOK {
+		t.Errorf("refresh after non-access patch: %d, want 200; %s", rec.Code, rec.Body.String())
 	}
 }
 
