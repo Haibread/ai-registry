@@ -79,3 +79,12 @@ class MemoryStorage implements Storage {
     Object.defineProperty(window, 'localStorage', { value: storage, configurable: true, writable: true })
   }
 }
+
+// jsdom parses its whole user-agent stylesheet on the first getComputedStyle
+// call, which the first *ByRole query of every file triggers. Under coverage
+// and a loaded CI runner that call blocks the event loop past findBy*'s 1 s
+// timeout before React Query's setTimeout-scheduled render can run, so pay it
+// here instead of inside a test's wait window.
+if (typeof window !== 'undefined') {
+  window.getComputedStyle(document.documentElement)
+}
