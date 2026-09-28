@@ -57,6 +57,7 @@ export function getRefreshToken(): string | null {
 
 /** setTokens stores a freshly minted access + refresh pair. */
 export function setTokens(access: string, refresh: string) {
+  refreshBackoffUntil = 0
   memoryAccess = access
   memoryRefresh = refresh
   write(ACCESS_KEY, access)
@@ -65,6 +66,7 @@ export function setTokens(access: string, refresh: string) {
 
 /** clearTokens drops both tokens (logout / unrecoverable 401). */
 export function clearTokens() {
+  refreshBackoffUntil = 0
   memoryAccess = null
   memoryRefresh = null
   write(ACCESS_KEY, null)
@@ -74,6 +76,17 @@ export function clearTokens() {
 // A single in-flight refresh is shared by all callers so a burst of 401s yields
 // exactly one /auth/refresh round-trip per tab.
 let refreshInFlight: Promise<string | null> | null = null
+
+// After a transient refresh failure every 401 would otherwise POST again, so
+// further attempts are skipped for a short while.
+export const REFRESH_BACKOFF_MS = 5_000
+let refreshBackoffUntil = 0
+
+// Only these statuses can be retried with the same refresh token; any other
+// failure (401 reused/unknown, 403 disabled, 422 malformed) ends the session.
+function isTransient(status: number): boolean {
+  return status >= 500 || status === 408 || status === 429
+}
 
 // Serialises refreshes across tabs: the refresh token is single-use, so two tabs
 // presenting the same one trip reuse detection and revoke the whole session.
@@ -86,14 +99,16 @@ async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
 
 /**
  * refreshAccessToken rotates the stored refresh token into a new access +
- * refresh pair and returns the new access token (or null when there is no usable
- * refresh token, i.e. the user must sign in again). If another tab rotated the
- * pair while this one waited for the lock, its access token is reused as is.
+ * refresh pair and returns the new access token, or null when it has none. The
+ * tokens are cleared only when the server rejects the refresh token; a network
+ * error or a transient status keeps them for a later attempt. If another tab
+ * rotated the pair while this one waited for the lock, its access token is
+ * reused as is.
  */
 export function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight
   const observed = getRefreshToken()
-  if (!observed) return Promise.resolve(null)
+  if (!observed || Date.now() < refreshBackoffUntil) return Promise.resolve(null)
 
   refreshInFlight = withRefreshLock(() => rotate(observed)).finally(() => {
     refreshInFlight = null
@@ -104,23 +119,34 @@ export function refreshAccessToken(): Promise<string | null> {
 async function rotate(observed: string): Promise<string | null> {
   const rt = getRefreshToken()
   if (rt !== observed) return rt ? getAccessToken() : null
+  let res: Response
   try {
-    const res = await fetch('/api/v1/auth/refresh', {
+    res = await fetch('/api/v1/auth/refresh', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refreshToken: rt }),
     })
-    if (!res.ok) {
-      clearTokens()
-      return null
-    }
-    const body = (await res.json()) as { accessToken: string; refreshToken: string }
-    setTokens(body.accessToken, body.refreshToken)
-    return body.accessToken
   } catch {
+    return backOff()
+  }
+  if (!res.ok) {
+    if (isTransient(res.status)) return backOff()
     clearTokens()
     return null
   }
+  let body: { accessToken: string; refreshToken: string }
+  try {
+    body = (await res.json()) as typeof body
+  } catch {
+    return backOff()
+  }
+  setTokens(body.accessToken, body.refreshToken)
+  return body.accessToken
+}
+
+function backOff(): null {
+  refreshBackoffUntil = Date.now() + REFRESH_BACKOFF_MS
+  return null
 }
 
 /**

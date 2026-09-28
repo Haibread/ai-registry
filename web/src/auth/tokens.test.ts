@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { authFetch, clearTokens, getAccessToken, getRefreshToken, refreshAccessToken, setTokens } from './tokens'
+import {
+  REFRESH_BACKOFF_MS,
+  authFetch,
+  clearTokens,
+  getAccessToken,
+  getRefreshToken,
+  refreshAccessToken,
+  setTokens,
+} from './tokens'
 
 // The test runtime's localStorage is only partially implemented, so we exercise
 // the store through its own API (which falls back to an in-memory copy when
@@ -55,11 +63,47 @@ describe('refreshAccessToken', () => {
     expect(getRefreshToken()).toBe('new-ref')
   })
 
-  it('clears tokens when the refresh is rejected', async () => {
+  it('keeps the tokens on a network error', async () => {
     setTokens('old-acc', 'old-ref')
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 401 }))
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
     expect(await refreshAccessToken()).toBeNull()
+    expect(getAccessToken()).toBe('old-acc')
+    expect(getRefreshToken()).toBe('old-ref')
+  })
+
+  it.each([500, 502, 503, 408, 429])('keeps the tokens on a transient %i', async (status) => {
+    setTokens('old-acc', 'old-ref')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status }))
+    expect(await refreshAccessToken()).toBeNull()
+    expect(getRefreshToken()).toBe('old-ref')
+  })
+
+  it.each([400, 401, 403, 404, 422])('clears the tokens on a definitive %i', async (status) => {
+    setTokens('old-acc', 'old-ref')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status }))
+    expect(await refreshAccessToken()).toBeNull()
+    expect(getAccessToken()).toBeNull()
     expect(getRefreshToken()).toBeNull()
+  })
+
+  it('backs off after a transient failure instead of retrying on every 401', async () => {
+    vi.useFakeTimers()
+    try {
+      setTokens('old-acc', 'old-ref')
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 503 }))
+      expect(await refreshAccessToken()).toBeNull()
+      expect(await refreshAccessToken()).toBeNull()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(REFRESH_BACKOFF_MS)
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ accessToken: 'new-acc', refreshToken: 'new-ref' }), { status: 200 }),
+      )
+      expect(await refreshAccessToken()).toBe('new-acc')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('coalesces concurrent refreshes into a single request', async () => {
@@ -161,6 +205,18 @@ describe('authFetch', () => {
     const sent = new Headers(init.headers)
     expect(sent.get('Content-Type')).toBe('application/json')
     expect(sent.get('Authorization')).toBe('Bearer acc')
+  })
+
+  it('returns the original 401 and keeps the session when the refresh fails transiently', async () => {
+    setTokens('stale', 'ref')
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const res = await authFetch('/api/v1/thing')
+    expect(res.status).toBe(401)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(getRefreshToken()).toBe('ref')
   })
 
   it('refreshes once on a 401 and retries the original request', async () => {
