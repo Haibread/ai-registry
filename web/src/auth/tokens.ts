@@ -21,6 +21,15 @@ const REFRESH_KEY = 'ai_registry_refresh'
 let memoryAccess: string | null = null
 let memoryRefresh: string | null = null
 
+// Without this, a tab whose storage read comes back empty after another tab
+// signed out falls back to its stale mirror and replays a revoked token.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === null || e.key === ACCESS_KEY) memoryAccess = e.key ? e.newValue : null
+    if (e.key === null || e.key === REFRESH_KEY) memoryRefresh = e.key ? e.newValue : null
+  })
+}
+
 function read(key: string, fallback: string | null): string | null {
   try {
     return localStorage.getItem(key) ?? fallback
@@ -63,41 +72,55 @@ export function clearTokens() {
 }
 
 // A single in-flight refresh is shared by all callers so a burst of 401s yields
-// exactly one /auth/refresh round-trip.
+// exactly one /auth/refresh round-trip per tab.
 let refreshInFlight: Promise<string | null> | null = null
+
+// Serialises refreshes across tabs: the refresh token is single-use, so two tabs
+// presenting the same one trip reuse detection and revoke the whole session.
+const REFRESH_LOCK = 'ai-registry-token-refresh'
+
+async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+  return locks ? await locks.request(REFRESH_LOCK, fn) : fn()
+}
 
 /**
  * refreshAccessToken rotates the stored refresh token into a new access +
  * refresh pair and returns the new access token (or null when there is no usable
- * refresh token, i.e. the user must sign in again).
+ * refresh token, i.e. the user must sign in again). If another tab rotated the
+ * pair while this one waited for the lock, its access token is reused as is.
  */
 export function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight
-  const rt = getRefreshToken()
-  if (!rt) return Promise.resolve(null)
+  const observed = getRefreshToken()
+  if (!observed) return Promise.resolve(null)
 
-  refreshInFlight = (async () => {
-    try {
-      const res = await fetch('/api/v1/auth/refresh', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ refreshToken: rt }),
-      })
-      if (!res.ok) {
-        clearTokens()
-        return null
-      }
-      const body = (await res.json()) as { accessToken: string; refreshToken: string }
-      setTokens(body.accessToken, body.refreshToken)
-      return body.accessToken
-    } catch {
+  refreshInFlight = withRefreshLock(() => rotate(observed)).finally(() => {
+    refreshInFlight = null
+  })
+  return refreshInFlight
+}
+
+async function rotate(observed: string): Promise<string | null> {
+  const rt = getRefreshToken()
+  if (rt !== observed) return rt ? getAccessToken() : null
+  try {
+    const res = await fetch('/api/v1/auth/refresh', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: rt }),
+    })
+    if (!res.ok) {
       clearTokens()
       return null
-    } finally {
-      refreshInFlight = null
     }
-  })()
-  return refreshInFlight
+    const body = (await res.json()) as { accessToken: string; refreshToken: string }
+    setTokens(body.accessToken, body.refreshToken)
+    return body.accessToken
+  } catch {
+    clearTokens()
+    return null
+  }
 }
 
 /**
