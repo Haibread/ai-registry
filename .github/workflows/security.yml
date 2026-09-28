@@ -1,8 +1,10 @@
 name: Security
 
-# Trivy misconfiguration scan of the Dockerfiles and the Helm chart (DS-xxxx /
-# KSV-xxxx checks). Fails on any HIGH/CRITICAL finding; every finding is
-# uploaded to code scanning. Runs on main too so PR alerts have a baseline.
+# Trivy scans of the repository: misconfigurations in the Dockerfiles and the
+# Helm chart, and vulnerable dependencies or leaked secrets in the checkout.
+# The nightly run also re-scans the published :latest images, since new CVEs
+# land against code that has not changed. Each gate fails on a HIGH/CRITICAL
+# finding; every finding goes to code scanning.
 on:
   pull_request:
     branches:
@@ -10,6 +12,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: '17 4 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -26,10 +30,10 @@ jobs:
       security-events: write
 
     steps:
-      - name: Checkout
+      - name: check out the repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - name: Trivy gate (HIGH/CRITICAL)
+      - name: gate on HIGH/CRITICAL misconfigurations
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
@@ -37,7 +41,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
 
-      - name: Trivy SARIF report
+      - name: write the Trivy SARIF report
         if: always()
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -48,7 +52,7 @@ jobs:
           skip-setup-trivy: true
 
       # Fork PRs get a read-only token that cannot write code-scanning results.
-      - name: Upload SARIF to GitHub Security
+      - name: upload the SARIF report to code scanning
         if: >-
           always() && hashFiles('trivy-config.sarif') != '' &&
           (github.event_name != 'pull_request' ||
@@ -57,3 +61,111 @@ jobs:
         with:
           sarif_file: trivy-config.sarif
           category: trivy-config
+
+  trivy-fs:
+    name: Scan dependencies and secrets (Trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: check out the repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: gate on fixable HIGH/CRITICAL findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: write the Trivy SARIF report
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          format: sarif
+          output: trivy-fs.sarif
+          skip-setup-trivy: true
+
+      # Fork PRs get a read-only token that cannot write code-scanning results.
+      - name: upload the SARIF report to code scanning
+        if: >-
+          always() && hashFiles('trivy-fs.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  # Images are scanned before every push by the Docker workflow; this re-scans
+  # what is published against today's vulnerability database. Each architecture
+  # runs on its own runner, where Trivy resolves the matching image by default.
+  trivy-image:
+    name: Re-scan ${{ matrix.image }} (${{ matrix.arch }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - server
+          - web
+        arch:
+          - amd64
+          - arm64
+
+    steps:
+      - name: resolve the image reference
+        id: ref
+        env:
+          OWNER: ${{ github.repository_owner }}
+          IMAGE: ${{ matrix.image }}
+        run: echo "image=ghcr.io/${OWNER,,}/ai-registry/${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: gate on fixable HIGH/CRITICAL CVEs
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: write the Trivy SARIF report
+        if: always() && steps.ref.outcome == 'success'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          format: sarif
+          output: trivy.sarif
+          skip-setup-trivy: true
+
+      # Same category as the Docker workflow's scan on main, so this refreshes
+      # the main-branch baseline instead of duplicating every alert.
+      - name: upload the SARIF report to code scanning
+        if: always() && hashFiles('trivy.sarif') != ''
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-${{ matrix.image }}-${{ matrix.arch }}

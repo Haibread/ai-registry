@@ -1,13 +1,13 @@
 name: Docker
 
-# Builds the server and web images. On a pull request or a manual run the images
-# are built only (no push) as a build-health gate, and a single-arch copy is
-# loaded into the runner and scanned with Trivy. On a push they are published to
-# GHCR and the pushed digest is scanned with Trivy. Either scan fails the run on
-# a fixable HIGH/CRITICAL CVE, which also holds back the Release workflow:
+# Builds the server and web images, one job per image and architecture on a
+# native runner. Each job loads its image, scans it with Trivy, and only then —
+# on a push — pushes it by digest; a failing scan holds back the push and, with
+# it, the Release workflow. The manifest job then tags the multi-arch image:
 #   push to main  → :latest + :main-<short-sha>
 #   push of v* tag → :<semver> + :<major>.<minor>   (this is what cuts a release —
 #                    the Release workflow runs via workflow_run once this succeeds)
+# A pull request or a manual run builds and scans without pushing.
 on:
   pull_request:
     branches:
@@ -19,12 +19,9 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
 
-# Serialise publishes per ref so two pushes to the same ref don't race to
-# overwrite a moving tag (:latest). PR builds are throwaway, so cancel the
-# in-progress run when a newer commit arrives.
 concurrency:
   group: docker-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -38,30 +35,44 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  # ── Server image ─────────────────────────────────────────────────────────────
-  build-server:
-    name: Build & push server image
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.image }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     permissions:
       contents: read
       packages: write
       security-events: write
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - server
+          - web
+        arch:
+          - amd64
+          - arm64
+        include:
+          - image: server
+            context: ./server
+            file: ./server/Dockerfile
+          # The web Dockerfile reads the OpenAPI spec from server/, hence the
+          # repository root as context.
+          - image: web
+            context: .
+            file: ./web/Dockerfile
 
     steps:
-      - name: Checkout
+      - name: check out the repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - name: Lowercase IMAGE_PREFIX
+      - name: lowercase IMAGE_PREFIX
         run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
 
-      - name: Set up Docker Buildx
+      - name: set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
 
-      # Only authenticate when we are going to push (push events). PR / manual
-      # builds don't touch the registry.
-      - name: Log in to GHCR
+      - name: log in to GHCR
         if: github.event_name == 'push'
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
         with:
@@ -69,11 +80,156 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
+      - name: derive the image labels
         id: meta
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
         with:
-          images: ${{ env.IMAGE_PREFIX }}/server
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+
+      - name: compute the build arguments
+        id: args
+        env:
+          IMAGE: ${{ matrix.image }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [[ "$IMAGE" != server ]]; then
+            exit 0
+          fi
+          if [[ "$REF_TYPE" == tag ]]; then
+            ver="${REF_NAME#v}"
+          else
+            ver="main-${SHA:0:7}"
+          fi
+          {
+            echo "build-args<<EOF"
+            echo "VERSION=${ver}"
+            echo "COMMIT=${SHA}"
+            echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: build the image
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          provenance: false
+          tags: ai-registry-${{ matrix.image }}:scan
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ steps.args.outputs.build-args }}
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
+
+      - name: gate on fixable HIGH/CRITICAL CVEs
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-registry-${{ matrix.image }}:scan
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: write the Trivy SARIF report
+        if: always() && steps.build.outcome == 'success'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-registry-${{ matrix.image }}:scan
+          format: sarif
+          output: trivy.sarif
+          skip-setup-trivy: true
+
+      # Fork PRs get a read-only token that cannot write code-scanning results.
+      - name: upload the SARIF report to code scanning
+        if: >-
+          always() && hashFiles('trivy.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-${{ matrix.image }}-${{ matrix.arch }}
+
+      # Same inputs on the same builder: every layer is a cache hit, so this
+      # pushes the layers scanned above, plus the SBOM and provenance.
+      - name: push the scanned image by digest
+        id: push
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ steps.args.outputs.build-args }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+
+      - name: record the pushed digest
+        if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - name: upload the pushed digest
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    name: Tag ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    needs:
+      - build
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - server
+          - web
+
+    steps:
+      - name: download the per-architecture digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+
+      - name: lowercase IMAGE_PREFIX
+        run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
+
+      - name: set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
+      - name: log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: derive the image tags
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
           tags: |
             # On semver tag: v1.2.3 → 1.2.3 and 1.2
             type=semver,pattern={{version}}
@@ -82,257 +238,20 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=main-,enable={{is_default_branch}},format=short
 
-      - name: Compute build metadata
-        id: bmeta
-        run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            VER="${{ github.ref_name }}"
-            VER="${VER#v}"
-          else
-            VER="main-$(echo "${{ github.sha }}" | cut -c1-7)"
-          fi
-          {
-            echo "version=${VER}"
-            echo "commit=${{ github.sha }}"
-            echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and push server image
-        id: build
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
-        with:
-          context: ./server
-          file: ./server/Dockerfile
-          # Push only on push events (main / v* tag); PR and manual runs build only.
-          push: ${{ github.event_name == 'push' }}
-          # Multi-arch: the Dockerfile pins the builder to $BUILDPLATFORM and
-          # cross-compiles the Go binary (GOARCH=$TARGETARCH), so arm64 builds
-          # natively without QEMU emulation.
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ steps.bmeta.outputs.version }}
-            COMMIT=${{ steps.bmeta.outputs.commit }}
-            BUILD_TIME=${{ steps.bmeta.outputs.build_time }}
-          # Supply-chain attestations: SBOM + max-mode provenance, pushed to GHCR
-          # alongside the image manifest.
-          sbom: true
-          provenance: mode=max
-          # BuildKit layer cache via GitHub Actions cache backend.
-          cache-from: type=gha,scope=server
-          cache-to: type=gha,mode=max,scope=server
-
-      - name: Load single-arch image for scanning
-        id: scan-image
-        if: github.event_name != 'push'
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
-        with:
-          context: ./server
-          file: ./server/Dockerfile
-          load: true
-          platforms: linux/amd64
-          tags: ai-registry-server:scan
-          build-args: |
-            VERSION=${{ steps.bmeta.outputs.version }}
-            COMMIT=${{ steps.bmeta.outputs.commit }}
-            BUILD_TIME=${{ steps.bmeta.outputs.build_time }}
-          cache-from: type=gha,scope=server
-
-      - name: Trivy gate (fixable HIGH/CRITICAL)
-        if: github.event_name != 'push'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ai-registry-server:scan
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-
-      - name: Trivy SARIF report
-        if: always() && steps.scan-image.outcome == 'success'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ai-registry-server:scan
-          format: sarif
-          output: trivy-server.sarif
-          skip-setup-trivy: true
-
-      # Fork PRs get a read-only token that cannot write code-scanning results.
-      - name: Upload SARIF to GitHub Security
-        if: >-
-          always() && hashFiles('trivy-server.sarif') != '' &&
-          (github.event_name != 'pull_request' ||
-           github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
-        with:
-          sarif_file: trivy-server.sarif
-          category: trivy-server
-
-  # ── Web image ─────────────────────────────────────────────────────────────────
-  build-web:
-    name: Build & push web image
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      security-events: write
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Lowercase IMAGE_PREFIX
-        run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push'
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/web
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=main-,enable={{is_default_branch}},format=short
-
-      - name: Build and push web image
-        id: build
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
-        with:
-          # Build context is the repo root so the Dockerfile can access both web/
-          # and server/ (for the OpenAPI spec used by type generation).
-          context: .
-          file: ./web/Dockerfile
-          push: ${{ github.event_name == 'push' }}
-          # Multi-arch: the Vite build runs on $BUILDPLATFORM (its output is
-          # arch-independent static files) and only the runtime nginx layer is
-          # per-arch, so arm64 builds without QEMU emulation.
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          sbom: true
-          provenance: mode=max
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
-
-      - name: Load single-arch image for scanning
-        id: scan-image
-        if: github.event_name != 'push'
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
-        with:
-          context: .
-          file: ./web/Dockerfile
-          load: true
-          platforms: linux/amd64
-          tags: ai-registry-web:scan
-          cache-from: type=gha,scope=web
-
-      - name: Trivy gate (fixable HIGH/CRITICAL)
-        if: github.event_name != 'push'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ai-registry-web:scan
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-
-      - name: Trivy SARIF report
-        if: always() && steps.scan-image.outcome == 'success'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ai-registry-web:scan
-          format: sarif
-          output: trivy-web.sarif
-          skip-setup-trivy: true
-
-      # Fork PRs get a read-only token that cannot write code-scanning results.
-      - name: Upload SARIF to GitHub Security
-        if: >-
-          always() && hashFiles('trivy-web.sarif') != '' &&
-          (github.event_name != 'pull_request' ||
-           github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
-        with:
-          sarif_file: trivy-web.sarif
-          category: trivy-web
-
-  # ── Published image vulnerability scan ───────────────────────────────────────
-  # Scans exactly what was pushed, by digest rather than by a moving tag.
-  scan-images:
-    name: Scan images (Trivy)
-    runs-on: ubuntu-latest
-    needs:
-      - build-server
-      - build-web
-    if: github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: read
-      security-events: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: server
-            digest: ${{ needs.build-server.outputs.digest }}
-          - image: web
-            digest: ${{ needs.build-web.outputs.digest }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Lowercase IMAGE_PREFIX
-        run: echo "IMAGE_PREFIX=${IMAGE_PREFIX,,}" >> "$GITHUB_ENV"
-
-      - name: Log in to GHCR
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve image reference
-        id: ref
+      - name: create and push the multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
         env:
-          IMAGE: ${{ matrix.image }}
-          DIGEST: ${{ matrix.digest }}
-        run: echo "image=${IMAGE_PREFIX}/${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+        run: |
+          mapfile -t tags < <(jq -r '.tags[] | "--tag=" + .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          sources=()
+          for digest in *; do
+            sources+=("${IMAGE}@sha256:${digest}")
+          done
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
 
-      - name: Trivy gate (fixable HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.ref.outputs.image }}
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-
-      - name: Trivy SARIF report
-        if: always() && steps.ref.outcome == 'success'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.ref.outputs.image }}
-          format: sarif
-          output: trivy-${{ matrix.image }}.sarif
-          skip-setup-trivy: true
-
-      - name: Upload SARIF to GitHub Security
-        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image)) != ''
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
-        with:
-          sarif_file: trivy-${{ matrix.image }}.sarif
-          category: trivy-${{ matrix.image }}
+      - name: inspect the published image
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "${IMAGE}:${VERSION}"
