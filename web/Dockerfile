@@ -6,7 +6,7 @@
 # architecture-independent, so the (heavy) node build runs once on the host arch
 # and never under QEMU emulation. The per-arch runtime nginx layer below pulls
 # the matching architecture automatically.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:26-alpine AS builder
 WORKDIR /app
 
 COPY web/package.json web/package-lock.json* ./
