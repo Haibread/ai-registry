@@ -113,9 +113,6 @@ func NewTokenAuthority(pemKey, seed, issuer string, accessTTL time.Duration) (ta
 	}, generated, nil
 }
 
-// AccessTTL is the lifetime stamped on minted access tokens.
-func (a *TokenAuthority) AccessTTL() time.Duration { return a.accessTTL }
-
 // Mint signs an access token for p and returns it with its lifetime in seconds.
 func (a *TokenAuthority) Mint(p MintParams) (token string, expiresIn int, err error) {
 	now := time.Now()

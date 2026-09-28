@@ -19,8 +19,8 @@ function BounceWithNotice() {
 }
 
 // RequireServerAdmin gates the cross-publisher management surfaces (users,
-// groups, publishers, global grants, reports, audit, API keys) that are
-// reserved for Server Admins. It is a pathless layout route: its children
+// groups, publishers, global grants, reports, audit) that are reserved
+// for Server Admins. It is a pathless layout route: its children
 // render through <Outlet/> only when the caller is a Server Admin.
 //
 // This is defence-in-depth, not the primary control — every Server-Admin API

@@ -91,8 +91,8 @@ func TestNewTokenAuthority_PEMRoundTrip(t *testing.T) {
 	if gen {
 		t.Fatal("a provided PEM key must not be reported as generated")
 	}
-	if a.AccessTTL() != 15*time.Minute {
-		t.Fatalf("AccessTTL = %v, want the 15m default for a zero TTL", a.AccessTTL())
+	if a.accessTTL != 15*time.Minute {
+		t.Fatalf("accessTTL = %v, want the 15m default for a zero TTL", a.accessTTL)
 	}
 	token, expiresIn, err := a.Mint(MintParams{UserID: "u1", AuthMethod: "local"})
 	if err != nil {

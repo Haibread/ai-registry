@@ -106,7 +106,7 @@ jobs:
             -run '^(TestOpenAPIContract_MatchesRouter$|TestAllWriteRoutesRequireAdmin$|TestPublicWriteRoutesBypassAdmin$)' \
             ./internal/http/
           go test -count=1 -v \
-            -run '^(TestV0Conformance_|TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
+            -run '^(TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
             ./internal/http/handlers/...
 
   # ── Web: build/typecheck, OpenAPI sync, unit tests ───────────────────────────

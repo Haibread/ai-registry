@@ -111,11 +111,6 @@ describe('AdminSidebar — active route detection', () => {
     expect(linkClass('Publishers')).toContain(ACTIVE_CLASS)
   })
 
-  it('highlights API Keys on /admin/api-keys', () => {
-    renderSidebar('/admin/api-keys')
-    expect(linkClass('API Keys')).toContain(ACTIVE_CLASS)
-  })
-
   it('highlights Audit log on /admin/audit', () => {
     renderSidebar('/admin/audit')
     expect(linkClass('Audit log')).toContain(ACTIVE_CLASS)
@@ -135,7 +130,6 @@ describe('AdminSidebar — active route detection', () => {
     expect(screen.getByRole('link', { name: /agents/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /audit log/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /api keys/i })).toBeInTheDocument()
   })
 })
 

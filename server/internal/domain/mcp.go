@@ -157,19 +157,6 @@ func ValidateSlug(s string) error {
 	return nil
 }
 
-// serverNameRe matches valid MCP server names: namespace/slug.
-// Spec pattern: ^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$
-var serverNameRe = regexp.MustCompile(`^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$`)
-
-// ValidateServerName checks that the given name matches the MCP registry spec
-// pattern: ^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$
-func ValidateServerName(name string) error {
-	if !serverNameRe.MatchString(name) {
-		return fmt.Errorf("name %q does not match required pattern ^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$", name)
-	}
-	return nil
-}
-
 // validRegistryTypes is the set of registry types allowed by the MCP spec.
 var validRegistryTypes = map[string]bool{
 	"npm": true, "pypi": true, "oci": true, "nuget": true, "mcpb": true,

@@ -84,7 +84,6 @@ describe('AdminLayout', () => {
     expect(screen.getByRole('link', { name: /mcp servers/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /agents/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /api keys/i })).toBeInTheDocument()
   })
 
   it('renders the routed child content inside the main outlet', () => {
