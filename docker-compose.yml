@@ -155,7 +155,7 @@ services:
   web:
     profiles:
       - dev
-    image: node:24-alpine
+    image: node:26-alpine
     restart: unless-stopped
     working_dir: /app
     # Wait for Keycloak's realm endpoint, install deps (node_modules volume
