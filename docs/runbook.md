@@ -10,8 +10,9 @@ production topology — a runbook that lies is worse than no runbook.
 
 - Source repo: <https://github.com/haibread/ai-registry>
 - Helm chart: `deploy/helm/ai-registry`
-- OpenAPI spec: `/openapi.yaml` (served by the server pod)
-- Dashboards / alerts: **TODO** — link once Grafana is wired up.
+- Object names: `<fullname>` below is the release name, suffixed with
+  `-ai-registry` unless the release name already contains it.
+- OpenAPI spec: `/openapi.yaml` (served by the api pod)
 
 ---
 
@@ -28,19 +29,19 @@ from rotation (kube-proxy / ingress) before users notice.
 
 ---
 
-## 2. Server pod crash-looping
+## 2. API pod crash-looping
 
 **Symptoms**
 
-- `kubectl get pods -l app.kubernetes.io/component=server` shows
+- `kubectl get pods -l app.kubernetes.io/component=api` shows
   `CrashLoopBackOff`.
 - Ingress returns 502 / 503 to users.
 
 **Triage**
 
 ```sh
-kubectl logs -l app.kubernetes.io/component=server --tail=200 --previous
-kubectl describe pod -l app.kubernetes.io/component=server
+kubectl logs -l app.kubernetes.io/component=api --tail=200 --previous
+kubectl describe pod -l app.kubernetes.io/component=api
 ```
 
 Common root causes:
@@ -49,9 +50,9 @@ Common root causes:
 |---------------------------------------------|-------------------------------------|-----|
 | `failed to connect to database`             | Postgres unreachable / bad DSN      | §4  |
 | `migrations ... failed`                     | Migration SQL error                 | §5  |
-| `invalid TRUSTED_PROXY_CIDR`                | Bad config value                    | Correct `trustedProxyCIDR` in values.yaml |
-| `jwks ... no such host` / `fetch … timeout` | Cannot reach OIDC issuer            | Check `oidcJwksUrl`, DNS, NetworkPolicy |
-| OOMKilled (in `kubectl describe`)           | Memory limit too low                | Raise `server.resources.limits.memory` |
+| `invalid TRUSTED_PROXY_CIDR`                | Bad config value                    | Correct `api.trustedProxyCIDR` in values.yaml |
+| `jwks ... no such host` / `fetch … timeout` | Cannot reach OIDC issuer            | Check `api.oidcJwksUrl`, DNS, NetworkPolicy |
+| OOMKilled (in `kubectl describe`)           | Memory limit too low                | Raise `api.resources.limits.memory` |
 
 ---
 
@@ -68,18 +69,18 @@ Common root causes:
 2. Check Postgres connection-pool saturation:
 
    ```sql
-   SELECT count(*) FROM pg_stat_activity
-   WHERE application_name LIKE 'ai-registry%';
+   SELECT state, count(*) FROM pg_stat_activity
+   WHERE datname = current_database() GROUP BY state;
    ```
 
-3. If saturated, raise `dbMaxConns` on the server or lower the load (rate limit /
+3. If saturated, raise `api.database.maxConns` or lower the load (rate limit /
    scale horizontally).
 
 **Remediation**
 
-- Short-term: `kubectl rollout restart deploy/<release>-server`.
-- Long-term: enable `server.autoscaling.enabled=true` with a sensible CPU target,
-  and raise `dbMaxConns` alongside Postgres `max_connections`.
+- Short-term: `kubectl rollout restart deploy/<fullname>-api`.
+- Long-term: enable `api.autoscaling.enabled=true` with a sensible CPU target,
+  and raise `api.database.maxConns` alongside Postgres `max_connections`.
 
 ---
 
@@ -106,9 +107,9 @@ kubectl run pg-probe --rm -it --image=postgres:18-alpine -- \
 | Cause                                             | Action |
 |---------------------------------------------------|--------|
 | CNPG primary is not elected                       | `kubectl describe cluster <name>`; promote a replica if stuck |
-| Credentials rotated; server has old secret        | `kubectl rollout restart deploy/<release>-server` after updating the secret |
-| NetworkPolicy blocks server → DB                  | Review / loosen NetworkPolicy |
-| PVC full                                          | Scale the `storageSize` in values.yaml; CNPG resizes online |
+| Credentials rotated; api has old secret           | `kubectl rollout restart deploy/<fullname>-api` after updating the secret |
+| NetworkPolicy blocks api → DB                     | Review / loosen NetworkPolicy |
+| PVC full                                          | Raise `cnpg.storageSize` in values.yaml; CNPG resizes online |
 
 See §6 for backup / restore.
 
@@ -118,13 +119,13 @@ See §6 for backup / restore.
 
 **Symptoms**
 
-- Server fails fast at boot with `migrations ... failed`.
+- The api fails fast at boot with `migrations ... failed`.
 - Previous deploys worked; this is the first restart after a new image tag.
 
 **Triage**
 
 ```sh
-kubectl logs deploy/<release>-server | grep -iE 'migration|sql'
+kubectl logs deploy/<fullname>-api | grep -iE 'migration|sql'
 # Check which version the DB is at:
 kubectl run pg-probe --rm -it --image=postgres:18-alpine -- \
   psql "$DATABASE_URL" -c 'select version, dirty from schema_migrations'
@@ -135,7 +136,7 @@ mid-transaction.
 
 **Remediation**
 
-1. Roll back the server image to the previous tag so traffic stops erroring.
+1. Roll back the api image to the previous tag so traffic stops erroring.
 2. Fix the migration manually (apply the remainder by hand or rewind with
    `migrate force <prev_version>` via a one-shot pod).
 3. Ship a fixed migration and redeploy.
@@ -184,24 +185,26 @@ kubectl describe certificate <cert-name>
 
 **Symptoms**
 
-- Admin UI login loops or never establishes a session cookie.
-- Server logs: `jwks fetch failed` or `id_token validation failed` during the OIDC
+- Admin UI login loops back to the sign-in page.
+- api logs: `jwks fetch failed` or `id_token validation failed` during the OIDC
   callback.
 
-Note: OIDC is brokered server-side and auth is a registry session cookie, so a
-broker/callback outage blocks *new* logins while existing sessions keep working
-until they expire (`AUTH_SESSION_TTL`).
+OIDC is brokered server-side and the registry issues its own bearer tokens, so
+an IdP outage blocks *new* OIDC logins only. Existing sessions keep refreshing
+(refresh never contacts the IdP) until the refresh token expires
+(`REFRESH_TOKEN_TTL`), and local email + password login is unaffected.
 
 **Triage**
 
-1. Is the issuer reachable from the cluster? `kubectl exec` into a server pod
+1. Is the issuer reachable from the cluster? `kubectl exec` into an api pod
    (distroless — use `kubectl debug` with an ephemeral ubuntu container) and
    `curl -v $OIDC_JWKS_URL`. The broker validates the `id_token` against the JWKS at
    `/api/v1/auth/oidc/callback`.
 2. Did the issuer rotate its signing key? JWKS is cached briefly; a rotation then a
    restart fixes it.
-3. Was the admin role renamed in Keycloak? The server expects
-   `realm_access.roles[]` to contain `"admin"` (per CLAUDE.md decision A).
+3. Was the admin role renamed in the IdP? Server Admin requires the claim at
+   `OIDC_ROLES_CLAIM` (default `realm_access.roles`) to contain `OIDC_ADMIN_ROLE`
+   (default `admin`).
 
 **Remediation**
 
@@ -215,17 +218,17 @@ until they expire (`AUTH_SESSION_TTL`).
 **Symptoms**
 
 - Public users see `429 Too Many Requests`.
-- Metric `http_requests_total{status="429"}` is spiking.
+- Metric `registry_ratelimit_hits_total` is climbing.
 
 **Triage**
 
-- `PUBLIC_RATE_LIMIT_RPM` defaults to 1000 rpm per client IP. Confirm
-  `trustedProxyCIDR` is set so the limit keys on the real client IP, not the ingress
-  controller IP.
+- `PUBLIC_RATE_LIMIT_RPM` defaults to 1000 rpm per client IP, per replica.
+  Confirm `api.trustedProxyCIDR` is set so the limit keys on the real client IP,
+  not the ingress controller IP.
 
 **Remediation**
 
-- Short-term: raise `publicRateLimitRPM` temporarily.
+- Short-term: raise `PUBLIC_RATE_LIMIT_RPM` temporarily (through `api.extraEnv`).
 - Long-term: diagnose the abusive client (check top source IPs in access logs) and
   block via ingress WAF / firewall instead of raising the limit.
 
@@ -241,15 +244,15 @@ until they expire (`AUTH_SESSION_TTL`).
 **Triage**
 
 ```sh
-kubectl top pods -l app.kubernetes.io/component=server
+kubectl top pods -l app.kubernetes.io/component=api
 kubectl describe pod <pod> | grep -A5 'Last State'
 ```
 
 **Remediation**
 
-1. Raise `server.resources.limits.memory` and redeploy.
-2. If memory keeps growing, suspect a leak — pull a heap profile via the OTel
-   pipeline or `pprof` (requires temporarily enabling the debug endpoint).
+1. Raise `api.resources.limits.memory` and redeploy.
+2. If memory keeps growing, suspect a leak. The api exposes no `pprof` endpoint;
+   track `go_memstats_heap_inuse_bytes` from `/metrics` over time to confirm it.
 3. File an issue with the time window, pod name, and `/metrics` snapshot.
 
 ---
@@ -259,7 +262,7 @@ kubectl describe pod <pod> | grep -A5 'Last State'
 1. Find the last-known-good image tag:
 
    ```sh
-   kubectl describe deploy/<release>-server | grep Image
+   kubectl describe deploy/<fullname>-api | grep Image
    git log --oneline -- deploy/helm/ai-registry/Chart.yaml
    ```
 
