@@ -1,8 +1,10 @@
 name: Docker
 
 # Builds the server and web images. On a pull request or a manual run the images
-# are built only (no push) as a build-health gate. On a push they are published
-# to GHCR and scanned with Trivy:
+# are built only (no push) as a build-health gate, and a single-arch copy is
+# loaded into the runner and scanned with Trivy. On a push they are published to
+# GHCR and the pushed digest is scanned with Trivy. Either scan fails the run on
+# a fixable HIGH/CRITICAL CVE, which also holds back the Release workflow:
 #   push to main  → :latest + :main-<short-sha>
 #   push of v* tag → :<semver> + :<major>.<minor>   (this is what cuts a release —
 #                    the Release workflow runs via workflow_run once this succeeds)
@@ -40,6 +42,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write
     outputs:
       digest: ${{ steps.build.outputs.digest }}
 
@@ -117,6 +120,51 @@ jobs:
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
 
+      - name: Load single-arch image for scanning
+        id: scan-image
+        if: github.event_name != 'push'
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: ./server
+          file: ./server/Dockerfile
+          load: true
+          platforms: linux/amd64
+          tags: ai-registry-server:scan
+          build-args: |
+            VERSION=${{ steps.bmeta.outputs.version }}
+            COMMIT=${{ steps.bmeta.outputs.commit }}
+            BUILD_TIME=${{ steps.bmeta.outputs.build_time }}
+          cache-from: type=gha,scope=server
+
+      - name: Trivy gate (fixable HIGH/CRITICAL)
+        if: github.event_name != 'push'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-registry-server:scan
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Trivy SARIF report
+        if: always() && steps.scan-image.outcome == 'success'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-registry-server:scan
+          format: sarif
+          output: trivy-server.sarif
+          skip-setup-trivy: true
+
+      # Fork PRs get a read-only token that cannot write code-scanning results.
+      - name: Upload SARIF to GitHub Security
+        if: >-
+          always() && hashFiles('trivy-server.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        with:
+          sarif_file: trivy-server.sarif
+          category: trivy-server
+
   # ── Web image ─────────────────────────────────────────────────────────────────
   build-web:
     name: Build & push web image
@@ -124,6 +172,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write
     outputs:
       digest: ${{ steps.build.outputs.digest }}
 
@@ -176,13 +225,49 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-  # ── Image vulnerability scan ─────────────────────────────────────────────────
-  # Runs Trivy against both images after they are pushed. Results are uploaded to
-  # GitHub's Code Scanning dashboard as SARIF so CVEs show up in the Security tab
-  # and on PRs. Failures do not block the publish (continue-on-error) — this is a
-  # detection gate, not a deploy gate. Only runs on push events, since PR/manual
-  # runs don't push an image for Trivy to pull. Tighten later by dropping the flag
-  # once the baseline CVE count is at zero.
+      - name: Load single-arch image for scanning
+        id: scan-image
+        if: github.event_name != 'push'
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          file: ./web/Dockerfile
+          load: true
+          platforms: linux/amd64
+          tags: ai-registry-web:scan
+          cache-from: type=gha,scope=web
+
+      - name: Trivy gate (fixable HIGH/CRITICAL)
+        if: github.event_name != 'push'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-registry-web:scan
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Trivy SARIF report
+        if: always() && steps.scan-image.outcome == 'success'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ai-registry-web:scan
+          format: sarif
+          output: trivy-web.sarif
+          skip-setup-trivy: true
+
+      # Fork PRs get a read-only token that cannot write code-scanning results.
+      - name: Upload SARIF to GitHub Security
+        if: >-
+          always() && hashFiles('trivy-web.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        with:
+          sarif_file: trivy-web.sarif
+          category: trivy-web
+
+  # ── Published image vulnerability scan ───────────────────────────────────────
+  # Scans exactly what was pushed, by digest rather than by a moving tag.
   scan-images:
     name: Scan images (Trivy)
     runs-on: ubuntu-latest
@@ -196,7 +281,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [server, web]
+        include:
+          - image: server
+            digest: ${{ needs.build-server.outputs.digest }}
+          - image: web
+            digest: ${{ needs.build-web.outputs.digest }}
 
     steps:
       - name: Checkout
@@ -214,29 +303,31 @@ jobs:
 
       - name: Resolve image reference
         id: ref
-        run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            TAG="${{ github.ref_name }}"
-            TAG="${TAG#v}"
-          else
-            TAG="latest"
-          fi
-          echo "image=${IMAGE_PREFIX}/${{ matrix.image }}:${TAG}" >> "$GITHUB_OUTPUT"
+        env:
+          IMAGE: ${{ matrix.image }}
+          DIGEST: ${{ matrix.digest }}
+        run: echo "image=${IMAGE_PREFIX}/${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
-      - name: Run Trivy
+      - name: Trivy gate (fixable HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        continue-on-error: true
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Trivy SARIF report
+        if: always() && steps.ref.outcome == 'success'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.ref.outputs.image }}
           format: sarif
           output: trivy-${{ matrix.image }}.sarif
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
-          exit-code: '0'
+          skip-setup-trivy: true
 
       - name: Upload SARIF to GitHub Security
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image)) != ''
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
-        if: always()
         with:
           sarif_file: trivy-${{ matrix.image }}.sarif
           category: trivy-${{ matrix.image }}

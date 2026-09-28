@@ -40,7 +40,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # distroless/static is ~2 MB — no shell, no package manager, no OS utilities.
 # The Go binary is fully static (CGO_ENABLED=0) so nothing else is needed.
-# The nonroot variant runs as UID 65532; matches Helm podSecurityContext.
+# The nonroot variant runs as UID 65532; matches Helm podSecurityContext. USER
+# restates it numerically so runAsNonRoot can verify it without a passwd lookup.
 FROM gcr.io/distroless/static-debian12:nonroot
 
 # OCI image labels. The publish workflow augments these with per-build
@@ -56,6 +57,8 @@ LABEL org.opencontainers.image.title="ai-registry-server" \
       org.opencontainers.image.vendor="haibread"
 
 COPY --from=builder /out/server /server
+
+USER 65532:65532
 
 # Default port — overridden by HTTP_ADDR env var in production (e.g. :8080 in k8s).
 EXPOSE 8081

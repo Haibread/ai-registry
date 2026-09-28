@@ -1,0 +1,57 @@
+name: Security
+
+# Trivy misconfiguration scan of the Dockerfiles and the Helm chart (DS-xxxx /
+# KSV-xxxx checks). Fails on any HIGH/CRITICAL finding; every finding is
+# uploaded to code scanning. Runs on main too so PR alerts have a baseline.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy-config:
+    name: Scan config (Trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Trivy gate (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Trivy SARIF report
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          skip-setup-trivy: true
+
+      # Fork PRs get a read-only token that cannot write code-scanning results.
+      - name: Upload SARIF to GitHub Security
+        if: >-
+          always() && hashFiles('trivy-config.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config

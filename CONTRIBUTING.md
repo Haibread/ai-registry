@@ -23,6 +23,7 @@ it is in [README.md](README.md#getting-started).
 | helm-docs | v1.14.2 | `helm-docs` hook |
 | hadolint | v2.12.0 | `hadolint` hook |
 | actionlint | v1.7.12 | `actionlint` hook |
+| trivy | recent | reproducing the CI image and config scans |
 
 The versions are the ones CI installs. Go and Node come from their upstream
 installers: [go.dev/doc/install](https://go.dev/doc/install) and
@@ -210,11 +211,30 @@ Docker build like any other.
 | --- | --- | --- | --- |
 | [Lint](.github/workflows/lint.yml) | PR to `main`, manual | `pre-commit run --all-files` | `pre-commit run --all-files` |
 | [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm test`; nginx routing checks; `helm template` over several value sets + kubeconform; e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
-| [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build only. Push to `main` or a `v*.*.*` tag: build, push to GHCR, Trivy scan | multi-arch (`amd64`, `arm64`) server and web images | `docker build server` and `docker build -f web/Dockerfile .` |
+| [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build, no push. Push to `main` or a `v*.*.*` tag: build and push to GHCR | multi-arch (`amd64`, `arm64`) server and web images. Without a push, an `amd64` copy is loaded and scanned with `trivy image`; after a push, the pushed digest is scanned. Fails on a fixable `HIGH`/`CRITICAL` CVE; all findings go to code scanning | [Scanning locally](#scanning-locally) |
+| [Security](.github/workflows/security.yml) | PR to `main`, push to `main`, manual | `trivy config` over the Dockerfiles and the Helm chart; fails on a `HIGH`/`CRITICAL` misconfiguration, all findings go to code scanning | `trivy config --severity HIGH,CRITICAL --exit-code 1 .` |
 | [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | packages and pushes the chart to GHCR as OCI | `helm package deploy/helm/ai-registry` |
 | [Release](.github/workflows/release.yml) | a successful Docker run for a `v*` tag | GitHub Release from the matching `CHANGELOG.md` section | — |
 
-A PR is ready to merge when Lint and Quality are green.
+A PR is ready to merge when Lint, Quality, Docker and Security are green.
+Code-scanning uploads are skipped on fork PRs, whose token cannot write them;
+the gates still run.
+
+### Scanning locally
+
+The image gate, shown for the server (for the web image, build with
+`-f web/Dockerfile .` and tag it `ai-registry-web:scan`):
+
+```bash
+docker buildx build --platform linux/amd64 --load -t ai-registry-server:scan server
+```
+
+```bash
+trivy image --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 ai-registry-server:scan
+```
+
+A finding is fixed at the source — a base-image or dependency bump, or the
+misconfiguration itself — not added to a `.trivyignore`.
 
 ### Releases
 
