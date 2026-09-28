@@ -151,9 +151,10 @@ jobs:
         working-directory: web
         run: npm run build
 
-      - name: Unit tests
+      # Fails when coverage drops below the floor in web/vitest.config.ts.
+      - name: Unit tests + coverage floor
         working-directory: web
-        run: npm test
+        run: npm run test:coverage
 
   # ── Web: nginx routing ───────────────────────────────────────────────────────
   # Runs web/nginx.conf in the web image's nginx base and asserts that backend

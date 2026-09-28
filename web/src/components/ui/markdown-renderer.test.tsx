@@ -36,6 +36,29 @@ describe('MarkdownRenderer', () => {
     expect(screen.getByText('bar')).toBeInTheDocument()
   })
 
+  it('renders raw HTML as inert text instead of elements', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'<script>alert(1)</script>\n\nhi <img src=x onerror="alert(1)"> there'} />,
+    )
+    expect(container.querySelector('script')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
+    expect(container).toHaveTextContent('<script>alert(1)</script>')
+  })
+
+  it.each([
+    ['inline link', '[click](javascript:alert(1))', 'click'],
+    ['mixed-case scheme', '[click](JaVaScRiPt:alert(1))', 'click'],
+    ['autolink', '<javascript:alert(1)>', 'javascript:alert(1)'],
+  ])('neutralises javascript: URLs in an %s', (_, md, name) => {
+    render(<MarkdownRenderer content={md} />)
+    expect(screen.getByText(name).closest('a')).toHaveAttribute('href', '')
+  })
+
+  it('keeps relative links', () => {
+    render(<MarkdownRenderer content="[docs](./docs/setup.md)" />)
+    expect(screen.getByRole('link', { name: 'docs' })).toHaveAttribute('href', './docs/setup.md')
+  })
+
   it('renders nothing when content is empty', () => {
     const { container } = render(<MarkdownRenderer content="" />)
     expect(container.innerHTML).toBe('')
