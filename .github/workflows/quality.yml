@@ -6,7 +6,8 @@ name: Quality
 # helm lint/...) lives in the separate Lint workflow via pre-commit.
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:

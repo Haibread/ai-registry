@@ -101,7 +101,11 @@ mcp_servers:
     public: true
     featured: true
     verified: true
-    tags: ["filesystem", "storage", "official", "stdio"]
+    tags:
+      - "filesystem"
+      - "storage"
+      - "official"
+      - "stdio"
     readme: |
       # Filesystem MCP Server
 
@@ -143,7 +147,8 @@ mcp_servers:
                 path:
                   type: "string"
                   description: "Absolute path to the file"
-              required: ["path"]
+              required:
+                - "path"
           - name: "write_file"
             description: "Write text to a file, creating it if necessary."
             input_schema:
@@ -153,7 +158,9 @@ mcp_servers:
                   type: "string"
                 content:
                   type: "string"
-              required: ["path", "content"]
+              required:
+                - "path"
+                - "content"
             annotations:
               destructive: true
           - name: "list_directory"
@@ -163,7 +170,8 @@ mcp_servers:
               properties:
                 path:
                   type: "string"
-              required: ["path"]
+              required:
+                - "path"
         packages:
           - registry_type: "npm"
             identifier: "@anthropic/mcp-filesystem"
@@ -213,7 +221,11 @@ mcp_servers:
     public: true
     featured: true
     verified: true
-    tags: ["desktop", "automation", "sse", "remote"]
+    tags:
+      - "desktop"
+      - "automation"
+      - "sse"
+      - "remote"
     readme: |
       # Computer Use MCP Server
 
@@ -250,7 +262,9 @@ mcp_servers:
                   type: "integer"
                 y:
                   type: "integer"
-              required: ["x", "y"]
+              required:
+                - "x"
+                - "y"
             annotations:
               destructive: true
           - name: "type_text"
@@ -282,7 +296,9 @@ mcp_servers:
     public: true
     verified: true
     status: "deprecated"
-    tags: ["memory", "deprecated"]
+    tags:
+      - "memory"
+      - "deprecated"
     readme: |
       # Memory MCP Server (deprecated)
 
@@ -316,7 +332,11 @@ mcp_servers:
     public: true
     featured: true
     verified: true
-    tags: ["github", "git", "devtools", "stdio"]
+    tags:
+      - "github"
+      - "git"
+      - "devtools"
+      - "stdio"
     readme: |
       # GitHub MCP Server
 
@@ -392,7 +412,11 @@ mcp_servers:
     public: true
     featured: true
     verified: true
-    tags: ["search", "web", "streamable-http", "remote"]
+    tags:
+      - "search"
+      - "web"
+      - "streamable-http"
+      - "remote"
     readme: |
       # Web Search MCP Server
 
@@ -427,7 +451,8 @@ mcp_servers:
                 limit:
                   type: "integer"
                   default: 10
-              required: ["query"]
+              required:
+                - "query"
           - name: "fetch_url"
             description: "Fetch a URL and return its extracted text content."
         packages:
@@ -446,7 +471,11 @@ mcp_servers:
     repository_url: "https://github.com/openai/mcp-image-gen"
     public: true
     verified: true
-    tags: ["image", "multimodal", "oci", "http"]
+    tags:
+      - "image"
+      - "multimodal"
+      - "oci"
+      - "http"
     readme: |
       # Image Generation MCP Server
 
@@ -483,7 +512,10 @@ mcp_servers:
     description: "Execute Python code in a sandboxed environment and return results."
     repository_url: "https://github.com/openai/mcp-code-interpreter"
     public: true
-    tags: ["python", "sandbox", "experimental"]
+    tags:
+      - "python"
+      - "sandbox"
+      - "experimental"
     readme: |
       # Code Interpreter MCP Server (draft)
 
@@ -516,7 +548,11 @@ mcp_servers:
     description: "Community-maintained server for querying and managing PostgreSQL databases."
     repository_url: "https://github.com/community/mcp-postgres"
     public: true
-    tags: ["database", "postgres", "sql", "stdio"]
+    tags:
+      - "database"
+      - "postgres"
+      - "sql"
+      - "stdio"
     readme: |
       # PostgreSQL MCP Server
 
@@ -543,7 +579,8 @@ mcp_servers:
               properties:
                 sql:
                   type: "string"
-              required: ["sql"]
+              required:
+                - "sql"
           - name: "describe_table"
             description: "List columns, types, and indexes for a table."
           - name: "explain"
@@ -562,7 +599,11 @@ mcp_servers:
     description: "Read and write SQLite databases using natural language."
     repository_url: "https://github.com/community/mcp-sqlite"
     public: true
-    tags: ["database", "sqlite", "sql", "stdio"]
+    tags:
+      - "database"
+      - "sqlite"
+      - "sql"
+      - "stdio"
     readme: |
       # SQLite MCP Server
 
@@ -591,7 +632,11 @@ mcp_servers:
     description: "Manage Kubernetes clusters and workloads from your AI assistant."
     repository_url: "https://github.com/community/mcp-kubernetes"
     public: true
-    tags: ["kubernetes", "cloud", "oci", "http"]
+    tags:
+      - "kubernetes"
+      - "cloud"
+      - "oci"
+      - "http"
     readme: |
       # Kubernetes MCP Server
 
@@ -641,7 +686,10 @@ mcp_servers:
     description: "Wraps common .NET CLI tools (build, test, publish) as MCP primitives."
     repository_url: "https://github.com/community/mcp-dotnet-tools"
     public: false
-    tags: ["dotnet", "nuget", "devtools"]
+    tags:
+      - "dotnet"
+      - "nuget"
+      - "devtools"
     readme: |
       # .NET Tools MCP Server (internal)
 
@@ -669,7 +717,10 @@ mcp_servers:
     description: "Bridges legacy tool APIs into the MCP ecosystem using the mcpb packaging format."
     repository_url: "https://github.com/community/mcp-bridge"
     public: true
-    tags: ["bridge", "mcpb", "interop"]
+    tags:
+      - "bridge"
+      - "mcpb"
+      - "interop"
     readme: |
       # MCP Bridge
 
@@ -697,7 +748,11 @@ mcp_servers:
     description: "Ships as both an npm package (stdio) and an OCI image (HTTP) — pick the deployment model you need."
     repository_url: "https://github.com/community/mcp-multi-transport"
     public: true
-    tags: ["multi-transport", "stdio", "http", "example"]
+    tags:
+      - "multi-transport"
+      - "stdio"
+      - "http"
+      - "example"
     readme: |
       # Multi-Transport MCP Server
 
@@ -734,7 +789,10 @@ mcp_servers:
     description: "Minimal sandbox server that echoes its input back — seed entry for the genai-test publisher."
     repository_url: "https://github.com/genai-test/mcp-echo"
     public: true
-    tags: ["sandbox", "example", "stdio"]
+    tags:
+      - "sandbox"
+      - "example"
+      - "stdio"
     readme: |
       # Echo MCP Server
 
@@ -755,7 +813,8 @@ mcp_servers:
               properties:
                 text:
                   type: "string"
-              required: ["text"]
+              required:
+                - "text"
         packages:
           - registry_type: "npm"
             identifier: "@genai-test/mcp-echo"
@@ -771,7 +830,9 @@ mcp_servers:
     description: "Unpublished draft under genai-test — author edits it, reviewer approves the publish."
     repository_url: "https://github.com/genai-test/mcp-scratch"
     public: false
-    tags: ["sandbox", "draft"]
+    tags:
+      - "sandbox"
+      - "draft"
     readme: |
       # Scratch MCP Server (draft)
 
@@ -801,7 +862,11 @@ agents:
     public: true
     featured: true
     verified: true
-    tags: ["code-review", "git", "devtools", "official"]
+    tags:
+      - "code-review"
+      - "git"
+      - "devtools"
+      - "official"
     readme: |
       # Code Review Agent
 
@@ -822,17 +887,22 @@ agents:
       - version: "1.0.0"
         status: "published"
         endpoint_url: "https://agents.anthropic.com/code-review"
-        default_input_modes: ["text/plain"]
-        default_output_modes: ["text/plain"]
+        default_input_modes:
+          - "text/plain"
+        default_output_modes:
+          - "text/plain"
         skills:
           - id: "review-pr"
             name: "Review Pull Request"
             description: "Analyse a PR diff and post inline comments"
-            tags: ["git", "code-quality"]
+            tags:
+              - "git"
+              - "code-quality"
           - id: "suggest-fix"
             name: "Suggest Fix"
             description: "Generate a code fix for a flagged issue"
-            tags: ["code-quality"]
+            tags:
+              - "code-quality"
         authentication:
           - scheme: "Bearer"
 
@@ -844,7 +914,11 @@ agents:
     public: true
     featured: true
     verified: true
-    tags: ["browser", "automation", "multimodal", "official"]
+    tags:
+      - "browser"
+      - "automation"
+      - "multimodal"
+      - "official"
     readme: |
       # Browser Automation Agent
 
@@ -863,25 +937,37 @@ agents:
       - version: "1.2.0"
         status: "published"
         endpoint_url: "https://agents.anthropic.com/browser"
-        default_input_modes: ["text/plain", "application/json"]
-        default_output_modes: ["text/plain", "image/png"]
+        default_input_modes:
+          - "text/plain"
+          - "application/json"
+        default_output_modes:
+          - "text/plain"
+          - "image/png"
         skills:
           - id: "navigate"
             name: "Navigate"
             description: "Open a URL in the browser"
-            tags: ["browser", "automation"]
+            tags:
+              - "browser"
+              - "automation"
           - id: "click"
             name: "Click Element"
             description: "Click on a CSS selector"
-            tags: ["browser", "automation"]
+            tags:
+              - "browser"
+              - "automation"
           - id: "screenshot"
             name: "Screenshot"
             description: "Capture the current viewport as a PNG"
-            tags: ["browser", "visual"]
+            tags:
+              - "browser"
+              - "visual"
           - id: "extract"
             name: "Extract Data"
             description: "Pull structured data from a page using a schema"
-            tags: ["browser", "data"]
+            tags:
+              - "browser"
+              - "data"
         authentication:
           - scheme: "Bearer"
 
@@ -893,7 +979,11 @@ agents:
     public: true
     featured: true
     verified: true
-    tags: ["data", "analytics", "charts", "csv"]
+    tags:
+      - "data"
+      - "analytics"
+      - "charts"
+      - "csv"
     readme: |
       # Data Analyst Agent
 
@@ -910,21 +1000,33 @@ agents:
       - version: "0.9.0"
         status: "published"
         endpoint_url: "https://agents.openai.com/data-analyst"
-        default_input_modes: ["text/plain", "application/json", "text/csv"]
-        default_output_modes: ["text/plain", "image/png", "application/json"]
+        default_input_modes:
+          - "text/plain"
+          - "application/json"
+          - "text/csv"
+        default_output_modes:
+          - "text/plain"
+          - "image/png"
+          - "application/json"
         skills:
           - id: "analyse-csv"
             name: "Analyse CSV"
             description: "Parse and summarise a CSV file"
-            tags: ["data", "csv"]
+            tags:
+              - "data"
+              - "csv"
           - id: "plot-chart"
             name: "Plot Chart"
             description: "Generate a chart from tabular data"
-            tags: ["data", "visualisation"]
+            tags:
+              - "data"
+              - "visualisation"
           - id: "sql-query"
             name: "SQL Query"
             description: "Run a SQL query against an uploaded file"
-            tags: ["data", "sql"]
+            tags:
+              - "data"
+              - "sql"
         authentication:
           - scheme: "ApiKey"
 
@@ -936,7 +1038,10 @@ agents:
     public: true
     verified: true
     status: "deprecated"
-    tags: ["research", "search", "deprecated"]
+    tags:
+      - "research"
+      - "search"
+      - "deprecated"
     readme: |
       # Research Agent (deprecated)
 
@@ -949,17 +1054,23 @@ agents:
       - version: "0.5.0"
         status: "published"
         endpoint_url: "https://agents.openai.com/research"
-        default_input_modes: ["text/plain"]
-        default_output_modes: ["text/plain"]
+        default_input_modes:
+          - "text/plain"
+        default_output_modes:
+          - "text/plain"
         skills:
           - id: "web-search"
             name: "Web Search"
             description: "Search the public web"
-            tags: ["search", "research"]
+            tags:
+              - "search"
+              - "research"
           - id: "paper-search"
             name: "Paper Search"
             description: "Query arXiv and Semantic Scholar"
-            tags: ["research", "academic"]
+            tags:
+              - "research"
+              - "academic"
         authentication:
           - scheme: "Bearer"
 
@@ -969,7 +1080,10 @@ agents:
     name: "Documentation Writer"
     description: "Generates and maintains API documentation from source code."
     public: true
-    tags: ["docs", "openapi", "devtools"]
+    tags:
+      - "docs"
+      - "openapi"
+      - "devtools"
     readme: |
       # Documentation Writer
 
@@ -980,13 +1094,17 @@ agents:
       - version: "0.2.0"
         status: "published"
         endpoint_url: "https://community.example.com/agents/docs-writer"
-        default_input_modes: ["text/plain"]
-        default_output_modes: ["text/plain"]
+        default_input_modes:
+          - "text/plain"
+        default_output_modes:
+          - "text/plain"
         skills:
           - id: "generate-docs"
             name: "Generate Docs"
             description: "Extract and write API documentation from code"
-            tags: ["docs", "openapi"]
+            tags:
+              - "docs"
+              - "openapi"
         authentication:
           - scheme: "Bearer"
 
@@ -996,7 +1114,11 @@ agents:
     name: "DevOps Agent"
     description: "Provisions cloud infrastructure, manages CI/CD pipelines, and monitors deployments."
     public: true
-    tags: ["devops", "cloud", "ci-cd", "experimental"]
+    tags:
+      - "devops"
+      - "cloud"
+      - "ci-cd"
+      - "experimental"
     readme: |
       # DevOps Agent (draft)
 
@@ -1008,21 +1130,31 @@ agents:
       - version: "0.1.0"
         status: "draft"
         endpoint_url: "https://community.example.com/agents/devops"
-        default_input_modes: ["text/plain", "application/json"]
-        default_output_modes: ["text/plain", "application/json"]
+        default_input_modes:
+          - "text/plain"
+          - "application/json"
+        default_output_modes:
+          - "text/plain"
+          - "application/json"
         skills:
           - id: "deploy"
             name: "Deploy"
             description: "Deploy an application to a cloud provider"
-            tags: ["cloud", "deploy"]
+            tags:
+              - "cloud"
+              - "deploy"
           - id: "monitor"
             name: "Monitor"
             description: "Check deployment health and logs"
-            tags: ["cloud", "observability"]
+            tags:
+              - "cloud"
+              - "observability"
           - id: "rollback"
             name: "Rollback"
             description: "Roll back to a previous release"
-            tags: ["cloud", "deploy"]
+            tags:
+              - "cloud"
+              - "deploy"
         authentication:
           - scheme: "Bearer"
           - scheme: "ApiKey"
@@ -1033,7 +1165,10 @@ agents:
     name: "Security Scanner Agent"
     description: "Scans codebases and infrastructure configs for common vulnerabilities."
     public: false
-    tags: ["security", "sast", "iac"]
+    tags:
+      - "security"
+      - "sast"
+      - "iac"
     readme: |
       # Security Scanner Agent (internal)
 
@@ -1046,16 +1181,24 @@ agents:
       - version: "1.0.0"
         status: "published"
         endpoint_url: "https://community.example.com/agents/security-scanner"
-        default_input_modes: ["text/plain", "application/json"]
-        default_output_modes: ["text/plain", "application/json"]
+        default_input_modes:
+          - "text/plain"
+          - "application/json"
+        default_output_modes:
+          - "text/plain"
+          - "application/json"
         skills:
           - id: "scan-code"
             name: "Scan Code"
             description: "Static analysis for common CVEs"
-            tags: ["security", "sast"]
+            tags:
+              - "security"
+              - "sast"
           - id: "scan-infra"
             name: "Scan Infra"
             description: "Check IaC files for misconfigurations"
-            tags: ["security", "iac"]
+            tags:
+              - "security"
+              - "iac"
         authentication:
           - scheme: "ApiKey"

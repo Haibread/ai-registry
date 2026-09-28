@@ -20,14 +20,24 @@ processors:
 service:
   pipelines:
     traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp/jaeger, debug]
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - otlp/jaeger
+        - debug
     metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - debug
     logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - debug

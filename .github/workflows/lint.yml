@@ -9,7 +9,8 @@ name: Lint
 # The tooling those system hooks shell out to is installed below before the run.
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 # Cancel in-progress runs for the same ref — a new push to a PR supersedes the

@@ -6,8 +6,10 @@ name: Release
 # guard below restricts it to successful runs triggered by a v* tag push.
 on:
   workflow_run:
-    workflows: [Docker]
-    types: [completed]
+    workflows:
+      - Docker
+    types:
+      - completed
 
 # One release per tag; never cancel a release mid-flight.
 concurrency:

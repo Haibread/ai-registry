@@ -1,0 +1,20 @@
+extends: default
+
+rules:
+  # yaml-conventions: no `---` opening a file.
+  document-start:
+    present: false
+  # yaml-conventions: block style only. `non-empty` still allows `{}` / `[]`.
+  braces:
+    forbid: non-empty
+  brackets:
+    forbid: non-empty
+  # Disable rather than tune: a digest-pinned image reference alone is ~150
+  # characters, and a helm-docs annotation is one line per key by construction.
+  line-length: disable
+  # GitHub Actions' `on:` key is a YAML 1.1 boolean to the linter.
+  truthy:
+    check-keys: false
+  # Renovate pins actions as `@<sha> # vX.Y.Z` with a single space.
+  comments:
+    min-spaces-from-content: 1

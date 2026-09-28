@@ -10,10 +10,13 @@ name: Docker
 #                    the Release workflow runs via workflow_run once this succeeds)
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
   push:
-    branches: [main]
-    tags: ['v*.*.*']
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 # Serialise publishes per ref so two pushes to the same ref don't race to
@@ -271,7 +274,9 @@ jobs:
   scan-images:
     name: Scan images (Trivy)
     runs-on: ubuntu-latest
-    needs: [build-server, build-web]
+    needs:
+      - build-server
+      - build-web
     if: github.event_name == 'push'
     permissions:
       contents: read

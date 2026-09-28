@@ -33,7 +33,8 @@ paths:
       operationId: healthz
       summary: Liveness probe
       description: Returns 200 when the process is alive.
-      tags: [system]
+      tags:
+        - system
       responses:
         "200":
           description: Service is alive
@@ -47,7 +48,8 @@ paths:
       operationId: readyz
       summary: Readiness probe
       description: Returns 200 when the service is ready to accept traffic (DB reachable).
-      tags: [system]
+      tags:
+        - system
       responses:
         "200":
           description: Service is ready
@@ -67,7 +69,8 @@ paths:
       operationId: metrics
       summary: Prometheus metrics (admin only)
       description: Exposes Prometheus-format metrics for scraping.
-      tags: [system]
+      tags:
+        - system
       security:
         - bearerAuth: []
       responses:
@@ -86,7 +89,8 @@ paths:
     get:
       operationId: openapiSpec
       summary: OpenAPI 3.1 specification
-      tags: [system]
+      tags:
+        - system
       responses:
         "200":
           description: OpenAPI spec in YAML
@@ -99,7 +103,8 @@ paths:
     get:
       operationId: apiDocs
       summary: Interactive API reference (Scalar UI)
-      tags: [system]
+      tags:
+        - system
       responses:
         "200":
           description: HTML page with interactive API docs
@@ -115,7 +120,8 @@ paths:
       description: >
         Returns the Google A2A-compatible Agent Card for the registry itself,
         making the registry a first-class A2A citizen.
-      tags: [agents]
+      tags:
+        - agents
       responses:
         "200":
           description: A2A Agent Card
@@ -131,14 +137,17 @@ paths:
       description: >
         The registry's Ed25519 (OKP) public verification keys, so other services
         can validate registry-issued access tokens offline.
-      tags: [auth]
+      tags:
+        - auth
       responses:
         "200":
           description: The JSON Web Key Set
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/JWKS" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+              schema:
+                $ref: "#/components/schemas/JWKS"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   # ── Authentication ─────────────────────────────────────────────────────────
 
@@ -150,27 +159,35 @@ paths:
         Verifies an email and password and mints a registry-issued access token
         (Ed25519 JWT) plus a rotating refresh token, returned in the response
         body. There is no cookie. Available only when local login is enabled.
-      tags: [auth]
+      tags:
+        - auth
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/LoginRequest" }
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
           description: The access + refresh token pair.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TokenPair" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "429":
           description: Too many failed login attempts; retry later
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+              schema:
+                $ref: "#/components/schemas/Problem"
 
   /api/v1/auth/refresh:
     post:
@@ -185,21 +202,27 @@ paths:
         The local Server-Admin flag is re-read here, so a change to it propagates
         within one access-token lifetime; IdP group and admin-role claims are
         re-read only at login.
-      tags: [auth]
+      tags:
+        - auth
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/RefreshRequest" }
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
       responses:
         "200":
           description: The new access + refresh token pair.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TokenPair" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/auth/logout:
     post:
@@ -210,18 +233,21 @@ paths:
         unknown or already-revoked token. For an OIDC session it returns the
         identity provider's RP-initiated logout URL (with id_token_hint) so the
         client can navigate there to end the upstream SSO session.
-      tags: [auth]
+      tags:
+        - auth
       requestBody:
         required: false
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/LogoutRequest" }
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
       responses:
         "200":
           description: The refresh token was revoked.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/LogoutResponse" }
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
 
   /api/v1/auth/oidc/login:
     get:
@@ -232,11 +258,13 @@ paths:
         Authorization Code + PKCE flow. The registry is a confidential client;
         the IdP token never reaches the browser. The login transaction is held
         server-side (no cookie). 404 when OIDC login is not configured.
-      tags: [auth]
+      tags:
+        - auth
       responses:
         "302":
           description: Redirect to the identity provider's authorize endpoint.
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/auth/oidc/callback:
     get:
@@ -248,14 +276,17 @@ paths:
         redirects to the app with a one-time handoff code in the URL fragment
         (`#code=...`). The SPA then calls /auth/oidc/exchange to obtain the
         tokens. 404 when OIDC login is not configured.
-      tags: [auth]
+      tags:
+        - auth
       parameters:
         - name: code
           in: query
-          schema: { type: string }
+          schema:
+            type: string
         - name: state
           in: query
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "302":
           description: Redirect to the app with a one-time handoff code in the fragment.
@@ -263,9 +294,12 @@ paths:
           description: Invalid login state or missing authorization code.
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/auth/oidc/exchange:
     post:
@@ -275,21 +309,27 @@ paths:
         Swaps the single-use handoff code delivered by the OIDC callback for the
         minted access + refresh token pair. 404 when OIDC login is not
         configured.
-      tags: [auth]
+      tags:
+        - auth
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ExchangeRequest" }
+            schema:
+              $ref: "#/components/schemas/ExchangeRequest"
       responses:
         "200":
           description: The access + refresh token pair.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TokenPair" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/me:
     get:
@@ -302,7 +342,8 @@ paths:
         per-publisher grants (with the publisher slug/name) and global grants
         (empty publisher fields). `is_server_admin` short-circuits every
         publisher-scoped check. Works for both OIDC and local tokens.
-      tags: [auth]
+      tags:
+        - auth
       security:
         - bearerAuth: []
       responses:
@@ -310,8 +351,10 @@ paths:
           description: The caller's identity and grants
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Me" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ── RBAC administration ─────────────────────────────────────────────────────
 
@@ -319,8 +362,10 @@ paths:
     get:
       operationId: listGroups
       summary: List groups (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -329,145 +374,198 @@ paths:
           description: Paginated groups
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/GroupList" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+              schema:
+                $ref: "#/components/schemas/GroupList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       operationId: createGroup
       summary: Create a group (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CreateGroupRequest" }
+            schema:
+              $ref: "#/components/schemas/CreateGroupRequest"
       responses:
         "201":
           description: The created group
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Group" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/groups/{slug}:
     parameters:
       - name: slug
         in: path
         required: true
-        schema: { type: string }
+        schema:
+          type: string
     get:
       operationId: getGroup
       summary: Get a group by slug (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: The group
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Group" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     patch:
       operationId: patchGroup
       summary: Update a group (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/PatchGroupRequest" }
+            schema:
+              $ref: "#/components/schemas/PatchGroupRequest"
       responses:
         "200":
           description: The updated group
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Group" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteGroup
       summary: Delete a group (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       responses:
         "204":
           description: Deleted
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/groups/{slug}/members:
     get:
       operationId: listGroupMembers
       summary: List a group's members (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       parameters:
         - name: slug
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: The group's members
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/UserList" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                $ref: "#/components/schemas/UserList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/groups/{slug}/members/{email}:
     parameters:
       - name: slug
         in: path
         required: true
-        schema: { type: string }
+        schema:
+          type: string
       - name: email
         in: path
         required: true
-        schema: { type: string, format: email }
+        schema:
+          type: string
+          format: email
     put:
       operationId: addGroupMember
       summary: Add a member to a group by email (Server Admin)
       description: Auto-creates an invited user when the email is unknown.
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: The added (or auto-created) user
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/User" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       operationId: removeGroupMember
       summary: Remove a member from a group (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       responses:
         "204":
           description: Removed
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/users:
     get:
       operationId: listUsers
       summary: List users (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -476,53 +574,71 @@ paths:
           description: Paginated users
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/UserList" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+              schema:
+                $ref: "#/components/schemas/UserList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       operationId: createUser
       summary: Create a local or invited user (Server Admin)
       description: >
         Omitting `password` creates an invited user with no local password. A
         supplied password shorter than 12 characters is rejected (422).
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CreateUserRequest" }
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
       responses:
         "201":
           description: The created user
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/User" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/users/{id}:
     parameters:
       - name: id
         in: path
         required: true
-        schema: { type: string }
+        schema:
+          type: string
     get:
       operationId: getUser
       summary: Get a user by id (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: The user
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/User" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     patch:
       operationId: patchUser
       summary: Update a user's display name, disabled, or is_server_admin (Server Admin)
@@ -532,23 +648,31 @@ paths:
         Disabling the user or removing their Server Admin flag revokes all of
         their refresh tokens; access tokens already issued stay valid until
         they expire.
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/PatchUserRequest" }
+            schema:
+              $ref: "#/components/schemas/PatchUserRequest"
       responses:
         "200":
           description: The updated user
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/User" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/users/{id}/set-password:
     post:
@@ -559,25 +683,33 @@ paths:
         revokes all of the user's refresh tokens, including the caller's own
         when setting their own password; access tokens already issued stay
         valid until they expire.
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/SetPasswordRequest" }
+            schema:
+              $ref: "#/components/schemas/SetPasswordRequest"
       responses:
         "204":
           description: Password set
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/users/{id}/grants:
     get:
@@ -590,96 +722,129 @@ paths:
         matched per-request from the sign-in token and are NOT included; a
         federated user may hold additional roles when their token names a
         group slug.
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: The user's effective grants
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/UserAccess" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                $ref: "#/components/schemas/UserAccess"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/grants:
     get:
       operationId: listGlobalGrants
       summary: List global (all-publishers) role grants (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Global grants
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/RoleGrantList" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+              schema:
+                $ref: "#/components/schemas/RoleGrantList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       operationId: createGlobalGrant
       summary: Create a global role grant (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/GrantRequest" }
+            schema:
+              $ref: "#/components/schemas/GrantRequest"
       responses:
         "201":
           description: The created grant
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/RoleGrant" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/RoleGrant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/grants/{id}:
     delete:
       operationId: deleteGlobalGrant
       summary: Delete a global role grant (Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "204":
           description: Deleted
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/publishers/{slug}/grants:
     parameters:
       - name: slug
         in: path
         required: true
-        schema: { type: string }
+        schema:
+          type: string
     get:
       operationId: listPublisherGrants
       summary: List a publisher's role grants (publisher Admin or Server Admin)
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: The publisher's grants
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/RoleGrantList" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                $ref: "#/components/schemas/RoleGrantList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     post:
       operationId: createPublisherGrant
       summary: Grant a role on a publisher (publisher Admin or Server Admin)
@@ -690,30 +855,39 @@ paths:
         for Server Admins — a publisher Admin attempting it gets 403. Only a
         Server Admin may grant a role to themselves; anyone else gets 403
         `self-grant-forbidden`.
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/GrantRequest" }
+            schema:
+              $ref: "#/components/schemas/GrantRequest"
       responses:
         "201":
           description: The created grant
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/RoleGrant" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
+              schema:
+                $ref: "#/components/schemas/RoleGrant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "403":
           description: |
             forbidden (not a publisher Admin, or a group grant by a non-Server
             Admin) | self-grant-forbidden (the caller is the grantee).
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/publishers/{slug}/grants/{id}:
     delete:
@@ -723,23 +897,30 @@ paths:
         A publisher Admin may revoke user grants. Revoking a group grant (which
         binds an IdP claim to a role) is reserved for Server Admins — a publisher
         Admin attempting it gets 403.
-      tags: [rbac]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - rbac
+      security:
+        - bearerAuth: []
       parameters:
         - name: slug
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "204":
           description: Revoked
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ── Publishers ────────────────────────────────────────────────────────────
 
@@ -757,8 +938,10 @@ paths:
         a Server Admin or a holder of a global Reviewer grant sees every
         publisher's items; a per-publisher Reviewer sees only the publishers
         they review; a caller who holds no Reviewer role anywhere gets 403.
-      tags: [review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -767,15 +950,19 @@ paths:
           description: Paginated review queue
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ReviewQueueList" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+              schema:
+                $ref: "#/components/schemas/ReviewQueueList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/v1/publishers:
     get:
       operationId: listPublishers
       summary: List publishers
-      tags: [publishers]
+      tags:
+        - publishers
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -789,7 +976,8 @@ paths:
     post:
       operationId: createPublisher
       summary: Create a publisher (admin only)
-      tags: [publishers]
+      tags:
+        - publishers
       security:
         - bearerAuth: []
       requestBody:
@@ -818,7 +1006,8 @@ paths:
     get:
       operationId: getPublisher
       summary: Get a publisher by slug
-      tags: [publishers]
+      tags:
+        - publishers
       parameters:
         - $ref: "#/components/parameters/SlugParam"
       responses:
@@ -837,7 +1026,8 @@ paths:
         Updates the publisher's display name and contact. Requires the Admin
         role on this publisher, or global Server Admin. Returns 403 for any
         lesser role, 401 when unauthenticated.
-      tags: [publishers]
+      tags:
+        - publishers
       security:
         - bearerAuth: []
       parameters:
@@ -878,7 +1068,8 @@ paths:
         it owns — all MCP servers and agents, their versions, and any reports
         filed against them — in a single transaction. Owned resources never
         block the delete.
-      tags: [publishers]
+      tags:
+        - publishers
       security:
         - bearerAuth: []
       parameters:
@@ -902,7 +1093,8 @@ paths:
         pending-review count, scoped to one publisher. Open to any member of the
         publisher (Viewer and up) or a Server Admin; others get 403. This is the
         per-publisher counterpart to the Server-Admin-only global stats.
-      tags: [publishers]
+      tags:
+        - publishers
       security:
         - bearerAuth: []
       parameters:
@@ -931,7 +1123,8 @@ paths:
         any member of the publisher (Viewer and up) or a Server Admin; others get
         403. Unlike the public per-resource feed, this members-only feed names
         the actor (the publisher's own collaborators).
-      tags: [publishers]
+      tags:
+        - publishers
       security:
         - bearerAuth: []
       parameters:
@@ -964,7 +1157,8 @@ paths:
         versions but remain visible on versions that already carry them, so
         clients need the whole list to resolve display names and colors;
         pickers should offer only `active` tags.
-      tags: [tags]
+      tags:
+        - tags
       responses:
         "200":
           description: Tag vocabulary
@@ -975,7 +1169,8 @@ paths:
     post:
       operationId: createInstanceTag
       summary: Define a new instance tag (Server Admin)
-      tags: [tags]
+      tags:
+        - tags
       security:
         - bearerAuth: []
       requestBody:
@@ -1010,7 +1205,8 @@ paths:
         immutable. Deactivating a tag hides it from new publishes; versions
         that already carry it are unaffected. Config-managed tags
         (`managed: true`) are read-only here — 409.
-      tags: [tags]
+      tags:
+        - tags
       security:
         - bearerAuth: []
       parameters:
@@ -1051,7 +1247,8 @@ paths:
         endpoint returns 409; deactivate it via PATCH instead. Config-managed
         tags (`managed: true`) also answer 409 — remove them from the server
         configuration instead.
-      tags: [tags]
+      tags:
+        - tags
       security:
         - bearerAuth: []
       parameters:
@@ -1078,7 +1275,8 @@ paths:
     get:
       operationId: listMCPServers
       summary: List MCP servers
-      tags: [mcp]
+      tags:
+        - mcp
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -1107,19 +1305,27 @@ paths:
           description: Filter by lifecycle status
           schema:
             type: string
-            enum: [draft, published, deprecated]
+            enum:
+              - draft
+              - published
+              - deprecated
         - name: visibility
           in: query
           description: Filter by visibility (admin only — public requests always see public entries only)
           schema:
             type: string
-            enum: [public, private]
+            enum:
+              - public
+              - private
         - name: transport
           in: query
           description: Filter by transport type of the latest published version's packages
           schema:
             type: string
-            enum: [stdio, sse, streamable_http]
+            enum:
+              - stdio
+              - sse
+              - streamable_http
         - name: registry_type
           in: query
           description: Filter by package registry/ecosystem type (e.g. npm, pip, docker)
@@ -1130,7 +1336,12 @@ paths:
           description: Sort order for results (ignored when q is provided — search results are ranked by relevance)
           schema:
             type: string
-            enum: [created_at_desc, updated_at_desc, published_at_desc, name_asc, name_desc]
+            enum:
+              - created_at_desc
+              - updated_at_desc
+              - published_at_desc
+              - name_asc
+              - name_desc
             default: created_at_desc
         - name: featured
           in: query
@@ -1167,7 +1378,8 @@ paths:
         public catalog once a version is published and an Admin flips visibility
         — the approval gate stays intact. 401 when unauthenticated,
         403 without the role.
-      tags: [mcp]
+      tags:
+        - mcp
       security:
         - bearerAuth: []
       requestBody:
@@ -1196,7 +1408,8 @@ paths:
     get:
       operationId: getMCPServer
       summary: Get an MCP server by namespace/slug
-      tags: [mcp]
+      tags:
+        - mcp
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1212,7 +1425,8 @@ paths:
     patch:
       operationId: patchMCPServer
       summary: Update an MCP server's metadata (admin only)
-      tags: [mcp]
+      tags:
+        - mcp
       security:
         - bearerAuth: []
       parameters:
@@ -1252,7 +1466,8 @@ paths:
           description: Metadata edit enqueued for review (non-admin Editor)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+              schema:
+                $ref: "#/components/schemas/EntryChangeAccepted"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1263,7 +1478,8 @@ paths:
           description: a change is already pending review on this entry
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
         "422":
           $ref: "#/components/responses/ValidationError"
     delete:
@@ -1276,7 +1492,8 @@ paths:
         POST /api/v1/mcp/servers/{namespace}/{slug}/deletion-request and
         wait for a reviewer's approve to delete; this endpoint is the
         admin force-delete path.
-      tags: [mcp]
+      tags:
+        - mcp
       security:
         - bearerAuth: []
       parameters:
@@ -1302,7 +1519,8 @@ paths:
         approved (published) version — an unreviewed draft cannot be exposed, so
         a `public` request on a draft returns 409. Switching back to `private`
         is always allowed.
-      tags: [mcp]
+      tags:
+        - mcp
       security:
         - bearerAuth: []
       parameters:
@@ -1324,14 +1542,17 @@ paths:
                 properties:
                   visibility:
                     type: string
-                    enum: [public, private]
+                    enum:
+                      - public
+                      - private
         "202":
           description: >
             Visibility change enqueued for review (non-admin Editor). The entry
             is unchanged until a Reviewer approves the pending change.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+              schema:
+                $ref: "#/components/schemas/EntryChangeAccepted"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1344,7 +1565,8 @@ paths:
             yet; or a change is already pending review on this entry.
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+              schema:
+                $ref: "#/components/schemas/Problem"
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1352,7 +1574,8 @@ paths:
     post:
       operationId: deprecateMCPServer
       summary: Deprecate an MCP server (Editor enqueues, Server Admin immediate)
-      tags: [mcp]
+      tags:
+        - mcp
       security:
         - bearerAuth: []
       parameters:
@@ -1372,7 +1595,8 @@ paths:
           description: Deprecation enqueued for review (non-admin Editor)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+              schema:
+                $ref: "#/components/schemas/EntryChangeAccepted"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1391,7 +1615,8 @@ paths:
         when the entry is currently `deprecated` (409 otherwise). Editors
         enqueue the change for review like the other entry-level mutations;
         Server Admins apply it immediately.
-      tags: [mcp]
+      tags:
+        - mcp
       security:
         - bearerAuth: []
       parameters:
@@ -1411,7 +1636,8 @@ paths:
           description: Republish enqueued for review (non-admin Editor)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+              schema:
+                $ref: "#/components/schemas/EntryChangeAccepted"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1425,7 +1651,8 @@ paths:
     post:
       operationId: recordMCPServerView
       summary: Record a view event for an MCP server (fire-and-forget)
-      tags: [mcp]
+      tags:
+        - mcp
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1439,7 +1666,8 @@ paths:
     post:
       operationId: recordMCPServerCopy
       summary: Record a copy event for an MCP server (fire-and-forget)
-      tags: [mcp]
+      tags:
+        - mcp
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1458,7 +1686,8 @@ paths:
         server (creation, publish, deprecation, visibility changes, etc.).
         Actor identity is scrubbed — only a coarse role label is exposed.
         Public, rate-limited.
-      tags: [mcp]
+      tags:
+        - mcp
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1480,7 +1709,8 @@ paths:
     get:
       operationId: listMCPServerVersions
       summary: List versions of an MCP server
-      tags: [mcp]
+      tags:
+        - mcp
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1496,7 +1726,8 @@ paths:
     post:
       operationId: createMCPServerVersion
       summary: Create a new version of an MCP server (admin only)
-      tags: [mcp]
+      tags:
+        - mcp
       security:
         - bearerAuth: []
       parameters:
@@ -1530,7 +1761,8 @@ paths:
     get:
       operationId: getMCPServerVersion
       summary: Get a specific version of an MCP server
-      tags: [mcp]
+      tags:
+        - mcp
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1557,8 +1789,11 @@ paths:
         owning entry's visibility to public (atomically with the approval).
         Withdrawing the submission drops the request; a resubmission states
         it afresh.
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1567,12 +1802,17 @@ paths:
         required: false
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/SubmitVersionRequest" }
+            schema:
+              $ref: "#/components/schemas/SubmitVersionRequest"
       responses:
-        "204": { description: submitted }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: submitted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: |
             review-state-mismatch (already pending, withdrawn, or
@@ -1580,28 +1820,37 @@ paths:
             this entry is already pending review).
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/withdraw:
     post:
       operationId: withdrawMCPVersion
       summary: Withdraw a pending MCP server version back to draft
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
         - $ref: "#/components/parameters/VersionParam"
       responses:
-        "204": { description: withdrawn }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: withdrawn
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: review-state-mismatch (version is not in pending_review)
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/approve:
     post:
@@ -1611,8 +1860,11 @@ paths:
         Publishes the version. When the submission carried
         `request_public: true`, the owning entry's visibility flips to
         public in the same transaction.
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1621,12 +1873,17 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ApproveRequest" }
+            schema:
+              $ref: "#/components/schemas/ApproveRequest"
       responses:
-        "204": { description: approved (version is now published) }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/ReviewForbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: approved (version is now published)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ReviewForbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: |
             review-state-mismatch (no longer pending) |
@@ -1634,15 +1891,20 @@ paths:
             already-published (already approved by another reviewer).
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/reject:
     post:
       operationId: rejectMCPVersion
       summary: Reject a pending MCP server version with a reason (reviewer)
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1651,18 +1913,25 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/RejectRequest" }
+            schema:
+              $ref: "#/components/schemas/RejectRequest"
       responses:
-        "204": { description: rejected }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: rejected
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: review-state-mismatch | review-revision-mismatch
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/mcp/servers/{namespace}/{slug}/deletion-request:
     post:
@@ -1672,48 +1941,67 @@ paths:
         Marks the entry as having a pending deletion review. The entry
         stays visible on public reads until a reviewer approves the
         deletion (which sets deleted_at).
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
       responses:
-        "202": { description: deletion request recorded }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "202":
+          description: deletion request recorded
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: another deletion request is already pending
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/mcp/servers/{namespace}/{slug}/deletion-request/approve:
     post:
       operationId: approveMCPDeletion
       summary: Approve a pending MCP server deletion (reviewer)
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
       responses:
-        "204": { description: deleted (soft-delete via deleted_at) }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/ReviewForbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: deleted (soft-delete via deleted_at)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ReviewForbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending deletion request to approve
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/mcp/servers/{namespace}/{slug}/deletion-request/reject:
     post:
       operationId: rejectMCPDeletion
       summary: Reject a pending MCP server deletion with a reason (reviewer)
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1721,18 +2009,25 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/RejectDeletionRequest" }
+            schema:
+              $ref: "#/components/schemas/RejectDeletionRequest"
       responses:
-        "204": { description: rejected (request markers cleared) }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: rejected (request markers cleared)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending deletion request to reject
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/mcp/servers/{namespace}/{slug}/change-request/approve:
     post:
@@ -1742,8 +2037,11 @@ paths:
         Applies the pending entry-change request (visibility / deprecation / undeprecation /
         metadata edit) on the entry. Requires the Reviewer role on the owning
         publisher.
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1751,25 +2049,35 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ApproveEntryChangeRequest" }
+            schema:
+              $ref: "#/components/schemas/ApproveEntryChangeRequest"
       responses:
-        "204": { description: change applied }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/ReviewForbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: change applied
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ReviewForbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending change, stale revision, or change no longer applicable
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/mcp/servers/{namespace}/{slug}/change-request/reject:
     post:
       operationId: rejectMCPChange
       summary: Reject a pending MCP entry change with a reason (reviewer)
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1777,38 +2085,53 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/RejectEntryChangeRequest" }
+            schema:
+              $ref: "#/components/schemas/RejectEntryChangeRequest"
       responses:
-        "204": { description: change rejected }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: change rejected
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending change to reject, or stale revision
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/mcp/servers/{namespace}/{slug}/change-request/withdraw:
     post:
       operationId: withdrawMCPChange
       summary: Withdraw the entry's pending change (Editor)
-      tags: [mcp, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - mcp
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
       responses:
-        "204": { description: change withdrawn }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: change withdrawn
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending change to withdraw
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish:
     post:
@@ -1821,7 +2144,8 @@ paths:
         exception). Editors take a version live by submitting it for a Reviewer
         to approve. Published versions are immutable — metadata edits after
         publish are forbidden.
-      tags: [mcp]
+      tags:
+        - mcp
       security:
         - bearerAuth: []
       parameters:
@@ -1854,7 +2178,8 @@ paths:
     get:
       operationId: listAgents
       summary: List agents
-      tags: [agents]
+      tags:
+        - agents
       parameters:
         - $ref: "#/components/parameters/LimitParam"
         - $ref: "#/components/parameters/CursorParam"
@@ -1883,19 +2208,29 @@ paths:
           description: Filter by lifecycle status
           schema:
             type: string
-            enum: [draft, published, deprecated]
+            enum:
+              - draft
+              - published
+              - deprecated
         - name: visibility
           in: query
           description: Filter by visibility (admin only)
           schema:
             type: string
-            enum: [public, private]
+            enum:
+              - public
+              - private
         - name: sort
           in: query
           description: Sort order for results (ignored when q is provided — search results are ranked by relevance)
           schema:
             type: string
-            enum: [created_at_desc, updated_at_desc, published_at_desc, name_asc, name_desc]
+            enum:
+              - created_at_desc
+              - updated_at_desc
+              - published_at_desc
+              - name_asc
+              - name_desc
             default: created_at_desc
         - name: featured
           in: query
@@ -1930,7 +2265,8 @@ paths:
         Editor role on that publisher (Admin / Server Admin satisfy it). The new
         agent is private + draft. 401 when unauthenticated, 403
         without the role.
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       requestBody:
@@ -1959,7 +2295,8 @@ paths:
     get:
       operationId: getAgent
       summary: Get an agent by namespace/slug
-      tags: [agents]
+      tags:
+        - agents
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -1975,7 +2312,8 @@ paths:
     patch:
       operationId: patchAgent
       summary: Update an agent's metadata (admin only)
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       parameters:
@@ -2003,7 +2341,8 @@ paths:
           description: Metadata edit enqueued for review (non-admin Editor)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+              schema:
+                $ref: "#/components/schemas/EntryChangeAccepted"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2014,7 +2353,8 @@ paths:
           description: a change is already pending review on this entry
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
         "422":
           $ref: "#/components/responses/ValidationError"
     delete:
@@ -2027,7 +2367,8 @@ paths:
         POST /api/v1/agents/{namespace}/{slug}/deletion-request and wait
         for a reviewer's approve to delete; this endpoint is the admin
         force-delete path.
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       parameters:
@@ -2052,7 +2393,8 @@ paths:
         satisfy it). Switching to `public` requires an approved (published)
         version — a `public` request on a draft returns 409. Switching back to
         `private` is always allowed.
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       parameters:
@@ -2074,12 +2416,15 @@ paths:
                 properties:
                   visibility:
                     type: string
-                    enum: [public, private]
+                    enum:
+                      - public
+                      - private
         "202":
           description: Visibility change enqueued for review (non-admin Editor)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+              schema:
+                $ref: "#/components/schemas/EntryChangeAccepted"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2092,7 +2437,8 @@ paths:
             yet; or a change is already pending review on this entry.
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
+              schema:
+                $ref: "#/components/schemas/Problem"
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -2100,7 +2446,8 @@ paths:
     post:
       operationId: deprecateAgent
       summary: Deprecate an agent (Editor enqueues, Server Admin immediate)
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       parameters:
@@ -2120,7 +2467,8 @@ paths:
           description: Deprecation enqueued for review (non-admin Editor)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+              schema:
+                $ref: "#/components/schemas/EntryChangeAccepted"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2139,7 +2487,8 @@ paths:
         when the entry is currently `deprecated` (409 otherwise). Editors
         enqueue the change for review like the other entry-level mutations;
         Server Admins apply it immediately.
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       parameters:
@@ -2159,7 +2508,8 @@ paths:
           description: Republish enqueued for review (non-admin Editor)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EntryChangeAccepted" }
+              schema:
+                $ref: "#/components/schemas/EntryChangeAccepted"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2173,7 +2523,8 @@ paths:
     post:
       operationId: recordAgentView
       summary: Record a view event for an agent (fire-and-forget)
-      tags: [agents]
+      tags:
+        - agents
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2187,7 +2538,8 @@ paths:
     post:
       operationId: recordAgentCopy
       summary: Record a copy event for an agent (fire-and-forget)
-      tags: [agents]
+      tags:
+        - agents
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2206,7 +2558,8 @@ paths:
         agent (creation, publish, deprecation, visibility changes, etc.).
         Actor identity is scrubbed — only a coarse role label is exposed.
         Public, rate-limited.
-      tags: [agents]
+      tags:
+        - agents
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2228,7 +2581,8 @@ paths:
     get:
       operationId: listAgentVersions
       summary: List versions of an agent
-      tags: [agents]
+      tags:
+        - agents
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2244,7 +2598,8 @@ paths:
     post:
       operationId: createAgentVersion
       summary: Create a new version of an agent (admin only)
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       parameters:
@@ -2278,7 +2633,8 @@ paths:
     get:
       operationId: getAgentVersion
       summary: Get a specific version of an agent
-      tags: [agents]
+      tags:
+        - agents
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2305,8 +2661,11 @@ paths:
         owning entry's visibility to public (atomically with the approval).
         Withdrawing the submission drops the request; a resubmission states
         it afresh.
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2315,38 +2674,52 @@ paths:
         required: false
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/SubmitVersionRequest" }
+            schema:
+              $ref: "#/components/schemas/SubmitVersionRequest"
       responses:
-        "204": { description: submitted }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: submitted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: review-state-mismatch | review-already-pending
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/agents/{namespace}/{slug}/versions/{version}/withdraw:
     post:
       operationId: withdrawAgentVersion
       summary: Withdraw a pending agent version back to draft
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
         - $ref: "#/components/parameters/VersionParam"
       responses:
-        "204": { description: withdrawn }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: withdrawn
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: review-state-mismatch (version is not in pending_review)
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/agents/{namespace}/{slug}/versions/{version}/approve:
     post:
@@ -2356,8 +2729,11 @@ paths:
         Publishes the version. When the submission carried
         `request_public: true`, the owning entry's visibility flips to
         public in the same transaction.
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2366,25 +2742,35 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ApproveRequest" }
+            schema:
+              $ref: "#/components/schemas/ApproveRequest"
       responses:
-        "204": { description: approved }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/ReviewForbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: approved
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ReviewForbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: review-state-mismatch | review-revision-mismatch | already-published
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/agents/{namespace}/{slug}/versions/{version}/reject:
     post:
       operationId: rejectAgentVersion
       summary: Reject a pending agent version with a reason (reviewer)
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2393,65 +2779,91 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/RejectRequest" }
+            schema:
+              $ref: "#/components/schemas/RejectRequest"
       responses:
-        "204": { description: rejected }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: rejected
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: review-state-mismatch | review-revision-mismatch
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/agents/{namespace}/{slug}/deletion-request:
     post:
       operationId: requestAgentDeletion
       summary: Request deletion of an agent
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
       responses:
-        "202": { description: deletion request recorded }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "202":
+          description: deletion request recorded
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: another deletion request is already pending
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/agents/{namespace}/{slug}/deletion-request/approve:
     post:
       operationId: approveAgentDeletion
       summary: Approve a pending agent deletion (reviewer)
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
       responses:
-        "204": { description: deleted (soft-delete) }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/ReviewForbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: deleted (soft-delete)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ReviewForbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending deletion request
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/agents/{namespace}/{slug}/deletion-request/reject:
     post:
       operationId: rejectAgentDeletion
       summary: Reject a pending agent deletion with a reason (reviewer)
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2459,18 +2871,25 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/RejectDeletionRequest" }
+            schema:
+              $ref: "#/components/schemas/RejectDeletionRequest"
       responses:
-        "204": { description: rejected }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: rejected
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending deletion request
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/agents/{namespace}/{slug}/change-request/approve:
     post:
@@ -2480,8 +2899,11 @@ paths:
         Applies the pending entry-change request (visibility / deprecation / undeprecation /
         metadata edit) on the agent. Requires the Reviewer role on the owning
         publisher.
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2489,25 +2911,35 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ApproveEntryChangeRequest" }
+            schema:
+              $ref: "#/components/schemas/ApproveEntryChangeRequest"
       responses:
-        "204": { description: change applied }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/ReviewForbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: change applied
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ReviewForbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending change, stale revision, or change no longer applicable
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/agents/{namespace}/{slug}/change-request/reject:
     post:
       operationId: rejectAgentChange
       summary: Reject a pending agent entry change with a reason (reviewer)
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2515,38 +2947,53 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/RejectEntryChangeRequest" }
+            schema:
+              $ref: "#/components/schemas/RejectEntryChangeRequest"
       responses:
-        "204": { description: change rejected }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: change rejected
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending change to reject, or stale revision
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/agents/{namespace}/{slug}/change-request/withdraw:
     post:
       operationId: withdrawAgentChange
       summary: Withdraw the agent's pending change (Editor)
-      tags: [agents, review]
-      security: [{ bearerAuth: [] }]
+      tags:
+        - agents
+        - review
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
       responses:
-        "204": { description: change withdrawn }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "204":
+          description: change withdrawn
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: no pending change to withdraw
           content:
             application/problem+json:
-              schema: { $ref: "#/components/schemas/ReviewProblem" }
+              schema:
+                $ref: "#/components/schemas/ReviewProblem"
 
   /api/v1/agents/{namespace}/{slug}/versions/{version}/publish:
     post:
@@ -2557,7 +3004,8 @@ paths:
         version live, so it is an approver action: requires the Reviewer role
         (Server Admin is the break-glass exception). Editors publish by
         submitting for a Reviewer to approve. Published versions are immutable.
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       parameters:
@@ -2588,7 +3036,8 @@ paths:
     patch:
       operationId: patchAgentVersionStatus
       summary: Update agent version lifecycle status (admin only)
-      tags: [agents]
+      tags:
+        - agents
       security:
         - bearerAuth: []
       parameters:
@@ -2624,7 +3073,8 @@ paths:
       operationId: getAgentCard
       summary: A2A Agent Card
       description: Returns the Google A2A-compatible Agent Card for the given agent.
-      tags: [agents]
+      tags:
+        - agents
       parameters:
         - $ref: "#/components/parameters/NamespaceParam"
         - $ref: "#/components/parameters/SlugParam"
@@ -2644,7 +3094,8 @@ paths:
     get:
       operationId: getPublicStats
       summary: Public registry statistics (published entries only)
-      tags: [system]
+      tags:
+        - system
       responses:
         "200":
           description: Public counts for each resource type
@@ -2660,7 +3111,8 @@ paths:
       description: >
         Aggregated timeline of version publications, newest first. Only
         published versions of public, non-deleted entries are returned.
-      tags: [system]
+      tags:
+        - system
       parameters:
         - name: limit
           in: query
@@ -2681,7 +3133,8 @@ paths:
     get:
       operationId: getStats
       summary: Registry resource counts (admin only)
-      tags: [system]
+      tags:
+        - system
       security:
         - bearerAuth: []
       responses:
@@ -2700,7 +3153,8 @@ paths:
     get:
       operationId: listAuditEvents
       summary: List audit log events (admin only)
-      tags: [audit]
+      tags:
+        - audit
       security:
         - bearerAuth: []
       parameters:
@@ -2741,7 +3195,8 @@ paths:
         Public, rate-limited endpoint for anyone to report problems with a
         registry entry (broken packaging, misleading description, spam,
         security concern, etc.). Admins triage reports via the admin queue.
-      tags: [reports]
+      tags:
+        - reports
       requestBody:
         required: true
         content:
@@ -2762,7 +3217,8 @@ paths:
     get:
       operationId: listReports
       summary: List community issue reports (admin only)
-      tags: [reports]
+      tags:
+        - reports
       security:
         - bearerAuth: []
       parameters:
@@ -2771,7 +3227,10 @@ paths:
           description: Filter by status
           schema:
             type: string
-            enum: [pending, reviewed, dismissed]
+            enum:
+              - pending
+              - reviewed
+              - dismissed
         - name: limit
           in: query
           schema:
@@ -2795,7 +3254,8 @@ paths:
     patch:
       operationId: updateReportStatus
       summary: Update a report's status (admin only)
-      tags: [reports]
+      tags:
+        - reports
       security:
         - bearerAuth: []
       parameters:
@@ -2820,7 +3280,10 @@ paths:
                 properties:
                   status:
                     type: string
-                    enum: [pending, reviewed, dismissed]
+                    enum:
+                      - pending
+                      - reviewed
+                      - dismissed
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2903,7 +3366,9 @@ components:
 
     LoginRequest:
       type: object
-      required: [email, password]
+      required:
+        - email
+        - password
       properties:
         email:
           type: string
@@ -2914,7 +3379,11 @@ components:
 
     TokenPair:
       type: object
-      required: [accessToken, refreshToken, tokenType, expiresIn]
+      required:
+        - accessToken
+        - refreshToken
+        - tokenType
+        - expiresIn
       properties:
         accessToken:
           type: string
@@ -2926,14 +3395,16 @@ components:
           description: Single-use refresh token; exchange it at /auth/refresh for a new pair.
         tokenType:
           type: string
-          enum: [Bearer]
+          enum:
+            - Bearer
         expiresIn:
           type: integer
           description: Access token lifetime in seconds.
 
     RefreshRequest:
       type: object
-      required: [refreshToken]
+      required:
+        - refreshToken
       properties:
         refreshToken:
           type: string
@@ -2957,7 +3428,8 @@ components:
 
     ExchangeRequest:
       type: object
-      required: [code]
+      required:
+        - code
       properties:
         code:
           type: string
@@ -2965,227 +3437,401 @@ components:
 
     JWKS:
       type: object
-      required: [keys]
+      required:
+        - keys
       properties:
         keys:
           type: array
-          items: { $ref: "#/components/schemas/JWK" }
+          items:
+            $ref: "#/components/schemas/JWK"
 
     JWK:
       type: object
       description: An Ed25519 (OKP) public key in JWK form.
-      required: [kty, crv, x, kid, use, alg]
+      required:
+        - kty
+        - crv
+        - x
+        - kid
+        - use
+        - alg
       properties:
-        kty: { type: string, enum: [OKP] }
-        crv: { type: string, enum: [Ed25519] }
-        x: { type: string, description: Base64url-encoded public key. }
-        kid: { type: string }
-        use: { type: string, enum: [sig] }
-        alg: { type: string, enum: [EdDSA] }
+        kty:
+          type: string
+          enum:
+            - OKP
+        crv:
+          type: string
+          enum:
+            - Ed25519
+        x:
+          type: string
+          description: Base64url-encoded public key.
+        kid:
+          type: string
+        use:
+          type: string
+          enum:
+            - sig
+        alg:
+          type: string
+          enum:
+            - EdDSA
 
     # ── RBAC ──────────────────────────────────────────────────────────────────
 
     Group:
       type: object
-      required: [id, slug, name, created_at, updated_at]
+      required:
+        - id
+        - slug
+        - name
+        - created_at
+        - updated_at
       properties:
-        id: { type: string }
-        slug: { type: string }
-        name: { type: string }
-        description: { type: string }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     GroupList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
-          items: { $ref: "#/components/schemas/Group" }
-        next_cursor: { type: string }
+          items:
+            $ref: "#/components/schemas/Group"
+        next_cursor:
+          type: string
 
     CreateGroupRequest:
       type: object
-      required: [slug, name]
+      required:
+        - slug
+        - name
       properties:
-        slug: { type: string }
-        name: { type: string }
-        description: { type: string }
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
 
     PatchGroupRequest:
       type: object
       properties:
-        name: { type: string }
-        description: { type: string }
+        name:
+          type: string
+        description:
+          type: string
 
     User:
       type: object
-      required: [id, email, has_password, is_server_admin, disabled, created_at, updated_at]
+      required:
+        - id
+        - email
+        - has_password
+        - is_server_admin
+        - disabled
+        - created_at
+        - updated_at
       properties:
-        id: { type: string }
-        email: { type: string, format: email }
-        display_name: { type: string }
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
         subject:
           type: string
           description: OIDC subject; empty for local-only users.
-        has_password: { type: boolean }
-        is_server_admin: { type: boolean }
-        disabled: { type: boolean }
-        last_seen_at: { type: string, format: date-time }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+        has_password:
+          type: boolean
+        is_server_admin:
+          type: boolean
+        disabled:
+          type: boolean
+        last_seen_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     UserList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
-          items: { $ref: "#/components/schemas/User" }
-        next_cursor: { type: string }
+          items:
+            $ref: "#/components/schemas/User"
+        next_cursor:
+          type: string
 
     CreateUserRequest:
       type: object
-      required: [email]
+      required:
+        - email
       properties:
-        email: { type: string, format: email }
-        display_name: { type: string }
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
         password:
           type: string
           format: password
           minLength: 12
           description: Optional; omit to create an invited user that cannot log in until a credential is set.
-        is_server_admin: { type: boolean }
+        is_server_admin:
+          type: boolean
 
     PatchUserRequest:
       type: object
       properties:
-        display_name: { type: string }
-        disabled: { type: boolean }
-        is_server_admin: { type: boolean }
+        display_name:
+          type: string
+        disabled:
+          type: boolean
+        is_server_admin:
+          type: boolean
 
     SetPasswordRequest:
       type: object
-      required: [password]
+      required:
+        - password
       properties:
-        password: { type: string, format: password, minLength: 12 }
+        password:
+          type: string
+          format: password
+          minLength: 12
 
     RoleGrant:
       type: object
-      required: [id, principal_type, principal_id, role, source, created_at]
+      required:
+        - id
+        - principal_type
+        - principal_id
+        - role
+        - source
+        - created_at
       properties:
-        id: { type: string }
-        principal_type: { type: string, enum: [user, group] }
-        principal_id: { type: string }
+        id:
+          type: string
+        principal_type:
+          type: string
+          enum:
+            - user
+            - group
+        principal_id:
+          type: string
         principal_label:
           type: string
           description: Human handle for the principal — a user's email or a group's slug.
         publisher_id:
           type: string
           description: Empty for a global (all-publishers) grant.
-        role: { type: string, enum: [viewer, editor, reviewer, admin] }
-        source: { type: string, enum: [api, config] }
-        created_at: { type: string, format: date-time }
+        role:
+          type: string
+          enum:
+            - viewer
+            - editor
+            - reviewer
+            - admin
+        source:
+          type: string
+          enum:
+            - api
+            - config
+        created_at:
+          type: string
+          format: date-time
 
     RoleGrantList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
-          items: { $ref: "#/components/schemas/RoleGrant" }
+          items:
+            $ref: "#/components/schemas/RoleGrant"
 
     GrantRequest:
       type: object
-      required: [principal_type, principal_id, role]
+      required:
+        - principal_type
+        - principal_id
+        - role
       properties:
-        principal_type: { type: string, enum: [user, group] }
-        principal_id: { type: string }
-        role: { type: string, enum: [viewer, editor, reviewer, admin] }
+        principal_type:
+          type: string
+          enum:
+            - user
+            - group
+        principal_id:
+          type: string
+        role:
+          type: string
+          enum:
+            - viewer
+            - editor
+            - reviewer
+            - admin
 
     UserAccessGrant:
       type: object
-      required: [id, role, source, via, created_at]
+      required:
+        - id
+        - role
+        - source
+        - via
+        - created_at
       description: >
         One role grant contributing to a user's access. `via: direct` is a
         grant attached to the user; `via: group` is inherited from a group the
         user is a local member of (the group fields identify it). Publisher
         fields are empty for a global (all-publishers) grant.
       properties:
-        id: { type: string }
-        role: { type: string, enum: [viewer, editor, reviewer, admin] }
+        id:
+          type: string
+        role:
+          type: string
+          enum:
+            - viewer
+            - editor
+            - reviewer
+            - admin
         publisher_id:
           type: string
           description: Empty for a global (all-publishers) grant.
-        publisher_slug: { type: string }
-        publisher_name: { type: string }
-        source: { type: string, enum: [api, config] }
-        via: { type: string, enum: [direct, group] }
-        group_id: { type: string }
-        group_slug: { type: string }
-        group_name: { type: string }
-        created_at: { type: string, format: date-time }
+        publisher_slug:
+          type: string
+        publisher_name:
+          type: string
+        source:
+          type: string
+          enum:
+            - api
+            - config
+        via:
+          type: string
+          enum:
+            - direct
+            - group
+        group_id:
+          type: string
+        group_slug:
+          type: string
+        group_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
 
     UserAccess:
       type: object
-      required: [is_server_admin, items]
+      required:
+        - is_server_admin
+        - items
       description: >
         A user's effective access — the Server Admin flag plus every role
         grant held directly or through local group membership. Roles a
         federated user gains from IdP claim groups at sign-in are not listed.
       properties:
-        is_server_admin: { type: boolean }
+        is_server_admin:
+          type: boolean
         items:
           type: array
-          items: { $ref: "#/components/schemas/UserAccessGrant" }
+          items:
+            $ref: "#/components/schemas/UserAccessGrant"
 
     MeGrant:
       type: object
-      required: [role]
+      required:
+        - role
       description: >
         An effective role grant held by the caller. Per-publisher grants carry
         the publisher slug/name; a global (all-publishers) grant leaves the
         publisher fields empty.
       properties:
-        role: { type: string, enum: [viewer, editor, reviewer, admin] }
+        role:
+          type: string
+          enum:
+            - viewer
+            - editor
+            - reviewer
+            - admin
         publisher_id:
           type: string
           description: Empty for a global (all-publishers) grant.
-        publisher_slug: { type: string }
-        publisher_name: { type: string }
+        publisher_slug:
+          type: string
+        publisher_name:
+          type: string
 
     Me:
       type: object
-      required: [authenticated, is_server_admin, grants]
+      required:
+        - authenticated
+        - is_server_admin
+        - grants
       description: Resolved identity and effective authorization for the caller.
       properties:
-        authenticated: { type: boolean }
+        authenticated:
+          type: boolean
         user_id:
           type: string
           description: Registry users.id; empty for a federated caller with no provisioned row.
-        email: { type: string, format: email }
-        display_name: { type: string }
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
         is_server_admin:
           type: boolean
           description: When true, the caller satisfies every publisher-scoped role check.
         issuer:
           type: string
-          enum: [oidc, local]
+          enum:
+            - oidc
+            - local
           description: Which front door authenticated the request.
         grants:
           type: array
-          items: { $ref: "#/components/schemas/MeGrant" }
+          items:
+            $ref: "#/components/schemas/MeGrant"
 
     # ── System ──────────────────────────────────────────────────────────────
 
     StatusResponse:
       type: object
-      required: [status]
+      required:
+        - status
       properties:
         status:
           type: string
-          enum: [ok, unavailable]
+          enum:
+            - ok
+            - unavailable
         error:
           type: string
 
@@ -3201,7 +3847,10 @@ components:
 
     RegistryCounts:
       type: object
-      required: [mcp_servers, agents, publishers]
+      required:
+        - mcp_servers
+        - agents
+        - publishers
       properties:
         mcp_servers:
           type: integer
@@ -3220,7 +3869,11 @@ components:
         Role-grant counts scoped to one publisher. A principal holding two roles
         (deliberate Editor + Reviewer dual-hatting) is counted under each, so
         these can exceed the distinct member total.
-      required: [viewers, editors, reviewers, admins]
+      required:
+        - viewers
+        - editors
+        - reviewers
+        - admins
       properties:
         viewers:
           type: integer
@@ -3236,7 +3889,11 @@ components:
       description: >
         Per-publisher rollup for the scoped admin home. Totals exclude
         soft-deleted entries; breakdowns cover the three live statuses.
-      required: [mcp_servers, agents, members, pending_review]
+      required:
+        - mcp_servers
+        - agents
+        - members
+        - pending_review
       properties:
         mcp_servers:
           type: integer
@@ -3288,7 +3945,13 @@ components:
 
     Publisher:
       type: object
-      required: [id, slug, name, verified, created_at, updated_at]
+      required:
+        - id
+        - slug
+        - name
+        - verified
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
@@ -3310,7 +3973,9 @@ components:
 
     CreatePublisherRequest:
       type: object
-      required: [slug, name]
+      required:
+        - slug
+        - name
       properties:
         slug:
           type: string
@@ -3322,7 +3987,8 @@ components:
 
     PublisherList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -3350,7 +4016,8 @@ components:
 
     ApproveRequest:
       type: object
-      required: [revision]
+      required:
+        - revision
       properties:
         revision:
           type: integer
@@ -3362,7 +4029,9 @@ components:
 
     RejectRequest:
       type: object
-      required: [revision, reason]
+      required:
+        - revision
+        - reason
       properties:
         revision:
           type: integer
@@ -3374,7 +4043,8 @@ components:
 
     RejectDeletionRequest:
       type: object
-      required: [reason]
+      required:
+        - reason
       properties:
         reason:
           type: string
@@ -3386,7 +4056,8 @@ components:
 
     ApproveEntryChangeRequest:
       type: object
-      required: [revision]
+      required:
+        - revision
       properties:
         revision:
           type: integer
@@ -3397,7 +4068,9 @@ components:
 
     RejectEntryChangeRequest:
       type: object
-      required: [revision, reason]
+      required:
+        - revision
+        - reason
       properties:
         revision:
           type: integer
@@ -3409,43 +4082,74 @@ components:
 
     EntryChangeAccepted:
       type: object
-      required: [status, change_id]
+      required:
+        - status
+        - change_id
       properties:
         status:
           type: string
-          enum: [pending_review]
+          enum:
+            - pending_review
         change_id:
           type: string
           description: ULID of the created entry-change request.
 
     PendingEntryChange:
       type: object
-      required: [change_id, action, revision, submitted_at]
+      required:
+        - change_id
+        - action
+        - revision
+        - submitted_at
       description: |
         Summary of an entry's single pending change, attached to the detail
         response for callers who can view private detail.
       properties:
-        change_id: { type: string }
+        change_id:
+          type: string
         action:
           type: string
-          enum: [visibility, deprecation, undeprecation, metadata_edit]
-        revision: { type: integer }
-        submitted_at: { type: string, format: date-time }
-        submitted_by_email: { type: string }
+          enum:
+            - visibility
+            - deprecation
+            - undeprecation
+            - metadata_edit
+        revision:
+          type: integer
+        submitted_at:
+          type: string
+          format: date-time
+        submitted_by_email:
+          type: string
         payload:
           type: object
           additionalProperties: true
 
     ReviewQueueItem:
       type: object
-      required: [kind, publisher_slug, entry_slug, entry_id, submitted_at]
+      required:
+        - kind
+        - publisher_slug
+        - entry_slug
+        - entry_id
+        - submitted_at
       properties:
         kind:
           type: string
-          enum: [mcp_version, agent_version, mcp_deletion, agent_deletion, mcp_change, agent_change]
-        publisher_slug: { type: string }
-        entry_slug: { type: string }
-        entry_id: { type: string, description: ULID of the entry }
+          enum:
+            - mcp_version
+            - agent_version
+            - mcp_deletion
+            - agent_deletion
+            - mcp_change
+            - agent_change
+        publisher_slug:
+          type: string
+        entry_slug:
+          type: string
+        entry_id:
+          type: string
+          description: ULID of the entry
         version:
           type: string
           description: |
@@ -3460,7 +4164,9 @@ components:
           description: |
             Present on `*_version` items only — the author asked for the
             entry to be made public when this submission is approved.
-        submitted_at: { type: string, format: date-time }
+        submitted_at:
+          type: string
+          format: date-time
         submitted_by:
           type: string
           description: JWT subject of the submitter (UUID).
@@ -3473,7 +4179,11 @@ components:
             Present on `*_change` items only — the entry-change-request ULID.
         action:
           type: string
-          enum: [visibility, deprecation, undeprecation, metadata_edit]
+          enum:
+            - visibility
+            - deprecation
+            - undeprecation
+            - metadata_edit
           description: |
             Present on `*_change` items only — the entry-level mutation the
             request will apply on approval.
@@ -3486,11 +4196,13 @@ components:
 
     ReviewQueueList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
-          items: { $ref: "#/components/schemas/ReviewQueueItem" }
+          items:
+            $ref: "#/components/schemas/ReviewQueueItem"
         next_cursor:
           type: string
 
@@ -3507,29 +4219,47 @@ components:
           .../errors/change-already-pending          (409)
           .../errors/change-not-applicable           (409)
       type: object
-      required: [type, title, status]
+      required:
+        - type
+        - title
+        - status
       properties:
-        type:    { type: string, format: uri }
-        title:   { type: string }
-        status:  { type: integer }
-        detail:  { type: string }
-        instance: { type: string }
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
 
     # ── MCP Servers ─────────────────────────────────────────────────────────
 
     PackageTransport:
       type: object
-      required: [type]
+      required:
+        - type
       properties:
         type:
           type: string
-          enum: [stdio, http, sse, streamable_http]
+          enum:
+            - stdio
+            - http
+            - sse
+            - streamable_http
         url:
           type: string
 
     PackageEntry:
       type: object
-      required: [registryType, identifier, version, transport]
+      required:
+        - registryType
+        - identifier
+        - version
+        - transport
       properties:
         registryType:
           type: string
@@ -3549,11 +4279,16 @@ components:
         mirroring the `remotes` array of the MCP registry server.json. Unlike
         a package there is no installable artifact — clients connect straight
         to the URL using the given transport.
-      required: [type, url]
+      required:
+        - type
+        - url
       properties:
         type:
           type: string
-          enum: [http, sse, streamable_http]
+          enum:
+            - http
+            - sse
+            - streamable_http
         url:
           type: string
           format: uri
@@ -3568,7 +4303,8 @@ components:
         server. Structural requirements: `name` is required and unique within
         the enclosing array; `input_schema`, if present, must be a JSON
         Schema object.
-      required: [name]
+      required:
+        - name
       properties:
         name:
           type: string
@@ -3587,7 +4323,12 @@ components:
 
     InstanceTag:
       type: object
-      required: [slug, name, active, created_at, updated_at]
+      required:
+        - slug
+        - name
+        - active
+        - created_at
+        - updated_at
       properties:
         slug:
           type: string
@@ -3602,7 +4343,17 @@ components:
         color:
           type: string
           description: UI badge color hint
-          enum: [gray, red, orange, yellow, green, teal, blue, indigo, purple, pink]
+          enum:
+            - gray
+            - red
+            - orange
+            - yellow
+            - green
+            - teal
+            - blue
+            - indigo
+            - purple
+            - pink
         active:
           type: boolean
           description: >
@@ -3624,7 +4375,8 @@ components:
 
     InstanceTagList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -3633,7 +4385,9 @@ components:
 
     CreateInstanceTagRequest:
       type: object
-      required: [slug, name]
+      required:
+        - slug
+        - name
       properties:
         slug:
           type: string
@@ -3644,7 +4398,17 @@ components:
           type: string
         color:
           type: string
-          enum: [gray, red, orange, yellow, green, teal, blue, indigo, purple, pink]
+          enum:
+            - gray
+            - red
+            - orange
+            - yellow
+            - green
+            - teal
+            - blue
+            - indigo
+            - purple
+            - pink
           default: gray
 
     UpdateInstanceTagRequest:
@@ -3656,19 +4420,36 @@ components:
           type: string
         color:
           type: string
-          enum: [gray, red, orange, yellow, green, teal, blue, indigo, purple, pink]
+          enum:
+            - gray
+            - red
+            - orange
+            - yellow
+            - green
+            - teal
+            - blue
+            - indigo
+            - purple
+            - pink
         active:
           type: boolean
 
     MCPServerLatestVersion:
       type: object
-      required: [version, runtime, protocol_version]
+      required:
+        - version
+        - runtime
+        - protocol_version
       properties:
         version:
           type: string
         runtime:
           type: string
-          enum: [stdio, http, sse, streamable_http]
+          enum:
+            - stdio
+            - http
+            - sse
+            - streamable_http
         protocol_version:
           type: string
         packages:
@@ -3702,7 +4483,15 @@ components:
 
     MCPServer:
       type: object
-      required: [id, namespace, slug, name, visibility, status, created_at, updated_at]
+      required:
+        - id
+        - namespace
+        - slug
+        - name
+        - visibility
+        - status
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
@@ -3724,7 +4513,9 @@ components:
           type: string
         visibility:
           type: string
-          enum: [private, public]
+          enum:
+            - private
+            - public
         status:
           type: string
           # MCPServer.status mirrors the lifecycle column on the row:
@@ -3733,7 +4524,11 @@ components:
           # (soft-deleted tombstone). Public list responses exclude
           # `deleted`; admin reads and detail by namespace/slug can
           # still surface a deleted parent.
-          enum: [draft, published, deprecated, deleted]
+          enum:
+            - draft
+            - published
+            - deprecated
+            - deleted
         created_at:
           type: string
           format: date-time
@@ -3768,7 +4563,10 @@ components:
 
     CreateMCPServerRequest:
       type: object
-      required: [namespace, slug, name]
+      required:
+        - namespace
+        - slug
+        - name
       properties:
         namespace:
           type: string
@@ -3794,7 +4592,8 @@ components:
 
     MCPServerList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -3807,7 +4606,14 @@ components:
 
     MCPServerVersion:
       type: object
-      required: [id, version, runtime, protocol_version, status, created_at, updated_at]
+      required:
+        - id
+        - version
+        - runtime
+        - protocol_version
+        - status
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
@@ -3817,7 +4623,11 @@ components:
           description: Semver string (e.g. 1.2.3)
         runtime:
           type: string
-          enum: [stdio, http, sse, streamable_http]
+          enum:
+            - stdio
+            - http
+            - sse
+            - streamable_http
         protocol_version:
           type: string
         packages:
@@ -3854,13 +4664,19 @@ components:
           # a version becomes `active` when published, `deprecated` when
           # superseded, or `deleted` when withdrawn. Draft / pending /
           # rejected states live on `review_state`, not here.
-          enum: [active, deprecated, deleted]
+          enum:
+            - active
+            - deprecated
+            - deleted
         published_at:
           type: string
           format: date-time
         review_state:
           type: string
-          enum: [none, pending_review, rejected]
+          enum:
+            - none
+            - pending_review
+            - rejected
           description: |
             Change-approval workflow state, orthogonal to `status` and
             `published_at`. Omitted on rows that have never been part of
@@ -3889,7 +4705,9 @@ components:
           type: string
         review_decision:
           type: string
-          enum: [approved, rejected]
+          enum:
+            - approved
+            - rejected
         rejection_reason:
           type: string
           description: Free-text reason persisted on the rejected version row.
@@ -3908,7 +4726,8 @@ components:
 
     MCPServerVersionList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -3917,14 +4736,21 @@ components:
 
     CreateMCPServerVersionRequest:
       type: object
-      required: [version, runtime, protocol_version]
+      required:
+        - version
+        - runtime
+        - protocol_version
       properties:
         version:
           type: string
           description: Semver string (e.g. 1.2.3)
         runtime:
           type: string
-          enum: [stdio, http, sse, streamable_http]
+          enum:
+            - stdio
+            - http
+            - sse
+            - streamable_http
         protocol_version:
           type: string
         packages:
@@ -3961,7 +4787,11 @@ components:
 
     AgentSkill:
       type: object
-      required: [id, name, description, tags]
+      required:
+        - id
+        - name
+        - description
+        - tags
       properties:
         id:
           type: string
@@ -3980,7 +4810,9 @@ components:
 
     AgentLatestVersion:
       type: object
-      required: [version, endpoint_url]
+      required:
+        - version
+        - endpoint_url
       properties:
         version:
           type: string
@@ -4015,7 +4847,15 @@ components:
 
     Agent:
       type: object
-      required: [id, namespace, slug, name, visibility, status, created_at, updated_at]
+      required:
+        - id
+        - namespace
+        - slug
+        - name
+        - visibility
+        - status
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
@@ -4031,7 +4871,9 @@ components:
           $ref: "#/components/schemas/PendingEntryChange"
         visibility:
           type: string
-          enum: [private, public]
+          enum:
+            - private
+            - public
         status:
           type: string
           # Agent.status mirrors the lifecycle column on the row:
@@ -4040,7 +4882,11 @@ components:
           # (soft-deleted tombstone). Public list responses exclude
           # `deleted`; admin reads and detail by namespace/slug can
           # still surface a deleted parent.
-          enum: [draft, published, deprecated, deleted]
+          enum:
+            - draft
+            - published
+            - deprecated
+            - deleted
         created_at:
           type: string
           format: date-time
@@ -4075,7 +4921,10 @@ components:
 
     CreateAgentRequest:
       type: object
-      required: [namespace, slug, name]
+      required:
+        - namespace
+        - slug
+        - name
       properties:
         namespace:
           type: string
@@ -4089,7 +4938,8 @@ components:
 
     AgentList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -4102,7 +4952,13 @@ components:
 
     AgentVersion:
       type: object
-      required: [id, version, endpoint_url, status, created_at, updated_at]
+      required:
+        - id
+        - version
+        - endpoint_url
+        - status
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
@@ -4152,7 +5008,10 @@ components:
           # becomes `active` on publish, `deprecated` when superseded,
           # `deleted` when withdrawn. Pre-publish / pending / rejected
           # states live on `review_state`.
-          enum: [active, deprecated, deleted]
+          enum:
+            - active
+            - deprecated
+            - deleted
         status_message:
           type: string
         published_at:
@@ -4160,7 +5019,10 @@ components:
           format: date-time
         review_state:
           type: string
-          enum: [none, pending_review, rejected]
+          enum:
+            - none
+            - pending_review
+            - rejected
         revision:
           type: integer
           minimum: 1
@@ -4180,7 +5042,9 @@ components:
           type: string
         review_decision:
           type: string
-          enum: [approved, rejected]
+          enum:
+            - approved
+            - rejected
         rejection_reason:
           type: string
         request_public:
@@ -4198,7 +5062,8 @@ components:
 
     AgentVersionList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -4207,7 +5072,9 @@ components:
 
     CreateAgentVersionRequest:
       type: object
-      required: [version, endpoint_url]
+      required:
+        - version
+        - endpoint_url
       properties:
         version:
           type: string
@@ -4262,28 +5129,42 @@ components:
 
     PatchVersionStatusRequest:
       type: object
-      required: [status]
+      required:
+        - status
       properties:
         status:
           type: string
-          enum: [active, deprecated, deleted]
+          enum:
+            - active
+            - deprecated
+            - deleted
         statusMessage:
           type: string
           description: Required when status is deprecated or deleted; must be absent when active.
 
     SetVisibilityRequest:
       type: object
-      required: [visibility]
+      required:
+        - visibility
       properties:
         visibility:
           type: string
-          enum: [public, private]
+          enum:
+            - public
+            - private
 
     # ── Audit ───────────────────────────────────────────────────────────────
 
     AuditEvent:
       type: object
-      required: [id, actor_subject, actor_email, action, resource_type, resource_id, created_at]
+      required:
+        - id
+        - actor_subject
+        - actor_email
+        - action
+        - resource_type
+        - resource_id
+        - created_at
       properties:
         id:
           type: string
@@ -4313,7 +5194,8 @@ components:
 
     AuditEventList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -4328,7 +5210,11 @@ components:
         A privacy-scrubbed view of an audit event suitable for public
         consumption. Actor identity (email, subject) is NEVER exposed;
         only a coarse `actor_role` label is returned.
-      required: [id, action, actor_role, created_at]
+      required:
+        - id
+        - action
+        - actor_role
+        - created_at
       properties:
         id:
           type: string
@@ -4338,7 +5224,9 @@ components:
           description: Normalized action key (e.g. mcp_server_version.published)
         actor_role:
           type: string
-          enum: [publisher, admin]
+          enum:
+            - publisher
+            - admin
           description: >
             Coarse label. "publisher" when the actor is acting on a
             resource in their own publisher namespace; "admin" otherwise.
@@ -4358,7 +5246,8 @@ components:
 
     PublicActivityEventList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -4372,7 +5261,12 @@ components:
       description: >
         One entry in a publisher's members-only activity feed. Names the actor
         (the publisher's own collaborators), unlike the public per-resource feed.
-      required: [id, action, resource_type, resource_slug, created_at]
+      required:
+        - id
+        - action
+        - resource_type
+        - resource_slug
+        - created_at
       properties:
         id:
           type: string
@@ -4404,7 +5298,8 @@ components:
 
     PublisherActivityList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -4415,11 +5310,19 @@ components:
 
     ChangelogEntry:
       type: object
-      required: [resource_type, namespace, slug, name, version, published_at]
+      required:
+        - resource_type
+        - namespace
+        - slug
+        - name
+        - version
+        - published_at
       properties:
         resource_type:
           type: string
-          enum: [mcp_server, agent]
+          enum:
+            - mcp_server
+            - agent
         namespace:
           type: string
         slug:
@@ -4434,7 +5337,8 @@ components:
 
     ChangelogList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -4443,14 +5347,23 @@ components:
 
     Report:
       type: object
-      required: [id, resource_type, resource_id, issue_type, description, status, created_at]
+      required:
+        - id
+        - resource_type
+        - resource_id
+        - issue_type
+        - description
+        - status
+        - created_at
       properties:
         id:
           type: string
           description: ULID
         resource_type:
           type: string
-          enum: [mcp_server, agent]
+          enum:
+            - mcp_server
+            - agent
         resource_id:
           type: string
           description: ULID of the reported resource
@@ -4471,14 +5384,25 @@ components:
             empty when the resource no longer exists.
         issue_type:
           type: string
-          enum: [broken, misleading, spam, security, licensing, outdated, duplicate, other]
+          enum:
+            - broken
+            - misleading
+            - spam
+            - security
+            - licensing
+            - outdated
+            - duplicate
+            - other
         description:
           type: string
           minLength: 5
           maxLength: 4000
         status:
           type: string
-          enum: [pending, reviewed, dismissed]
+          enum:
+            - pending
+            - reviewed
+            - dismissed
         reporter_ip:
           type: string
           description: Admin-only — only present in list responses for authenticated admins
@@ -4495,7 +5419,8 @@ components:
 
     ReportList:
       type: object
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -4504,16 +5429,30 @@ components:
 
     CreateReportRequest:
       type: object
-      required: [resource_type, resource_id, issue_type, description]
+      required:
+        - resource_type
+        - resource_id
+        - issue_type
+        - description
       properties:
         resource_type:
           type: string
-          enum: [mcp_server, agent]
+          enum:
+            - mcp_server
+            - agent
         resource_id:
           type: string
         issue_type:
           type: string
-          enum: [broken, misleading, spam, security, licensing, outdated, duplicate, other]
+          enum:
+            - broken
+            - misleading
+            - spam
+            - security
+            - licensing
+            - outdated
+            - duplicate
+            - other
         description:
           type: string
           minLength: 5
@@ -4521,17 +5460,22 @@ components:
 
     UpdateReportStatusRequest:
       type: object
-      required: [status]
+      required:
+        - status
       properties:
         status:
           type: string
-          enum: [pending, reviewed, dismissed]
+          enum:
+            - pending
+            - reviewed
+            - dismissed
 
     # ── v0 wire format ──────────────────────────────────────────────────────
 
     V0Repository:
       type: object
-      required: [url]
+      required:
+        - url
       properties:
         url:
           type: string
@@ -4545,7 +5489,9 @@ components:
 
     V0ServerDetail:
       type: object
-      required: [name, description]
+      required:
+        - name
+        - description
       properties:
         id:
           type: string
@@ -4581,7 +5527,11 @@ components:
       properties:
         status:
           type: string
-          enum: [active, deprecated, deleted, draft]
+          enum:
+            - active
+            - deprecated
+            - deleted
+            - draft
         statusMessage:
           type: string
         publishedAt:
@@ -4598,7 +5548,9 @@ components:
 
     V0ServerResponse:
       type: object
-      required: [server, _meta]
+      required:
+        - server
+        - _meta
       properties:
         server:
           $ref: "#/components/schemas/V0ServerDetail"
@@ -4610,7 +5562,8 @@ components:
 
     V0ListMetadata:
       type: object
-      required: [count]
+      required:
+        - count
       properties:
         count:
           type: integer
@@ -4619,7 +5572,9 @@ components:
 
     V0ListResponse:
       type: object
-      required: [servers, metadata]
+      required:
+        - servers
+        - metadata
       properties:
         servers:
           type: array
@@ -4630,17 +5585,23 @@ components:
 
     V0StatusPatchRequest:
       type: object
-      required: [status]
+      required:
+        - status
       properties:
         status:
           type: string
-          enum: [active, deprecated, deleted]
+          enum:
+            - active
+            - deprecated
+            - deleted
         statusMessage:
           type: string
 
     V0AllVersionsStatusResponse:
       type: object
-      required: [updatedCount, servers]
+      required:
+        - updatedCount
+        - servers
       properties:
         updatedCount:
           type: integer
@@ -4651,7 +5612,11 @@ components:
 
     V0PublishRequest:
       type: object
-      required: [name, description, version, protocolVersion]
+      required:
+        - name
+        - description
+        - version
+        - protocolVersion
       properties:
         name:
           type: string
@@ -4684,7 +5649,8 @@ components:
 
     V0Error:
       type: object
-      required: [error]
+      required:
+        - error
       properties:
         error:
           type: string
@@ -4693,7 +5659,10 @@ components:
 
     Problem:
       type: object
-      required: [type, title, status]
+      required:
+        - type
+        - title
+        - status
       properties:
         type:
           type: string
