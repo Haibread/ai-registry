@@ -117,6 +117,16 @@ cd web && npm test
 Vitest with Testing Library, no services needed. `npm run test:watch` while
 iterating, `npm run test:coverage` for a report.
 
+### Web — nginx routing
+
+```bash
+test/nginx/routing.sh
+```
+
+Runs [web/nginx.conf](web/nginx.conf) in the web image's nginx base (Docker
+required, no build) and checks that `/metrics` answers 404 instead of being
+proxied to the server.
+
 ### End to end
 
 Playwright drives the SPA against a real server and Keycloak. Start the local
@@ -199,7 +209,7 @@ Docker build like any other.
 | Workflow | Triggers on | What it does | Reproduce locally |
 | --- | --- | --- | --- |
 | [Lint](.github/workflows/lint.yml) | PR to `main`, manual | `pre-commit run --all-files` | `pre-commit run --all-files` |
-| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm test`; `helm template` over several value sets + kubeconform; e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
+| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm test`; nginx routing checks; `helm template` over several value sets + kubeconform; e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
 | [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build only. Push to `main` or a `v*.*.*` tag: build, push to GHCR, Trivy scan | multi-arch (`amd64`, `arm64`) server and web images | `docker build server` and `docker build -f web/Dockerfile .` |
 | [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | packages and pushes the chart to GHCR as OCI | `helm package deploy/helm/ai-registry` |
 | [Release](.github/workflows/release.yml) | a successful Docker run for a `v*` tag | GitHub Release from the matching `CHANGELOG.md` section | — |

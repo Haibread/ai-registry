@@ -21,7 +21,7 @@ production topology — a runbook that lies is worse than no runbook.
 |------------|----------------------------------------------------------|-----------------|
 | `/healthz` | Liveness — is the process alive?                         | 200             |
 | `/readyz`  | Readiness — can this pod serve traffic right now?        | 200 (or 503 during startup / DB outage) |
-| `/metrics` | Prometheus scrape endpoint.                              | 200             |
+| `/metrics` | Prometheus scrape endpoint, on the api Service only.     | 200 (404 through the ingress) |
 
 `/readyz` returning 503 is the first signal for most outages: it removes the pod
 from rotation (kube-proxy / ingress) before users notice.

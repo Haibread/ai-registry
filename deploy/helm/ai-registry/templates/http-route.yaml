@@ -8,7 +8,8 @@ Two routes only:
   * /api → server, so the bulk API traffic reaches the backend directly.
   * /    → web, where nginx serves the SPA AND proxies the remaining backend
            paths (/.well-known/, the A2A agent card, /docs, /openapi.yaml,
-           /config.json, /healthz, /readyz, /metrics). Keeping that long tail in
+           /config.json, /healthz, /readyz). It answers /metrics with a 404: that
+           endpoint is scraped on the api Service only. Keeping that long tail in
            nginx.conf avoids a second, drift-prone copy of the routing table here
            — and avoids routing SPA routes such as /agents/{ns}/{slug} to the
            backend. Gateway API ranks PathPrefix matches by specificity, so /api

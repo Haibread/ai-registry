@@ -22,10 +22,9 @@ spec:
     matchLabels:
       {{- include "ai-registry.api.selectorLabels" . | nindent 6 }}
   endpoints:
-    # /metrics is unauthenticated and scraped over the in-cluster ClusterIP
-    # Service (it carries no bearer token the operator could present). The
-    # shipped Ingress does not route /metrics externally; add a NetworkPolicy if
-    # you need to restrict pod-to-pod scraping.
+    # /metrics is unauthenticated and served only on the api ClusterIP Service;
+    # the Ingress/HTTPRoute send it to nginx, which answers 404. Add a
+    # NetworkPolicy if you need to restrict pod-to-pod scraping.
     - port: http
       path: {{ .Values.api.serviceMonitor.path | default "/metrics" }}
       interval: {{ .Values.api.serviceMonitor.interval | default "30s" }}

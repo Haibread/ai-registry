@@ -151,6 +151,21 @@ jobs:
         working-directory: web
         run: npm test
 
+  # ── Web: nginx routing ───────────────────────────────────────────────────────
+  # Runs web/nginx.conf in the web image's nginx base and asserts that backend
+  # paths meant to stay private (/metrics) are refused rather than proxied.
+  nginx:
+    name: Web nginx routing
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: nginx routing checks
+        run: test/nginx/routing.sh
+
   # ── Helm chart: render validation + kubeconform ──────────────────────────────
   # `helm lint` runs in the Lint workflow (pre-commit). This job renders the
   # chart with default values and with each optional feature enabled, so template
