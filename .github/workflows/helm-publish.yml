@@ -55,6 +55,12 @@ jobs:
           if [[ "$REF_TYPE" == "tag" ]]; then
             chart_version="${REF_NAME#chart-}"
             app_version=$(awk -F'"' '/^appVersion:/ {print $2}' deploy/helm/ai-registry/Chart.yaml)
+            committed=$(awk '/^version:/ {print $2}' deploy/helm/ai-registry/Chart.yaml)
+            if [[ "$committed" != "$chart_version" ]]; then
+              echo "Chart.yaml says ${committed} but the tag says ${chart_version}." >&2
+              echo "Cut releases with scripts/release.sh so the two stay in step." >&2
+              exit 1
+            fi
           else
             branch="${REF_NAME//\//-}"
             short_sha="${SHA:0:7}"

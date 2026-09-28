@@ -207,6 +207,7 @@ pre-commit run golangci-lint --all-files
 | `check-yaml`, `check-merge-conflict`, `check-added-large-files`, `detect-private-key` | YAML syntax, conflict markers, large files, private keys | by hand |
 | `gitleaks` | secrets in the diff | remove the secret, rotate it |
 | `yamllint` | YAML style: block style only, no leading `---` ([.yamllint.yaml](.yamllint.yaml)); Helm templates excluded | by hand |
+| `shellcheck` | shell scripts | by hand |
 | `sqlfluff-lint` | SQL style, PostgreSQL dialect ([.sqlfluff](.sqlfluff)); migrations `000001`–`000023` excluded, since merged migrations are never edited | by hand, or `sqlfluff fix <file>` |
 | `gofmt` | Go formatting | auto-fixed, re-stage |
 | `go-vet`, `golangci-lint` | Go correctness and lint ([server/.golangci.yml](server/.golangci.yml)) | by hand |
@@ -261,6 +262,24 @@ Application and chart are versioned independently:
 - a **`chart-1.2.3`** tag publishes the chart at that version, with the
   `appVersion` committed in
   [Chart.yaml](deploy/helm/ai-registry/Chart.yaml).
+
+[scripts/release.sh](scripts/release.sh) is the only supported way to cut
+either. From an up-to-date, clean `main`, it writes the version into the
+repository, commits, tags, and asks before pushing — the push is what
+publishes:
+
+```bash
+scripts/release.sh 1.2.3                          # application: web/package.json, tag v1.2.3
+scripts/release.sh --chart 0.5.0                  # chart: Chart.yaml + README, tag chart-0.5.0
+scripts/release.sh --chart --app-version 1.2.2 0.5.1
+scripts/release.sh --dry-run 1.2.3                # show the plan, change nothing
+```
+
+An application release needs its `## v1.2.3` section in `CHANGELOG.md`
+committed first. A chart release deploys the latest `v*` tag unless
+`--app-version` names another. The Docker and Helm publish workflows refuse a
+tag that disagrees with the committed version, so a hand-made tag fails
+instead of publishing.
 
 ### Dependency updates
 
