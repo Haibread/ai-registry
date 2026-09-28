@@ -269,7 +269,7 @@ jobs:
             -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
             -e KC_HOSTNAME=http://localhost:8080 \
             -e KC_HOSTNAME_STRICT=false \
-            quay.io/keycloak/keycloak:26.6 start-dev
+            quay.io/keycloak/keycloak:26.7@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c start-dev
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6

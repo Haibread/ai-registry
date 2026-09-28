@@ -18,7 +18,7 @@ name: ai-registry
 services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:18-alpine
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     restart: unless-stopped
     environment:
       POSTGRES_USER: registry
@@ -43,7 +43,7 @@ services:
 
   # ── Keycloak (dev mode, built-in H2 DB) ─────────────────────────────────────
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7
+    image: quay.io/keycloak/keycloak:26.7@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
     command: start-dev --import-realm
     restart: unless-stopped
     environment:
@@ -142,8 +142,9 @@ services:
         condition: service_healthy
     healthcheck:
       test:
-        - "CMD-SHELL"
-        - "wget -q -O /dev/null http://localhost:8081/readyz || exit 1"
+        - "CMD"
+        - "/server"
+        - "--healthcheck"
       interval: 5s
       timeout: 5s
       retries: 20
@@ -155,7 +156,7 @@ services:
   web:
     profiles:
       - dev
-    image: node:26-alpine
+    image: node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80
     restart: unless-stopped
     working_dir: /app
     # Wait for Keycloak's realm endpoint, install deps (node_modules volume
@@ -215,7 +216,7 @@ services:
 
   # ── OTel Collector (observability profile) ──────────────────────────────────
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.161.0
+    image: otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
     profiles:
       - observability
     restart: unless-stopped
@@ -228,7 +229,7 @@ services:
 
   # ── Jaeger (observability profile) ──────────────────────────────────────────
   jaeger:
-    image: jaegertracing/all-in-one:1.65
+    image: jaegertracing/all-in-one:1.65.0@sha256:12fa17a231abded2c3b5b715bd252a043678495c588cbe772173991fbdcdf7c8
     profiles:
       - observability
     restart: unless-stopped

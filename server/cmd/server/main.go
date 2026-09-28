@@ -43,6 +43,7 @@ func run() error {
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	configFile := fs.String("config", "", "path to YAML config file (overrides CONFIG_FILE env var)")
 	bootstrapFile := fs.String("bootstrap-file", "", "path to YAML/JSON bootstrap file; loads initial data then starts the server (overrides config layer's BOOTSTRAP_FILE / bootstrap_file)")
+	healthcheck := fs.Bool("healthcheck", false, "probe the running server's /healthz on the configured HTTP address and exit 0 (healthy) or 1")
 	// Parse only known flags; tolerate unrecognised ones so that test
 	// harnesses (e.g. `go test`) can inject extra arguments without
 	// breaking the server. ContinueOnError already writes the error to
@@ -62,6 +63,9 @@ func run() error {
 	cfg, err := config.Load(*configFile)
 	if err != nil {
 		return err
+	}
+	if *healthcheck {
+		return runHealthcheck(cfg.HTTP.Addr)
 	}
 
 	// Resolve bootstrap file: --bootstrap-file flag wins over the config

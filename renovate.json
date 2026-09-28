@@ -34,10 +34,10 @@
       "datasourceTemplate": "github-releases"
     },
     {
-      "description": "Keycloak image started with `docker run … quay.io/keycloak/keycloak:X.Y start-dev` in the e2e job",
+      "description": "Keycloak image started with `docker run … quay.io/keycloak/keycloak:X.Y@sha256:<digest> start-dev` in the e2e job",
       "customType": "regex",
       "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
-      "matchStrings": ["(?<depName>quay\\.io/keycloak/keycloak):(?<currentValue>[\\w.-]+) start-dev"],
+      "matchStrings": ["(?<depName>quay\\.io/keycloak/keycloak):(?<currentValue>[\\w.-]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))? start-dev"],
       "datasourceTemplate": "docker"
     },
     {
