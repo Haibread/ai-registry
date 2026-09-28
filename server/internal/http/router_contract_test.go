@@ -2,6 +2,9 @@ package http_test
 
 import (
 	"net/http"
+	"reflect"
+	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -143,4 +146,59 @@ func collectRouterRoutes() (map[string]bool, error) {
 		return nil, err
 	}
 	return routes, nil
+}
+
+// TestOpenAPIContract_RateLimitedRoutesDocument429 keeps the spec's 429
+// responses in step with the routes the public rate limiter wraps.
+func TestOpenAPIContract_RateLimitedRoutesDocument429(t *testing.T) {
+	var doc struct {
+		Paths map[string]map[string]yaml.Node `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(api.Spec, &doc); err != nil {
+		t.Fatalf("parsing openapi.yaml: %v", err)
+	}
+
+	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{Logger: discardLogger()})
+
+	var limited int
+	walker := func(method, route string, _ http.Handler, mws ...func(http.Handler) http.Handler) error {
+		isLimited := slices.ContainsFunc(mws, func(mw func(http.Handler) http.Handler) bool {
+			return isRateLimiter(mw)
+		})
+		if !isLimited {
+			return nil
+		}
+		limited++
+		if route != "/" {
+			route = strings.TrimSuffix(route, "/")
+		}
+		node, ok := doc.Paths[route][strings.ToLower(method)]
+		if !ok {
+			return nil // reported by TestOpenAPIContract_MatchesRouter
+		}
+		var op struct {
+			Responses map[string]yaml.Node `yaml:"responses"`
+		}
+		if err := node.Decode(&op); err != nil {
+			return err
+		}
+		if _, ok := op.Responses["429"]; !ok {
+			t.Errorf("%s %s is rate-limited but openapi.yaml documents no 429 response", method, route)
+		}
+		return nil
+	}
+	if err := chi.Walk(mux, walker); err != nil {
+		t.Fatalf("walking router: %v", err)
+	}
+	if limited == 0 {
+		t.Fatal("no rate-limited route found; the middleware detection is broken")
+	}
+}
+
+// isRateLimiter matches middleware.RateLimit's closure by symbol name: the
+// compiler inlines RateLimit into its callers, so each call site gets its own
+// copy of the closure and code pointers cannot be compared.
+func isRateLimiter(mw func(http.Handler) http.Handler) bool {
+	name := runtime.FuncForPC(reflect.ValueOf(mw).Pointer()).Name()
+	return strings.Contains(name, ".RateLimit.func")
 }

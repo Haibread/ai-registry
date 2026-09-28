@@ -18,6 +18,7 @@ import (
 	"github.com/haibread/ai-registry/internal/http/handlers"
 	"github.com/haibread/ai-registry/internal/http/middleware"
 	"github.com/haibread/ai-registry/internal/observability"
+	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
@@ -156,6 +157,9 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	requireReviewerNS := auth.RequirePublisherRole(deps.DB, domain.RoleReviewer, resolvePublisherByNamespace)
 
 	r := chi.NewRouter()
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		problem.Write(w, http.StatusNotFound, "not-found", "no route matches this path", req.URL.Path)
+	})
 
 	// ── Core middleware ───────────────────────────────────────────────────────
 	// Defensive response headers (CSP, X-Frame-Options, …). TLS/HSTS is handled

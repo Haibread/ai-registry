@@ -4,18 +4,20 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/haibread/ai-registry/internal/observability"
+	"github.com/haibread/ai-registry/internal/problem"
 )
 
 // maxBuckets is the upper bound on tracked IPs. When the map is full, new
 // source IPs are rejected with 429 rather than growing the map unboundedly.
 // A periodic cleanup (every 100 requests) keeps the count well below this
 // ceiling under normal traffic.
-const maxBuckets = 100_000
+var maxBuckets = 100_000
 
 type bucket struct {
 	count       int
@@ -32,7 +34,7 @@ type rateLimiter struct {
 }
 
 // RateLimit returns middleware that limits each unique IP to max requests per window.
-// When the limit is exceeded it writes 429 Too Many Requests with a Retry-After header.
+// When the limit is exceeded it writes a 429 rate-limited problem with a Retry-After header.
 // Cleanup of stale entries happens lazily on every 100th request (amortised O(1)).
 // If metrics is non-nil, each rejection increments registry.ratelimit.hits.
 // trustedProxy is passed to ClientIP to derive the per-client key.
@@ -68,8 +70,7 @@ func RateLimit(max int, window time.Duration, metrics *observability.Metrics, tr
 					if metrics != nil {
 						metrics.RateLimitHits.Add(r.Context(), 1)
 					}
-					w.Header().Set("Retry-After", fmt.Sprintf("%d", int(window.Seconds())))
-					http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+					writeRateLimited(w, r, int(window.Seconds()))
 					return
 				}
 				b = &bucket{windowStart: now}
@@ -91,8 +92,7 @@ func RateLimit(max int, window time.Duration, metrics *observability.Metrics, tr
 				if metrics != nil {
 					metrics.RateLimitHits.Add(r.Context(), 1)
 				}
-				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				writeRateLimited(w, r, retryAfter)
 				return
 			}
 
@@ -102,6 +102,12 @@ func RateLimit(max int, window time.Duration, metrics *observability.Metrics, tr
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func writeRateLimited(w http.ResponseWriter, r *http.Request, retryAfter int) {
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	problem.Write(w, http.StatusTooManyRequests, "rate-limited",
+		fmt.Sprintf("request rate limit exceeded; retry in %d seconds", retryAfter), r.URL.Path)
 }
 
 // ClientIP returns the client IP. X-Forwarded-For is only consulted when the

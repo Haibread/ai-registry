@@ -1,6 +1,8 @@
 package middleware_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	"github.com/haibread/ai-registry/internal/http/middleware"
+	"github.com/haibread/ai-registry/internal/problem"
 )
 
 func TestRateLimit_WithinLimit(t *testing.T) {
@@ -202,5 +205,72 @@ func TestRateLimit_RetryAfterHeader(t *testing.T) {
 	}
 	if got := rec.Header().Get("Retry-After"); got == "" {
 		t.Error("expected Retry-After header on 429 response")
+	}
+}
+
+func assertRateLimitedProblem(t *testing.T, rec *httptest.ResponseRecorder, path string) {
+	t.Helper()
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/problem+json" {
+		t.Errorf("Content-Type = %q, want application/problem+json", got)
+	}
+	if got := rec.Header().Get("Retry-After"); got == "" {
+		t.Error("missing Retry-After header")
+	}
+	var p problem.Detail
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatalf("body is not JSON: %v (%q)", err, rec.Body.String())
+	}
+	if p.Type != "https://registry/errors/rate-limited" {
+		t.Errorf("type = %q, want .../rate-limited", p.Type)
+	}
+	if p.Status != http.StatusTooManyRequests {
+		t.Errorf("status field = %d, want 429", p.Status)
+	}
+	if p.Detail == "" {
+		t.Error("detail is empty")
+	}
+	if p.Instance != path {
+		t.Errorf("instance = %q, want %q", p.Instance, path)
+	}
+}
+
+func TestRateLimit_OverLimitIsProblemJSON(t *testing.T) {
+	handler := middleware.RateLimit(1, time.Minute, nil, nil)(okHandler())
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/changelog", nil)
+		req.RemoteAddr = "1.2.3.4:5678"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if i == 1 {
+			assertRateLimitedProblem(t, rec, "/api/v1/changelog")
+		}
+	}
+}
+
+func TestRateLimit_BucketTableFullIsProblemJSON(t *testing.T) {
+	middleware.SetMaxBuckets(t, 3)
+	handler := middleware.RateLimit(10, time.Minute, nil, nil)(okHandler())
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = fmt.Sprintf("10.0.0.%d:1", i)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: status = %d, want 200", i, rec.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.RemoteAddr = "192.0.2.1:1"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assertRateLimitedProblem(t, rec, "/x")
+	if got := rec.Header().Get("Retry-After"); got != "60" {
+		t.Errorf("Retry-After = %q, want 60 (the window)", got)
 	}
 }

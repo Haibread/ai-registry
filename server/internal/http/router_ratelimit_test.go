@@ -91,3 +91,45 @@ func TestPublicRateLimitRPM_ZeroDefaultsTo1000(t *testing.T) {
 		t.Fatalf("the very first request was rate-limited — PublicRateLimitRPM=0 fallback is broken")
 	}
 }
+
+func TestPublicRateLimit_AnswersProblemJSON(t *testing.T) {
+	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{
+		Logger:             discardLogger(),
+		PublicRateLimitRPM: 1,
+	})
+
+	var rec *httptest.ResponseRecorder
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/changelog", nil)
+		req.RemoteAddr = "192.0.2.1:1234"
+		rec = httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+	}
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/problem+json" {
+		t.Errorf("Content-Type = %q, want application/problem+json", got)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("missing Retry-After header")
+	}
+}
+
+func TestUnknownRoute_AnswersProblemJSON(t *testing.T) {
+	mux := stdhttp.NewRouterForTest(stdhttp.RouterDeps{Logger: discardLogger()})
+
+	for _, path := range []string{"/nope", "/api/v1/nope"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", path, rec.Code)
+		}
+		if got := rec.Header().Get("Content-Type"); got != "application/problem+json" {
+			t.Errorf("%s: Content-Type = %q, want application/problem+json", path, got)
+		}
+	}
+}
