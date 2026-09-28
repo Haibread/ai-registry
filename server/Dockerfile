@@ -53,7 +53,7 @@ LABEL org.opencontainers.image.title="ai-registry-server" \
       org.opencontainers.image.source="https://github.com/haibread/ai-registry" \
       org.opencontainers.image.url="https://github.com/haibread/ai-registry" \
       org.opencontainers.image.documentation="https://github.com/haibread/ai-registry/blob/main/README.md" \
-      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="haibread"
 
 COPY --from=builder /out/server /server
