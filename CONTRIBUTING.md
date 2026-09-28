@@ -19,10 +19,11 @@ it is in [README.md](README.md#getting-started).
 | Docker + Compose plugin | recent | integration tests (testcontainers), local stack |
 | pre-commit | ≥ 3.2 | commit gate |
 | golangci-lint | v2.12.2 | `golangci-lint` hook |
-| helm | 3.x | `helm-lint` hook, chart rendering |
+| helm | v4.3.0 | `helm-lint` hook, chart rendering |
 | helm-docs | v1.14.2 | `helm-docs` hook |
 | hadolint | v2.12.0 | `hadolint` hook |
 | actionlint | v1.7.12 | `actionlint` hook |
+| kubeconform | v0.6.7 | chart schema validation ([deploy/helm/validate.sh](deploy/helm/validate.sh)) |
 | trivy | recent | reproducing the CI image and config scans |
 
 The versions are the ones CI installs. Go and Node come from their upstream
@@ -46,7 +47,11 @@ go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 ```
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | DESIRED_VERSION=v4.3.0 bash
 ```
 
 hadolint:
@@ -216,10 +221,10 @@ Docker build like any other.
 | Workflow | Triggers on | What it does | Reproduce locally |
 | --- | --- | --- | --- |
 | [Lint](.github/workflows/lint.yml) | PR to `main`, manual | `pre-commit run --all-files` | `pre-commit run --all-files` |
-| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm test`; nginx routing checks; `helm template` over several value sets + kubeconform; e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
+| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm test`; nginx routing checks; `helm lint`, `helm template` over several value sets + kubeconform ([deploy/helm/validate.sh](deploy/helm/validate.sh)); e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
 | [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build, no push. Push to `main` or a `v*.*.*` tag: build and push to GHCR | multi-arch (`amd64`, `arm64`) server and web images. Without a push, an `amd64` copy is loaded and scanned with `trivy image`; after a push, the pushed digest is scanned. Fails on a fixable `HIGH`/`CRITICAL` CVE; all findings go to code scanning | [Scanning locally](#scanning-locally) |
 | [Security](.github/workflows/security.yml) | PR to `main`, push to `main`, manual | `trivy config` over the Dockerfiles and the Helm chart; fails on a `HIGH`/`CRITICAL` misconfiguration, all findings go to code scanning | `trivy config --severity HIGH,CRITICAL --exit-code 1 .` |
-| [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | packages and pushes the chart to GHCR as OCI | `helm package deploy/helm/ai-registry` |
+| [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | runs [deploy/helm/validate.sh](deploy/helm/validate.sh), then packages and pushes the chart to GHCR as OCI; nothing is published if validation fails | `deploy/helm/validate.sh && helm package deploy/helm/ai-registry` |
 | [Release](.github/workflows/release.yml) | a successful Docker run for a `v*` tag | GitHub Release from the matching `CHANGELOG.md` section | — |
 
 A PR is ready to merge when Lint, Quality, Docker and Security are green.
