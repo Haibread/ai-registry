@@ -225,6 +225,10 @@ func (h *MCPHandlers) CreateServer(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("slug: %s", err), r.URL.Path)
 		return
 	}
+	if err := domain.ValidateMCPServerURLs(body.HomepageURL, body.RepoURL); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		return
+	}
 
 	publisherID, err := h.db.GetPublisherBySlug(r.Context(), body.Namespace)
 	if errors.Is(err, store.ErrNotFound) {
@@ -632,6 +636,10 @@ func (h *MCPHandlers) PatchServer(w http.ResponseWriter, r *http.Request) {
 			"name is required", r.URL.Path)
 		return
 	}
+	if err := validateMCPMetadataURLs(p, srv); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		return
+	}
 
 	// Editors enqueue the metadata edit for review; Server Admins apply now.
 	if !auth.IsServerAdminFromContext(r.Context()) {
@@ -658,6 +666,19 @@ func (h *MCPHandlers) PatchServer(w http.ResponseWriter, r *http.Request) {
 		ResourceID: srv.ID, ResourceNS: ns, ResourceSlug: slug,
 	})
 	writeJSON(w, r, http.StatusOK, serverToResponse(updated))
+}
+
+// validateMCPMetadataURLs checks the link fields a metadata edit sets. Values
+// equal to the stored ones are skipped so pre-validation rows stay editable.
+func validateMCPMetadataURLs(p store.UpdateMCPServerParams, current *store.MCPServerRow) error {
+	homepageURL, repoURL := p.HomepageURL, p.RepoURL
+	if homepageURL == current.HomepageURL {
+		homepageURL = ""
+	}
+	if repoURL == current.RepoURL {
+		repoURL = ""
+	}
+	return domain.ValidateMCPServerURLs(homepageURL, repoURL)
 }
 
 // ── DELETE /api/v1/mcp/servers/{namespace}/{slug} ─────────────────────────

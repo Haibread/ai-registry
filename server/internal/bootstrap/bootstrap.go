@@ -844,12 +844,23 @@ func validateSpec(s *Spec) error {
 		if srv.Name == "" {
 			errs = append(errs, prefix+": name is required")
 		}
+		if err := domain.ValidateHTTPURL("homepage_url", srv.HomepageURL); err != nil {
+			errs = append(errs, prefix+": "+err.Error())
+		}
+		if err := domain.ValidateHTTPURL("repository_url", srv.RepoURL); err != nil {
+			errs = append(errs, prefix+": "+err.Error())
+		}
 		for j, v := range srv.Versions {
 			if v.Version == "" {
 				errs = append(errs, fmt.Sprintf("%s.versions[%d]: version is required", prefix, j))
 			}
 			if len(v.Packages) == 0 && len(v.Remotes) == 0 {
 				errs = append(errs, fmt.Sprintf("%s.versions[%d]: at least one package or remote is required", prefix, j))
+			}
+			for k, rm := range v.Remotes {
+				if err := domain.ValidateHTTPURL(fmt.Sprintf("remotes[%d].url", k), rm.URL); err != nil {
+					errs = append(errs, fmt.Sprintf("%s.versions[%d]: %s", prefix, j, err))
+				}
 			}
 		}
 	}
@@ -873,6 +884,9 @@ func validateSpec(s *Spec) error {
 			}
 			if v.EndpointURL == "" {
 				errs = append(errs, fmt.Sprintf("%s.versions[%d]: endpoint_url is required", prefix, j))
+			}
+			if err := domain.ValidateAgentVersionURLs(v.EndpointURL, v.DocumentationURL, v.IconURL, nil); err != nil {
+				errs = append(errs, fmt.Sprintf("%s.versions[%d]: %s", prefix, j, err))
 			}
 		}
 	}

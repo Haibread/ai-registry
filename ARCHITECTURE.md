@@ -311,6 +311,11 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
   headers are never logged.
 - **Errors are RFC 7807 problem documents**, with discriminated `type`s for the
   conflicts a client must tell apart.
+- **Entry links are absolute `http(s)` URLs.** Every write path — API create,
+  patch, version create, change-request submit and approve, bootstrap — checks
+  them with `domain.ValidateHTTPURL`, so `javascript:` or `data:` links never
+  reach the catalog. The check runs at write time only: stored values are not
+  re-validated on read, and a metadata edit leaves an unchanged link alone.
 - **API-exposed IDs are ULIDs.**
 - **Migrations are forward-only.** Down files exist for local convenience;
   production never runs them.
