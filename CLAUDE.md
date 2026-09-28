@@ -5,7 +5,7 @@ Guidance for Claude Code when working in this repository.
 ## Project
 
 AI Registry — a centralized catalog for AI ecosystem artifacts (MCP servers,
-A2A agents, more planned), exposed via a versioned HTTP API with two SPA
+A2A agents), exposed via a versioned HTTP API with two SPA
 clients (read-only user UI, authenticated admin UI).
 
 ## Tech stack
@@ -54,7 +54,7 @@ clients (read-only user UI, authenticated admin UI).
    from context — never create ad-hoc providers.
 5. **Writes are authorized server-side.** Write endpoints require a valid
    bearer token and the right role on the owning publisher (or Server Admin);
-   never rely on the UI alone. Reads are public by default (configurable).
+   never rely on the UI alone. Reads of public entries need no token.
 
 ## Conventions
 

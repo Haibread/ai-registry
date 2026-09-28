@@ -226,7 +226,7 @@ describe('AdminAgentDetail', () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
-    // One transition surface per action (P3 duplicate-affordance): for a
+    // One transition surface per action: for a
     // published entry the stepper is informational only; deprecation happens
     // via the confirmed DeprecateButton, covered above.
     expect(screen.queryByTitle(/transition to/i)).not.toBeInTheDocument()

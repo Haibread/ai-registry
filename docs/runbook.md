@@ -149,13 +149,9 @@ with a new migration.
 
 ## 6. Database backup & restore
 
-Backups use CloudNativePG's Barman integration. They are **not** configured in the
-default chart — see `docs/db-backup.md` for the full playbook. Summary:
-
-- Continuous WAL archiving + scheduled base backups land in object storage.
-- Point-in-time recovery (PITR) is the target recovery mode; RPO ≤ 5 min, RTO
-  ~15 min for a single-region restore.
-- **Test your restore quarterly.** A backup you've never restored is not a backup.
+Backups use CloudNativePG's Barman integration: continuous WAL archiving plus
+scheduled base backups in object storage, restored by point-in-time recovery.
+Setup, restore and the restore drill are in [db-backup.md](db-backup.md).
 
 ---
 
