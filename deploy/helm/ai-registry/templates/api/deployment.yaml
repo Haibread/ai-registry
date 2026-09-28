@@ -51,6 +51,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "ai-registry.api.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ $v.shutdown.terminationGracePeriodSeconds }}
       securityContext:
         {{- toYaml $v.podSecurityContext | nindent 8 }}
       containers:
@@ -78,6 +79,10 @@ spec:
             {{- end }}
             {{- with $v.publicBaseURL }}
             - name: PUBLIC_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $v.shutdown.drainDelay }}
+            - name: SHUTDOWN_DRAIN_DELAY
               value: {{ . | quote }}
             {{- end }}
             # ── Database (pool sizing) ──────────────────────────────────────

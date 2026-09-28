@@ -803,3 +803,44 @@ func TestLoad_AuthSweepInterval(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_ShutdownDrainDelay(t *testing.T) {
+	yamlOnly := `
+database:
+  url: "postgres://p:p@localhost/db"
+auth:
+  oidc_issuer: "https://auth.example.com/realm"
+http:
+  shutdown_drain_delay: "12s"
+`
+	tests := []struct {
+		name string
+		yaml string
+		env  string
+		want time.Duration
+	}{
+		{"default", "", "", 5 * time.Second},
+		{"from YAML", yamlOnly, "", 12 * time.Second},
+		{"env wins over YAML", yamlOnly, "3s", 3 * time.Second},
+		{"zero disables", "", "0s", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := ""
+			if tt.yaml != "" {
+				path = writeConfigFile(t, tt.yaml)
+			}
+			t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+			t.Setenv("OIDC_ISSUER", "http://keycloak:8080/realms/ai-registry")
+			t.Setenv("SHUTDOWN_DRAIN_DELAY", tt.env)
+
+			cfg, err := config.Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.HTTP.ShutdownDrainDelay != tt.want {
+				t.Errorf("ShutdownDrainDelay = %v, want %v", cfg.HTTP.ShutdownDrainDelay, tt.want)
+			}
+		})
+	}
+}

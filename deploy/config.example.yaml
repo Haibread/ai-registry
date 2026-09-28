@@ -30,6 +30,11 @@ http:
   # redirects. Empty makes the agent card return HTTP 500 rather than
   # advertise localhost to external consumers. Example: "https://registry.example.com".
   public_base_url: ""
+  # On SIGTERM/SIGINT, /readyz answers 503 for this long while requests are
+  # still served, so load balancers stop routing here before the listener
+  # closes. "0s" disables the delay. Keep the orchestrator's grace period above
+  # this plus the 30s in-flight drain.
+  shutdown_drain_delay: "5s"
 
 database:
   # [REQUIRED] PostgreSQL DSN.

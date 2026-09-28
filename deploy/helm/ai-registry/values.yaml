@@ -257,6 +257,18 @@ api:
   # agent card, as the access-token issuer and to derive the OIDC redirects.
   publicBaseURL: ~
 
+  # ── Shutdown ─────────────────────────────────────────────────────────────
+  shutdown:
+    # -- (string) How long the server keeps serving after SIGTERM, with
+    # `/readyz` failing, before it closes its listener — time for endpoints and
+    # load balancers to stop routing to the pod. Go duration; "0s" disables.
+    # Unset → server default (5s).
+    drainDelay: ~
+    # -- Seconds Kubernetes waits after SIGTERM before killing the pod. Must
+    # exceed `drainDelay` + the server's 30s in-flight request drain + its 10s
+    # telemetry flush.
+    terminationGracePeriodSeconds: 50
+
   # ── Observability ────────────────────────────────────────────────────────
   # -- Structured log level: debug | info | warn | error.
   logLevel: info

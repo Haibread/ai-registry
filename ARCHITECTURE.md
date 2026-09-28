@@ -51,8 +51,11 @@ OpenAPI document at `/openapi.yaml`, `/config.json` for the SPA, the
 On start-up, in order: load configuration, set up OpenTelemetry, run the
 database migrations, seed the bootstrap Server Admin, reconcile the
 configuration-managed instance tags, apply the optional bootstrap file, then
-serve. `SIGINT` / `SIGTERM` trigger a graceful `http.Server.Shutdown` followed by
-a telemetry flush. See [server/cmd/server/main.go](server/cmd/server/main.go).
+serve. `SIGINT` / `SIGTERM` first make `/readyz` answer 503 while requests are
+still served for the drain delay (`SHUTDOWN_DRAIN_DELAY`), so load balancers stop
+routing to the pod before its listener closes; then a graceful
+`http.Server.Shutdown` lets in-flight requests finish, followed by a telemetry
+flush. See [server/cmd/server/main.go](server/cmd/server/main.go).
 
 | Package | Responsibility |
 | --- | --- |
