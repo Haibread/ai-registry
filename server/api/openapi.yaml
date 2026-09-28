@@ -47,7 +47,10 @@ paths:
     get:
       operationId: readyz
       summary: Readiness probe
-      description: Returns 200 when the service is ready to accept traffic (DB reachable).
+      description: >
+        Returns 200 when the service is ready to accept traffic (DB reachable).
+        Returns 503 with status `draining` from the moment the server receives
+        SIGTERM/SIGINT, while it keeps serving for the configured drain delay.
       tags:
         - system
       responses:
@@ -3832,6 +3835,7 @@ components:
           enum:
             - ok
             - unavailable
+            - draining
         error:
           type: string
 

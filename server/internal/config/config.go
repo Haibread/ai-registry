@@ -216,6 +216,10 @@ type HTTPConfig struct {
 	// is empty rather than silently advertising localhost to external
 	// consumers.
 	PublicBaseURL string
+	// ShutdownDrainDelay is how long the server keeps serving after SIGTERM,
+	// with /readyz failing, before it stops accepting connections. It gives
+	// load balancers time to stop routing here. Zero disables the delay.
+	ShutdownDrainDelay time.Duration
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -251,6 +255,7 @@ type fileHTTPConfig struct {
 	TrustedProxyCIDR   string   `yaml:"trusted_proxy_cidr"`
 	PublicRateLimitRPM int      `yaml:"public_rate_limit_rpm"`
 	PublicBaseURL      string   `yaml:"public_base_url"`
+	ShutdownDrainDelay string   `yaml:"shutdown_drain_delay"`
 }
 
 type fileDatabaseConfig struct {
@@ -314,6 +319,7 @@ func defaultFileConfig() fileConfig {
 			WriteTimeout:       "30s",
 			IdleTimeout:        "120s",
 			PublicRateLimitRPM: 1000,
+			ShutdownDrainDelay: "5s",
 		},
 		Database: fileDatabaseConfig{
 			MaxConns: 25,
@@ -369,6 +375,7 @@ func Load(configFile string) (*Config, error) {
 	readTimeout := parseDurationDefault(fc.HTTP.ReadTimeout, 30*time.Second)
 	writeTimeout := parseDurationDefault(fc.HTTP.WriteTimeout, 30*time.Second)
 	idleTimeout := parseDurationDefault(fc.HTTP.IdleTimeout, 120*time.Second)
+	shutdownDrainDelay := parseDurationDefault(fc.HTTP.ShutdownDrainDelay, 5*time.Second)
 	accessTokenTTL := parseDurationDefault(fc.Auth.AccessTokenTTL, 15*time.Minute)
 	refreshTokenTTL := parseDurationDefault(fc.Auth.RefreshTokenTTL, 12*time.Hour)
 	sweepInterval := parseDurationDefault(fc.Auth.SweepInterval, 15*time.Minute)
@@ -384,6 +391,7 @@ func Load(configFile string) (*Config, error) {
 			TrustedProxyCIDR:   envString("TRUSTED_PROXY_CIDR", fc.HTTP.TrustedProxyCIDR),
 			PublicRateLimitRPM: envInt("PUBLIC_RATE_LIMIT_RPM", fc.HTTP.PublicRateLimitRPM),
 			PublicBaseURL:      envString("PUBLIC_BASE_URL", fc.HTTP.PublicBaseURL),
+			ShutdownDrainDelay: envDuration("SHUTDOWN_DRAIN_DELAY", shutdownDrainDelay),
 		},
 		Database: DatabaseConfig{
 			URL:      envString("DATABASE_URL", fc.Database.URL),

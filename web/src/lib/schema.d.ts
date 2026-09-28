@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * Readiness probe
-         * @description Returns 200 when the service is ready to accept traffic (DB reachable).
+         * @description Returns 200 when the service is ready to accept traffic (DB reachable). Returns 503 with status `draining` from the moment the server receives SIGTERM/SIGINT, while it keeps serving for the configured drain delay.
          */
         get: operations["readyz"];
         put?: never;
@@ -1797,7 +1797,7 @@ export interface components {
         };
         StatusResponse: {
             /** @enum {string} */
-            status: "ok" | "unavailable";
+            status: "ok" | "unavailable" | "draining";
             error?: string;
         };
         StatusBreakdown: {

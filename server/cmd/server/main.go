@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -253,6 +254,7 @@ func run() error {
 	}
 
 	// ── HTTP server ──────────────────────────────────────────────────────────
+	var draining atomic.Bool
 	handler := registryhttp.NewRouter(registryhttp.RouterDeps{
 		Logger:             logger,
 		DB:                 db,
@@ -266,6 +268,7 @@ func run() error {
 		OIDC:               oidcBroker,
 		LocalLoginEnabled:  cfg.Auth.LocalLoginEnabled,
 		OIDCEnabled:        oidcEnabled,
+		Draining:           &draining,
 	})
 	srv := registryhttp.NewServer(handler, registryhttp.ServerConfig{
 		Addr:         cfg.HTTP.Addr,
@@ -303,13 +306,25 @@ func run() error {
 			return err
 		}
 	case sig := <-quit:
-		logger.Info("received signal, shutting down", slog.String("signal", sig.String()))
+		logger.Info("received signal, draining before shutdown",
+			slog.String("signal", sig.String()),
+			slog.Duration("drain_delay", cfg.HTTP.ShutdownDrainDelay),
+		)
 		stopSweep()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		// A second signal skips the rest of the drain delay.
+		skipDelay, cancelDelay := context.WithCancel(context.Background())
+		defer cancelDelay()
+		go func() {
+			select {
+			case <-quit:
+				cancelDelay()
+			case <-skipDelay.Done():
+			}
+		}()
+		if err := srv.DrainAndShutdown(skipDelay, &draining, cfg.HTTP.ShutdownDrainDelay, 30*time.Second); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
+		logger.Info("server stopped")
 	}
 
 	return nil

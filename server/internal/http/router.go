@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -52,6 +53,9 @@ type RouterDeps struct {
 	// OIDCEnabled reports whether the broker is configured, surfaced to the SPA
 	// via /config.json so it knows whether to render the SSO button.
 	OIDCEnabled bool
+	// Draining is set on shutdown to make /readyz fail while the server keeps
+	// serving. Nil in tests that never shut down.
+	Draining *atomic.Bool
 }
 
 // NewRouter builds and returns the fully wrapped HTTP handler: the chi router
@@ -175,7 +179,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 	// ── System endpoints ──────────────────────────────────────────────────────
 	r.Get("/healthz", handlers.Healthz)
-	r.Get("/readyz", handlers.Readyz(deps.DB))
+	r.Get("/readyz", handlers.Readyz(deps.DB, deps.Draining))
 	// /metrics is unauthenticated: Prometheus scrapes it on the api ClusterIP
 	// Service and presents no bearer token. It is not public: the Ingress and
 	// HTTPRoute send it to nginx, which answers 404. Restrict pod-to-pod access

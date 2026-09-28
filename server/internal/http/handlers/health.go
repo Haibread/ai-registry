@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 
 	"github.com/haibread/ai-registry/internal/auth"
 	"github.com/haibread/ai-registry/internal/domain"
@@ -28,9 +29,15 @@ func Healthz(w http.ResponseWriter, r *http.Request) {
 }
 
 // Readyz returns a handler for GET /readyz (readiness probe).
-// It returns 200 when the database is reachable, 503 otherwise.
-func Readyz(db Pinger) http.HandlerFunc {
+// It returns 503 once draining is set (the server is shutting down), otherwise
+// 200 when the database is reachable and 503 when it is not. A nil draining
+// flag is never set.
+func Readyz(db Pinger, draining *atomic.Bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if draining != nil && draining.Load() {
+			writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"status": "draining"})
+			return
+		}
 		if err := db.Ping(r.Context()); err != nil {
 			slog.ErrorContext(r.Context(), "readyz: database ping failed", slog.String("err", err.Error()))
 			writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})

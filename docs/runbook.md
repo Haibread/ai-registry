@@ -21,7 +21,7 @@ production topology — a runbook that lies is worse than no runbook.
 | Path       | Purpose                                                  | Expected status |
 |------------|----------------------------------------------------------|-----------------|
 | `/healthz` | Liveness — is the process alive?                         | 200             |
-| `/readyz`  | Readiness — can this pod serve traffic right now?        | 200 (or 503 during startup / DB outage) |
+| `/readyz`  | Readiness — can this pod serve traffic right now?        | 200 (or 503 during startup / DB outage / shutdown drain) |
 | `/metrics` | Prometheus scrape endpoint, on the api Service only.     | 200 (404 through the ingress) |
 
 `/readyz` returning 503 is the first signal for most outages: it removes the pod
@@ -65,7 +65,8 @@ Common root causes:
 
 **Triage**
 
-1. Confirm the DB is the culprit — `/readyz` only fails if the DB ping fails.
+1. Confirm the DB is the culprit — `/readyz` fails only when the DB ping fails
+   (`"status":"unavailable"`) or the pod is shutting down (`"status":"draining"`).
 2. Check Postgres connection-pool saturation:
 
    ```sql
