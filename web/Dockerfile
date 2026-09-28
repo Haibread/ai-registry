@@ -1,15 +1,15 @@
 # syntax=docker/dockerfile:1
-# Build context: repository root (docker-compose sets context: ..)
+# Build context: repository root (docker build -f web/Dockerfile .)
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 # Pin to the native BUILDPLATFORM: the Vite output is static and
 # architecture-independent, so the (heavy) node build runs once on the host arch
 # and never under QEMU emulation. The per-arch runtime nginx layer below pulls
 # the matching architecture automatically.
-FROM --platform=$BUILDPLATFORM node:26-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS builder
 WORKDIR /app
 
-COPY web/package.json web/package-lock.json* ./
+COPY web/package.json web/package-lock.json ./
 # BuildKit cache mount keeps the npm cache between builds without adding a layer.
 RUN --mount=type=cache,target=/root/.npm npm ci
 
@@ -25,7 +25,7 @@ RUN npm run generate && npm run build \
  && mkdir /app/conf.d
 
 # ── Runtime (nginx) ───────────────────────────────────────────────────────────
-FROM nginxinc/nginx-unprivileged:alpine AS runner
+FROM nginxinc/nginx-unprivileged:1.31.6-alpine@sha256:26b0bf6fbf07297983cb341998d79c831508787de26627dd2a112321b9c3a4af AS runner
 
 # The entrypoint renders /etc/nginx/templates/ into conf.d at startup, so conf.d
 # must be writable by the runtime user. The base image owns it as uid 101 and
@@ -51,3 +51,7 @@ ENV NGINX_ENVSUBST_TEMPLATE_VARS=API_URL
 USER 65532:65532
 
 EXPOSE 8080
+
+# Probe the SPA shell, not /healthz: that path is proxied to the server.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/"]
