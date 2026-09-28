@@ -9,8 +9,10 @@ name: Helm publish
 #   push to main        → dev chart version 0.0.0-main.g<short-sha> for testing
 on:
   push:
-    branches: [main]
-    tags: ['chart-*']
+    branches:
+      - main
+    tags:
+      - 'chart-*'
 
 # Serialise publishes per ref so two pushes don't race to overwrite a moving
 # dev chart version.

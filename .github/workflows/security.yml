@@ -5,9 +5,11 @@ name: Security
 # uploaded to code scanning. Runs on main too so PR alerts have a baseline.
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:

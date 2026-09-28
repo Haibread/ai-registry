@@ -73,6 +73,9 @@ cd web && npm ci
 pre-commit install
 ```
 
+This installs both the `pre-commit` and the `commit-msg` hook; in a clone that
+had hooks installed before `commit-msg` was added, run it once more.
+
 The setup is good when this passes:
 
 ```bash
@@ -193,6 +196,8 @@ pre-commit run golangci-lint --all-files
 | `trailing-whitespace`, `end-of-file-fixer` | whitespace | auto-fixed, re-stage |
 | `check-yaml`, `check-merge-conflict`, `check-added-large-files`, `detect-private-key` | YAML syntax, conflict markers, large files, private keys | by hand |
 | `gitleaks` | secrets in the diff | remove the secret, rotate it |
+| `yamllint` | YAML style: block style only, no leading `---` ([.yamllint.yaml](.yamllint.yaml)); Helm templates excluded | by hand |
+| `sqlfluff-lint` | SQL style, PostgreSQL dialect ([.sqlfluff](.sqlfluff)); migrations `000001`–`000023` excluded, since merged migrations are never edited | by hand, or `sqlfluff fix <file>` |
 | `gofmt` | Go formatting | auto-fixed, re-stage |
 | `go-vet`, `golangci-lint` | Go correctness and lint ([server/.golangci.yml](server/.golangci.yml)) | by hand |
 | `web-eslint`, `web-tsc` | SPA lint and type-check (needs `npm ci` in `web/`) | by hand |
@@ -200,6 +205,7 @@ pre-commit run golangci-lint --all-files
 | `helm-docs` | chart README matches `values.yaml` | auto-regenerated, re-stage |
 | `hadolint` | Dockerfiles | by hand |
 | `actionlint` | GitHub workflows | by hand |
+| `no-co-authors` (`commit-msg` stage) | no `Co-Authored-By:` or `Generated with` line in the commit message | reword the commit |
 
 ## Continuous integration
 
