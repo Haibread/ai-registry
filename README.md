@@ -146,6 +146,9 @@ Chart values, including the optional CloudNativePG database, are documented in
 Operating a deployment is covered by [docs/runbook.md](docs/runbook.md) and
 [docs/db-backup.md](docs/db-backup.md).
 
+Releases are cut with [scripts/release.sh](scripts/release.sh), never by
+tagging by hand — see [Releases](CONTRIBUTING.md#releases).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -63,6 +63,12 @@ repos:
           - --strict
         exclude: ^deploy/helm/.*/templates/
 
+  # ── Shell (managed by pre-commit) ───────────────────────────────────────────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      - id: shellcheck
+
   # ── SQL (managed by pre-commit) ─────────────────────────────────────────────
   - repo: https://github.com/sqlfluff/sqlfluff
     rev: 4.3.0

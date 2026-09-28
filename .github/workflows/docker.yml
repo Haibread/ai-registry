@@ -38,9 +38,36 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  # ── Tag / committed version agreement ────────────────────────────────────────
+  check-version:
+    name: Check the tag matches the committed version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        if: github.ref_type == 'tag'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - name: Compare the tag with web/package.json
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          committed="$(jq -r .version web/package.json)"
+          if [ "$committed" != "$version" ]; then
+            echo "web/package.json says ${committed} but the tag says ${version}." >&2
+            echo "Cut releases with scripts/release.sh so the two stay in step." >&2
+            exit 1
+          fi
+
   # ── Server image ─────────────────────────────────────────────────────────────
   build-server:
     name: Build & push server image
+    needs:
+      - check-version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -171,6 +198,8 @@ jobs:
   # ── Web image ─────────────────────────────────────────────────────────────────
   build-web:
     name: Build & push web image
+    needs:
+      - check-version
     runs-on: ubuntu-latest
     permissions:
       contents: read
