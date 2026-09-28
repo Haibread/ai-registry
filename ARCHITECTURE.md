@@ -364,3 +364,7 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
 - There are no registry-native API keys: machine access requires an OIDC
   provider issuing tokens with the configured audience.
 - The catalog covers MCP servers and A2A agents only.
+- An entry describes a single deployment: one endpoint, transport, auth scheme
+  and version. A server running in several environments is published as one
+  entry per environment, because environments differ in URL, auth and often
+  version and are not interchangeable for a consumer.

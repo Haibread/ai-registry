@@ -1,7 +1,8 @@
 /**
  * ConfirmDialog — the shared confirmation primitive for consequential actions.
- * A themed, keyboard-accessible replacement for window.confirm: native <dialog> (focus trap + Esc for free), named action
- * and consequence, destructive styling when warranted.
+ * A themed, keyboard-accessible replacement for window.confirm: native
+ * <dialog> (focus trap + Esc for free), named action and consequence,
+ * destructive styling when warranted.
  *
  * Controlled: the caller owns `open` and renders the dialog near the
  * triggering button. `m-auto` is load-bearing — Tailwind's preflight resets

@@ -1,15 +1,15 @@
 /**
  * admin-ux-polish.spec.ts
  *
- * E2E coverage for the admin UX review follow-ups (docs/admin-ui-ux-review.md):
+ * E2E coverage for admin list, form and detail-page behaviour:
  *
- *   1. P2.2 — entity-list names link to the detail page, and the sort select
+ *   1. entity-list names link to the detail page, and the sort select
  *      drives a server-side sort via the `sort` URL param.
- *   2. P2.5 — the dirty-form guard blocks in-app navigation away from a
+ *   2. the dirty-form guard blocks in-app navigation away from a
  *      half-filled create form until the user confirms.
- *   3. P2.3/P2.6 — the detail read view shows every editable field (with "—"
+ *   3. the detail read view shows every editable field (with "—"
  *      for unset ones) and a missing entry renders the not-found branch.
- *   4. P3 — a community report row links to the reported entry's admin
+ *   4. a community report row links to the reported entry's admin
  *      detail page by name (no raw-ULID text search).
  *
  * Run: npm run test:e2e -- admin-ux-polish
@@ -46,7 +46,7 @@ test.describe('Admin UX polish', () => {
     }
   })
 
-  test('list names link to the detail page and sorting reorders rows (P2.2)', async ({ browser }) => {
+  test('list names link to the detail page and sorting reorders rows', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     await admin.goto(`/admin/mcp?namespace=${PUB}`)
 
@@ -75,7 +75,7 @@ test.describe('Admin UX polish', () => {
     await expect(admin.getByRole('heading', { name: 'Alpha Server' })).toBeVisible()
   })
 
-  test('the detail read view shows unset fields as "—" (P2.3)', async ({ browser }) => {
+  test('the detail read view shows unset fields as "—"', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     await admin.goto(`/admin/mcp/${PUB}/alpha-server`)
     await expect(admin.getByRole('heading', { name: 'Alpha Server' })).toBeVisible({ timeout: 15_000 })
@@ -85,14 +85,14 @@ test.describe('Admin UX polish', () => {
     await expect(admin.getByText('Repository', { exact: true })).toBeVisible()
   })
 
-  test('a missing entry renders the not-found branch, not a generic error (P2.6)', async ({ browser }) => {
+  test('a missing entry renders the not-found branch, not a generic error', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     await admin.goto(`/admin/mcp/${PUB}/does-not-exist`)
     await expect(admin.getByText(/not found/i)).toBeVisible({ timeout: 15_000 })
     await expect(admin.getByRole('button', { name: /back to mcp servers/i })).toBeVisible()
   })
 
-  test('leaving a dirty create form asks for confirmation (P2.5)', async ({ browser }) => {
+  test('leaving a dirty create form asks for confirmation', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     await admin.goto('/admin/mcp/new')
     await admin.getByLabel(/^name/i).fill('Half-finished server')
@@ -113,7 +113,7 @@ test.describe('Admin UX polish', () => {
     await expect(admin).toHaveURL(/\/admin$/)
   })
 
-  test('a report row links to the reported entry by name (P3)', async ({ browser }) => {
+  test('a report row links to the reported entry by name', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     // Look up the entry's ULID, then file a report against it (public API).
     const detail = await admin.request.get(`/api/v1/mcp/servers/${PUB}/alpha-server`, {

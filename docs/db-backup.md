@@ -1,36 +1,76 @@
 # Database backup & restore
 
-The chart manages Postgres via the **CloudNativePG (CNPG) operator**. CNPG
-uses [Barman](https://pgbarman.org/) to ship continuous WAL + scheduled base
-backups to object storage. This document captures the recommended setup,
-the current (unopinionated) default, and the restore playbook.
-
-## Current default
-
-**There is no backup enabled in the default chart values.** `cnpg.enabled`
-is `false`; when turned on, a single-instance cluster is created with no
-`backup` stanza. That is safe only for development.
+The registry's only state is its PostgreSQL database. On Kubernetes it runs
+under the **CloudNativePG (CNPG) operator**, which uses
+[Barman](https://pgbarman.org/) to ship continuous WAL and scheduled base
+backups to object storage and restores them by point-in-time recovery (PITR).
 
 ## Objectives
 
-- **RPO (recovery point objective):** ≤ 5 minutes — achievable via continuous
-  WAL archiving with a 5-minute archive timeout.
-- **RTO (recovery time objective):** ≤ 15 minutes for an intra-region PITR
-  restore of a cluster under 20 GB. Larger datasets scale linearly with
-  object-storage throughput.
-- **Retention:** 30 days of base backups + WAL. Longer retention is a
+- **RPO:** ≤ 5 minutes, from continuous WAL archiving with CNPG's default
+  `archive_timeout` of 5 minutes.
+- **RTO:** ≤ 15 minutes for an intra-region PITR restore of a cluster under
+  20 GB; larger datasets scale with object-storage throughput.
+- **Retention:** 30 days of base backups and WAL. Longer retention is a
   compliance decision, not a technical one.
 
-## Enabling backups in the chart
+## Where backups are configured
 
-Add the following to `deploy/helm/ai-registry/templates/cnpg-cluster.yaml`
-(or fork the chart with an override) and wire the credentials via a
-pre-created Kubernetes Secret.
+The CNPG `Cluster` the chart renders with `cnpg.enabled: true`
+([templates/cnpg-cluster.yaml](../deploy/helm/ai-registry/templates/cnpg-cluster.yaml))
+has no `backup` stanza, and the chart exposes no values for one. A backed-up
+database is therefore a `Cluster` managed outside the chart, which the server
+reaches through `api.database.existingSecret`:
+
+1. Leave `cnpg.enabled` at `false`.
+2. Create the `Cluster` and its `ScheduledBackup` (below) in the release
+   namespace.
+3. Create a Secret holding the DSN under the key `DATABASE_URL`. The `uri` key
+   of the `<cluster>-app` Secret CNPG generates targets the application
+   database and works as is:
+
+   ```sh
+   kubectl -n <ns> create secret generic ai-registry-database \
+     --from-literal=DATABASE_URL="$(kubectl -n <ns> get secret ai-registry-postgres-app -o jsonpath='{.data.uri}' | base64 -d)"
+   ```
+
+4. Set `api.database.existingSecret: ai-registry-database`.
+
+The application role owns the database, which is all the server's migrations
+need.
+
+## Configuring backups
+
+Object-storage credentials live in a Secret created out of band (external
+secrets, sealed secrets, or by hand — never committed):
 
 ```yaml
-spec:
-  # … existing fields …
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-registry-backup-creds
+type: Opaque
+stringData:
+  ACCESS_KEY_ID: "…"
+  SECRET_ACCESS_KEY: "…"
+```
 
+The `Cluster`, with the same shape as the chart's plus a `backup` stanza:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ai-registry-postgres
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18
+  bootstrap:
+    initdb:
+      database: ai_registry
+      owner: ai_registry
+  storage:
+    size: 5Gi
   backup:
     barmanObjectStore:
       destinationPath: s3://my-backups/ai-registry
@@ -52,7 +92,7 @@ spec:
     retentionPolicy: "30d"
 ```
 
-Also create a `ScheduledBackup`:
+A daily base backup:
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -60,43 +100,32 @@ kind: ScheduledBackup
 metadata:
   name: ai-registry-daily
 spec:
-  schedule: "0 4 * * *"    # 04:00 UTC daily
+  schedule: "0 0 4 * * *"    # 04:00 UTC daily (CNPG cron has a seconds field)
   backupOwnerReference: self
   cluster:
     name: ai-registry-postgres
 ```
 
-Secret template (apply separately; **do not** commit real credentials):
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ai-registry-backup-creds
-type: Opaque
-stringData:
-  ACCESS_KEY_ID: "…"
-  SECRET_ACCESS_KEY: "…"
-```
+The in-tree `barmanObjectStore` is deprecated upstream in favour of the
+[Barman Cloud plugin](https://cloudnative-pg.io/plugin-barman-cloud/); follow
+the [CNPG backup documentation](https://cloudnative-pg.io/documentation/current/backup/)
+for the operator version you run.
 
 ## Verifying a backup
 
 ```sh
-# List backups
-kubectl cnpg backup list -n <ns> <cluster>
-
-# Inspect a specific backup
-kubectl describe backup <backup-name>
+kubectl cnpg backup list -n <ns> ai-registry-postgres
+kubectl -n <ns> describe backup <backup-name>
 ```
 
-CNPG exports Prometheus metrics for backup age and status — alert on
-`cnpg_backup_last_successful_seconds` growing beyond one day.
+CNPG exports Prometheus metrics for backups: alert when
+`cnpg_collector_last_available_backup_timestamp` is more than a day old, and on
+any `cnpg_collector_last_failed_backup_timestamp` more recent than it.
 
 ## Restore / PITR
 
-CNPG restores by creating a **new** cluster with `bootstrap.recovery`
-pointing at the backed-up object store. You cannot restore into an existing
-running cluster — that's by design.
+CNPG restores by creating a **new** cluster bootstrapped from the object store;
+it never restores into a running cluster.
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -105,37 +134,49 @@ metadata:
   name: ai-registry-postgres-restored
 spec:
   instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18
   bootstrap:
     recovery:
-      source: ai-registry-postgres-backup
+      source: origin
+      # Omit recoveryTarget to replay all archived WAL.
       recoveryTarget:
-        # Either a backup name, or a timestamp for PITR:
-        targetTime: "2026-04-20 12:00:00"
+        targetTime: "2026-04-20 12:00:00+00"
   externalClusters:
-    - name: ai-registry-postgres-backup
+    - name: origin
       barmanObjectStore:
         destinationPath: s3://my-backups/ai-registry
+        # The backed-up cluster's name: backups live under
+        # <destinationPath>/<serverName>.
+        serverName: ai-registry-postgres
         s3Credentials:
-          accessKeyId:    { name: ai-registry-backup-creds, key: ACCESS_KEY_ID }
+          accessKeyId: { name: ai-registry-backup-creds, key: ACCESS_KEY_ID }
           secretAccessKey: { name: ai-registry-backup-creds, key: SECRET_ACCESS_KEY }
   storage:
-    size: 20Gi
+    size: 5Gi
 ```
 
-Apply and wait for `Status: Cluster in healthy state`. Then:
+If the restored cluster gets its own `backup` stanza, it must archive to a
+different `destinationPath` or `serverName`: CNPG refuses to archive into a
+non-empty WAL archive.
 
-1. Point the server's `DATABASE_URL` at the restored cluster's superuser
-   secret.
-2. Scale the server Deployment to 0 → 1 to flush connections.
-3. Verify with `test/load/smoke.js`.
+Once `kubectl cnpg status -n <ns> ai-registry-postgres-restored` reports a
+healthy cluster:
 
-## Drill checklist (quarterly)
+1. Point the `DATABASE_URL` Secret at the restored cluster's
+   `ai-registry-postgres-restored-app` `uri` (same command as above).
+2. Restart the server so the pool reconnects:
+   `kubectl -n <ns> rollout restart deploy/<fullname>-api`.
+3. Run the smoke test against the deployment
+   ([test/load/README.md](../test/load/README.md)).
 
-- [ ] Trigger an on-demand backup.
-- [ ] Restore it into a scratch namespace.
-- [ ] Run the smoke test against the restored cluster's service.
-- [ ] Record: backup size, restore duration, any failures. File an issue
-      with tags `runbook/drill`.
+## Restore drill
 
-If any step fails, treat it as a P0 — your real disaster-recovery capability
-is broken.
+Run it quarterly — a backup that has never been restored is not a backup:
+
+1. Trigger an on-demand backup:
+   `kubectl cnpg backup -n <ns> ai-registry-postgres`.
+2. Restore it into a scratch namespace with the manifest above.
+3. Run the smoke test against a server pointed at the restored cluster.
+4. Record the backup size, the restore duration and any failure.
+
+A failed drill means disaster recovery is broken: treat it as an incident.
