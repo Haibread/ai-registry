@@ -69,7 +69,8 @@ bootstrap_file: ""
 instance_tags: []
 
 auth:
-  # [REQUIRED] OIDC issuer URL (must match `iss` claim in JWTs).
+  # OIDC issuer URL (must match `iss` claim in JWTs). Required only when OIDC
+  # login is enabled (oidc_client_id + OIDC_CLIENT_SECRET set).
   oidc_issuer: ""
   # Override JWKS fetch URL (useful inside Docker where the public URL is
   # unreachable from the server container).
@@ -81,18 +82,24 @@ auth:
   # oidc_issuer for everything. Example: http://keycloak:8080/realms/ai-registry
   oidc_internal_url: ""
   # Confidential OAuth 2.0 client ID for the SERVER-SIDE OIDC broker.
-  # The SPA is no longer an OIDC client — this value is never sent
+  # The SPA is not an OIDC client — this value is never sent
   # to the browser. OIDC login is enabled only when this AND the secret are set;
   # the secret is a credential (env OIDC_CLIENT_SECRET only, never this file).
   oidc_client_id: ""
   # Override the IdP redirect/callback URL. Empty derives it from
   # public_base_url + /api/v1/auth/oidc/callback.
   oidc_redirect_url: ""
+  # Scopes requested at the IdP authorize endpoint. Empty = openid, profile,
+  # email.
+  oidc_scopes: []
   # JWT claim path for the user's group memberships. Group membership
   # resolves to publisher-scoped role grants for authorization. Defaults to
   # "groups"; set to e.g. "realm_access.groups" if your IdP nests group
   # memberships under a different key.
   groups_claim: "groups"
+  # JWT claim path the broker reads the user's email from. Dotted paths
+  # address nested objects. A token without it cannot provision a user.
+  email_claim: "email"
   # Group seeded on boot with a global Reviewer grant. Members
   # (local group_members or a matching OIDC claim group) can approve/reject
   # pending changes on any publisher. Deprecated in favour of managing the
@@ -101,6 +108,10 @@ auth:
   # OIDC id_token claim paths the broker maps groups + roles from, at login.
   oidc_roles_claim: "realm_access.roles"
   oidc_admin_role: "admin"
+  # Accept IdP-issued access tokens (e.g. a Keycloak service account) as bearer
+  # tokens for machine-to-machine callers, only when their `aud` contains this
+  # exact value. Requires OIDC login to be enabled. Empty disables the path.
+  oidc_audience: ""
   # Local email+password login. Default true so the registry is usable without an
   # IdP. Both front doors mint a registry-issued token pair (no cookie). The
   # bootstrap admin PASSWORD is a credential and is intentionally NOT settable
@@ -111,8 +122,9 @@ auth:
   # Leave empty to skip bootstrap seeding.
   bootstrap_admin_email: ""
   # Registry-issued bearer tokens. Both front doors mint a short access token and
-  # a rotating refresh token. The Ed25519 signing key (JWT_SIGNING_KEY) is a
-  # credential and is intentionally NOT settable here — supply it via env / secret.
+  # a rotating refresh token. The Ed25519 signing key (JWT_SIGNING_KEY, or
+  # JWT_SIGNING_SEED to derive it) is a credential and is intentionally NOT
+  # settable here — supply it via env / secret.
   access_token_ttl: "15m"
   # Absolute session lifetime from login; refresh-token rotation never extends
   # it, so IdP claim changes are picked up at most this long after a login.
