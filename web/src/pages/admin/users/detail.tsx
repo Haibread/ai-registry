@@ -73,10 +73,10 @@ export default function AdminUserDetail() {
   })
 
   const setPassword = useMutation({
-    mutationFn: async (password: string) => {
+    mutationFn: async (body: { password: string; current_password?: string }) => {
       const { error } = await api.POST('/api/v1/users/{id}/set-password', {
         params: { path: { id: id! } },
-        body: { password },
+        body,
       })
       if (error) throw new Error((error as { detail?: string; title?: string })?.detail ?? 'Failed to set password.')
     },
@@ -338,7 +338,9 @@ export default function AdminUserDetail() {
           const fd = new FormData(e.currentTarget)
           const pw = fd.get('password') as string
           if (pw) {
-            setPassword.mutate(pw)
+            setPassword.mutate(isSelf
+              ? { password: pw, current_password: fd.get('current_password') as string }
+              : { password: pw })
             e.currentTarget.reset()
           }
         }}
@@ -347,6 +349,12 @@ export default function AdminUserDetail() {
         <p className="text-sm text-muted-foreground">
           Sets a local password so this user can sign in with email + password.
         </p>
+        {isSelf && (
+          <div className="space-y-1">
+            <Label htmlFor="current_password">Current password</Label>
+            <Input id="current_password" name="current_password" type="password" autoComplete="current-password" required />
+          </div>
+        )}
         <div className="space-y-1">
           <Label htmlFor="password">New password</Label>
           <Input id="password" name="password" type="password" minLength={12} autoComplete="new-password" required />

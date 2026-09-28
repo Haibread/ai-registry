@@ -115,7 +115,7 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	}
 	oidcH := handlers.NewOIDCAuthHandlers(deps.OIDC, deps.Tokens, deps.Refresh, deps.DB, postLoginRedirect, postLogoutRedirect)
 	groupH := handlers.NewGroupHandlers(deps.DB, deps.DB)
-	userH := handlers.NewUserHandlers(deps.DB, deps.DB)
+	userH := handlers.NewUserHandlers(deps.DB, deps.DB).ShareLoginLockout(authH)
 	grantH := handlers.NewGrantHandlers(deps.DB, deps.DB)
 	tagH := handlers.NewTagHandlers(deps.DB, deps.DB)
 	meH := handlers.NewMeHandlers(deps.DB)

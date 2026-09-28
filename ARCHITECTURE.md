@@ -258,7 +258,9 @@ whole lineage, which turns token theft into a detectable, self-limiting event.
 A rotated token keeps its predecessor's expiry, so `REFRESH_TOKEN_TTL` is an
 absolute session lifetime from login, not a sliding window. A password change,
 a disable or a Server Admin removal revokes all of the user's refresh tokens in
-the same transaction.
+the same transaction. Changing your own password requires the current one, and
+a wrong guess counts toward the local-login lockout, so a stolen access token
+alone cannot take over the account.
 
 **Tokens carry group membership, never roles.** At login the refresh token
 snapshots the IdP's group claim and admin-role flag, and every access token

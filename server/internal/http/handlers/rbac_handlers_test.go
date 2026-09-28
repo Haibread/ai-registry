@@ -452,11 +452,11 @@ func TestUserHandler_SetPassword(t *testing.T) {
 		t.Errorf("other: %d, want 403", rec.Code)
 	}
 
-	// Self → 204.
+	// Self without current_password → 422.
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, selfCtx(jsonReq(http.MethodPost, "/api/v1/users/"+u.ID+"/set-password", `{"password":"longenough1234"}`)))
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("self: %d, want 204; %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("self without current password: %d, want 422; %s", rec.Code, rec.Body.String())
 	}
 
 	// Admin → 204; and too-short password → 422.
@@ -476,6 +476,110 @@ func TestUserHandler_SetPassword(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("admin: %d, want 204", rec.Code)
 	}
+}
+
+// TestUserHandler_SetOwnPasswordRequiresCurrent: a stolen access token alone
+// cannot change its owner's password; a Server Admin resetting someone else's
+// still does not need theirs.
+func TestUserHandler_SetOwnPasswordRequiresCurrent(t *testing.T) {
+	ctx := context.Background()
+	const current = "the-current-password"
+
+	setup := func(t *testing.T) (*store.User, *store.User, *auth.RefreshManager, *handlers.AuthHandlers, *chi.Mux) {
+		t.Helper()
+		resetTables(t)
+		hash, err := auth.HashPassword(current)
+		if err != nil {
+			t.Fatalf("HashPassword: %v", err)
+		}
+		u, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "self@example.com", PasswordHash: hash})
+		if err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+		admin, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "admin@example.com", PasswordHash: hash, IsServerAdmin: true})
+		if err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+		rm := auth.NewRefreshManager(testDB, time.Hour)
+		authH := handlers.NewAuthHandlers(testAuthority(t), rm, testDB, true)
+		userH := handlers.NewUserHandlers(testDB, testDB).ShareLoginLockout(authH)
+		router := chi.NewRouter()
+		router.Post("/api/v1/users/{id}/set-password", userH.SetPassword)
+		return u, admin, rm, authH, router
+	}
+	as := func(p *store.User, r *http.Request) *http.Request {
+		c := auth.ContextWithClaims(r.Context(), &auth.OIDCClaims{})
+		c = auth.ContextWithPrincipal(c, &auth.Principal{UserID: p.ID, Email: p.Email, IsServerAdmin: p.IsServerAdmin})
+		return r.WithContext(c)
+	}
+	setPassword := func(router *chi.Mux, caller, target *store.User, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, as(caller, jsonReq(http.MethodPost, "/api/v1/users/"+target.ID+"/set-password", body)))
+		return rec
+	}
+
+	for _, tc := range []struct {
+		name     string
+		admin    bool
+		self     bool
+		body     string
+		want     int
+		wantType string
+		revokes  bool
+	}{
+		{"self without current", false, true, `{"password":"brandnewpass123"}`, http.StatusUnprocessableEntity, "validation-error", false},
+		{"self with wrong current", false, true, `{"password":"brandnewpass123","current_password":"not-it"}`, http.StatusForbidden, "current-password-mismatch", false},
+		{"self with right current", false, true, `{"password":"brandnewpass123","current_password":"` + current + `"}`, http.StatusNoContent, "", true},
+		{"admin resets another without current", true, false, `{"password":"brandnewpass123"}`, http.StatusNoContent, "", true},
+		{"admin changes own without current", true, true, `{"password":"brandnewpass123"}`, http.StatusUnprocessableEntity, "validation-error", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, admin, rm, authH, router := setup(t)
+			caller, target := u, u
+			if tc.admin {
+				caller = admin
+				if tc.self {
+					target = admin
+				}
+			}
+			tok, err := rm.Issue(ctx, auth.RefreshIssueParams{UserID: target.ID, AuthMethod: "local"})
+			if err != nil {
+				t.Fatalf("Issue: %v", err)
+			}
+
+			rec := setPassword(router, caller, target, tc.body)
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d; %s", rec.Code, tc.want, rec.Body.String())
+			}
+			if tc.wantType != "" {
+				var p struct{ Type string }
+				_ = json.Unmarshal(rec.Body.Bytes(), &p)
+				if p.Type != "https://registry/errors/"+tc.wantType {
+					t.Errorf("problem type = %q, want %s", p.Type, tc.wantType)
+				}
+			}
+			refreshed := postRefresh(authH, tok).Code == http.StatusOK
+			if refreshed == tc.revokes {
+				t.Errorf("refresh token still valid = %v, want %v", refreshed, !tc.revokes)
+			}
+		})
+	}
+
+	t.Run("wrong current passwords lock out login too", func(t *testing.T) {
+		u, _, _, authH, router := setup(t)
+		for i := 0; i < 5; i++ {
+			if rec := setPassword(router, u, u, `{"password":"brandnewpass123","current_password":"guess"}`); rec.Code != http.StatusForbidden {
+				t.Fatalf("attempt %d: %d, want 403", i, rec.Code)
+			}
+		}
+		rec := setPassword(router, u, u, `{"password":"brandnewpass123","current_password":"`+current+`"}`)
+		if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
+			t.Errorf("after lockout: %d (Retry-After %q), want 429 with Retry-After", rec.Code, rec.Header().Get("Retry-After"))
+		}
+		if rec := postLogin(authH, u.Email, current); rec.Code != http.StatusTooManyRequests {
+			t.Errorf("login after lockout: %d, want 429", rec.Code)
+		}
+	})
 }
 
 func TestUserHandler_CreateShortPasswordRejected(t *testing.T) {
