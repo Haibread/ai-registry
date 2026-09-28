@@ -27,7 +27,7 @@
  */
 
 import { test, expect, type Browser, type Page } from '@playwright/test'
-import { apiPost, apiGet, apiDelete } from './helpers'
+import { apiPost, apiGet, apiCleanup } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB = `e2e-phase7-${RUN_ID}`
@@ -192,7 +192,7 @@ test.describe('group-based authorization end-to-end', () => {
     // a failed test above may leave partial state, and the run still
     // surfaces the real failure above this.
     const page = await pageAs(browser, 'admin')
-    await apiDelete(page, `/api/v1/mcp/servers/${PUB}/${MCP}`).catch(() => {})
-    await apiDelete(page, `/api/v1/publishers/${PUB}`).catch(() => {})
+    await apiCleanup(page, `/api/v1/mcp/servers/${PUB}/${MCP}`)
+    await apiCleanup(page, `/api/v1/publishers/${PUB}`)
   })
 })

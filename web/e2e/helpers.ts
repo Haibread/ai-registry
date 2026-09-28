@@ -67,6 +67,17 @@ export async function apiDelete(page: Page, path: string): Promise<APIResponse> 
 }
 
 /**
+ * Teardown delete: an already-gone resource (404) is fine, anything else that
+ * is not 2xx throws so leftover test data cannot go unnoticed.
+ */
+export async function apiCleanup(page: Page, path: string): Promise<void> {
+  const res = await apiDelete(page, path)
+  if (!res.ok() && res.status() !== 404) {
+    throw new Error(`cleanup DELETE ${path} failed: ${res.status()} ${await res.text()}`)
+  }
+}
+
+/**
  * Confirms the app's shared <dialog>-based ConfirmDialog (which replaced
  * window.confirm) by clicking its confirm button and waiting for the dialog
  * to close. Use right after clicking an action that asks for confirmation.

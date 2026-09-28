@@ -11,7 +11,7 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { apiPost, apiGet, apiDelete, confirmDialog } from './helpers'
+import { apiPost, apiGet, apiDelete, apiCleanup, confirmDialog } from './helpers'
 
 const RUN = Date.now().toString(36)
 const PUB = `e2e-reqpub-${RUN}`
@@ -98,7 +98,7 @@ test.describe('Request public release on approval', () => {
   test('cleanup', async ({ page }) => {
     await page.goto('/')
     for (const slug of [APPROVED, REJECTED]) {
-      await apiDelete(page, `/api/v1/mcp/servers/${PUB}/${slug}`)
+      await apiCleanup(page, `/api/v1/mcp/servers/${PUB}/${slug}`)
     }
     const r = await apiDelete(page, `/api/v1/publishers/${PUB}`)
     expect([200, 204]).toContain(r.status())

@@ -10,7 +10,7 @@
  */
 
 import { test, expect, type Browser, type Page } from '@playwright/test'
-import { apiPost, apiPut, apiPatch, apiDelete, apiGet } from './helpers'
+import { apiPost, apiPut, apiPatch, apiDelete, apiCleanup, apiGet } from './helpers'
 
 const RUN = Date.now().toString(36)
 
@@ -112,8 +112,8 @@ test.describe('Per-user access view', () => {
   test('cleanup', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     // Publisher deletion cascades its grants; the group cascades its own.
-    await apiDelete(admin, `/api/v1/grants/${globalGrantId}`)
-    await apiDelete(admin, `/api/v1/groups/${GROUP}`)
+    await apiCleanup(admin, `/api/v1/grants/${globalGrantId}`)
+    await apiCleanup(admin, `/api/v1/groups/${GROUP}`)
     const r = await apiDelete(admin, `/api/v1/publishers/${PUB}`)
     expect([200, 204]).toContain(r.status())
     // No DELETE /users endpoint — park the seeded user as disabled instead.

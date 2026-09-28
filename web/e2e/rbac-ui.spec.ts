@@ -19,7 +19,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost, apiDelete, confirmDialog } from './helpers'
+import { apiPost, apiCleanup, confirmDialog } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB = `e2e-rbac-${RUN_ID}`
@@ -133,8 +133,8 @@ test.describe('RBAC admin UI', () => {
     await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
     // Best-effort — don't assert; a failure above may leave partial state and
     // the real failure should surface, not a cleanup error.
-    await apiDelete(page, `/api/v1/groups/${GROUP}`).catch(() => {})
-    await apiDelete(page, `/api/v1/publishers/${PUB}`).catch(() => {})
+    await apiCleanup(page, `/api/v1/groups/${GROUP}`)
+    await apiCleanup(page, `/api/v1/publishers/${PUB}`)
     // Users have no delete endpoint; the unique per-run email avoids collisions.
   })
 })

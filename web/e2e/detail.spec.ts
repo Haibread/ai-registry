@@ -22,7 +22,7 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { apiPost } from './helpers'
+import { apiCleanup, apiPost } from './helpers'
 
 // Unique suffix to avoid collisions across runs.
 const RUN_ID = Date.now().toString(36)
@@ -37,10 +37,6 @@ const AGENT_ENDPOINT = 'https://agents.example.test/e2e-detail'
 // Tests seed state once and read it; keep them serial so a test can assume the
 // previous step completed successfully.
 test.describe.configure({ mode: 'serial' })
-
-async function apiDelete(page: import('@playwright/test').Page, path: string) {
-  return page.request.delete(path)
-}
 
 test.describe('Public detail pages', () => {
   test.beforeAll(async ({ browser }) => {
@@ -186,10 +182,9 @@ test.describe('Public detail pages', () => {
     await page.goto('/admin')
     await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
 
-    // Best-effort cleanup — don't fail teardown if something is already gone.
-    await apiDelete(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}`).catch(() => {})
-    await apiDelete(page, `/api/v1/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`).catch(() => {})
-    await apiDelete(page, `/api/v1/publishers/${PUBLISHER_SLUG}`).catch(() => {})
+    await apiCleanup(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}`)
+    await apiCleanup(page, `/api/v1/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
+    await apiCleanup(page, `/api/v1/publishers/${PUBLISHER_SLUG}`)
 
     await context.close()
   })

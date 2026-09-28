@@ -15,8 +15,8 @@
  * (private/draft entries stay hidden).
  */
 
-import { test, expect, type Page } from '@playwright/test'
-import { apiPost } from './helpers'
+import { test, expect } from '@playwright/test'
+import { apiCleanup, apiPost } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB_SLUG = `e2e-public-pub-${RUN_ID}`
@@ -26,10 +26,6 @@ const MCP_NAME = `E2E Public MCP ${RUN_ID}`
 const AGENT_SLUG = `e2e-public-agent-${RUN_ID}`
 const AGENT_NAME = `E2E Public Agent ${RUN_ID}`
 const PRIVATE_SLUG = `e2e-public-priv-${RUN_ID}`
-
-async function apiDelete(page: Page, path: string) {
-  return page.request.delete(path)
-}
 
 test.describe.configure({ mode: 'serial' })
 
@@ -109,10 +105,10 @@ test.describe('Public coverage', () => {
     const page = await ctx.newPage()
     await page.goto('/admin')
     await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
-    await apiDelete(page, `/api/v1/mcp/servers/${PUB_SLUG}/${MCP_SLUG}`).catch(() => {})
-    await apiDelete(page, `/api/v1/mcp/servers/${PUB_SLUG}/${PRIVATE_SLUG}`).catch(() => {})
-    await apiDelete(page, `/api/v1/agents/${PUB_SLUG}/${AGENT_SLUG}`).catch(() => {})
-    await apiDelete(page, `/api/v1/publishers/${PUB_SLUG}`).catch(() => {})
+    await apiCleanup(page, `/api/v1/mcp/servers/${PUB_SLUG}/${MCP_SLUG}`)
+    await apiCleanup(page, `/api/v1/mcp/servers/${PUB_SLUG}/${PRIVATE_SLUG}`)
+    await apiCleanup(page, `/api/v1/agents/${PUB_SLUG}/${AGENT_SLUG}`)
+    await apiCleanup(page, `/api/v1/publishers/${PUB_SLUG}`)
     await ctx.close()
   })
 
@@ -249,7 +245,6 @@ test.describe('Public coverage', () => {
   // page.request sends no bearer header on its own, so these probes hit the
   // anonymous public API surface.
   test('private MCP server is hidden from the public API', async ({ page }) => {
-    await page.context().clearCookies()
     // Private rows must not be readable anonymously. Public reads return 404;
     // the rate limiter may also reject (429). Both prove the row is not leaked.
     const res = await page.request.get(`/api/v1/mcp/servers/${PUB_SLUG}/${PRIVATE_SLUG}`)
@@ -257,7 +252,6 @@ test.describe('Public coverage', () => {
   })
 
   test('missing MCP server returns 404 from the public API', async ({ page }) => {
-    await page.context().clearCookies()
     const res = await page.request.get(`/api/v1/mcp/servers/${PUB_SLUG}/does-not-exist-${RUN_ID}`)
     expect([404, 429]).toContain(res.status())
   })
@@ -320,9 +314,9 @@ test.describe('Public coverage: pagination', () => {
     await page.goto('/admin')
     await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
     for (let i = 0; i < COUNT; i++) {
-      await apiDelete(page, `/api/v1/mcp/servers/${PAGE_PUB}/${slugFor(i)}`).catch(() => {})
+      await apiCleanup(page, `/api/v1/mcp/servers/${PAGE_PUB}/${slugFor(i)}`)
     }
-    await apiDelete(page, `/api/v1/publishers/${PAGE_PUB}`).catch(() => {})
+    await apiCleanup(page, `/api/v1/publishers/${PAGE_PUB}`)
     await ctx.close()
   })
 
