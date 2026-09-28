@@ -224,7 +224,7 @@ func TestReportHandler_Create_XFFTrustedFromProxy(t *testing.T) {
 	}
 	got, _ := body.Items[0]["reporter_ip"].(string)
 	if got != "198.51.100.42" {
-		t.Errorf("reporter_ip = %q, want leftmost XFF entry %q when request came from a trusted proxy", got, "198.51.100.42")
+		t.Errorf("reporter_ip = %q, want rightmost untrusted XFF entry %q when request came from a trusted proxy", got, "198.51.100.42")
 	}
 }
 

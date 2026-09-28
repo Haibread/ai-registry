@@ -102,7 +102,7 @@ A centralized registry for AI ecosystem artifacts (MCP servers and AI agents)
 | api.startupProbe.httpGet.port | string | `"http"` | Named container port polled during startup. |
 | api.startupProbe.initialDelaySeconds | int | `5` | Delay before the first startup probe. |
 | api.startupProbe.periodSeconds | int | `5` | Interval between startup probes. |
-| api.trustedProxyCIDR | string | `nil` | CIDR of the trusted reverse proxy for real-IP extraction via X-Forwarded-For, e.g. "10.0.0.0/8". |
+| api.trustedProxyCIDR | string | `nil` | CIDR of the trusted reverse proxies, e.g. "10.0.0.0/8". The client IP is the rightmost X-Forwarded-For hop outside this range. |
 | cnpg | object | `{"enableSuperuserAccess":true,"enabled":false,"initdb":{"database":"ai_registry","owner":"ai_registry"},"instances":1,"postgresVersion":"18","postgresql":{"parameters":{"max_connections":"200","shared_buffers":"256MB"}},"resources":{"limits":{"ephemeral-storage":"512Mi","memory":"512Mi"},"requests":{"cpu":"100m","ephemeral-storage":"128Mi","memory":"256Mi"}},"storageSize":"5Gi"}` | Optional CloudNativePG-managed Postgres cluster. |
 | cnpg.enableSuperuserAccess | bool | `true` | Allow the CNPG operator to connect as superuser (needed for migrations). CNPG then auto-creates `<clusterName>-superuser`, which the server references to build DATABASE_URL. |
 | cnpg.enabled | bool | `false` | Provision a CloudNativePG Cluster in the release namespace and wire its superuser secret into the server's DATABASE_URL. |

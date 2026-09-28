@@ -71,7 +71,7 @@ set:
 | `AUTH_BOOTSTRAP_ADMIN_EMAIL` / `AUTH_BOOTSTRAP_ADMIN_PASSWORD` | no | — | Seeds a local Server Admin on first start |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URL` | for OIDC login | — | Brokered OIDC client; leave empty for local login only |
 | `OIDC_AUDIENCE` | no | — | Accept IdP-issued access tokens carrying this audience (machine clients) |
-| `TRUSTED_PROXY_CIDR` | behind a proxy | — | CIDR whose `X-Forwarded-For` is trusted for rate limiting |
+| `TRUSTED_PROXY_CIDR` | behind a proxy | — | CIDR of the trusted proxies; the client IP is the rightmost `X-Forwarded-For` hop outside it |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | — | OTLP endpoint; telemetry export is off when empty |
 
 ### Usage

@@ -195,8 +195,8 @@ type HTTPConfig struct {
 	IdleTimeout  time.Duration
 	CORSOrigins  []string
 	// TrustedProxyCIDR is the optional CIDR (e.g. "10.0.0.0/8") of the
-	// reverse proxy in front of this server. When set, X-Forwarded-For is
-	// trusted for rate-limiting IP extraction. Parsed and stored as a string;
+	// reverse proxies in front of this server. When set, the client IP is the
+	// rightmost X-Forwarded-For hop outside it. Parsed and stored as a string;
 	// the caller parses it into *net.IPNet via net.ParseCIDR.
 	TrustedProxyCIDR string
 	// PublicRateLimitRPM is the per-IP request budget for unauthenticated
