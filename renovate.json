@@ -6,6 +6,9 @@
   "timezone": "UTC",
   "schedule": ["before 6am on Monday"],
   "labels": ["dependencies"],
+  "dependencyDashboard": true,
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 5,
   "packageRules": [
     {
       "description": "Group all Go dependencies",
@@ -50,27 +53,7 @@
       "matchManagers": ["npm"],
       "matchPackageNames": ["typescript", "openapi-typescript"],
       "groupName": "TypeScript + openapi-typescript",
-      "groupSlug": "typescript-openapi",
-      "automerge": false
-    },
-    {
-      "description": "Automerge patch and minor Go updates",
-      "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["patch", "minor"],
-      "automerge": true,
-      "automergeType": "pr"
-    },
-    {
-      "description": "Automerge patch and minor npm updates",
-      "matchManagers": ["npm"],
-      "matchUpdateTypes": ["patch", "minor"],
-      "automerge": true,
-      "automergeType": "pr"
-    },
-    {
-      "description": "Require manual merge for major updates",
-      "matchUpdateTypes": ["major"],
-      "automerge": false
+      "groupSlug": "typescript-openapi"
     },
     {
       "description": "Pin GitHub Actions to digest",
@@ -89,13 +72,12 @@
       ]
     },
     {
-      "description": "testcontainers updates — manual review",
+      "description": "Group testcontainers modules",
       "matchManagers": ["gomod"],
       "matchPackageNames": [
         "github.com/testcontainers/testcontainers-go",
         "github.com/testcontainers/testcontainers-go/modules/postgres"
       ],
-      "automerge": false,
       "groupName": "testcontainers",
       "groupSlug": "testcontainers"
     }
