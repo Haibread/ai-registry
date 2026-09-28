@@ -7,11 +7,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 // jsdom has no IntersectionObserver; StickyDetailHeader uses it. Stub a noop
 // implementation so the detail page mounts without crashing.
 beforeEach(() => {
-  ;(globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = vi.fn(() => ({
-    observe: vi.fn(),
-    disconnect: vi.fn(),
-    unobserve: vi.fn(),
-  }))
+  ;(globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = vi.fn(function () {
+    return { observe: vi.fn(), disconnect: vi.fn(), unobserve: vi.fn() }
+  })
 })
 afterEach(() => {
   delete (globalThis as unknown as { IntersectionObserver?: unknown }).IntersectionObserver

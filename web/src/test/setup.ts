@@ -1,4 +1,4 @@
-import "@testing-library/jest-dom"
+import "@testing-library/jest-dom/vitest"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Radix Select / Popover / Dropdown shims for jsdom
