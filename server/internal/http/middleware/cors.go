@@ -13,6 +13,10 @@ import (
 // never credentialed: Allow-Credentials is not sent. An allow-listed origin is
 // echoed exactly; a wildcard ("*") emits "Allow-Origin: *", suitable for an
 // unauthenticated public mirror.
+//
+// Retry-After (documented on 429) and X-Request-ID (the correlation id, minted
+// server-side when the client sent none) are exposed so a cross-origin client
+// can read them.
 func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	wildcard := slices.Contains(allowedOrigins, "*")
 	return func(next http.Handler) http.Handler {
@@ -27,12 +31,14 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 						w.Header().Set("Access-Control-Allow-Origin", origin)
 						w.Header().Add("Vary", "Origin")
 					}
+					if r.Method != http.MethodOptions {
+						w.Header().Set("Access-Control-Expose-Headers", "Retry-After, X-Request-ID")
+					}
 				}
-				// Preflight
 				if r.Method == http.MethodOptions {
 					if allowed {
 						w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-						w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID")
+						w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
 						w.Header().Set("Access-Control-Max-Age", "86400")
 					}
 					w.WriteHeader(http.StatusNoContent)

@@ -3,6 +3,8 @@ package middleware_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/haibread/ai-registry/internal/http/middleware"
@@ -103,6 +105,9 @@ func TestCORS_PreflightDisallowedOrigin(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Methods"); got != "" {
 		t.Errorf("expected no Access-Control-Allow-Methods for disallowed origin, got %q", got)
 	}
+	if got := rec.Header().Get("Access-Control-Allow-Headers"); got != "" {
+		t.Errorf("expected no Access-Control-Allow-Headers for disallowed origin, got %q", got)
+	}
 }
 
 func TestCORS_EmptyAllowedOrigins(t *testing.T) {
@@ -167,6 +172,80 @@ func TestCORS_NeverCredentialed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCORS_PreflightAllowsRequestHeaders covers every request header a
+// cross-origin client sends: the bearer token, the JSON body type, and the
+// caller-supplied correlation id.
+func TestCORS_PreflightAllowsRequestHeaders(t *testing.T) {
+	cases := []struct {
+		name   string
+		allow  []string
+		origin string
+	}{
+		{"exact origin", []string{"http://example.com"}, "http://example.com"},
+		{"wildcard", []string{"*"}, "http://any-origin.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := middleware.CORS(tc.allow)(okHandler())
+			req := httptest.NewRequest(http.MethodOptions, "/", nil)
+			req.Header.Set("Origin", tc.origin)
+			req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+			req.Header.Set("Access-Control-Request-Headers", "authorization,content-type")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			allowed := headerTokens(rec.Header().Get("Access-Control-Allow-Headers"))
+			for _, want := range []string{"authorization", "content-type", "x-request-id"} {
+				if !slices.Contains(allowed, want) {
+					t.Errorf("Access-Control-Allow-Headers = %q, missing %q",
+						rec.Header().Get("Access-Control-Allow-Headers"), want)
+				}
+			}
+		})
+	}
+}
+
+func TestCORS_ExposeHeaders(t *testing.T) {
+	cases := []struct {
+		name   string
+		allow  []string
+		origin string
+		method string
+		want   []string
+	}{
+		{"GET exact origin", []string{"http://example.com"}, "http://example.com", http.MethodGet, []string{"retry-after", "x-request-id"}},
+		{"GET wildcard", []string{"*"}, "http://any-origin.com", http.MethodGet, []string{"retry-after", "x-request-id"}},
+		{"GET disallowed origin", []string{"http://allowed.com"}, "http://notallowed.com", http.MethodGet, nil},
+		{"GET empty allow-list", []string{}, "http://example.com", http.MethodGet, nil},
+		{"preflight exact origin", []string{"http://example.com"}, "http://example.com", http.MethodOptions, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := middleware.CORS(tc.allow)(okHandler())
+			req := httptest.NewRequest(tc.method, "/", nil)
+			req.Header.Set("Origin", tc.origin)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			got := headerTokens(rec.Header().Get("Access-Control-Expose-Headers"))
+			slices.Sort(got)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("Access-Control-Expose-Headers = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func headerTokens(v string) []string {
+	var out []string
+	for _, tok := range strings.Split(v, ",") {
+		if tok = strings.ToLower(strings.TrimSpace(tok)); tok != "" {
+			out = append(out, tok)
+		}
+	}
+	return out
 }
 
 // okHandler returns a simple 200 OK handler for use in tests.
