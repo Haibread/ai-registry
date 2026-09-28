@@ -57,6 +57,12 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - version-update:semver-major
+      # TypeScript 7 drops the JS compiler API that openapi-typescript calls
+      # (npm run generate fails with "createKeywordTypeNode" undefined); lift
+      # once openapi-typescript's peer range accepts typescript 7.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
     groups:
       # Majors included: these packages only work at matching versions.
       tailwind:
