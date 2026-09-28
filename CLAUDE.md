@@ -33,7 +33,7 @@ clients (read-only user UI, authenticated admin UI).
 
 ## Repository layout
 
-- `server/` — Go service. `internal/{http,mcp,agents,auth,bootstrap,config,domain,store,observability,problem}`,
+- `server/` — Go service. `internal/{http,agents,auth,bootstrap,config,domain,store,observability,problem}`,
   `api/` (embedded OpenAPI spec), `migrations/`, `cmd/`.
 - `web/` — the SPA (pages in `src/pages/`).
 - `deploy/` — ops (compose files, Helm, example configs).

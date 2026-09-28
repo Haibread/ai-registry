@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Key, Flag, Activity, ScrollText, ClipboardCheck, Settings, Tags } from 'lucide-react'
+import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Flag, Activity, ScrollText, ClipboardCheck, Settings, Tags } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthClient } from '@/lib/api-client'
 import { usePermissions, type Permissions } from '@/auth/useMe'
@@ -22,9 +22,6 @@ interface NavItem {
   icon: typeof LayoutDashboard
   exact?: boolean
   badge?: 'review'
-  /** Muted affix for not-yet-shipped surfaces (e.g. "planned"), so a
-   *  placeholder page doesn't masquerade as a working feature. */
-  affix?: string
   requires: NavRequirement
 }
 
@@ -52,7 +49,6 @@ const serverAdminNav: NavItem[] = [
   { to: '/admin/tags', label: 'Instance tags', icon: Tags, requires: 'serverAdmin' },
   { to: '/admin/reports', label: 'Reports', icon: Flag, requires: 'serverAdmin' },
   { to: '/admin/audit', label: 'Audit log', icon: ScrollText, requires: 'serverAdmin' },
-  { to: '/admin/api-keys', label: 'API Keys', icon: Key, affix: 'planned', requires: 'serverAdmin' },
 ]
 
 function navItemVisible(requires: NavRequirement, perms: Permissions, currentSlug: string | null): boolean {
@@ -128,7 +124,7 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
   const publisherItems = publisherNav.filter((item) => navItemVisible(item.requires, perms, currentSlug))
   const serverAdminItems = serverAdminNav.filter((item) => navItemVisible(item.requires, perms, currentSlug))
 
-  const renderItem = ({ to, label, icon: Icon, exact, badge, affix }: NavItem) => {
+  const renderItem = ({ to, label, icon: Icon, exact, badge }: NavItem) => {
     const active = exact ? pathname === to : pathname.startsWith(to)
     return (
       <Link
@@ -147,11 +143,6 @@ export function AdminSidebar({ pathname: pathnameProp, mobile, onNavigate }: Adm
       >
         <Icon className="h-4 w-4" />
         <span className="truncate">{label}</span>
-        {affix && (
-          <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
-            {affix}
-          </span>
-        )}
         {badge === 'review' && <ReviewQueueBadge />}
       </Link>
     )

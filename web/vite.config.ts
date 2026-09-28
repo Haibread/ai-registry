@@ -14,10 +14,6 @@ export default defineConfig({
         target: process.env.API_URL ?? 'http://localhost:8081',
         changeOrigin: true,
       },
-      '/v0': {
-        target: process.env.API_URL ?? 'http://localhost:8081',
-        changeOrigin: true,
-      },
       // Only proxy the A2A Agent Card well-known path under /agents/{ns}/{slug}.
       // Everything else under /agents/* is a React Router client-side route
       // (the /agents list page and /agents/{ns}/{slug} detail page) and must
@@ -66,8 +62,6 @@ export default defineConfig({
         // Rationale per chunk:
         //   - react:    react + react-dom + react-router (pulled by every route)
         //   - query:    @tanstack/react-query (used app-wide but changes rarely)
-        //   - auth:     oidc-client-ts (only exercised during login callback,
-        //               but imported by AuthContext which mounts at the root)
         //   - markdown: react-markdown + remark/rehype chain (heavy; only some
         //               pages actually render markdown)
         manualChunks: (id) => {
@@ -75,7 +69,6 @@ export default defineConfig({
           if (id.includes('react-router')) return 'react'
           if (id.includes('/react-dom/') || id.includes('/react/')) return 'react'
           if (id.includes('@tanstack/react-query')) return 'query'
-          if (id.includes('oidc-client-ts')) return 'auth'
           if (
             id.includes('react-markdown') ||
             id.includes('/remark') ||
