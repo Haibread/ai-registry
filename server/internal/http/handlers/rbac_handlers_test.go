@@ -636,3 +636,33 @@ func TestGrantHandler_Validation(t *testing.T) {
 		t.Errorf("unknown publisher: %d, want 404", rec.Code)
 	}
 }
+
+// TestGrantHandler_PublisherSelfGrantForbidden pins that a publisher Admin
+// cannot grant themselves a role (e.g. Reviewer), whereas granting it to
+// someone else, and a Server Admin granting to themselves, both still work.
+func TestGrantHandler_PublisherSelfGrantForbidden(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "acme", "Acme")
+	router := newGrantRouter()
+	pa, _ := testDB.CreateUser(context.Background(), store.CreateUserParams{Email: "pa@acme.test"})
+	other, _ := testDB.CreateUser(context.Background(), store.CreateUserParams{Email: "other@acme.test"})
+	sa, _ := testDB.CreateUser(context.Background(), store.CreateUserParams{Email: "sa@root.test"})
+	reviewerGrant := func(userID string) string {
+		return `{"principal_type":"user","principal_id":"` + userID + `","role":"reviewer"}`
+	}
+	as := func(p *auth.Principal, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := jsonReq(http.MethodPost, "/api/v1/publishers/acme/grants", body)
+		router.ServeHTTP(rec, req.WithContext(auth.ContextWithPrincipal(req.Context(), p)))
+		return rec
+	}
+
+	assertProblemType(t, as(&auth.Principal{UserID: pa.ID}, reviewerGrant(pa.ID)),
+		http.StatusForbidden, "self-grant-forbidden")
+	if rec := as(&auth.Principal{UserID: pa.ID}, reviewerGrant(other.ID)); rec.Code != http.StatusCreated {
+		t.Fatalf("grant to another user: %d, want 201; %s", rec.Code, rec.Body.String())
+	}
+	if rec := as(&auth.Principal{UserID: sa.ID, IsServerAdmin: true}, reviewerGrant(sa.ID)); rec.Code != http.StatusCreated {
+		t.Fatalf("server Admin self-grant: %d, want 201; %s", rec.Code, rec.Body.String())
+	}
+}

@@ -47,7 +47,7 @@ func NewReviewHandlers(db *store.DB, audit store.AuditLogger) *ReviewHandlers {
 // time so later Keycloak email changes do not rewrite history.
 func reviewActor(r *http.Request) store.Actor {
 	subject, email := auditActor(r.Context())
-	return store.Actor{Subject: subject, Email: email}
+	return store.Actor{Subject: subject, Email: email, ServerAdmin: auth.IsServerAdminFromContext(r.Context())}
 }
 
 // submitBody is the optional submit-for-review request body. request_public
@@ -72,7 +72,7 @@ func decodeOptionalSubmitBody(w http.ResponseWriter, r *http.Request) (submitBod
 }
 
 // writeReviewProblem maps a workflow store error to a discriminated 409
-// (or 404) response. The slug values match the type-URI suffixes
+// (or 403 / 404) response. The slug values match the type-URI suffixes
 // documented in the OpenAPI spec under
 // `urn:ai-registry:problem:review-...` semantics.
 func writeReviewProblem(w http.ResponseWriter, r *http.Request, err error) bool {
@@ -92,6 +92,9 @@ func writeReviewProblem(w http.ResponseWriter, r *http.Request, err error) bool 
 	case errors.Is(err, store.ErrChangeNotApplicable):
 		problem.Write(w, http.StatusConflict, "change-not-applicable",
 			"the entry is no longer in a state where this change can be applied (e.g. already deprecated or deleted); reject this request", r.URL.Path)
+	case errors.Is(err, store.ErrSelfApproval):
+		problem.Write(w, http.StatusForbidden, "self-approval-forbidden",
+			"you submitted this change, so another Reviewer must approve it", r.URL.Path)
 	case errors.Is(err, store.ErrConflict):
 		problem.Write(w, http.StatusConflict, "review-already-pending",
 			"another version on this entry is already in pending_review", r.URL.Path)

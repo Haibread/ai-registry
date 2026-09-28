@@ -243,6 +243,10 @@ func (db *DB) ApproveEntryChangeRequest(ctx context.Context, id string, expected
 	if cr.Revision != expectedRevision {
 		return domain.EntryChangeRequest{}, ErrReviewRevisionMismatch
 	}
+	if err := refuseSelfApproval(cr.SubmittedBy, a); err != nil {
+		recordErr(span, err)
+		return domain.EntryChangeRequest{}, err
+	}
 
 	if _, err := tx.Exec(ctx, `
 		UPDATE entry_change_requests
