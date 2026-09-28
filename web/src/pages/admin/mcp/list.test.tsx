@@ -113,7 +113,7 @@ describe('AdminMCPList', () => {
   })
 
   it('calls GET with params derived from the URL', async () => {
-    // cursor is no longer read from the URL — it is the infinite-query page
+    // cursor is not read from the URL — it is the infinite-query page
     // param, so the first page sends cursor: undefined.
     renderPage([
       '/admin/mcp?q=file&namespace=acme&status=published&visibility=public',

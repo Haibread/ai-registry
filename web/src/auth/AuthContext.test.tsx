@@ -144,7 +144,7 @@ describe('AuthProvider', () => {
     expect(exchangeCall).toBeTruthy()
     expect(JSON.parse((exchangeCall?.[1] as RequestInit).body as string)).toEqual({ code: 'handoff-xyz' })
     // With no stashed deep link, an interactive sign-in lands on the admin
-    // console, not the public homepage the server redirect points at (J3).
+    // console, not the public homepage the server redirect points at.
     expect(window.location.pathname).toBe('/admin')
   })
 

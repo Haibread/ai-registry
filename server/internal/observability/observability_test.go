@@ -15,12 +15,11 @@ import (
 	"github.com/haibread/ai-registry/internal/observability"
 )
 
-// The observability package was at 0.0% coverage in the post-Phase 7 audit
-// despite carrying CLAUDE.md non-negotiables ("Structured logs must carry
-// trace_id and span_id fields"; "Setup OTel providers"). These tests pin the
-// public surface so a regression in the trace-log correlation, log-level
-// parsing, or metric-instrument registration breaks CI rather than going
-// undetected in production.
+// The observability package carries CLAUDE.md non-negotiables (structured
+// logs carry trace_id / span_id; OTel providers are set up here). These tests
+// pin the public surface so a regression in the trace-log correlation,
+// log-level parsing, or metric-instrument registration breaks CI rather than
+// going undetected in production.
 
 // ── NewLogger ───────────────────────────────────────────────────────────────
 

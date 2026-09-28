@@ -32,7 +32,7 @@ beforeEach(() => {
 })
 
 // Clicks the row's Approve button, then the dialog's confirm button. Approve
-// must never fire from a single unconfirmed click (J2).
+// must never fire from a single unconfirmed click.
 async function approveRow(index: number, confirmName: RegExp) {
   const approveButtons = await screen.findAllByRole('button', { name: /^approve$/i })
   fireEvent.click(approveButtons[index])

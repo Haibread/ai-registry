@@ -403,8 +403,8 @@ func (db *DB) CreateGrant(ctx context.Context, p CreateGrantParams) (*RoleGrant,
 }
 
 // EnsureGrant idempotently creates a grant, treating a duplicate as success.
-// Used by the boot seed (the config reviewer-group grant) and the
-// workspace-binding conversion. Returns the existing or newly-created grant.
+// Used by the boot seed (the config reviewer-group grant) and the bootstrap
+// file's grants. Returns the existing or newly-created grant.
 func (db *DB) EnsureGrant(ctx context.Context, p CreateGrantParams) error {
 	ctx, span := startSpan(ctx, "EnsureGrant")
 	defer span.End()

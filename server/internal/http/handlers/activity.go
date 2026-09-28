@@ -184,9 +184,8 @@ func writePublicActivity(w http.ResponseWriter, r *http.Request, db *store.DB, r
 		if _, allowed := publicActionWhitelist[e.Action]; !allowed {
 			continue
 		}
-		// All current writers are admins (CLAUDE.md rule 3). The enum is
-		// kept so future per-publisher roles can slot in without a
-		// breaking DTO change.
+		// The public feed does not disclose the actor's publisher role, so
+		// ActorRole is always "admin".
 		items = append(items, publicEvent{
 			ID:        e.ID,
 			Action:    string(e.Action),

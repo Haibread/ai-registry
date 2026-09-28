@@ -1,14 +1,12 @@
 /**
  * SlugField — shared slug input for the admin create forms.
  *
- * Centralizes two fixes (UI/UX review P1.2):
- *  - The old inline `pattern="^[a-z0-9-]+"` fails to compile under the `v`
- *    regex flag Chromium applies to the HTML pattern attribute, which made the
- *    browser skip validation entirely. The pattern below escapes the hyphen
- *    (and drops the redundant anchor — HTML patterns are implicitly anchored).
- *  - None of the forms had inline validation; errors only surfaced after a
- *    server round-trip. This validates on blur with `aria-invalid` and a
- *    visible message, mirroring the server's slug rule (lowercase letters,
+ *  - The pattern escapes the hyphen: an unescaped `[a-z0-9-]` fails to compile
+ *    under the `v` regex flag Chromium applies to the HTML pattern attribute,
+ *    and the browser then skips validation entirely. HTML patterns are
+ *    implicitly anchored, so there is no `^`.
+ *  - It validates on blur with `aria-invalid` and a visible message,
+ *    mirroring the server's slug rule (lowercase letters,
  *    digits, hyphens; max 63 chars).
  */
 

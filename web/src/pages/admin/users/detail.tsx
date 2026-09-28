@@ -39,7 +39,7 @@ export default function AdminUserDetail() {
     queryFn: async () => {
       const { data, error, response } = await api.GET('/api/v1/users/{id}', { params: { path: { id: id! } } })
       // Carry the HTTP status so the error branch can tell a real 404 from
-      // a server error or network failure (P2.6).
+      // a server error or network failure.
       if (error || !data) throw new HTTPError(problemMessage(error, 'Failed to load this user.'), response?.status)
       return data
     },
@@ -237,7 +237,7 @@ export default function AdminUserDetail() {
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">Actions</h2>
         {/* Both actions reshape who can sign in / administer the registry, so
-            they confirm first (P1.4). Pointing them at yourself is blocked —
+            they confirm first. Pointing them at yourself is blocked —
             the server enforces the same rule (lockout protection). */}
         <div className="flex flex-wrap gap-2">
           <Button

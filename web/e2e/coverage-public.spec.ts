@@ -10,7 +10,7 @@
  *
  * Setup uses the admin storage state to seed public data via the API. The
  * page-level assertions then exercise the public read surface: the public
- * client (getPublicClient) omits the session cookie, so even though this
+ * client (getPublicClient) sends no bearer token, so even though this
  * project carries the admin storageState, public pages render the public view
  * (private/draft entries stay hidden).
  */
@@ -27,7 +27,6 @@ const AGENT_SLUG = `e2e-public-agent-${RUN_ID}`
 const AGENT_NAME = `E2E Public Agent ${RUN_ID}`
 const PRIVATE_SLUG = `e2e-public-priv-${RUN_ID}`
 
-// Deletes ride the session cookie shared by page.request.
 async function apiDelete(page: Page, path: string) {
   return page.request.delete(path)
 }
@@ -247,10 +246,8 @@ test.describe('Public coverage', () => {
 
   // ── W3g: Public 404 for private / missing ──────────────────────────────
 
-  // page.request shares THIS project's admin session cookie
-  // (auth is a cookie, which page.request sends automatically — the
-  // old bearer token was not). Clear the context's cookies so these probes hit
-  // the genuinely-anonymous public API surface.
+  // page.request sends no bearer header on its own, so these probes hit the
+  // anonymous public API surface.
   test('private MCP server is hidden from the public API', async ({ page }) => {
     await page.context().clearCookies()
     // Private rows must not be readable anonymously. Public reads return 404;

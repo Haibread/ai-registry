@@ -3,7 +3,7 @@
  *
  * End-to-end proof that the dev realm produces JWTs with the right
  * `groups[]` claim and that the server middleware honours them. Covers
- * the three Phase 7 authorization paths that admin@ alone never
+ * the three group-based authorization paths that admin@ alone never
  * exercises:
  *
  *   - author@example.com    (groups: anthropic-core, anthropic-labs)
@@ -21,7 +21,7 @@
  *
  * Prerequisites (same as the other admin specs):
  *   - docker compose up; Keycloak has imported the dev realm
- *   - the setup project populated e2e/.auth/<role>.json (session cookies)
+ *   - the setup project populated e2e/.auth/<role>.json (access tokens)
  *
  * Run: npm run test:e2e -- --project=phase7-flows
  */
@@ -39,13 +39,13 @@ test.describe.configure({ mode: 'serial' })
 async function pageAs(browser: Browser, role: 'admin' | 'author' | 'reviewer' | 'user'): Promise<Page> {
   const ctx = await browser.newContext({ storageState: `e2e/.auth/${role}.json` })
   const page = await ctx.newPage()
-  // Land on the homepage so the context is active; the API helpers ride the
-  // session cookie shared by page.request (RequireAuth doesn't bounce off / ).
+  // Land on the homepage so localStorage is populated; the API helpers read
+  // the access token from it (RequireAuth doesn't bounce off / ).
   await page.goto('/')
   return page
 }
 
-test.describe('Phase 7: group-based authorization end-to-end', () => {
+test.describe('group-based authorization end-to-end', () => {
   test('admin seeds publisher, grants anthropic-core editor, server, draft version', async ({ browser }) => {
     const page = await pageAs(browser, 'admin')
 

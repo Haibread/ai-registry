@@ -72,14 +72,14 @@ export default function AdminAgentNew() {
   const selectedPublisher = publishers.find((p) => p.slug === namespace)
   const [authScheme, setAuthScheme] = useState('_none')
   const [formError, setFormError] = useState<CreateError | null>(null)
-  // Unsaved-changes guard (P2.5): any input change marks the form dirty;
+  // Unsaved-changes guard: any input change marks the form dirty;
   // a successful create clears it (synchronously, so the redirect isn't
   // blocked by the guard it just satisfied).
   const [dirty, setDirty] = useState(false)
 
   // Publishing is a reviewer action; an editor's version goes through the
   // review queue instead. The checkbox below adapts its label and behavior so
-  // the form never promises an outcome the caller's role cannot deliver (J1).
+  // the form never promises an outcome the caller's role cannot deliver.
   const canReview = perms.canReview(namespace)
 
   const mutation = useMutation({

@@ -425,10 +425,8 @@ auth:
 
 // ── PUBLIC_BASE_URL & BOOTSTRAP_FILE — env+YAML+default rule ─────────────────
 //
-// CLAUDE.md requires every config knob to be reachable via env var, YAML key,
-// AND a default. Both PUBLIC_BASE_URL and BOOTSTRAP_FILE used to bypass the
-// config layer (read directly via os.Getenv from handlers and main); these
-// tests pin the three-place rule for both.
+// Every config knob is reachable via env var, YAML key, AND a default; these
+// tests pin that rule for PUBLIC_BASE_URL and BOOTSTRAP_FILE.
 
 func TestLoad_PublicBaseURL_DefaultEmpty(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")

@@ -166,7 +166,7 @@ func (db *DB) CreateGroup(ctx context.Context, p CreateGroupParams) (*Group, err
 
 // EnsureGroupBySlug returns the group with the given slug, creating it if it
 // does not yet exist. Idempotent — used by the boot seed (reviewer group) and
-// the workspace-binding conversion. The name is only applied on creation; an
+// the bootstrap file's groups. The name is only applied on creation; an
 // existing group keeps its current name.
 func (db *DB) EnsureGroupBySlug(ctx context.Context, slug, name string) (*Group, error) {
 	ctx, span := startSpan(ctx, "EnsureGroupBySlug")

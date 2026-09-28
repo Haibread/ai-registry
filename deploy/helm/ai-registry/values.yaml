@@ -254,7 +254,7 @@ api:
   trustedProxyCIDR: ~
   # -- (string) [REQUIRED] Public-facing base URL of the deployment (what
   # clients use), e.g. "https://registry.example.com". Used by the A2A global
-  # agent card and OAuth protected-resource metadata.
+  # agent card, as the access-token issuer and to derive the OIDC redirects.
   publicBaseURL: ~
 
   # ── Observability ────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 /**
- * DirtyFormGuard — unsaved-changes protection for forms (UI/UX review P2.5).
+ * DirtyFormGuard — unsaved-changes protection for forms.
  *
  * Render it inside any form whose state would be lost on navigation and flip
  * `when` once the user has typed something. Two layers:

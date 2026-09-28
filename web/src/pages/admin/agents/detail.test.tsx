@@ -170,7 +170,7 @@ describe('AdminAgentDetail', () => {
   it('shows a retryable error state when the query fails with a non-404', async () => {
     mockGET.mockResolvedValueOnce({ error: { detail: 'boom' }, response: { status: 500 } })
     renderPage()
-    // Non-404 failures must NOT read "Not found" (P2.6) — they get the
+    // Non-404 failures must NOT read "Not found" — they get the
     // error surface with the server detail and a retry affordance.
     expect(await screen.findByRole('alert')).toHaveTextContent('boom')
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
@@ -184,13 +184,11 @@ describe('AdminAgentDetail', () => {
     expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
   })
 
-  // ─── Deprecate / lifecycle / delete / a2a-link coverage (v0.2.2) ─────────
+  // ─── Deprecate / lifecycle / delete / a2a-link coverage ─────────────────
   //
-  // The pre-existing tests had no coverage for the DeprecateButton flow on
-  // the agent side (the MCP side did), no coverage of the LifecycleStepper
-  // transition, and no coverage of the A2A well-known card link that is the
-  // whole point of the Agent registry per CLAUDE.md. These tests fill all of
-  // those gaps plus the same delete/cancel/error trio as the MCP page.
+  // The DeprecateButton flow, the LifecycleStepper transition, the A2A
+  // well-known card link, plus the same delete/cancel/error trio as the MCP
+  // page.
 
   it('deprecates via the DeprecateButton when its dialog is confirmed', async () => {
     renderPage()
@@ -294,9 +292,9 @@ describe('AdminAgentDetail', () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Example Agent' })
 
-    // The registry's A2A compatibility promise (CLAUDE.md Resolved Decision H)
-    // hinges on this path shape — a regression here would silently break
-    // every A2A client that has cached the URL.
+    // The registry's A2A compatibility promise hinges on this path shape — a
+    // regression here would silently break every A2A client that has cached
+    // the URL.
     const link = screen.getByRole('link', { name: /view agent card/i })
     expect(link).toHaveAttribute(
       'href',

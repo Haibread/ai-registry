@@ -8,13 +8,13 @@ import (
 )
 
 // Principal is the resolved caller used for publisher-scoped authorization. It
-// is populated by the Authenticator from the request's session. UserID is the
-// registry users.id — the principal key. ClaimGroups
-// are the OIDC claim group slugs snapshotted into the session at login (empty
-// for local logins, whose group membership comes from group_members in the DB).
-// IsServerAdmin is true when the snapshotted claim carried realm admin OR
-// users.is_server_admin is set. AuthMethod records which front door minted the
-// session ("oidc" | "local").
+// is populated by the Authenticator from the request's bearer token. UserID is
+// the registry users.id — the principal key. ClaimGroups are the OIDC claim
+// group slugs snapshotted into the token at login (empty for local logins,
+// whose group membership comes from group_members in the DB). IsServerAdmin is
+// true when the snapshotted claim carried realm admin OR users.is_server_admin
+// is set. AuthMethod records which front door minted the token pair
+// ("oidc" | "local").
 type Principal struct {
 	UserID        string
 	Email         string
@@ -24,7 +24,7 @@ type Principal struct {
 }
 
 // PrincipalStore is the narrow slice of the store the Authenticator and the
-// OIDC callback need: resolve a session/identity into a users row and
+// OIDC callback need: resolve a token subject or identity into a users row and
 // just-in-time provision federated users. *store.DB satisfies it.
 type PrincipalStore interface {
 	GetUserByID(ctx context.Context, id string) (*store.User, error)

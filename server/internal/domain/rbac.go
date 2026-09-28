@@ -64,9 +64,8 @@ func Satisfies(held map[Role]bool, required Role) bool {
 	}
 }
 
-// PrincipalType is the kind of subject a role grant is attached to. Only two
-// principal types exist: a user or a group. Service-account /
-// API-key principals are future work.
+// PrincipalType is the kind of subject a role grant is attached to: a user or
+// a group.
 type PrincipalType string
 
 const (

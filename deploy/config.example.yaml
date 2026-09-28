@@ -25,10 +25,10 @@ http:
   # Per-IP request budget for unauthenticated reads on /api/v1, in
   # requests per minute.
   public_rate_limit_rpm: 1000
-  # Externally reachable URL of this deployment. Surfaced in
-  # /.well-known/oauth-protected-resource and the global A2A agent card.
-  # Empty triggers HTTP 500 in those handlers rather than advertising
-  # localhost to external consumers. Example: "https://registry.example.com".
+  # Externally reachable URL of this deployment. Surfaced in the global A2A
+  # agent card, used as the access-token issuer and to derive the OIDC
+  # redirects. Empty makes the agent card return HTTP 500 rather than
+  # advertise localhost to external consumers. Example: "https://registry.example.com".
   public_base_url: ""
 
 database:

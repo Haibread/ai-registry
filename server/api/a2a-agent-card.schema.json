@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ai-registry.example/schemas/a2a-agent-card.schema.json",
   "title": "A2A Agent Card",
-  "description": "Minimal JSON Schema for the A2A (Agent-to-Agent) Agent Card document as pinned by CLAUDE.md Resolved Decision G: the a2a-project/a2a shape at the June 2025 commit (https://github.com/a2aproject/a2a). This schema exists to catch regressions in card generation; it is not the official A2A schema. Only the MUST-level fields from the spec are enforced here. Extra (additive) fields are allowed so the registry can evolve without breaking the schema — strictness on `required` is where the real protection lives.",
+  "description": "Minimal JSON Schema for the A2A (Agent-to-Agent) Agent Card document, pinned to the A2A specification as of June 2025 (https://github.com/a2aproject/A2A). This schema exists to catch regressions in card generation; it is not the official A2A schema. Only the MUST-level fields from the spec are enforced here. Extra (additive) fields are allowed so the registry can evolve without breaking the schema — strictness on `required` is where the real protection lives.",
 
   "type": "object",
   "required": [
@@ -75,7 +75,7 @@
 
     "securitySchemes": {
       "type": "object",
-      "description": "A2A delegates security scheme shapes to OpenAPI 3 (type: http | apiKey | oauth2 | openIdConnect). CLAUDE.md Resolved Decision K pins the allow-list to exactly those four. We enforce the type discriminator at the scheme level; deeper per-scheme shape is left to the unit tests on buildSecuritySchemes in internal/agents/card.go.",
+      "description": "A2A delegates security scheme shapes to OpenAPI 3 (type: http | apiKey | oauth2 | openIdConnect). The registry allows exactly those four. We enforce the type discriminator at the scheme level; deeper per-scheme shape is left to the unit tests on buildSecuritySchemes in internal/agents/card.go.",
       "additionalProperties": {
         "type": "object",
         "required": ["type"],

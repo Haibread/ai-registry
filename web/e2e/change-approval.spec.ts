@@ -11,9 +11,9 @@
  *   - Request deletion, approve it; entry disappears from public reads.
  *
  * Prerequisites (same as the other admin specs):
- *   - docker compose -f docker-compose.dev.yml up -d
+ *   - docker compose --profile dev up -d
  *   - e2e/.auth/admin.json populated by the setup project (carries the
- *     registry session cookie).
+ *     registry access token in localStorage).
  *
  * Run:  npm run test:e2e -- --project=change-approval
  */

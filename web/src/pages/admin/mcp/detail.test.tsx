@@ -174,7 +174,7 @@ describe('AdminMCPDetail', () => {
   it('shows a retryable error state when the query fails with a non-404', async () => {
     mockGET.mockResolvedValueOnce({ error: { detail: 'boom' }, response: { status: 500 } })
     renderPage()
-    // Non-404 failures must NOT read "Not found" (P2.6) — they get the
+    // Non-404 failures must NOT read "Not found" — they get the
     // error surface with the server detail and a retry affordance.
     expect(await screen.findByRole('alert')).toHaveTextContent('boom')
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
@@ -188,13 +188,11 @@ describe('AdminMCPDetail', () => {
     expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
   })
 
-  // ─── Lifecycle / delete / error-surfacing coverage (v0.2.2) ───────────────
+  // ─── Lifecycle / delete / error-surfacing coverage ───────────────────────
   //
-  // The previous batch covered the happy-path flows (visibility, deprecate,
-  // PATCH edit). What was missing — and is what makes the admin page actually
-  // trustworthy — is the LifecycleStepper transition (which lives in a
-  // separate component and is wired via a render-prop callback), the edit
-  // cancel flow (state must reset without firing a mutation), the full
+  // Beyond the happy-path flows (visibility, deprecate, PATCH edit): the
+  // LifecycleStepper transition (a separate component wired via a render-prop
+  // callback), the edit cancel flow (state must reset without firing a mutation), the full
   // delete-confirm → DELETE → navigate chain, and the failure path where a
   // mutation errors out and the UI surfaces a retry hint.
 
@@ -261,7 +259,7 @@ describe('AdminMCPDetail', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
-  // ─── Lifecycle stepper honesty (UI/UX review P1.1) ────────────────────────
+  // ─── Lifecycle stepper honesty ────────────────────────────────────────────
   //
   // Every clickable stepper target must do something real: deprecated →
   // published fires the new undeprecate endpoint, and draft → published

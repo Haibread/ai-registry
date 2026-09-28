@@ -1,7 +1,7 @@
 // Package handlers — entry-change approval workflow.
 //
 // An Editor's request to change an entry's visibility, deprecate it, or edit
-// its metadata is no longer applied immediately; it is enqueued as a pending
+// its metadata is not applied immediately; it is enqueued as a pending
 // entry-change request that a Reviewer approves or rejects. (Server Admins keep
 // the immediate path as a break-glass escape hatch — see the visibility /
 // deprecate / patch handlers.) These approve/reject/withdraw endpoints mirror

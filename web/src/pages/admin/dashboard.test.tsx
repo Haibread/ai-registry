@@ -117,7 +117,7 @@ describe('AdminDashboard', () => {
   it('renders no quick-action block — the New buttons live on the list pages', () => {
     renderPage()
     // The stat cards already link to each list page, which carries its own
-    // New button; a duplicate Quick Actions block was dropped (UI/UX P3).
+    // New button, so there is no separate Quick Actions block.
     expect(screen.queryByText(/quick actions/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /new publisher/i })).not.toBeInTheDocument()
   })

@@ -61,8 +61,8 @@ function renderSection(kind: 'mcp' | 'agent' = 'mcp', entryVisibility: 'public' 
   )
 }
 
-// Click through the submit confirmation (submit is no longer one bare click —
-// the dialog hosts the author's public-release request).
+// Click through the submit confirmation (submit is not one bare click — the
+// dialog hosts the author's public-release request).
 function confirmSubmitDialog() {
   const dialog = document.querySelector('dialog')!
   fireEvent.click(within(dialog).getByRole('button', { name: /^submit for review$/i }))

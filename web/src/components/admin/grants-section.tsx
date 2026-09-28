@@ -42,7 +42,7 @@ export function GrantsSection({ publisherSlug }: GrantsSectionProps) {
   const [principalId, setPrincipalId] = useState('')
   const [role, setRole] = useState<Role>('editor')
   // Grant whose revocation awaits confirmation — this is the RBAC surface, so
-  // a single stray X-click must not remove access (P1.4).
+  // a single stray X-click must not remove access.
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; role: string; label: string } | null>(null)
 
   const grantsQuery = useQuery({

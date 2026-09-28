@@ -165,7 +165,7 @@ describe('AdminMCPNew', () => {
     })
   })
 
-  // ─── Role-aware publish step (UI/UX review J1) ────────────────────────────
+  // ─── Role-aware publish step ──────────────────────────────────────────────
 
   it('offers "Submit version for review" to an editor and calls the submit endpoint', async () => {
     mockCanReview = () => false

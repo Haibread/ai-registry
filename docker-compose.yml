@@ -173,7 +173,7 @@ services:
     environment:
       # Vite proxies /api/* and /config.json to the server (see vite.config.ts).
       # The SPA reads its sign-in feature flags at runtime via GET /config.json —
-      # no auth values are baked into the image (it is no longer an OIDC client).
+      # no auth values are baked into the image (it is not an OIDC client).
       API_URL: http://server:8081
       NODE_ENV: development
       # Polling is required for inotify to work through Docker volume mounts on

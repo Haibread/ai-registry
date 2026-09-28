@@ -10,8 +10,8 @@ import _ "embed"
 var Spec []byte
 
 // A2AAgentCardSchema is the JSON Schema for the A2A Agent Card document shape,
-// pinned to the a2a-project/a2a June 2025 commit per CLAUDE.md Resolved
-// Decision G. Consumed by internal/http/handlers tests to assert that every
+// pinned to the A2A specification as of June 2025
+// (https://github.com/a2aproject/A2A). Consumed by internal/http/handlers tests to assert that every
 // card the registry emits (per-agent and global) conforms to the spec.
 //
 //go:embed a2a-agent-card.schema.json

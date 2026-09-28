@@ -1,5 +1,5 @@
 /**
- * NativeSelect — the shared native <select> primitive (UI/UX review P3).
+ * NativeSelect — the shared native <select> primitive.
  *
  * Deliberate split in the select vocabulary: rich create/edit forms use the
  * Radix Select (searchable trigger, custom item rendering); compact inline

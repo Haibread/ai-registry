@@ -10,9 +10,8 @@ import (
 )
 
 // All API errors flow through this package per CLAUDE.md ("Errors: API errors
-// follow RFC 7807 (`application/problem+json`)"). The package was at 0%
-// coverage in the post-Phase 7 audit; these tests pin the wire format so a
-// regression in the shared error shape — the kind that quietly breaks every
+// follow RFC 7807 (`application/problem+json`)"). These tests pin the wire
+// format so a regression in the shared error shape — the kind that quietly breaks every
 // admin-UI error toast — is caught before it lands.
 
 func TestWrite_HappyPath(t *testing.T) {

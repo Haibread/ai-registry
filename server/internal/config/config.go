@@ -80,8 +80,8 @@ type AuthConfig struct {
 	OIDCInternalURL string
 
 	// OIDCClientID is the confidential OAuth 2.0 client ID the server-side
-	// broker uses. It is NOT served to the
-	// browser — the SPA is no longer an OIDC client.
+	// broker uses. It is never served to the browser — the SPA is not an OIDC
+	// client.
 	OIDCClientID string
 
 	// OIDCClientSecret is the confidential client's secret for the server-side
@@ -204,17 +204,15 @@ type HTTPConfig struct {
 	// the caller parses it into *net.IPNet via net.ParseCIDR.
 	TrustedProxyCIDR string
 	// PublicRateLimitRPM is the per-IP request budget for unauthenticated
-	// reads on /api/v1, expressed in requests per minute. Defaults to 1000.
-	// Bumped from the original 100 because the e2e suite + browser-based
-	// SPAs can comfortably exceed the lower bound under normal use.
+	// reads on /api/v1, expressed in requests per minute. Defaults to 1000,
+	// which a browser SPA and the e2e suite stay under in normal use.
 	PublicRateLimitRPM int
 	// PublicBaseURL is the externally reachable URL of this deployment.
-	// Surfaced in the A2A global agent card (`/.well-known/agent-card.json`)
-	// and the OAuth protected-resource metadata document
-	// (`/.well-known/oauth-protected-resource`). Must be the address clients
-	// use, not an internal docker hostname. Handlers return 500 when this
-	// is empty rather than silently advertising localhost to external
-	// consumers.
+	// Surfaced in the A2A global agent card (`/.well-known/agent-card.json`),
+	// used as the access-token issuer and to derive the OIDC callback and
+	// post-login/logout redirects. Must be the address clients use, not an
+	// internal docker hostname. The global agent card returns 500 when this
+	// is empty rather than silently advertising localhost.
 	PublicBaseURL string
 }
 

@@ -111,7 +111,7 @@ export function ReportDialog({ resourceType, resourceId, resourceLabel }: Report
         ref={dialogRef}
         aria-labelledby="report-dialog-title"
         // m-auto restores the centering Tailwind's preflight strips from
-        // modal <dialog> elements (UI/UX review J3b).
+        // modal <dialog> elements.
         className="m-auto rounded-lg border border-border bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50 backdrop:backdrop-blur-sm w-full max-w-lg"
       >
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-6">

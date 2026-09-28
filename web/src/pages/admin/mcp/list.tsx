@@ -122,7 +122,7 @@ export default function AdminMCPList() {
     })
   }
 
-  // Bulk deprecate/delete confirm through the shared dialog (P2.1) — the
+  // Bulk deprecate/delete confirm through the shared dialog — the
   // pending kind also selects the dialog copy.
   const [bulkConfirm, setBulkConfirm] = useState<'deprecate' | 'delete' | null>(null)
 

@@ -142,9 +142,8 @@ function ChangeDetails({ it }: { it: Item }) {
 }
 
 // VersionContent — expandable panel showing what a version submission
-// actually contains, fetched lazily from the existing version GET endpoints.
-// Reviewers previously had to open the entry and read the raw API response to
-// see the content they were approving (J2).
+// actually contains, fetched lazily from the version GET endpoints, so a
+// reviewer sees what they approve without leaving the queue.
 function VersionContent({ it }: { it: Item }) {
   const api = useAuthClient()
   const [expanded, setExpanded] = useState(false)
@@ -269,7 +268,7 @@ export default function AdminReviewQueue() {
   const [rejectReason, setRejectReason] = useState<string>('')
   // Item whose approval awaits confirmation. Approve applies/publishes (or
   // hard-deletes, for deletion requests) immediately — it must not be a
-  // single unconfirmed click (J2).
+  // single unconfirmed click.
   const [confirmTarget, setConfirmTarget] = useState<Item | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery({

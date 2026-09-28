@@ -15,7 +15,7 @@ type Metrics struct {
 	HTTPRequestsTotal   metric.Int64Counter
 	HTTPRequestDuration metric.Float64Histogram
 
-	// Registry counters (populated in Phase 2+)
+	// Registry counters
 	MCPServersTotal metric.Int64UpDownCounter
 	AgentsTotal     metric.Int64UpDownCounter
 
