@@ -15,13 +15,9 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { apiPost, confirmDialog } from './helpers'
+import { apiCleanup, apiPost, confirmDialog } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
-
-async function apiDelete(page: Page, path: string) {
-  return page.request.delete(path)
-}
 
 async function goTo(page: Page, path: string) {
   await page.goto(path)
@@ -64,9 +60,9 @@ test.describe('Admin: search and filter', () => {
     const page = await ctx.newPage()
     await goTo(page, '/admin')
     await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
-    await apiDelete(page, `/api/v1/mcp/servers/${PUB_SLUG}/${NEEDLE_SLUG}`).catch(() => {})
-    await apiDelete(page, `/api/v1/mcp/servers/${PUB_SLUG}/${NOISE_SLUG}`).catch(() => {})
-    await apiDelete(page, `/api/v1/publishers/${PUB_SLUG}`).catch(() => {})
+    await apiCleanup(page, `/api/v1/mcp/servers/${PUB_SLUG}/${NEEDLE_SLUG}`)
+    await apiCleanup(page, `/api/v1/mcp/servers/${PUB_SLUG}/${NOISE_SLUG}`)
+    await apiCleanup(page, `/api/v1/publishers/${PUB_SLUG}`)
     await ctx.close()
   })
 
@@ -147,9 +143,9 @@ test.describe('Admin: bulk actions', () => {
     await goTo(page, '/admin')
     await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
     for (const slug of SLUGS) {
-      await apiDelete(page, `/api/v1/mcp/servers/${PUB_SLUG}/${slug}`).catch(() => {})
+      await apiCleanup(page, `/api/v1/mcp/servers/${PUB_SLUG}/${slug}`)
     }
-    await apiDelete(page, `/api/v1/publishers/${PUB_SLUG}`).catch(() => {})
+    await apiCleanup(page, `/api/v1/publishers/${PUB_SLUG}`)
     await ctx.close()
   })
 
@@ -227,8 +223,8 @@ test.describe('Admin: publish version via UI', () => {
     const page = await ctx.newPage()
     await goTo(page, '/admin')
     await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
-    await apiDelete(page, `/api/v1/mcp/servers/${PUB_SLUG}/${MCP_SLUG}`).catch(() => {})
-    await apiDelete(page, `/api/v1/publishers/${PUB_SLUG}`).catch(() => {})
+    await apiCleanup(page, `/api/v1/mcp/servers/${PUB_SLUG}/${MCP_SLUG}`)
+    await apiCleanup(page, `/api/v1/publishers/${PUB_SLUG}`)
     await ctx.close()
   })
 

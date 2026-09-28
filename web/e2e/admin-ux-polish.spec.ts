@@ -16,7 +16,7 @@
  */
 
 import { test, expect, type Browser, type Page } from '@playwright/test'
-import { apiPost, apiDelete } from './helpers'
+import { apiPost, apiGet, apiDelete, apiCleanup } from './helpers'
 
 const RUN = Date.now().toString(36)
 
@@ -116,9 +116,7 @@ test.describe('Admin UX polish', () => {
   test('a report row links to the reported entry by name', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     // Look up the entry's ULID, then file a report against it (public API).
-    const detail = await admin.request.get(`/api/v1/mcp/servers/${PUB}/alpha-server`, {
-      headers: { Authorization: `Bearer ${await admin.evaluate(() => window.localStorage.getItem('ai_registry_access'))}` },
-    })
+    const detail = await apiGet(admin, `/api/v1/mcp/servers/${PUB}/alpha-server`)
     expect(detail.status()).toBe(200)
     const { id } = (await detail.json()) as { id: string }
     const report = await admin.request.post('/api/v1/reports', {
@@ -143,7 +141,7 @@ test.describe('Admin UX polish', () => {
   test('cleanup', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     for (const slug of ['alpha-server', 'zulu-server']) {
-      await apiDelete(admin, `/api/v1/mcp/servers/${PUB}/${slug}`)
+      await apiCleanup(admin, `/api/v1/mcp/servers/${PUB}/${slug}`)
     }
     const r = await apiDelete(admin, `/api/v1/publishers/${PUB}`)
     expect([200, 204]).toContain(r.status())

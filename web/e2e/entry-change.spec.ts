@@ -22,7 +22,7 @@
  */
 
 import { test, expect, type Browser, type Page } from '@playwright/test'
-import { apiPost, apiGet, apiPatch, apiDelete } from './helpers'
+import { apiPost, apiGet, apiPatch, apiDelete, apiCleanup } from './helpers'
 
 const RUN_ID = Date.now().toString(36)
 const PUB = `e2e-change-${RUN_ID}`
@@ -184,7 +184,7 @@ test.describe('Entry-change review queue', () => {
   test('cleanup', async ({ browser }) => {
     const admin = await pageAs(browser, 'admin')
     // Force-delete the server (admin escape hatch) then drop the publisher.
-    await apiDelete(admin, `/api/v1/mcp/servers/${PUB}/${MCP}`)
+    await apiCleanup(admin, `/api/v1/mcp/servers/${PUB}/${MCP}`)
     const res = await apiDelete(admin, `/api/v1/publishers/${PUB}`)
     expect([200, 204], 'publisher delete').toContain(res.status())
   })
