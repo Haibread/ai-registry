@@ -13,7 +13,7 @@
 #   - Helm:   helm, helm-docs
 #   - Docker: hadolint
 #   - CI:     actionlint
-# See "Development workflow → Pre-commit hooks" in README.md for install commands.
+# See CONTRIBUTING.md for install commands.
 
 minimum_pre_commit_version: "3.2.0"
 
