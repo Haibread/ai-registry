@@ -202,8 +202,8 @@ api:
   # -- (string) Access-token lifetime (Go duration). Unset → server default
   # (15m).
   accessTokenTtl: ~
-  # -- (string) Refresh-token lifetime (Go duration). Unset → server default
-  # (12h).
+  # -- (string) Absolute session lifetime from login (Go duration); refresh-token
+  # rotation does not extend it. Unset → server default (12h).
   refreshTokenTtl: ~
 
   # ── Auth (local accounts) ────────────────────────────────────────

@@ -30,7 +30,7 @@ func (f *fakeRefreshStore) CreateRefreshToken(_ context.Context, p store.CreateR
 	return &store.RefreshToken{ID: "rt", UserID: p.UserID}, nil
 }
 
-func (f *fakeRefreshStore) RotateRefreshToken(_ context.Context, oldHash, newHash string, _ time.Time) (*store.RefreshToken, error) {
+func (f *fakeRefreshStore) RotateRefreshToken(_ context.Context, oldHash, newHash string) (*store.RefreshToken, error) {
 	f.rotateOld, f.rotateNew = oldHash, newHash
 	if f.rotateErr != nil {
 		return nil, f.rotateErr

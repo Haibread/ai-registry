@@ -102,10 +102,12 @@ func (db *DB) CreateRefreshToken(ctx context.Context, p CreateRefreshTokenParams
 //     rotated_from), return the new row
 //
 // The carried-over fields (user, auth_method, claim_groups, claim_admin,
-// id_token) come from the consumed row so the caller can mint a matching access
-// token. Runs in a single transaction with SELECT ... FOR UPDATE to serialise
+// id_token, expires_at) come from the consumed row so the caller can mint a
+// matching access token. Keeping expires_at makes the refresh TTL an absolute
+// bound on the login lineage: the claim snapshot is re-read only at login.
+// Runs in a single transaction with SELECT ... FOR UPDATE to serialise
 // concurrent rotations of the same token.
-func (db *DB) RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (*RefreshToken, error) {
+func (db *DB) RotateRefreshToken(ctx context.Context, oldHash, newHash string) (*RefreshToken, error) {
 	ctx, span := startSpan(ctx, "RotateRefreshToken")
 	defer span.End()
 
@@ -172,7 +174,7 @@ func (db *DB) RotateRefreshToken(ctx context.Context, oldHash, newHash string, n
 			(id, token_hash, user_id, auth_method, claim_groups, claim_admin, id_token, rotated_from, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING `+refreshColumns,
-		NewULID(), newHash, userID, authMethod, groups, claimAdmin, idToken, id, newExpiresAt))
+		NewULID(), newHash, userID, authMethod, groups, claimAdmin, idToken, id, expiresAt))
 	if err != nil {
 		recordErr(span, err)
 		return nil, fmt.Errorf("rotating refresh token: insert successor: %w", err)

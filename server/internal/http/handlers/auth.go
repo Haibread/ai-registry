@@ -181,8 +181,9 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 // Refresh handles POST /api/v1/auth/refresh: rotate a refresh token into a fresh
 // access + refresh pair. The presented refresh token is consumed (single-use);
 // replaying an already-rotated one is treated as theft and revokes the whole
-// lineage. The Server-Admin flag and group snapshot are re-read here, so a
-// changed is_server_admin propagates within one access-token TTL.
+// lineage. The successor keeps the lineage's login-time expiry. The local
+// is_server_admin flag is re-read here, so a change to it propagates within one
+// access-token TTL; the IdP claim snapshot is only refreshed by a new login.
 func (h *AuthHandlers) Refresh(w http.ResponseWriter, r *http.Request) {
 	if h.tokens == nil {
 		problem.Write(w, http.StatusNotFound, "not-found",

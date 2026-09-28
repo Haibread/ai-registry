@@ -92,7 +92,7 @@ func (f *fakeAuthStore) CreateRefreshToken(_ context.Context, p store.CreateRefr
 	return t, nil
 }
 
-func (f *fakeAuthStore) RotateRefreshToken(_ context.Context, oldHash, newHash string, newExpiresAt time.Time) (*store.RefreshToken, error) {
+func (f *fakeAuthStore) RotateRefreshToken(_ context.Context, oldHash, newHash string) (*store.RefreshToken, error) {
 	old, ok := f.refresh[oldHash]
 	if !ok {
 		return nil, store.ErrNotFound
@@ -115,7 +115,7 @@ func (f *fakeAuthStore) RotateRefreshToken(_ context.Context, oldHash, newHash s
 	t := &store.RefreshToken{
 		ID: newHash[:8], UserID: old.UserID, AuthMethod: old.AuthMethod,
 		ClaimGroups: old.ClaimGroups, ClaimAdmin: old.ClaimAdmin, IDToken: old.IDToken,
-		ExpiresAt: newExpiresAt,
+		ExpiresAt: old.ExpiresAt,
 	}
 	f.refresh[newHash] = t
 	return t, nil
