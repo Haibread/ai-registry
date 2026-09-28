@@ -205,6 +205,10 @@ api:
   # -- (string) Absolute session lifetime from login (Go duration); refresh-token
   # rotation does not extend it. Unset → server default (12h).
   refreshTokenTtl: ~
+  # -- (string) How often each replica deletes expired refresh tokens, OIDC
+  # login transactions and handoff codes (Go duration). Unset → server default
+  # (15m).
+  authSweepInterval: ~
 
   # ── Auth (local accounts) ────────────────────────────────────────
   # Local email + password login, minting the same registry token pair as OIDC.

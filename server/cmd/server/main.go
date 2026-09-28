@@ -274,6 +274,19 @@ func run() error {
 		IdleTimeout:  cfg.HTTP.IdleTimeout,
 	})
 
+	// ── Auth-state sweep ─────────────────────────────────────────────────────
+	// Deferred after db.Close, so it runs first: the pool outlives the loop.
+	sweepCtx, stopSweep := context.WithCancel(ctx)
+	sweepDone := make(chan struct{})
+	go func() {
+		defer close(sweepDone)
+		authpkg.RunSweeper(sweepCtx, db, cfg.Auth.SweepInterval, logger)
+	}()
+	defer func() {
+		stopSweep()
+		<-sweepDone
+	}()
+
 	// ── Graceful shutdown ────────────────────────────────────────────────────
 	errCh := make(chan error, 1)
 	go func() {
@@ -291,6 +304,7 @@ func run() error {
 		}
 	case sig := <-quit:
 		logger.Info("received signal, shutting down", slog.String("signal", sig.String()))
+		stopSweep()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {

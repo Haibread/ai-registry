@@ -155,6 +155,10 @@ spec:
             - name: REFRESH_TOKEN_TTL
               value: {{ . | quote }}
             {{- end }}
+            {{- with $v.authSweepInterval }}
+            - name: AUTH_SWEEP_INTERVAL
+              value: {{ . | quote }}
+            {{- end }}
             # ── Auth (local accounts) ───────────────────────────────────────
             {{- /* The bootstrap admin PASSWORD is a secret, wired via
                secretKeyRef below — never inlined here. */}}

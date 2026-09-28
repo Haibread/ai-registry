@@ -225,14 +225,16 @@ func (db *DB) RevokeAllRefreshTokensForUser(ctx context.Context, userID string) 
 	return tag.RowsAffected(), nil
 }
 
-// DeleteExpiredRefreshTokens removes refresh tokens past expiry or revoked.
-// Housekeeping; returns the number of rows removed.
+// DeleteExpiredRefreshTokens removes refresh tokens past expiry and returns the
+// number of rows removed. Revoked but unexpired rows are kept: reuse detection
+// needs them to recognise a replayed rotated token. A lineage shares one
+// expiry, so it is removed as a whole.
 func (db *DB) DeleteExpiredRefreshTokens(ctx context.Context) (int64, error) {
 	ctx, span := startSpan(ctx, "DeleteExpiredRefreshTokens")
 	defer span.End()
 
 	tag, err := db.Pool.Exec(ctx,
-		`DELETE FROM refresh_tokens WHERE expires_at <= now() OR revoked_at IS NOT NULL`)
+		`DELETE FROM refresh_tokens WHERE expires_at <= now()`)
 	if err != nil {
 		recordErr(span, err)
 		return 0, fmt.Errorf("deleting expired refresh tokens: %w", err)

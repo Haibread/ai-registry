@@ -185,6 +185,10 @@ type AuthConfig struct {
 	// claims are snapshotted at login and only re-read on a fresh login, so this
 	// bounds how long a revoked IdP membership keeps conferring roles.
 	RefreshTokenTTL time.Duration
+
+	// SweepInterval is how often the server purges expired refresh tokens,
+	// OIDC login transactions and handoff codes. Default 15m.
+	SweepInterval time.Duration
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -287,6 +291,7 @@ type fileAuthConfig struct {
 	// jwt_signing_key is a credential — env / secret only, never the file.
 	AccessTokenTTL  string `yaml:"access_token_ttl"`
 	RefreshTokenTTL string `yaml:"refresh_token_ttl"`
+	SweepInterval   string `yaml:"sweep_interval"`
 }
 
 type fileConfig struct {
@@ -330,6 +335,7 @@ func defaultFileConfig() fileConfig {
 			LocalLogin:      true,
 			AccessTokenTTL:  "15m",
 			RefreshTokenTTL: "12h",
+			SweepInterval:   "15m",
 		},
 	}
 }
@@ -365,6 +371,7 @@ func Load(configFile string) (*Config, error) {
 	idleTimeout := parseDurationDefault(fc.HTTP.IdleTimeout, 120*time.Second)
 	accessTokenTTL := parseDurationDefault(fc.Auth.AccessTokenTTL, 15*time.Minute)
 	refreshTokenTTL := parseDurationDefault(fc.Auth.RefreshTokenTTL, 12*time.Hour)
+	sweepInterval := parseDurationDefault(fc.Auth.SweepInterval, 15*time.Minute)
 
 	// Build final config: env vars win over file values.
 	cfg := &Config{
@@ -412,6 +419,7 @@ func Load(configFile string) (*Config, error) {
 			JWTSigningSeed:         envString("JWT_SIGNING_SEED", ""),
 			AccessTokenTTL:         envDuration("ACCESS_TOKEN_TTL", accessTokenTTL),
 			RefreshTokenTTL:        envDuration("REFRESH_TOKEN_TTL", refreshTokenTTL),
+			SweepInterval:          envDuration("AUTH_SWEEP_INTERVAL", sweepInterval),
 		},
 		BootstrapFile: envString("BOOTSTRAP_FILE", fc.BootstrapFile),
 	}
@@ -479,6 +487,10 @@ func (c *Config) validate() error {
 
 	if c.Auth.BootstrapAdminEmail != "" && c.Auth.BootstrapAdminPassword == "" {
 		return fmt.Errorf("AUTH_BOOTSTRAP_ADMIN_PASSWORD is required when AUTH_BOOTSTRAP_ADMIN_EMAIL is set")
+	}
+
+	if c.Auth.SweepInterval <= 0 {
+		return fmt.Errorf("AUTH_SWEEP_INTERVAL must be a positive duration, got %s", c.Auth.SweepInterval)
 	}
 
 	// Accepting IdP service-account tokens requires the broker (its JWKS + issuer

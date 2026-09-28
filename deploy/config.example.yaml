@@ -130,3 +130,6 @@ auth:
   # Absolute session lifetime from login; refresh-token rotation never extends
   # it, so IdP claim changes are picked up at most this long after a login.
   refresh_token_ttl: "12h"
+  # How often each replica deletes expired refresh tokens, OIDC login
+  # transactions and handoff codes. Must be positive.
+  sweep_interval: "15m"
