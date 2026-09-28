@@ -251,7 +251,9 @@ HTML rendering) load-bearing. The SPA's CSP therefore allows scripts and
 holds a raw token, and presenting an already-rotated refresh token revokes its
 whole lineage, which turns token theft into a detectable, self-limiting event.
 A rotated token keeps its predecessor's expiry, so `REFRESH_TOKEN_TTL` is an
-absolute session lifetime from login, not a sliding window.
+absolute session lifetime from login, not a sliding window. A password change,
+a disable or a Server Admin removal revokes all of the user's refresh tokens in
+the same transaction.
 
 **Tokens carry group membership, never roles.** At login the refresh token
 snapshots the IdP's group claim and admin-role flag, and every access token

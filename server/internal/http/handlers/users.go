@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -14,10 +15,21 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
-// minPasswordLength is the floor for local-account passwords (self-service and
-// bootstrap). 12 follows current OWASP guidance; argon2id (password.go) handles
-// the hashing strength.
+// minPasswordLength is the floor for local-account passwords set through the
+// API. 12 follows current OWASP guidance; argon2id (password.go) handles the
+// hashing strength.
 const minPasswordLength = 12
+
+// passwordLongEnough writes a 422 and returns false when password is under
+// minPasswordLength.
+func passwordLongEnough(w http.ResponseWriter, r *http.Request, password string) bool {
+	if utf8.RuneCountInString(password) >= minPasswordLength {
+		return true
+	}
+	problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+		fmt.Sprintf("password must be at least %d characters", minPasswordLength), r.URL.Path)
+	return false
+}
 
 // UserHandlers serves the user/principal management endpoints.
 // List/create/get/patch are Server-Admin gated at the router; set-password is
@@ -90,6 +102,9 @@ func (h *UserHandlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	var hash string
 	if body.Password != "" {
+		if !passwordLongEnough(w, r, body.Password) {
+			return
+		}
 		var err error
 		hash, err = auth.HashPassword(body.Password)
 		if err != nil {
@@ -159,6 +174,7 @@ func (h *UserHandlers) GetUserGrants(w http.ResponseWriter, r *http.Request) {
 }
 
 // PatchUser: PATCH /api/v1/users/{id} — display name, disabled, is_server_admin.
+// Disabling or demoting a user revokes their refresh tokens (in the store).
 func (h *UserHandlers) PatchUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var body struct {
@@ -199,7 +215,8 @@ func (h *UserHandlers) PatchUser(w http.ResponseWriter, r *http.Request) {
 
 // SetPassword: POST /api/v1/users/{id}/set-password — self or Server Admin.
 // Not RequireAdmin-gated at the router so a user can set their own password;
-// the handler enforces the self-or-admin rule.
+// the handler enforces the self-or-admin rule. The store revokes all of the
+// user's refresh tokens along with the password change.
 func (h *UserHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -225,9 +242,7 @@ func (h *UserHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if len(body.Password) < minPasswordLength {
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
-			fmt.Sprintf("password must be at least %d characters", minPasswordLength), r.URL.Path)
+	if !passwordLongEnough(w, r, body.Password) {
 		return
 	}
 

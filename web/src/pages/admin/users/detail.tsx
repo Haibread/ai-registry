@@ -349,7 +349,7 @@ export default function AdminUserDetail() {
         </p>
         <div className="space-y-1">
           <Label htmlFor="password">New password</Label>
-          <Input id="password" name="password" type="password" minLength={8} autoComplete="new-password" required />
+          <Input id="password" name="password" type="password" minLength={12} autoComplete="new-password" required />
         </div>
         <Button type="submit" size="sm" disabled={setPassword.isPending}>
           {setPassword.isPending ? 'Setting…' : 'Set password'}
