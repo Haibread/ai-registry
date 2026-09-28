@@ -120,11 +120,14 @@ a route without its spec entry, or the reverse, fails them.
 ### Web — unit and component
 
 ```bash
-cd web && npm test
+cd web && npm run test:coverage
 ```
 
-Vitest with Testing Library, no services needed. `npm run test:watch` while
-iterating, `npm run test:coverage` for a report.
+Vitest with Testing Library, no services needed; `npm test` runs the same
+suite without coverage, `npm run test:watch` while iterating. CI runs
+`npm run test:coverage`, which fails when total coverage drops below the floor
+in `coverage.thresholds` of [`web/vitest.config.ts`](web/vitest.config.ts).
+Public and admin pages are both measured.
 
 ### Web — nginx routing
 
@@ -223,7 +226,7 @@ Docker build like any other.
 | Workflow | Triggers on | What it does | Reproduce locally |
 | --- | --- | --- | --- |
 | [Lint](.github/workflows/lint.yml) | PR to `main`, manual | `pre-commit run --all-files` | `pre-commit run --all-files` |
-| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm test`; nginx routing checks; `helm lint`, `helm template` over several value sets + kubeconform ([deploy/helm/validate.sh](deploy/helm/validate.sh)); e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
+| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm run test:coverage` with its floor; nginx routing checks; `helm lint`, `helm template` over several value sets + kubeconform ([deploy/helm/validate.sh](deploy/helm/validate.sh)); e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
 | [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build, no push. Push to `main` or a `v*.*.*` tag: build and push to GHCR | multi-arch (`amd64`, `arm64`) server and web images. Without a push, an `amd64` copy is loaded and scanned with `trivy image`; after a push, the pushed digest is scanned. Fails on a fixable `HIGH`/`CRITICAL` CVE; all findings go to code scanning | [Scanning locally](#scanning-locally) |
 | [Security](.github/workflows/security.yml) | PR to `main`, push to `main`, manual | `trivy config` over the Dockerfiles and the Helm chart; fails on a `HIGH`/`CRITICAL` misconfiguration, all findings go to code scanning | `trivy config --severity HIGH,CRITICAL --exit-code 1 .` |
 | [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | runs [deploy/helm/validate.sh](deploy/helm/validate.sh), then packages and pushes the chart to GHCR as OCI; nothing is published if validation fails | `deploy/helm/validate.sh && helm package deploy/helm/ai-registry` |

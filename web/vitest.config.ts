@@ -29,12 +29,15 @@ export default defineConfig({
         "src/test/**",
         "src/**/*.d.ts",
         "src/lib/schema.d.ts",
-        // Public user pages are covered by Playwright e2e, not vitest.
-        // Admin pages have unit tests and stay in the coverage report,
-        // hence the negation below.
-        "src/pages/!(admin)/**",
-        "src/pages/*.tsx",
       ],
+      // Regression floor: the measured totals rounded down. Raise it when
+      // coverage goes up; never lower it to make a change pass.
+      thresholds: {
+        lines: 84,
+        statements: 81,
+        functions: 81,
+        branches: 75,
+      },
     },
   },
   resolve: {

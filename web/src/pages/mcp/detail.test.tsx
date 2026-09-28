@@ -383,4 +383,34 @@ describe('MCPDetailPage — tab spacing', () => {
       expect(activePanelClass()).toMatch(/\bmt-6\b/)
     }
   })
+
+})
+
+describe('MCPDetailPage — README', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPOST.mockResolvedValue({})
+  })
+
+  it('renders the README as markdown, with raw HTML inert and javascript: links neutralised', async () => {
+    primeGET({
+      ...STDIO_SERVER,
+      readme: '## Usage\n\n<img src=x onerror="alert(1)">\n\n[docs](https://example.com/docs) [evil](javascript:alert(1))',
+    })
+    const { container } = renderDetail()
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Usage' })).toBeInTheDocument()
+    expect(container.querySelector('.prose img')).toBeNull()
+    expect(screen.getByText('<img src=x onerror="alert(1)">')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'docs' })).toHaveAttribute('href', 'https://example.com/docs')
+    expect(screen.getByText('evil').closest('a')).toHaveAttribute('href', '')
+  })
+
+  it('renders no README block when the entry has none', async () => {
+    primeGET({ ...STDIO_SERVER, readme: '' })
+    const { container } = renderDetail()
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(container.querySelector('.prose')).toBeNull()
+  })
 })

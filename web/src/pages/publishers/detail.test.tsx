@@ -71,4 +71,38 @@ describe('PublisherDetailPage', () => {
     expect(await screen.findByText(/no mcp servers published/i)).toBeInTheDocument()
     expect(screen.getByText(/no agents published/i)).toBeInTheDocument()
   })
+
+  it('lists the publisher entries with counts and links to their namespaces', async () => {
+    mockGET.mockImplementation((path: string) => {
+      if (path.includes('/publishers/')) {
+        return Promise.resolve({
+          data: { id: '1', slug: 'acme', name: 'Acme Corp', verified: false, created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z' },
+        })
+      }
+      const kind = path.includes('mcp') ? 'Server' : 'Agent'
+      return Promise.resolve({
+        data: {
+          items: [{ id: kind, namespace: 'acme', slug: kind.toLowerCase(), name: `Acme ${kind}`, description: 'desc' }],
+          total_count: 3,
+        },
+      })
+    })
+    renderPage()
+
+    expect(await screen.findByText('Acme Server')).toBeInTheDocument()
+    expect(await screen.findByText('Acme Agent')).toBeInTheDocument()
+    expect(screen.getAllByText('(3)')).toHaveLength(2)
+    const viewAll = screen.getAllByRole('link', { name: /view all/i }).map((l) => l.getAttribute('href'))
+    expect(viewAll).toEqual(['/mcp/acme', '/agents/acme'])
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument()
+    expect(screen.queryByText('Contact')).not.toBeInTheDocument()
+  })
+
+  it('renders the not-found state when the publisher does not exist', async () => {
+    mockGET.mockResolvedValue({ data: undefined })
+    renderPage('ghost')
+
+    expect(await screen.findByText('Publisher not found')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back to home/i })).toHaveAttribute('href', '/')
+  })
 })
