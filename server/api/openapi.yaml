@@ -679,7 +679,11 @@ paths:
       operationId: setUserPassword
       summary: Set a user's password (self or Server Admin)
       description: >
-        The password must be at least 12 characters (422 otherwise). Setting it
+        The password must be at least 12 characters (422 otherwise). Changing
+        your own password, Server Admin or not, requires `current_password`
+        (422 when missing, 403 `current-password-mismatch` when wrong); a
+        wrong one counts toward the local-login lockout (429). A Server Admin
+        resetting another user's password does not send it. Setting it
         revokes all of the user's refresh tokens, including the caller's own
         when setting their own password; access tokens already issued stay
         valid until they expire.
@@ -705,11 +709,24 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          $ref: "#/components/responses/Forbidden"
+          description: |
+            forbidden (neither the user nor a Server Admin) |
+            current-password-mismatch (changing your own password with a wrong
+            current_password).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many wrong current passwords; retry later
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
 
   /api/v1/users/{id}/grants:
     get:
@@ -3623,6 +3640,13 @@ components:
           type: string
           format: password
           minLength: 12
+        current_password:
+          type: string
+          format: password
+          description: >
+            The caller's current password. Required when the caller changes
+            their own password (Server Admins included); ignored when a Server
+            Admin sets another user's.
 
     RoleGrant:
       type: object

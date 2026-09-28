@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -35,13 +36,21 @@ func passwordLongEnough(w http.ResponseWriter, r *http.Request, password string)
 // List/create/get/patch are Server-Admin gated at the router; set-password is
 // authenticated and self-or-admin (enforced in the handler).
 type UserHandlers struct {
-	db    *store.DB
-	audit store.AuditLogger
+	db      *store.DB
+	audit   store.AuditLogger
+	lockout *loginLimiter
 }
 
 // NewUserHandlers builds UserHandlers with the given store and audit logger.
 func NewUserHandlers(db *store.DB, audit store.AuditLogger) *UserHandlers {
 	return &UserHandlers{db: db, audit: audit}
+}
+
+// ShareLoginLockout makes a wrong current password on set-password count
+// toward the same per-email lockout as a failed local login.
+func (h *UserHandlers) ShareLoginLockout(a *AuthHandlers) *UserHandlers {
+	h.lockout = a.lockout
+	return h
 }
 
 func (h *UserHandlers) audited(r *http.Request, action domain.AuditAction, u *store.User) {
@@ -215,7 +224,8 @@ func (h *UserHandlers) PatchUser(w http.ResponseWriter, r *http.Request) {
 
 // SetPassword: POST /api/v1/users/{id}/set-password — self or Server Admin.
 // Not RequireAdmin-gated at the router so a user can set their own password;
-// the handler enforces the self-or-admin rule. The store revokes all of the
+// the handler enforces the self-or-admin rule. Changing your own password,
+// Server Admin or not, requires current_password. The store revokes all of the
 // user's refresh tokens along with the password change.
 func (h *UserHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -237,13 +247,24 @@ func (h *UserHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Password string `json:"password"`
+		Password        string `json:"password"`
+		CurrentPassword string `json:"current_password"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if !passwordLongEnough(w, r, body.Password) {
 		return
+	}
+	if isSelf {
+		if body.CurrentPassword == "" {
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
+				"current_password is required to change your own password", r.URL.Path)
+			return
+		}
+		if !h.verifyCurrentPassword(w, r, id, body.CurrentPassword) {
+			return
+		}
 	}
 
 	hash, err := auth.HashPassword(body.Password)
@@ -268,4 +289,52 @@ func (h *UserHandlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 		Metadata:     map[string]any{"self_service": isSelf && !isAdmin},
 	})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// verifyCurrentPassword checks password against the stored hash of user id,
+// writing the error response and returning false when it does not match. An
+// account with no local password never matches.
+func (h *UserHandlers) verifyCurrentPassword(w http.ResponseWriter, r *http.Request, id, password string) bool {
+	u, err := h.db.GetUserByID(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		problem.Write(w, http.StatusNotFound, "not-found", "user does not exist", r.URL.Path)
+		return false
+	}
+	if err != nil {
+		internalError(w, r, err)
+		return false
+	}
+	email := strings.ToLower(strings.TrimSpace(u.Email))
+	if h.lockout != nil {
+		if retryAfter, locked := h.lockout.locked(email); locked {
+			w.Header().Set("Retry-After", retryAfter)
+			problem.Write(w, http.StatusTooManyRequests, "too-many-requests",
+				"too many failed password attempts; try again later", r.URL.Path)
+			return false
+		}
+	}
+	creds, err := h.db.CredentialsByEmail(r.Context(), email)
+	if err != nil {
+		internalError(w, r, err)
+		return false
+	}
+	ok := false
+	if creds.PasswordHash == "" {
+		auth.VerifyPasswordDummy(password)
+	} else if ok, err = auth.VerifyPassword(password, creds.PasswordHash); err != nil {
+		internalError(w, r, err)
+		return false
+	}
+	if !ok {
+		if h.lockout != nil {
+			h.lockout.fail(email)
+		}
+		problem.Write(w, http.StatusForbidden, "current-password-mismatch",
+			"current password is incorrect", r.URL.Path)
+		return false
+	}
+	if h.lockout != nil {
+		h.lockout.reset(email)
+	}
+	return true
 }

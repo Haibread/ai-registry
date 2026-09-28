@@ -413,7 +413,7 @@ export interface paths {
         put?: never;
         /**
          * Set a user's password (self or Server Admin)
-         * @description The password must be at least 12 characters (422 otherwise). Setting it revokes all of the user's refresh tokens, including the caller's own when setting their own password; access tokens already issued stay valid until they expire.
+         * @description The password must be at least 12 characters (422 otherwise). Changing your own password, Server Admin or not, requires `current_password` (422 when missing, 403 `current-password-mismatch` when wrong); a wrong one counts toward the local-login lockout (429). A Server Admin resetting another user's password does not send it. Setting it revokes all of the user's refresh tokens, including the caller's own when setting their own password; access tokens already issued stay valid until they expire.
          */
         post: operations["setUserPassword"];
         delete?: never;
@@ -1718,6 +1718,11 @@ export interface components {
         SetPasswordRequest: {
             /** Format: password */
             password: string;
+            /**
+             * Format: password
+             * @description The caller's current password. Required when the caller changes their own password (Server Admins included); ignored when a Server Admin sets another user's.
+             */
+            current_password?: string;
         };
         RoleGrant: {
             id: string;
@@ -3355,9 +3360,30 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            /**
+             * @description forbidden (neither the user nor a Server Admin) |
+             *     current-password-mismatch (changing your own password with a wrong
+             *     current_password).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationError"];
+            /** @description Too many wrong current passwords; retry later */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getUserGrants: {

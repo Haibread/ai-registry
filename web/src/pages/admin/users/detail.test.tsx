@@ -169,16 +169,33 @@ describe('AdminUserDetail', () => {
     expect(await screen.findByText(/matched at sign-in/i)).toBeInTheDocument()
   })
 
-  it('sets a password via POST', async () => {
+  it('sets another user\'s password via POST without a current password', async () => {
     mockPOST.mockResolvedValue({ error: undefined })
     renderPage()
     await screen.findByText('Ada')
+    expect(screen.queryByLabelText(/current password/i)).not.toBeInTheDocument()
     await userEvent.type(screen.getByLabelText(/new password/i), 'longenough1')
     await userEvent.click(screen.getByRole('button', { name: /^set password$/i }))
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith('/api/v1/users/{id}/set-password', {
         params: { path: { id: '01HU1' } },
         body: { password: 'longenough1' },
+      })
+    })
+  })
+
+  it('sends the current password when changing your own', async () => {
+    mockMyUserId = '01HU1'
+    mockPOST.mockResolvedValue({ error: undefined })
+    renderPage()
+    await screen.findByText('Ada')
+    await userEvent.type(screen.getByLabelText(/current password/i), 'the-old-one')
+    await userEvent.type(screen.getByLabelText(/new password/i), 'brandnewpass123')
+    await userEvent.click(screen.getByRole('button', { name: /^set password$/i }))
+    await waitFor(() => {
+      expect(mockPOST).toHaveBeenCalledWith('/api/v1/users/{id}/set-password', {
+        params: { path: { id: '01HU1' } },
+        body: { password: 'brandnewpass123', current_password: 'the-old-one' },
       })
     })
   })
