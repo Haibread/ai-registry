@@ -183,7 +183,10 @@ erDiagram
 - **Auth state**: `refresh_tokens` (hash only, plus the group and admin claims
   snapshotted at login), `oidc_auth_requests` (in-flight login transactions)
   and `auth_handoff_codes` (the one-time SPA handoff, which holds the issued
-  token pair until the SPA exchanges it). Access tokens are not stored.
+  token pair until the SPA exchanges it; the exchange deletes the row). Access
+  tokens are not otherwise stored. Every replica deletes expired rows from all
+  three tables every `AUTH_SWEEP_INTERVAL`; revoked refresh tokens are kept
+  until they expire so a replayed one is still recognised as reuse.
 - **`instance_tags`** is the registry-wide tag vocabulary. A published version
   freezes the tags it was published with; a tag in use is deactivated rather
   than deleted so frozen versions keep resolving.

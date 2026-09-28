@@ -208,32 +208,72 @@ func TestRefreshToken_DeleteExpired(t *testing.T) {
 	ctx := context.Background()
 	u := newUser(t, ctx, "sweep@x.test")
 
-	// One live, one expired, one revoked.
-	if _, err := sharedDB.CreateRefreshToken(ctx, store.CreateRefreshTokenParams{
-		UserID: u.ID, TokenHash: "live", AuthMethod: "local", ExpiresAt: time.Now().Add(time.Hour),
-	}); err != nil {
-		t.Fatalf("create live: %v", err)
+	for _, hash := range []string{"live", "rev"} {
+		if _, err := sharedDB.CreateRefreshToken(ctx, store.CreateRefreshTokenParams{
+			UserID: u.ID, TokenHash: hash, AuthMethod: "local", ExpiresAt: time.Now().Add(time.Hour),
+		}); err != nil {
+			t.Fatalf("create %s: %v", hash, err)
+		}
 	}
-	if _, err := sharedDB.CreateRefreshToken(ctx, store.CreateRefreshTokenParams{
-		UserID: u.ID, TokenHash: "exp", AuthMethod: "local", ExpiresAt: time.Now().Add(-time.Hour),
-	}); err != nil {
-		t.Fatalf("create expired: %v", err)
+	for _, hash := range []string{"exp", "exp-rev"} {
+		if _, err := sharedDB.CreateRefreshToken(ctx, store.CreateRefreshTokenParams{
+			UserID: u.ID, TokenHash: hash, AuthMethod: "local", ExpiresAt: time.Now().Add(-time.Hour),
+		}); err != nil {
+			t.Fatalf("create %s: %v", hash, err)
+		}
 	}
-	if _, err := sharedDB.CreateRefreshToken(ctx, store.CreateRefreshTokenParams{
-		UserID: u.ID, TokenHash: "rev", AuthMethod: "local", ExpiresAt: time.Now().Add(time.Hour),
-	}); err != nil {
-		t.Fatalf("create to-revoke: %v", err)
-	}
-	if _, err := sharedDB.RevokeRefreshToken(ctx, "rev"); err != nil {
-		t.Fatalf("revoke: %v", err)
+	for _, hash := range []string{"rev", "exp-rev"} {
+		if _, err := sharedDB.RevokeRefreshToken(ctx, hash); err != nil {
+			t.Fatalf("revoke %s: %v", hash, err)
+		}
 	}
 
 	n, err := sharedDB.DeleteExpiredRefreshTokens(ctx)
 	if err != nil {
 		t.Fatalf("DeleteExpiredRefreshTokens: %v", err)
 	}
-	if n != 2 { // expired + revoked, never the live one
-		t.Errorf("deleted %d, want 2 (expired + revoked)", n)
+	if n != 2 {
+		t.Errorf("deleted %d, want 2 (the expired rows, revoked or not)", n)
+	}
+	var left []string
+	rows, err := sharedDB.Pool.Query(ctx, `SELECT token_hash FROM refresh_tokens ORDER BY token_hash`)
+	if err != nil {
+		t.Fatalf("query remaining: %v", err)
+	}
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		left = append(left, h)
+	}
+	if rows.Err() != nil || len(left) != 2 || left[0] != "live" || left[1] != "rev" {
+		t.Errorf("remaining = %v (err %v), want [live rev]", left, rows.Err())
+	}
+}
+
+func TestRefreshToken_ReuseDetectedAfterSweep(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	u := newUser(t, ctx, "sweep-reuse@x.test")
+
+	if _, err := sharedDB.CreateRefreshToken(ctx, store.CreateRefreshTokenParams{
+		UserID: u.ID, TokenHash: "r1", AuthMethod: "local", ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateRefreshToken: %v", err)
+	}
+	if _, err := sharedDB.RotateRefreshToken(ctx, "r1", "r2"); err != nil {
+		t.Fatalf("RotateRefreshToken: %v", err)
+	}
+	if _, err := sharedDB.DeleteExpiredRefreshTokens(ctx); err != nil {
+		t.Fatalf("DeleteExpiredRefreshTokens: %v", err)
+	}
+
+	if _, err := sharedDB.RotateRefreshToken(ctx, "r1", "r3"); !errors.Is(err, store.ErrRefreshReuse) {
+		t.Fatalf("replayed rotated token err = %v, want ErrRefreshReuse", err)
+	}
+	if _, err := sharedDB.RotateRefreshToken(ctx, "r2", "r4"); !errors.Is(err, store.ErrRefreshReuse) {
+		t.Fatalf("successor after reuse err = %v, want ErrRefreshReuse (lineage revoked)", err)
 	}
 }
 
@@ -268,19 +308,40 @@ func TestHandoffCode_DeleteExpired(t *testing.T) {
 		t.Fatalf("create live: %v", err)
 	}
 	if err := sharedDB.CreateHandoffCode(ctx, store.CreateHandoffCodeParams{
-		CodeHash: "consumed", AccessToken: "a", RefreshToken: "r", ExpiresIn: 900, ExpiresAt: time.Now().Add(time.Minute),
+		CodeHash: "expired", AccessToken: "a", RefreshToken: "r", ExpiresIn: 900, ExpiresAt: time.Now().Add(-time.Minute),
 	}); err != nil {
-		t.Fatalf("create consumed: %v", err)
-	}
-	if _, _, _, err := sharedDB.ConsumeHandoffCode(ctx, "consumed"); err != nil {
-		t.Fatalf("consume: %v", err)
+		t.Fatalf("create expired: %v", err)
 	}
 	n, err := sharedDB.DeleteExpiredHandoffCodes(ctx)
 	if err != nil {
 		t.Fatalf("DeleteExpiredHandoffCodes: %v", err)
 	}
-	if n != 1 { // the consumed one; the live unconsumed stays
-		t.Errorf("deleted %d, want 1 (consumed)", n)
+	if n != 1 {
+		t.Errorf("deleted %d, want 1 (expired)", n)
+	}
+	if _, _, _, err := sharedDB.ConsumeHandoffCode(ctx, "live"); err != nil {
+		t.Errorf("live code should survive the sweep: %v", err)
+	}
+}
+
+func TestHandoffCode_ConsumeDropsTokens(t *testing.T) {
+	resetDB(t)
+	ctx := context.Background()
+	if err := sharedDB.CreateHandoffCode(ctx, store.CreateHandoffCodeParams{
+		CodeHash: "c", AccessToken: "acc", RefreshToken: "ref", ExpiresIn: 900, ExpiresAt: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateHandoffCode: %v", err)
+	}
+	if _, _, _, err := sharedDB.ConsumeHandoffCode(ctx, "c"); err != nil {
+		t.Fatalf("ConsumeHandoffCode: %v", err)
+	}
+	var n int
+	if err := sharedDB.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM auth_handoff_codes WHERE access_token <> '' OR refresh_token <> ''`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("%d handoff rows still hold tokens after consume, want 0", n)
 	}
 }
 

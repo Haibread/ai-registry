@@ -102,15 +102,15 @@ func (db *DB) CreateHandoffCode(ctx context.Context, p CreateHandoffCodeParams) 
 	return nil
 }
 
-// ConsumeHandoffCode atomically marks a handoff code consumed and returns its
-// tokens (single use). Returns ErrNotFound when no live, unconsumed code
-// matches.
+// ConsumeHandoffCode atomically deletes a handoff code and returns its tokens
+// (single use), so the plaintext tokens do not outlive the exchange. Returns
+// ErrNotFound when no live, unconsumed code matches.
 func (db *DB) ConsumeHandoffCode(ctx context.Context, codeHash string) (accessToken, refreshToken string, expiresIn int, err error) {
 	ctx, span := startSpan(ctx, "ConsumeHandoffCode")
 	defer span.End()
 
 	err = db.Pool.QueryRow(ctx, `
-		UPDATE auth_handoff_codes SET consumed_at = now()
+		DELETE FROM auth_handoff_codes
 		WHERE code_hash = $1 AND consumed_at IS NULL AND expires_at > now()
 		RETURNING access_token, refresh_token, expires_in`, codeHash).
 		Scan(&accessToken, &refreshToken, &expiresIn)
@@ -125,13 +125,14 @@ func (db *DB) ConsumeHandoffCode(ctx context.Context, codeHash string) (accessTo
 	return accessToken, refreshToken, expiresIn, nil
 }
 
-// DeleteExpiredHandoffCodes removes expired or consumed handoff codes.
+// DeleteExpiredHandoffCodes removes expired handoff codes. Consumed codes are
+// already gone (see ConsumeHandoffCode).
 func (db *DB) DeleteExpiredHandoffCodes(ctx context.Context) (int64, error) {
 	ctx, span := startSpan(ctx, "DeleteExpiredHandoffCodes")
 	defer span.End()
 
 	tag, err := db.Pool.Exec(ctx,
-		`DELETE FROM auth_handoff_codes WHERE expires_at <= now() OR consumed_at IS NOT NULL`)
+		`DELETE FROM auth_handoff_codes WHERE expires_at <= now()`)
 	if err != nil {
 		recordErr(span, err)
 		return 0, fmt.Errorf("deleting expired handoff codes: %w", err)

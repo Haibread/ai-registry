@@ -765,3 +765,43 @@ func TestLoad_InstanceTags_Validation(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_AuthSweepInterval(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string
+		env     string
+		want    time.Duration
+		wantErr bool
+	}{
+		{name: "default", want: 15 * time.Minute},
+		{name: "file", file: "auth:\n  sweep_interval: \"5m\"\n", want: 5 * time.Minute},
+		{name: "env beats file", file: "auth:\n  sweep_interval: \"5m\"\n", env: "30s", want: 30 * time.Second},
+		{name: "zero rejected", env: "0s", wantErr: true},
+		{name: "negative rejected", env: "-1m", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://test:test@localhost/test")
+			t.Setenv("CONFIG_FILE", "")
+			t.Setenv("AUTH_SWEEP_INTERVAL", tt.env)
+			path := ""
+			if tt.file != "" {
+				path = writeConfigFile(t, tt.file)
+			}
+			cfg, err := config.Load(path)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Load() = nil error, want an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.Auth.SweepInterval != tt.want {
+				t.Errorf("SweepInterval = %v, want %v", cfg.Auth.SweepInterval, tt.want)
+			}
+		})
+	}
+}
