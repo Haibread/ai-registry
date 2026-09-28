@@ -245,8 +245,8 @@ api:
   # -- (string) Comma-separated list of allowed CORS origins, e.g.
   # "https://registry.example.com,https://admin.example.com".
   corsAllowedOrigins: ~
-  # -- (string) CIDR of the trusted reverse proxy for real-IP extraction via
-  # X-Forwarded-For, e.g. "10.0.0.0/8".
+  # -- (string) CIDR of the trusted reverse proxies, e.g. "10.0.0.0/8". The
+  # client IP is the rightmost X-Forwarded-For hop outside this range.
   trustedProxyCIDR: ~
   # -- (string) [REQUIRED] Public-facing base URL of the deployment (what
   # clients use), e.g. "https://registry.example.com". Used by the A2A global

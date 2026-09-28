@@ -28,15 +28,14 @@ type rateLimiter struct {
 	max          int
 	window       time.Duration
 	reqCount     int
-	trustedProxy *net.IPNet // when non-nil, X-Forwarded-For is trusted from this CIDR
+	trustedProxy *net.IPNet
 }
 
 // RateLimit returns middleware that limits each unique IP to max requests per window.
 // When the limit is exceeded it writes 429 Too Many Requests with a Retry-After header.
 // Cleanup of stale entries happens lazily on every 100th request (amortised O(1)).
 // If metrics is non-nil, each rejection increments registry.ratelimit.hits.
-// trustedProxy, when non-nil, is the CIDR of a reverse proxy whose
-// X-Forwarded-For header is trusted. When nil, RemoteAddr is always used.
+// trustedProxy is passed to ClientIP to derive the per-client key.
 func RateLimit(max int, window time.Duration, metrics *observability.Metrics, trustedProxy *net.IPNet) func(http.Handler) http.Handler {
 	rl := &rateLimiter{
 		buckets:      make(map[string]*bucket),
@@ -105,27 +104,49 @@ func RateLimit(max int, window time.Duration, metrics *observability.Metrics, tr
 	}
 }
 
-// ClientIP returns the client IP. X-Forwarded-For is only trusted when the
-// direct connection (RemoteAddr) falls within trustedProxy. When trustedProxy
-// is nil, RemoteAddr is always used — XFF is ignored entirely, so untrusted
-// clients cannot spoof their source IP for logging, rate limiting, or abuse
-// audit trails. Exposed so handlers that log IPs can share the exact same
-// trust policy as the rate limiter.
+// ClientIP returns the client IP. X-Forwarded-For is only consulted when the
+// direct connection (RemoteAddr) falls within trustedProxy; it is then walked
+// from the right, skipping hops inside trustedProxy, and the first address
+// outside it is the client. Entries left of that point are client-supplied
+// and never used. When trustedProxy is nil, RemoteAddr is always used.
+// Exposed so handlers that log IPs share the rate limiter's trust policy.
 func ClientIP(r *http.Request, trustedProxy *net.IPNet) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
 
-	if trustedProxy != nil && trustedProxy.Contains(net.ParseIP(host)) {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			// Take the first (leftmost) entry — the original client IP.
-			if idx := strings.Index(xff, ","); idx >= 0 {
-				return strings.TrimSpace(xff[:idx])
-			}
-			return strings.TrimSpace(xff)
-		}
+	if trustedProxy == nil || !trustedProxy.Contains(net.ParseIP(host)) {
+		return host
 	}
 
-	return host
+	var hops []string
+	for _, v := range r.Header.Values("X-Forwarded-For") {
+		hops = append(hops, strings.Split(v, ",")...)
+	}
+
+	client := host
+	for i := len(hops) - 1; i >= 0; i-- {
+		ip := parseForwardedIP(hops[i])
+		if ip == nil {
+			// Trusted proxies only append valid addresses, so anything left of
+			// garbage is client-supplied: stop at the last trusted hop.
+			return client
+		}
+		if !trustedProxy.Contains(ip) {
+			return ip.String()
+		}
+		client = ip.String()
+	}
+	// Every hop is trusted: the leftmost one is the client, as with nginx's
+	// real_ip_recursive.
+	return client
+}
+
+func parseForwardedIP(s string) net.IP {
+	s = strings.TrimSpace(s)
+	if h, _, err := net.SplitHostPort(s); err == nil {
+		s = h
+	}
+	return net.ParseIP(strings.TrimSuffix(strings.TrimPrefix(s, "["), "]"))
 }

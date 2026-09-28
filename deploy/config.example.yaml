@@ -19,7 +19,8 @@ http:
   cors_origins: []
   #  - "http://localhost:3000"
   #  - "https://registry.example.com"
-  # CIDR of the trusted reverse proxy (empty = no proxy).
+  # CIDR of the trusted reverse proxies (empty = no proxy). The client IP is
+  # the rightmost X-Forwarded-For hop outside this range.
   trusted_proxy_cidr: ""
   # Per-IP request budget for unauthenticated reads on /api/v1, in
   # requests per minute.
