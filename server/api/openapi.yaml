@@ -183,11 +183,7 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
         "429":
-          description: Too many failed login attempts; retry later
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/auth/refresh:
     post:
@@ -223,6 +219,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/auth/logout:
     post:
@@ -248,6 +246,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LogoutResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/auth/oidc/login:
     get:
@@ -265,6 +265,8 @@ paths:
           description: Redirect to the identity provider's authorize endpoint.
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/auth/oidc/callback:
     get:
@@ -300,6 +302,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/auth/oidc/exchange:
     post:
@@ -330,6 +334,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/me:
     get:
@@ -973,6 +979,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublisherList"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     post:
       operationId: createPublisher
       summary: Create a publisher (admin only)
@@ -1019,6 +1027,8 @@ paths:
                 $ref: "#/components/schemas/Publisher"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     patch:
       operationId: patchPublisher
       summary: Update a publisher's metadata (publisher Admin)
@@ -1166,6 +1176,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InstanceTagList"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     post:
       operationId: createInstanceTag
       summary: Define a new instance tag (Server Admin)
@@ -1368,6 +1380,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MCPServerList"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     post:
       operationId: createMCPServer
       summary: Create an MCP server entry (publisher Editor)
@@ -1422,6 +1436,8 @@ paths:
                 $ref: "#/components/schemas/MCPServer"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     patch:
       operationId: patchMCPServer
       summary: Update an MCP server's metadata (admin only)
@@ -1661,6 +1677,8 @@ paths:
           description: View recorded
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/mcp/servers/{namespace}/{slug}/copy:
     post:
@@ -1676,6 +1694,8 @@ paths:
           description: Copy recorded
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/mcp/servers/{namespace}/{slug}/activity:
     get:
@@ -1723,6 +1743,8 @@ paths:
                 $ref: "#/components/schemas/MCPServerVersionList"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     post:
       operationId: createMCPServerVersion
       summary: Create a new version of an MCP server (admin only)
@@ -1776,6 +1798,8 @@ paths:
                 $ref: "#/components/schemas/MCPServerVersion"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   # ── MCP server change-approval workflow ───────────────────────────────────
 
@@ -2257,6 +2281,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentList"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     post:
       operationId: createAgent
       summary: Create an agent entry (publisher Editor)
@@ -2309,6 +2335,8 @@ paths:
                 $ref: "#/components/schemas/Agent"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     patch:
       operationId: patchAgent
       summary: Update an agent's metadata (admin only)
@@ -2533,6 +2561,8 @@ paths:
           description: View recorded
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/agents/{namespace}/{slug}/copy:
     post:
@@ -2548,6 +2578,8 @@ paths:
           description: Copy recorded
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/agents/{namespace}/{slug}/activity:
     get:
@@ -2595,6 +2627,8 @@ paths:
                 $ref: "#/components/schemas/AgentVersionList"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
     post:
       operationId: createAgentVersion
       summary: Create a new version of an agent (admin only)
@@ -2648,6 +2682,8 @@ paths:
                 $ref: "#/components/schemas/AgentVersion"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   # ── Agent change-approval workflow ────────────────────────────────────────
 
@@ -3103,6 +3139,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicStats"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/changelog:
     get:
@@ -3128,6 +3166,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChangelogList"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/v1/stats:
     get:
@@ -5726,7 +5766,15 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
     RateLimited:
-      description: Rate limit exceeded
+      description: |
+        Too many requests. Inspect `type` to discriminate the case:
+          .../errors/rate-limited        the per-client request rate limit is exceeded
+          .../errors/too-many-requests   local login is locked after repeated failures
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
       content:
         application/problem+json:
           schema:

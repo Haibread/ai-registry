@@ -2645,9 +2645,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description Rate limit exceeded */
+        /**
+         * @description Too many requests. Inspect `type` to discriminate the case:
+         *       .../errors/rate-limited        the per-client request rate limit is exceeded
+         *       .../errors/too-many-requests   local login is locked after repeated failures
+         */
         RateLimited: {
             headers: {
+                /** @description Seconds to wait before retrying. */
+                "Retry-After"?: number;
                 [name: string]: unknown;
             };
             content: {
@@ -2858,15 +2864,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationError"];
-            /** @description Too many failed login attempts; retry later */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+            429: components["responses"]["RateLimited"];
         };
     };
     refreshToken: {
@@ -2894,6 +2892,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationError"];
+            429: components["responses"]["RateLimited"];
         };
     };
     logout: {
@@ -2918,6 +2917,7 @@ export interface operations {
                     "application/json": components["schemas"]["LogoutResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     oidcLogin: {
@@ -2937,6 +2937,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     oidcCallback: {
@@ -2969,6 +2970,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     oidcExchange: {
@@ -2996,6 +2998,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationError"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getMe: {
@@ -3595,6 +3598,7 @@ export interface operations {
                     "application/json": components["schemas"]["PublisherList"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     createPublisher: {
@@ -3646,6 +3650,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     deletePublisher: {
@@ -3777,6 +3782,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstanceTagList"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     createInstanceTag: {
@@ -3905,6 +3911,7 @@ export interface operations {
                     "application/json": components["schemas"]["MCPServerList"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     createMCPServer: {
@@ -3957,6 +3964,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     deleteMCPServer: {
@@ -4194,6 +4202,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     recordMCPServerCopy: {
@@ -4216,6 +4225,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     listMCPServerActivity: {
@@ -4268,6 +4278,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     createMCPServerVersion: {
@@ -4325,6 +4336,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     submitMCPVersion: {
@@ -4768,6 +4780,7 @@ export interface operations {
                     "application/json": components["schemas"]["AgentList"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     createAgent: {
@@ -4820,6 +4833,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     deleteAgent: {
@@ -5046,6 +5060,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     recordAgentCopy: {
@@ -5068,6 +5083,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     listAgentActivity: {
@@ -5120,6 +5136,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     createAgentVersion: {
@@ -5177,6 +5194,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     submitAgentVersion: {
@@ -5647,6 +5665,7 @@ export interface operations {
                     "application/json": components["schemas"]["PublicStats"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     getChangelog: {
@@ -5669,6 +5688,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChangelogList"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     getStats: {
