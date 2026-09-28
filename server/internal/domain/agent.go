@@ -164,3 +164,27 @@ func ValidateAuthentication(raw json.RawMessage) error {
 	}
 	return nil
 }
+
+// ValidateAgentVersionURLs checks the URL fields of an agent version,
+// including provider.url. endpoint_url required-ness is the caller's concern.
+func ValidateAgentVersionURLs(endpointURL, documentationURL, iconURL string, provider json.RawMessage) error {
+	for _, f := range []struct{ name, value string }{
+		{"endpoint_url", endpointURL},
+		{"documentation_url", documentationURL},
+		{"icon_url", iconURL},
+	} {
+		if err := ValidateHTTPURL(f.name, f.value); err != nil {
+			return err
+		}
+	}
+	if len(provider) == 0 || string(provider) == "null" {
+		return nil
+	}
+	var p struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(provider, &p); err != nil {
+		return fmt.Errorf("provider must be a JSON object: %w", err)
+	}
+	return ValidateHTTPURL("provider.url", p.URL)
+}

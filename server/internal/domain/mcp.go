@@ -4,7 +4,6 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"regexp"
 	"time"
 )
@@ -218,6 +217,14 @@ func ValidatePackages(raw json.RawMessage) error {
 	return nil
 }
 
+// ValidateMCPServerURLs checks the optional link fields of an MCP server.
+func ValidateMCPServerURLs(homepageURL, repoURL string) error {
+	if err := ValidateHTTPURL("homepage_url", homepageURL); err != nil {
+		return err
+	}
+	return ValidateHTTPURL("repo_url", repoURL)
+}
+
 // validRemoteTransports is the set of transport types allowed in a remotes
 // entry — every runtime except stdio, which by definition is not remote.
 // Both the MCP spec's hyphenated spelling and our underscore runtime enum
@@ -249,9 +256,8 @@ func ValidateRemotes(raw json.RawMessage) error {
 		if e.URL == "" {
 			return fmt.Errorf("remotes[%d].url is required", i)
 		}
-		u, err := url.Parse(e.URL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("remotes[%d].url %q is not a valid absolute http(s) URL", i, e.URL)
+		if err := ValidateHTTPURL(fmt.Sprintf("remotes[%d].url", i), e.URL); err != nil {
+			return err
 		}
 	}
 	return nil

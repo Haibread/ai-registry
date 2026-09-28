@@ -105,6 +105,17 @@ func (h *ReviewHandlers) ApproveMCPChange(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	if cr.Action == domain.EntryChangeMetadataEdit {
+		var p store.UpdateMCPServerParams
+		if err := json.Unmarshal(cr.Payload, &p); err != nil {
+			internalError(w, r, err)
+			return
+		}
+		if err := validateMCPMetadataURLs(p, srv); err != nil {
+			problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+			return
+		}
+	}
 	applied, err := h.db.ApproveEntryChangeRequest(r.Context(), cr.ID, body.Revision, reviewActor(r))
 	if err != nil {
 		if writeReviewProblem(w, r, err) {

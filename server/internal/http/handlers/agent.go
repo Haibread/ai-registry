@@ -357,6 +357,10 @@ func (h *AgentHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 			"version and endpoint_url are required", r.URL.Path)
 		return
 	}
+	if err := domain.ValidateAgentVersionURLs(body.EndpointURL, body.DocumentationURL, body.IconURL, body.Provider); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		return
+	}
 	if body.ProtocolVersion == "" {
 		body.ProtocolVersion = domain.A2AProtocolVersion
 	}

@@ -1187,3 +1187,67 @@ mcp_servers:
 		t.Errorf("error %q does not mention the missing-publisher reference", msg)
 	}
 }
+
+func TestLoadSpec_ValidationError_NonHTTPURL(t *testing.T) {
+	tests := []struct {
+		name, spec, wantField string
+	}{
+		{
+			name:      "mcp homepage",
+			wantField: "homepage_url",
+			spec: `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+mcp_servers:
+  - publisher: "acme"
+    slug: "srv"
+    name: "Server"
+    homepage_url: "javascript:alert(1)"
+`,
+		},
+		{
+			name:      "mcp remote",
+			wantField: "remotes[0].url",
+			spec: `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+mcp_servers:
+  - publisher: "acme"
+    slug: "srv"
+    name: "Server"
+    versions:
+      - version: "1.0.0"
+        remotes:
+          - type: "sse"
+            url: "data:text/html,x"
+`,
+		},
+		{
+			name:      "agent icon",
+			wantField: "icon_url",
+			spec: `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+agents:
+  - publisher: "acme"
+    slug: "agent"
+    name: "Agent"
+    versions:
+      - version: "1.0.0"
+        endpoint_url: "https://agent.example.com"
+        icon_url: "javascript:alert(1)"
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := bootstrap.LoadSpec(writeFile(t, "bootstrap.yaml", tt.spec))
+			if err == nil || !strings.Contains(err.Error(), tt.wantField) {
+				t.Fatalf("error = %v, want one naming %s", err, tt.wantField)
+			}
+		})
+	}
+}

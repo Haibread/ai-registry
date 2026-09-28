@@ -2115,7 +2115,15 @@ export interface components {
             slug: string;
             name: string;
             description?: string;
+            /**
+             * Format: uri
+             * @description Absolute http(s) URL; other schemes are rejected.
+             */
             homepage_url?: string;
+            /**
+             * Format: uri
+             * @description Absolute http(s) URL; other schemes are rejected.
+             */
             repo_url?: string;
             license?: string;
         };
@@ -2314,6 +2322,10 @@ export interface components {
         };
         CreateAgentVersionRequest: {
             version: string;
+            /**
+             * Format: uri
+             * @description Absolute http(s) URL; other schemes are rejected.
+             */
             endpoint_url: string;
             skills?: components["schemas"]["AgentSkill"][];
             capabilities?: {
@@ -2322,10 +2334,19 @@ export interface components {
             authentication?: Record<string, never>[];
             default_input_modes?: string[];
             default_output_modes?: string[];
+            /** @description A2A provider object; its `url`, when set, must be an absolute http(s) URL. */
             provider?: {
                 [key: string]: unknown;
             };
+            /**
+             * Format: uri
+             * @description Absolute http(s) URL; other schemes are rejected.
+             */
             documentation_url?: string;
+            /**
+             * Format: uri
+             * @description Absolute http(s) URL; other schemes are rejected.
+             */
             icon_url?: string;
             protocol_version?: string;
             /** @description Instance-tag slugs to tick on this version. Each must be an active tag from GET /api/v1/tags (422 otherwise). Frozen with the version at publish. */
@@ -3946,7 +3967,15 @@ export interface operations {
                 "application/json": {
                     name?: string;
                     description?: string;
+                    /**
+                     * Format: uri
+                     * @description Absolute http(s) URL; other schemes are rejected.
+                     */
                     homepage_url?: string;
+                    /**
+                     * Format: uri
+                     * @description Absolute http(s) URL; other schemes are rejected.
+                     */
                     repo_url?: string;
                     license?: string;
                 };

@@ -1212,8 +1212,14 @@ paths:
                   type: string
                 homepage_url:
                   type: string
+                  format: uri
+                  maxLength: 2048
+                  description: Absolute http(s) URL; other schemes are rejected.
                 repo_url:
                   type: string
+                  format: uri
+                  maxLength: 2048
+                  description: Absolute http(s) URL; other schemes are rejected.
                 license:
                   type: string
       responses:
@@ -3754,8 +3760,14 @@ components:
           type: string
         homepage_url:
           type: string
+          format: uri
+          maxLength: 2048
+          description: Absolute http(s) URL; other schemes are rejected.
         repo_url:
           type: string
+          format: uri
+          maxLength: 2048
+          description: Absolute http(s) URL; other schemes are rejected.
         license:
           type: string
 
@@ -4180,6 +4192,9 @@ components:
           type: string
         endpoint_url:
           type: string
+          format: uri
+          maxLength: 2048
+          description: Absolute http(s) URL; other schemes are rejected.
         skills:
           type: array
           items:
@@ -4200,12 +4215,19 @@ components:
           items:
             type: string
         provider:
+          description: A2A provider object; its `url`, when set, must be an absolute http(s) URL.
           type: object
           additionalProperties: true
         documentation_url:
           type: string
+          format: uri
+          maxLength: 2048
+          description: Absolute http(s) URL; other schemes are rejected.
         icon_url:
           type: string
+          format: uri
+          maxLength: 2048
+          description: Absolute http(s) URL; other schemes are rejected.
         protocol_version:
           type: string
         tags:
