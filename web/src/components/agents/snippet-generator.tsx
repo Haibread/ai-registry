@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react'
-import { CopyButton } from '@/components/ui/copy-button'
+import { CodeBlock } from '@/components/ui/code-block'
 
 interface AgentSnippetGeneratorProps {
   endpointUrl: string
@@ -156,14 +156,7 @@ export function AgentSnippetGenerator({ endpointUrl, authSchemes }: AgentSnippet
       </div>
 
       {/* Generated snippet */}
-      <div className="relative rounded-md bg-muted overflow-hidden">
-        <div className="absolute top-2 right-2 z-10">
-          <CopyButton value={snippet} label="Copy snippet" />
-        </div>
-        <pre className="p-3 pr-12 text-xs font-mono overflow-x-auto whitespace-pre">
-          {snippet}
-        </pre>
-      </div>
+      <CodeBlock value={snippet} copyLabel="Copy snippet" />
     </div>
   )
 }

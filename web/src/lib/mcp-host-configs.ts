@@ -118,18 +118,45 @@ export const MCP_HOSTS: MCPHostConfig[] = [
   },
 ]
 
+export interface ConnectionPackage {
+  registryType: string
+  identifier: string
+  version: string
+  transport: { type: string; url?: string }
+}
+
+export interface ConnectionRemote {
+  type: string
+  url: string
+}
+
+export interface ConnectionSource {
+  label: string
+  params: MCPConfigParams
+}
+
+/** Every way to reach a version: installable packages, then remote endpoints. */
+export function connectionSources(
+  serverName: string,
+  packages: ConnectionPackage[],
+  remotes: ConnectionRemote[],
+): ConnectionSource[] {
+  return [
+    ...packages.map((p) => ({
+      label: `${p.identifier} (${p.transport.type})`,
+      params: packageToConfigParams(serverName, p),
+    })),
+    ...remotes.map((r) => ({
+      label: `${r.url} (${r.type})`,
+      params: remoteToConfigParams(serverName, r),
+    })),
+  ]
+}
+
 /**
  * Parse a package entry from the API into MCPConfigParams.
  */
-export function packageToConfigParams(
-  serverName: string,
-  pkg: {
-    registryType: string
-    identifier: string
-    version: string
-    transport: { type: string; url?: string }
-  },
-): MCPConfigParams {
+export function packageToConfigParams(serverName: string, pkg: ConnectionPackage): MCPConfigParams {
   const transport = pkg.transport.type as MCPConfigParams['transport']
 
   if (transport === 'stdio') {
@@ -192,10 +219,7 @@ export function packageToConfigParams(
  * Parse a remote endpoint entry (the version's `remotes` array) into
  * MCPConfigParams. Remotes are connection-only: no command, just a URL.
  */
-export function remoteToConfigParams(
-  serverName: string,
-  remote: { type: string; url: string },
-): MCPConfigParams {
+export function remoteToConfigParams(serverName: string, remote: ConnectionRemote): MCPConfigParams {
   return {
     serverName,
     transport: remote.type as MCPConfigParams['transport'],
