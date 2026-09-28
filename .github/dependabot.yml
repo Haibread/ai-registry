@@ -1,0 +1,174 @@
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /server
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: UTC
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      otel-go:
+        patterns:
+          - go.opentelemetry.io/*
+        update-types:
+          - minor
+          - patch
+      testcontainers:
+        patterns:
+          - github.com/testcontainers/*
+        update-types:
+          - minor
+          - patch
+      go-deps:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: UTC
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      # Tracks the Node.js runtime major used in CI and the images.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+    groups:
+      # Majors included: these packages only work at matching versions.
+      tailwind:
+        patterns:
+          - tailwindcss
+          - tailwind-merge
+          - "@tailwindcss/*"
+      typescript-openapi:
+        patterns:
+          - typescript
+          - openapi-typescript
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
+      node-deps:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directories:
+      - /server
+      - /web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: UTC
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: UTC
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      docker-compose-images:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: UTC
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: UTC
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      pre-commit-hooks:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
