@@ -101,4 +101,32 @@ describe('authFetch', () => {
     const retryInit = fetchMock.mock.calls[2][1] as RequestInit
     expect(new Headers(retryInit.headers).get('Authorization')).toBe('Bearer fresh')
   })
+
+  it('retries a Request object (openapi-fetch) with its body intact after a 401', async () => {
+    setTokens('stale', 'ref')
+    const sent: { url: string; method: string; body: string; auth: string | null }[] = []
+    const responses = [
+      new Response(null, { status: 401 }),
+      new Response(JSON.stringify({ accessToken: 'fresh', refreshToken: 'ref2' }), { status: 200 }),
+      new Response('ok', { status: 200 }),
+    ]
+    // Consume the body like a real fetch does, so a reused Request is caught.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const req = new Request(input instanceof Request ? input : new URL(String(input), 'http://localhost'), init)
+      sent.push({ url: req.url, method: req.method, body: await req.text(), auth: req.headers.get('Authorization') })
+      return responses.shift()!
+    })
+    const payload = JSON.stringify({ name: 'demo' })
+    const req = new Request('http://localhost/api/v1/x', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    })
+
+    const res = await authFetch(req)
+
+    expect(res.status).toBe(200)
+    expect(sent).toHaveLength(3)
+    expect(sent[2]).toEqual({ url: 'http://localhost/api/v1/x', method: 'POST', body: payload, auth: 'Bearer fresh' })
+  })
 })

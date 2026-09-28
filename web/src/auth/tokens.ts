@@ -117,11 +117,13 @@ export const authFetch: typeof fetch = async (input, init) => {
   const token = getAccessToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
+  // The first fetch consumes a Request's body; the retry needs an unread copy.
+  const retryInput = input instanceof Request ? input.clone() : input
   const res = await fetch(input, { ...init, headers })
   if (res.status !== 401) return res
 
   const fresh = await refreshAccessToken()
   if (!fresh) return res
   headers.set('Authorization', `Bearer ${fresh}`)
-  return fetch(input, { ...init, headers })
+  return fetch(retryInput, { ...init, headers })
 }
