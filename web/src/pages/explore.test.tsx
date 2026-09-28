@@ -184,6 +184,26 @@ describe('ExplorePage', () => {
     expect(screen.getByText('Server 0')).toBeInTheDocument()
   })
 
+  it('refetches a full page when switching from All to a single-type tab', async () => {
+    const user = userEvent.setup()
+    mockGET.mockImplementation((path: string, init: { params: { query: { limit: number } } }) => {
+      const { limit } = init.params.query
+      return Promise.resolve({
+        data: path.includes('mcp')
+          ? { items: rows('Server', limit), total_count: 40 }
+          : { items: rows('Agent', limit), total_count: 40 },
+      })
+    })
+    renderExplore()
+
+    expect(await screen.findByText('Server 5')).toBeInTheDocument()
+    expect(screen.queryByText('Server 6')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /mcp servers/i }))
+    expect(await screen.findByText('Server 19')).toBeInTheDocument()
+    expect(lastQuery('/api/v1/mcp/servers')).toMatchObject({ limit: 20 })
+  })
+
   it('applies the sort and clears filters while keeping the type tab', async () => {
     const user = userEvent.setup()
     renderExplore(['/explore?type=mcp&q=db'])
