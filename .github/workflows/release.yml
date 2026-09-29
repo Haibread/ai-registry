@@ -20,11 +20,13 @@ jobs:
   github-release:
     name: create the GitHub Release
     runs-on: ubuntu-latest
-    # workflow_run.head_branch carries the tag name for a tag push.
+    # workflow_run.head_branch carries the tag name for a tag push. A
+    # pre-release tag (vX.Y.Z-rcN) only publishes images, for testing.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
+      startsWith(github.event.workflow_run.head_branch, 'v') &&
+      !contains(github.event.workflow_run.head_branch, '-')
     permissions:
       contents: write
     steps:
@@ -33,14 +35,23 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
-          # gh ranks "Latest" by SemVer, where v0.4.0-rc0 outranks v0.3.3: a
-          # hyphenated tag must be a pre-release or an rc becomes Latest.
-          args=(--generate-notes --verify-tag --title "$TAG")
-          if [[ "$TAG" == *-* ]]; then
-            args+=(--prerelease)
-          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release ${TAG} already exists"
             exit 0
+          fi
+          args=(--generate-notes --verify-tag --title "$TAG")
+          # Without a start tag, GitHub diffs against the previous release,
+          # which may be an older rc: the notes would then miss everything
+          # already shipped in it.
+          previous="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+              | sed 's|^refs/tags/||' \
+              | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
+              | { cat; echo "$TAG"; } \
+              | sort -Vu \
+              | awk -v tag="$TAG" '$0 == tag { print prev; exit } { prev = $0 }'
+          )"
+          if [[ -n "$previous" ]]; then
+            args+=(--notes-start-tag "$previous")
           fi
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" "${args[@]}"

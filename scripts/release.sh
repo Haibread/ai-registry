@@ -12,7 +12,9 @@ Releases the application (tag vX.Y.Z: server and web images, GitHub Release),
 or with --chart the Helm chart (tag chart-X.Y.Z), which versions on its own.
 
 The GitHub Release notes are generated from the labels of the pull requests
-merged since the previous release (see .github/release.yml).
+merged since the previous stable release (see .github/release.yml). A
+pre-release version (X.Y.Z-rcN) publishes the images only, without a GitHub
+Release.
 
 Options:
   --chart                  release the Helm chart instead of the application
