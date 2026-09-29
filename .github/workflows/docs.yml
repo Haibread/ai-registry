@@ -1,0 +1,79 @@
+name: Docs
+
+# Builds every version of the documentation site (link validation included)
+# and deploys it to GitHub Pages from main. After a stable release, the Release
+# workflow dispatches this one on main so the root serves the new release.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - logo.svg
+      - .github/workflows/docs.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - logo.svg
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # The release tags are the documentation versions.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version-file: docs/.nvmrc
+
+      - name: Install dependencies
+        working-directory: docs
+        run: npm ci
+
+      - name: Build every version
+        working-directory: docs
+        run: npm run build:versions
+
+      - name: Upload the Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs:
+      - build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Deploy the site
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

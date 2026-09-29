@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.svg" alt="AI Registry logo" width="200"></p>
+
 # AI Registry
 
 A self-hostable registry for AI ecosystem artifacts — **MCP servers** and
@@ -34,7 +36,9 @@ It hosts metadata only: it does not run, proxy or sandbox the servers and
 agents it lists. The one connection it makes to a listed server is the
 `tools/list` an author asks for from the MCP forms.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind
+The documentation lives at <https://haibread.github.io/ai-registry/>
+([llms.txt](https://haibread.github.io/ai-registry/llms.txt) for models). See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind
 it.
 
 ## Getting started
@@ -54,100 +58,19 @@ git clone git@github.com:Haibread/ai-registry.git
 cd ai-registry
 ```
 
-### Configuration
-
-Every setting can be given as an environment variable, as a key in a YAML file
-passed with `CONFIG_FILE` or `--config`, or left to its default — in that order
-of precedence. Every key is documented in
-[deploy/config.example.yaml](deploy/config.example.yaml) and
-[deploy/.env.example](deploy/.env.example). The ones a real deployment has to
-set:
-
-| Variable | Required | Default | Description |
-| --- | --- | --- | --- |
-| `DATABASE_URL` | yes | — | PostgreSQL connection string |
-| `PUBLIC_BASE_URL` | yes | — | External URL of the deployment, used in agent cards and login redirects |
-| `JWT_SIGNING_KEY` or `JWT_SIGNING_SEED` | yes | ephemeral key | PEM Ed25519 key, or a ≥ 32-char secret the key is derived from; without either, tokens survive neither a restart nor a second replica |
-| `CORS_ALLOWED_ORIGINS` | when the SPA is on another origin | — | Comma-separated allowed origins |
-| `AUTH_BOOTSTRAP_ADMIN_EMAIL` / `AUTH_BOOTSTRAP_ADMIN_PASSWORD` | no | — | Seeds a local Server Admin on first start |
-| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URL` | for OIDC login | — | Brokered OIDC client; leave empty for local login only |
-| `OIDC_AUDIENCE` | no | — | Accept IdP-issued access tokens carrying this audience (machine clients) |
-| `TRUSTED_PROXY_CIDR` | behind a proxy | — | CIDR of the trusted proxies; the client IP is the rightmost `X-Forwarded-For` hop outside it |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | — | OTLP endpoint; telemetry export is off when empty |
-
 ### Usage
 
-Start the full local stack — PostgreSQL, Keycloak with a pre-seeded realm, the
-server, and the SPA on the Vite dev server with hot reload:
+Start the full local stack — PostgreSQL, Keycloak, the server and the SPA:
 
 ```bash
 docker compose --profile dev up -d --build
 ```
 
-To run the SPA from its production nginx image instead, use the `prod` profile
-(`dev` and `prod` are mutually exclusive). Add `--profile observability` to
-either for an OTel Collector and Jaeger:
-
-```bash
-docker compose --profile prod --profile observability up -d --build
-```
-
-| URL | What |
-| --- | --- |
-| http://localhost:3000 | Public catalog |
-| http://localhost:3000/admin | Admin console (sign in through Keycloak) |
-| http://localhost:8081/openapi.yaml | OpenAPI 3.1 document |
-| http://localhost:8081/api/v1/mcp/servers | JSON API |
-| http://localhost:8081/.well-known/agent-card.json | The registry's own A2A Agent Card |
-| http://localhost:8080 | Keycloak, realm `ai-registry` |
-| http://localhost:16686 | Jaeger, with the `observability` profile |
-
-The dev realm's users, one per authorization path, are defined in
-[deploy/keycloak-realm-dev.json](deploy/keycloak-realm-dev.json). Roles are
-granted to users or groups per publisher, from the publisher page in the admin
-console or through `/api/v1/publishers/{slug}/grants`.
-
-#### Seeding the catalog from a file
-
-Point `BOOTSTRAP_FILE` (or `--bootstrap-file`) at a YAML or JSON file and the
-server upserts the publishers, MCP servers and agents it declares on every
-start. Existing rows are left untouched, except that newly declared `tools[]`
-are backfilled; role grants are managed through the API, not this file. See
-[deploy/bootstrap.example.yaml](deploy/bootstrap.example.yaml).
-
-#### Fetching an MCP server's tools
-
-On the MCP forms, "Fetch from server" lists the tools of the remote server at
-the version's Remote URL and merges the ones you tick into the tool list,
-which stays editable by hand. The server guesses the endpoint (`/mcp`, `/sse`)
-and connects anonymously; it refuses internal addresses unless
-`TOOL_DISCOVERY_ALLOWED_CIDRS` allows them. The `tool_discovery` block of
-[deploy/config.example.yaml](deploy/config.example.yaml) holds the settings.
-
-#### Registry-wide tags
-
-Server Admins manage the tag vocabulary publishers pick from at
-`/admin/tags` or `/api/v1/tags`. Tags can also be declared in configuration
-(`instance_tags` key, `INSTANCE_TAGS` JSON, or the chart's `api.instanceTags`);
-those are reconciled on start and read-only in the UI and API.
-
-### Deployment
-
-Images are published to GHCR as `ghcr.io/haibread/ai-registry/server` and
-`ghcr.io/haibread/ai-registry/web`. The Helm chart is published as an OCI
-artifact:
-
-```bash
-helm install ai-registry oci://ghcr.io/haibread/ai-registry/charts/ai-registry --version <chart-version>
-```
-
-Chart values, including the optional CloudNativePG database, are documented in
-[deploy/helm/ai-registry/README.md](deploy/helm/ai-registry/README.md).
-Operating a deployment is covered by [docs/runbook.md](docs/runbook.md) and
-[docs/db-backup.md](docs/db-backup.md).
-
-Releases are cut with [scripts/release.sh](scripts/release.sh), never by
-tagging by hand — see [Releases](CONTRIBUTING.md#releases).
+The catalog is then at http://localhost:3000. The other URLs, the Compose
+profiles and the dev users are in
+[Run the local stack](https://haibread.github.io/ai-registry/guides/local-stack/);
+configuration, Kubernetes deployment and operations are on the
+[documentation site](https://haibread.github.io/ai-registry/).
 
 ## Contributing
 

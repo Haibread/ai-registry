@@ -1,7 +1,12 @@
-# AI Registry — operations runbook
+---
+title: Operations runbook
+description: Diagnosing and fixing a running deployment.
+sidebar:
+  order: 6
+---
 
 Audience: on-call engineer for an ai-registry deployment. Each section lists
-symptoms, triage commands, and remediation. Keep this file in sync with the
+symptoms, triage commands, and remediation. Keep this page in sync with the
 production topology — a runbook that lies is worse than no runbook.
 
 ---
@@ -151,7 +156,7 @@ with a new migration.
 
 Backups use CloudNativePG's Barman integration: continuous WAL archiving plus
 scheduled base backups in object storage, restored by point-in-time recovery.
-Setup, restore and the restore drill are in [db-backup.md](db-backup.md).
+Setup, restore and the restore drill are in [Database backup and restore](/guides/db-backup/).
 
 ---
 

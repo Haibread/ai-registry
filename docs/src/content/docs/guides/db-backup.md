@@ -1,4 +1,9 @@
-# Database backup & restore
+---
+title: Database backup and restore
+description: Continuous WAL archiving, base backups, point-in-time restore and the restore drill.
+sidebar:
+  order: 7
+---
 
 The registry's only state is its PostgreSQL database. On Kubernetes it runs
 under the **CloudNativePG (CNPG) operator**, which uses
@@ -17,7 +22,7 @@ backups to object storage and restores them by point-in-time recovery (PITR).
 ## Where backups are configured
 
 The CNPG `Cluster` the chart renders with `cnpg.enabled: true`
-([templates/cnpg-cluster.yaml](../deploy/helm/ai-registry/templates/cnpg-cluster.yaml))
+([templates/cnpg-cluster.yaml](https://github.com/Haibread/ai-registry/blob/main/deploy/helm/ai-registry/templates/cnpg-cluster.yaml))
 has no `backup` stanza, and the chart exposes no values for one. A backed-up
 database is therefore a `Cluster` managed outside the chart, which the server
 reaches through `api.database.existingSecret`:
@@ -167,7 +172,7 @@ healthy cluster:
 2. Restart the server so the pool reconnects:
    `kubectl -n <ns> rollout restart deploy/<fullname>-api`.
 3. Run the smoke test against the deployment
-   ([test/load/README.md](../test/load/README.md)).
+   ([test/load/README.md](https://github.com/Haibread/ai-registry/blob/main/test/load/README.md)).
 
 ## Restore drill
 

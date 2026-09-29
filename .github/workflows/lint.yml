@@ -3,8 +3,8 @@ name: Lint
 # Single static-analysis gate: runs the repo's full pre-commit hook set on
 # every pull request (and on demand). Every static check is a pre-commit hook,
 # so one `pre-commit run --all-files` with no SKIP covers them all:
-#   gitleaks (secret scan), gofmt, go vet, golangci-lint, eslint, tsc,
-#   helm lint, helm-docs, hadolint, actionlint, plus the hygiene hooks.
+#   gitleaks (secret scan), gofmt, go vet, golangci-lint, eslint, tsc, biome,
+#   astro check, helm lint, helm-docs, hadolint, actionlint, plus the hygiene hooks.
 # The tooling those system hooks shell out to is installed below before the run.
 on:
   pull_request:
@@ -57,6 +57,11 @@ jobs:
       # installed before pre-commit runs.
       - name: Install web dependencies
         working-directory: web
+        run: npm ci
+
+      # docs-biome and docs-astro-check run from docs/node_modules.
+      - name: Install docs dependencies
+        working-directory: docs
         run: npm ci
 
       # golangci-lint and actionlint are language: system hooks — their binaries
