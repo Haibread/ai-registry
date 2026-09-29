@@ -65,8 +65,9 @@ const STEPS: Step[] = [
         <div>
           <p className="font-medium text-foreground mb-2">MCP Servers</p>
           <p className="mb-2">
-            Go to the <strong>Installation</strong> tab on the detail page to find the run command
-            and a ready-to-paste config snippet for your host. Supported hosts:
+            Go to the <strong>Installation</strong> tab on the detail page to find the run command,
+            client code for the official Python, TypeScript, Go, Java, and Rust SDKs, and a
+            ready-to-paste config snippet for your host. Supported hosts:
           </p>
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-xs">

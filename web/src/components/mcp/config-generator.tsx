@@ -7,42 +7,25 @@
  */
 
 import { useState } from 'react'
-import { CopyButton } from '@/components/ui/copy-button'
-import { MCP_HOSTS, packageToConfigParams, remoteToConfigParams } from '@/lib/mcp-host-configs'
-
-interface Package {
-  registryType: string
-  identifier: string
-  version: string
-  transport: { type: string; url?: string }
-}
-
-interface Remote {
-  type: string
-  url: string
-}
+import { CodeBlock } from '@/components/ui/code-block'
+import {
+  MCP_HOSTS,
+  connectionSources,
+  type ConnectionPackage,
+  type ConnectionRemote,
+} from '@/lib/mcp-host-configs'
 
 interface MCPConfigGeneratorProps {
   serverName: string
-  packages: Package[]
-  remotes?: Remote[]
+  packages: ConnectionPackage[]
+  remotes?: ConnectionRemote[]
 }
 
 export function MCPConfigGenerator({ serverName, packages, remotes = [] }: MCPConfigGeneratorProps) {
   const [hostIndex, setHostIndex] = useState(0)
   const [sourceIndex, setSourceIndex] = useState(0)
 
-  // Unified connection sources: installable packages plus remote endpoints.
-  const sources = [
-    ...packages.map((p) => ({
-      label: `${p.identifier} (${p.transport.type})`,
-      params: packageToConfigParams(serverName, p),
-    })),
-    ...remotes.map((r) => ({
-      label: `${r.url} (${r.type})`,
-      params: remoteToConfigParams(serverName, r),
-    })),
-  ]
+  const sources = connectionSources(serverName, packages, remotes)
   if (sources.length === 0) return null
 
   const host = MCP_HOSTS[hostIndex]
@@ -94,14 +77,7 @@ export function MCPConfigGenerator({ serverName, packages, remotes = [] }: MCPCo
       </p>
 
       {/* Generated snippet */}
-      <div className="relative rounded-md bg-muted overflow-hidden">
-        <div className="absolute top-2 right-2 z-10">
-          <CopyButton value={snippet} label="Copy config" />
-        </div>
-        <pre className="p-3 pr-12 text-xs font-mono overflow-x-auto whitespace-pre">
-          {snippet}
-        </pre>
-      </div>
+      <CodeBlock value={snippet} copyLabel="Copy config" />
     </div>
   )
 }

@@ -32,6 +32,7 @@ import { ResourceIcon } from '@/components/ui/resource-icon'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
 import { CapabilitiesSection } from '@/components/mcp/capabilities-section'
 import { MCPConfigGenerator } from '@/components/mcp/config-generator'
+import { MCPCodeSnippets } from '@/components/mcp/code-snippets'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { PublisherSidebar } from '@/components/shared/publisher-sidebar'
 import { StatTile } from '@/components/shared/stat-tile'
@@ -420,13 +421,15 @@ export default function MCPDetailPage() {
                 <Separator />
                 <MCPConfigGenerator
                   serverName={data.slug}
-                  packages={(lv?.packages ?? []).map((p) => ({
-                    registryType: p.registryType,
-                    identifier: p.identifier,
-                    version: p.version,
-                    transport: { type: p.transport.type, url: p.transport.url },
-                  }))}
-                  remotes={(lv?.remotes ?? []).map((r) => ({ type: r.type, url: r.url }))}
+                  packages={lv?.packages ?? []}
+                  remotes={lv?.remotes ?? []}
+                />
+                <Separator />
+                <MCPCodeSnippets
+                  serverName={data.slug}
+                  packages={lv?.packages ?? []}
+                  remotes={lv?.remotes ?? []}
+                  tools={lv?.tools}
                 />
               </>
             ) : (
