@@ -42,7 +42,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 # The Go binary is fully static (CGO_ENABLED=0) so nothing else is needed.
 # The nonroot variant runs as UID 65532; matches Helm podSecurityContext. USER
 # restates it numerically so runAsNonRoot can verify it without a passwd lookup.
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 
 # OCI image labels. The publish workflow augments these with per-build
 # labels (revision, created, version) via docker/metadata-action. These

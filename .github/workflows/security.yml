@@ -34,6 +34,7 @@ jobs:
         with:
           scan-type: config
           scan-ref: .
+          trivy-config: trivy.yaml
           severity: CRITICAL,HIGH
           exit-code: '1'
 
@@ -43,6 +44,7 @@ jobs:
         with:
           scan-type: config
           scan-ref: .
+          trivy-config: trivy.yaml
           format: sarif
           output: trivy-config.sarif
           skip-setup-trivy: true
