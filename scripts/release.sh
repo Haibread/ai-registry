@@ -11,8 +11,8 @@ Usage: scripts/release.sh [--dry-run] <version>
 Releases the application (tag vX.Y.Z: server and web images, GitHub Release),
 or with --chart the Helm chart (tag chart-X.Y.Z), which versions on its own.
 
-An application release needs a "## vX.Y.Z" section in CHANGELOG.md, committed
-beforehand: the GitHub Release takes its notes from it.
+The GitHub Release notes are generated from the labels of the pull requests
+merged since the previous release (see .github/release.yml).
 
 Options:
   --chart                  release the Helm chart instead of the application
@@ -95,8 +95,6 @@ if $chart; then
   subject="chore(chart): release ${version}"
 else
   tag="v${version}"
-  grep -Eq "^## ${tag//./\\.}([[:space:]]|$)" CHANGELOG.md \
-    || die "CHANGELOG.md has no \"## ${tag}\" section; add and commit it first"
   command -v npm >/dev/null || die "npm is missing"
   current="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' web/package.json)"
   subject="chore: release ${version}"
