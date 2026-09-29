@@ -9,7 +9,7 @@
 # by pre-commit. The other language/tool linters are `language: system` hooks
 # that shell out to binaries you must have on PATH:
 #   - Go:     go (gofmt ships with the toolchain), golangci-lint
-#   - Web:    node + npm (run `npm ci` in web/ first)
+#   - Web:    node + npm (run `npm ci` in web/ and docs/ first)
 #   - Helm:   helm, helm-docs
 #   - Docker: hadolint
 #   - CI:     actionlint
@@ -42,6 +42,7 @@ repos:
         # PyYAML's safe loader.
         exclude: ^deploy/helm/.*/templates/
       - id: check-added-large-files
+        exclude: ^docs/package-lock\.json$
       - id: check-merge-conflict
       - id: detect-private-key
 
@@ -133,6 +134,22 @@ repos:
         entry: bash -c 'cd web && npx tsc -b'
         language: system
         files: ^web/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      # ── Docs site (Starlight) ─────────────────────────────────────────────────
+      - id: docs-biome
+        name: biome (docs)
+        description: Lint and format-check the docs site with Biome.
+        entry: npm --prefix docs run lint
+        language: system
+        files: ^docs/
+        pass_filenames: false
+      - id: docs-astro-check
+        name: astro check (docs)
+        description: Type-check the docs site and its content frontmatter.
+        entry: npm --prefix docs run check
+        language: system
+        files: ^docs/
         pass_filenames: false
 
       # ── Helm ──────────────────────────────────────────────────────────────────

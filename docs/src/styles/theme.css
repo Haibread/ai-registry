@@ -1,0 +1,31 @@
+/* Logo colours: blue #178BC9 (dark-mode accent, hue of the grays) and the
+   wordmark navy #365874 (light-mode accent, 7.5:1 on white). */
+
+:root {
+	--sl-color-accent-low: #143c52;
+	--sl-color-accent: #178bc9;
+	--sl-color-accent-high: #a1d9f7;
+	--sl-color-white: #ffffff;
+	--sl-color-gray-1: #e7ecef;
+	--sl-color-gray-2: #bdcad1;
+	--sl-color-gray-3: #91a2ac;
+	--sl-color-gray-4: #5c707a;
+	--sl-color-gray-5: #3b4b54;
+	--sl-color-gray-6: #222e35;
+	--sl-color-black: #141b1f;
+}
+
+:root[data-theme="light"] {
+	--sl-color-accent-low: #c9e7f7;
+	--sl-color-accent: #365874;
+	--sl-color-accent-high: #223b4f;
+	--sl-color-white: #121c21;
+	--sl-color-gray-1: #222e35;
+	--sl-color-gray-2: #3b4b54;
+	--sl-color-gray-3: #586a74;
+	--sl-color-gray-4: #8598a3;
+	--sl-color-gray-5: #bdcad1;
+	--sl-color-gray-6: #e6ecef;
+	--sl-color-gray-7: #f5f8fa;
+	--sl-color-black: #ffffff;
+}

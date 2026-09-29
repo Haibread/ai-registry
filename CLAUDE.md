@@ -38,7 +38,7 @@ clients (read-only user UI, authenticated admin UI).
 - `web/` — the SPA (pages in `src/pages/`).
 - `deploy/` — ops (compose files, Helm, example configs).
 - `ARCHITECTURE.md` — design and rationale; `CONTRIBUTING.md` — dev loop,
-  tests, CI; `docs/` — operations docs.
+  tests, CI; `docs/` — the Starlight documentation site.
 
 ## Non-negotiables
 

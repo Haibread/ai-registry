@@ -15,7 +15,7 @@ it is in [README.md](README.md#getting-started).
 | Tool | Version | Used for |
 | --- | --- | --- |
 | Go | as in [server/go.mod](server/go.mod) | server build and tests |
-| Node.js + npm | 26 | SPA build, tests, lint |
+| Node.js + npm | 26 | SPA and docs site build, tests, lint |
 | Docker + Compose plugin | recent | integration tests (testcontainers), local stack |
 | pre-commit | ≥ 3.2 | commit gate |
 | golangci-lint | v2.14.0 | `golangci-lint` hook |
@@ -75,6 +75,10 @@ cd web && npm ci
 ```
 
 ```bash
+cd docs && npm ci
+```
+
+```bash
 pre-commit install
 ```
 
@@ -128,6 +132,16 @@ suite without coverage, `npm run test:watch` while iterating. CI runs
 `npm run test:coverage`, which fails when total coverage drops below the floor
 in `coverage.thresholds` of [`web/vitest.config.ts`](web/vitest.config.ts).
 Public and admin pages are both measured.
+
+### Docs site — unit
+
+```bash
+cd docs && npm test
+```
+
+`node --test` over `docs/src/**/*.test.ts`: version planning, the version
+picker's page switching and the base-prefixing Markdown plugin. The build and
+its link validation are in [Documentation site](#documentation-site).
 
 ### Web — nginx routing
 
@@ -212,6 +226,7 @@ pre-commit run golangci-lint --all-files
 | `gofmt` | Go formatting | auto-fixed, re-stage |
 | `go-vet`, `golangci-lint` | Go correctness and lint ([server/.golangci.yml](server/.golangci.yml)) | by hand |
 | `web-eslint`, `web-tsc` | SPA lint and type-check (needs `npm ci` in `web/`) | by hand |
+| `docs-biome`, `docs-astro-check` | docs site lint, format and type-check, content frontmatter included (needs `npm ci` in `docs/`) | `npm --prefix docs exec biome check --write .`, the rest by hand |
 | `helm-lint` | chart validity | by hand |
 | `helm-docs` | chart README matches `values.yaml` | auto-regenerated, re-stage |
 | `hadolint` | Dockerfiles | by hand |
@@ -227,11 +242,12 @@ Docker build like any other.
 | Workflow | Triggers on | What it does | Reproduce locally |
 | --- | --- | --- | --- |
 | [Lint](.github/workflows/lint.yml) | PR to `main`, manual | `pre-commit run --all-files` | `pre-commit run --all-files` |
-| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm run test:coverage` with its floor; nginx routing checks; `helm lint`, `helm template` over several value sets + kubeconform ([deploy/helm/validate.sh](deploy/helm/validate.sh)); e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
+| [Quality](.github/workflows/quality.yml) | PR to `main`, manual | Go build, `go test -race` with the 70 % floor, contract suites; web `npm run generate` drift check, `npm run build`, `npm run test:coverage` with its floor; nginx routing checks; docs site `npm test`; `helm lint`, `helm template` over several value sets + kubeconform ([deploy/helm/validate.sh](deploy/helm/validate.sh)); e2e (Postgres, Keycloak, server, Vite, k6 smoke, Playwright) | the commands in [Running the tests](#running-the-tests) |
 | [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build, no push. Push to `main` or a `v*.*.*` tag: build and push to GHCR | multi-arch (`amd64`, `arm64`) server and web images. Without a push, an `amd64` copy is loaded and scanned with `trivy image`; after a push, the pushed digest is scanned. Fails on a fixable `HIGH`/`CRITICAL` CVE; all findings go to code scanning | [Scanning locally](#scanning-locally) |
 | [Security](.github/workflows/security.yml) | PR to `main`, push to `main`, manual | `trivy config` over the Dockerfiles and the Helm chart; fails on a `HIGH`/`CRITICAL` misconfiguration, all findings go to code scanning | `trivy config --severity HIGH,CRITICAL --exit-code 1 .` |
 | [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | runs [deploy/helm/validate.sh](deploy/helm/validate.sh), then packages and pushes the chart to GHCR as OCI; nothing is published if validation fails | `deploy/helm/validate.sh && helm package deploy/helm/ai-registry` |
-| [Release](.github/workflows/release.yml) | a successful Docker run for a `vX.Y.Z` tag (not a pre-release) | GitHub Release with notes generated from PR labels ([release.yml](.github/release.yml)) | — |
+| [Release](.github/workflows/release.yml) | a successful Docker run for a `vX.Y.Z` tag (not a pre-release) | GitHub Release with notes generated from PR labels ([release.yml](.github/release.yml)), then dispatches Docs on `main` | — |
+| [Docs](.github/workflows/docs.yml) | PR to `main` or push to `main` touching `docs/`, `logo.svg` or the workflow; manual; dispatched by Release | builds every documentation version with link validation; on `main`, deploys to GitHub Pages | `git fetch --tags && npm --prefix docs run build:versions` |
 
 A PR is ready to merge when Lint, Quality, Docker and Security are green.
 Code-scanning uploads are skipped on fork PRs, whose token cannot write them;
@@ -296,13 +312,52 @@ the Compose file, GitHub Actions and the pre-commit hooks;
 workflow `run:` steps and service containers, which Dependabot cannot see. Both
 open PRs on Mondays; none is merged automatically.
 
+## Documentation site
+
+The site at <https://haibread.github.io/ai-registry/> is a
+[Starlight](https://starlight.astro.build/) project in [docs/](docs/). Pages
+are Markdown under [docs/src/content/docs/](docs/src/content/docs/):
+`guides/` and `reference/` are sidebar groups ordered by each page's
+`sidebar.order`.
+
+- Link another page by its root-absolute path, `/guides/runbook/`, without the
+  `/ai-registry/` base: a Markdown plugin adds it. Relative links fail the
+  build, and so does any broken internal link or anchor.
+- Keep internal links out of the frontmatter (hero actions): they are not
+  base-prefixed.
+- Link a repository file with its `https://github.com/Haibread/ai-registry/blob/main/…`
+  URL; the site is not served from the repository.
+- The logo and favicon are the root [logo.svg](logo.svg); the theme colours in
+  [docs/src/styles/theme.css](docs/src/styles/theme.css) are taken from it.
+
+Every stable release tag (`vX.Y.Z`, no pre-release) that contains the site is
+a version: the latest one at `/`, `main` at `/next/`, each older minor at
+`/vX.Y/` at its last patch. A version is the current site's config, theme and
+components around the pages of its tag, so pages never get copied per
+version. With no such tag, `main` is served at `/`.
+
+```bash
+npm --prefix docs run dev
+```
+
+```bash
+npm --prefix docs run build
+```
+
+```bash
+git fetch --tags && npm --prefix docs run build:versions
+```
+
+`dev` and `build` give the single, unversioned site from the working tree;
+`build:versions` builds every version into `docs/dist/` as CI does.
+
 ## Submitting a change
 
 - Branch from `main` as `feat/<topic>`, `fix/<topic>`, `docs/<topic>` or
   `chore/<topic>`.
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `docs:`, `chore:`, `test:`), as in `git log --oneline`.
-- Update [ARCHITECTURE.md](ARCHITECTURE.md), the README or
+- Update [ARCHITECTURE.md](ARCHITECTURE.md), the README, the docs site or
   [deploy/config.example.yaml](deploy/config.example.yaml) in the same PR when
   the change affects them. A new setting goes in
   [server/internal/config/config.go](server/internal/config/config.go), the
