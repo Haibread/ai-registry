@@ -231,7 +231,7 @@ Docker build like any other.
 | [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build, no push. Push to `main` or a `v*.*.*` tag: build and push to GHCR | multi-arch (`amd64`, `arm64`) server and web images. Without a push, an `amd64` copy is loaded and scanned with `trivy image`; after a push, the pushed digest is scanned. Fails on a fixable `HIGH`/`CRITICAL` CVE; all findings go to code scanning | [Scanning locally](#scanning-locally) |
 | [Security](.github/workflows/security.yml) | PR to `main`, push to `main`, manual | `trivy config` over the Dockerfiles and the Helm chart; fails on a `HIGH`/`CRITICAL` misconfiguration, all findings go to code scanning | `trivy config --severity HIGH,CRITICAL --exit-code 1 .` |
 | [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | runs [deploy/helm/validate.sh](deploy/helm/validate.sh), then packages and pushes the chart to GHCR as OCI; nothing is published if validation fails | `deploy/helm/validate.sh && helm package deploy/helm/ai-registry` |
-| [Release](.github/workflows/release.yml) | a successful Docker run for a `v*` tag | GitHub Release with notes generated from PR labels ([release.yml](.github/release.yml)) | — |
+| [Release](.github/workflows/release.yml) | a successful Docker run for a `vX.Y.Z` tag (not a pre-release) | GitHub Release with notes generated from PR labels ([release.yml](.github/release.yml)) | — |
 
 A PR is ready to merge when Lint, Quality, Docker and Security are green.
 Code-scanning uploads are skipped on fork PRs, whose token cannot write them;
@@ -259,7 +259,9 @@ Application and chart are versioned independently:
 
 - a **`v1.2.3`** tag publishes the server and web images at that version and
   cuts the GitHub Release, its notes generated from the labels of the PRs
-  merged since the previous release;
+  merged since the previous stable release;
+- a **`v1.2.3-rc1`** pre-release tag publishes the images only, for testing:
+  no GitHub Release, and its PRs appear in the notes of `v1.2.3`;
 - a **`chart-1.2.3`** tag publishes the chart at that version, with the
   `appVersion` committed in
   [Chart.yaml](deploy/helm/ai-registry/Chart.yaml).
