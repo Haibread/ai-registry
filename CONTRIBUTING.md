@@ -231,7 +231,7 @@ Docker build like any other.
 | [Docker](.github/workflows/docker.yml) | PR to `main`, manual: build, no push. Push to `main` or a `v*.*.*` tag: build and push to GHCR | multi-arch (`amd64`, `arm64`) server and web images. Without a push, an `amd64` copy is loaded and scanned with `trivy image`; after a push, the pushed digest is scanned. Fails on a fixable `HIGH`/`CRITICAL` CVE; all findings go to code scanning | [Scanning locally](#scanning-locally) |
 | [Security](.github/workflows/security.yml) | PR to `main`, push to `main`, manual | `trivy config` over the Dockerfiles and the Helm chart; fails on a `HIGH`/`CRITICAL` misconfiguration, all findings go to code scanning | `trivy config --severity HIGH,CRITICAL --exit-code 1 .` |
 | [Helm publish](.github/workflows/helm-publish.yml) | push to `main`, `chart-*` tag | runs [deploy/helm/validate.sh](deploy/helm/validate.sh), then packages and pushes the chart to GHCR as OCI; nothing is published if validation fails | `deploy/helm/validate.sh && helm package deploy/helm/ai-registry` |
-| [Release](.github/workflows/release.yml) | a successful Docker run for a `v*` tag | GitHub Release from the matching `CHANGELOG.md` section | — |
+| [Release](.github/workflows/release.yml) | a successful Docker run for a `v*` tag | GitHub Release with notes generated from PR labels ([release.yml](.github/release.yml)) | — |
 
 A PR is ready to merge when Lint, Quality, Docker and Security are green.
 Code-scanning uploads are skipped on fork PRs, whose token cannot write them;
@@ -258,7 +258,8 @@ misconfiguration itself — not added to a `.trivyignore`.
 Application and chart are versioned independently:
 
 - a **`v1.2.3`** tag publishes the server and web images at that version and
-  cuts the GitHub Release from its `CHANGELOG.md` section;
+  cuts the GitHub Release, its notes generated from the labels of the PRs
+  merged since the previous release;
 - a **`chart-1.2.3`** tag publishes the chart at that version, with the
   `appVersion` committed in
   [Chart.yaml](deploy/helm/ai-registry/Chart.yaml).
@@ -275,8 +276,7 @@ scripts/release.sh --chart --app-version 1.2.2 0.5.1
 scripts/release.sh --dry-run 1.2.3                # show the plan, change nothing
 ```
 
-An application release needs its `## v1.2.3` section in `CHANGELOG.md`
-committed first. A chart release deploys the latest `v*` tag unless
+A chart release deploys the latest `v*` tag unless
 `--app-version` names another. The Docker and Helm publish workflows refuse a
 tag that disagrees with the committed version, so a hand-made tag fails
 instead of publishing.
@@ -300,5 +300,8 @@ open PRs on Mondays; none is merged automatically.
   the change affects them. A new setting goes in
   [server/internal/config/config.go](server/internal/config/config.go), the
   example config and [deploy/.env.example](deploy/.env.example) together.
-- Label the PR by kind (`enhancement`, `bug`, `documentation`, `dependencies`,
-  `security`).
+- Label the PR with the release-notes category it belongs to: `feature`,
+  `fix`, `security`, `performance`, `deprecation`, `documentation`,
+  `dependencies` or `chore`, plus `breaking` when it breaks something, or
+  `ignore-for-release` to keep it out of the notes. The categories are in
+  [.github/release.yml](.github/release.yml).
