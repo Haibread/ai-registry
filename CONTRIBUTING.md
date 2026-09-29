@@ -253,6 +253,11 @@ trivy image --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 ai-registry-
 A finding is fixed at the source — a base-image or dependency bump, or the
 misconfiguration itself — not added to a `.trivyignore`.
 
+`trivy config` reads [`trivy.yaml`](trivy.yaml) from the repository root, which
+loads the check parameters under [`.trivy/`](.trivy/) — the registries
+`KSV-0125` trusts, for instance. An image published to a new registry is added
+there.
+
 ### Releases
 
 Application and chart are versioned independently:

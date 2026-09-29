@@ -1,0 +1,5 @@
+# Registries KSV-0125 accepts container images from; the chart's own images
+# are published to ghcr.io.
+ksv0125:
+  trusted_registries:
+    - ghcr.io
