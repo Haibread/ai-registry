@@ -38,8 +38,12 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  # group/kind/weight below are what the API server defaults them to; rendering
+  # them keeps GitOps tools (Argo CD) from reporting a permanent diff.
   parentRefs:
-    - name: {{ .Values.httpRoute.gatewayRef.name | quote }}
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.httpRoute.gatewayRef.name | quote }}
       # The Gateway is shared cluster infrastructure owned outside this chart;
       # default to the release namespace when no namespace is given.
       namespace: {{ .Values.httpRoute.gatewayRef.namespace | default .Release.Namespace | quote }}
@@ -57,14 +61,20 @@ spec:
             type: PathPrefix
             value: /api
       backendRefs:
-        - name: {{ include "ai-registry.api.fullname" . }}
+        - group: ""
+          kind: Service
+          name: {{ include "ai-registry.api.fullname" . }}
           port: {{ .Values.api.service.port }}
+          weight: 1
     # Everything else to nginx: SPA + the remaining proxied backend paths.
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: {{ include "ai-registry.webapp.fullname" . }}
+        - group: ""
+          kind: Service
+          name: {{ include "ai-registry.webapp.fullname" . }}
           port: {{ .Values.webapp.service.port }}
+          weight: 1
 {{- end }}
