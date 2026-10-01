@@ -2,15 +2,21 @@ package tooldiscovery
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -304,18 +310,29 @@ func TestDiscover_Failures(t *testing.T) {
 	}))
 	t.Cleanup(slow.Close)
 
+	selfSigned := httptest.NewUnstartedServer(http.NotFoundHandler())
+	selfSigned.Config.ErrorLog = log.New(io.Discard, "", 0)
+	selfSigned.StartTLS()
+	t.Cleanup(selfSigned.Close)
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+
 	tests := []struct {
 		name         string
 		url          string
 		cfg          func(*Config)
 		want         error
 		wantAttempts int
+		// wantCause is a substring of the first attempt's error.
+		wantCause string
 	}{
-		{"unauthorized stops at once", unauthorized.URL, nil, ErrUnauthorized, 1},
-		{"nothing answers", notFound.URL, nil, ErrNoServer, 1},
-		{"html page is not an MCP server", notMCP.URL + "/mcp", nil, ErrNoServer, 1},
-		{"loopback is blocked by default", notFound.URL, func(c *Config) { c.AllowedPrefixes = nil }, ErrBlockedAddress, 1},
-		{"budget runs out", slow.URL, func(c *Config) { c.Timeout = 300 * time.Millisecond }, ErrTimeout, 1},
+		{"unauthorized stops at once", unauthorized.URL, nil, ErrUnauthorized, 1, "HTTP 401"},
+		{"nothing answers", notFound.URL, nil, ErrNoServer, 1, "HTTP 404"},
+		{"html page is not an MCP server", notMCP.URL + "/mcp", nil, ErrNoServer, 1, "content type"},
+		{"untrusted certificate", selfSigned.URL + "/mcp", nil, ErrNoServer, 1, "tls: "},
+		{"connection refused", closed.URL + "/mcp", nil, ErrNoServer, 1, "connection refused"},
+		{"loopback is blocked by default", notFound.URL, func(c *Config) { c.AllowedPrefixes = nil }, ErrBlockedAddress, 1, "127.0.0.1"},
+		{"budget runs out", slow.URL, func(c *Config) { c.Timeout = 300 * time.Millisecond }, ErrTimeout, 1, "timed out"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -325,6 +342,90 @@ func TestDiscover_Failures(t *testing.T) {
 			}
 			if len(res.Attempts) != tt.wantAttempts {
 				t.Errorf("got %d attempts, want %d: %+v", len(res.Attempts), tt.wantAttempts, res.Attempts)
+			}
+			if got := res.Attempts[0].Error; !strings.Contains(got, tt.wantCause) {
+				t.Errorf("first attempt error = %q, want it to contain %q", got, tt.wantCause)
+			}
+		})
+	}
+}
+
+func TestTransportCause(t *testing.T) {
+	dnsErr := &net.DNSError{Err: "no such host", Name: "mcp.acme.invalid", IsNotFound: true}
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			"certificate signed by unknown authority",
+			&url.Error{Op: "Post", URL: "https://mcp.acme.dev", Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}},
+			"tls: x509: certificate signed by unknown authority",
+		},
+		{
+			"hostname mismatch",
+			x509.HostnameError{Certificate: &x509.Certificate{}, Host: "mcp.acme.dev"},
+			"tls: x509: certificate is not valid for any names, but wanted to match mcp.acme.dev",
+		},
+		{
+			"plain http on a tls port",
+			tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"},
+			"tls: first record does not look like a TLS handshake",
+		},
+		{
+			"dns failure keeps the dial context",
+			&url.Error{Op: "Post", URL: "https://mcp.acme.invalid", Err: &net.OpError{Op: "dial", Net: "tcp", Err: dnsErr}},
+			"dial tcp: lookup mcp.acme.invalid: no such host",
+		},
+		{"bare dns failure", dnsErr, "lookup mcp.acme.invalid: no such host"},
+		{
+			"url error loses its request line",
+			&url.Error{Op: "Post", URL: "https://mcp.acme.dev", Err: errors.New("proxyconnect tcp: refused")},
+			"proxyconnect tcp: refused",
+		},
+		{"unknown error is kept", errors.New("boom"), "boom"},
+		{"long error is cut on a rune boundary", errors.New(strings.Repeat("é", 400)), strings.Repeat("é", maxCauseLen/2) + "…"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := transportCause(tt.err); got != tt.want {
+				t.Errorf("transportCause() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClassify(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connect: connection refused")}
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+	bg := context.Background()
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		rec       *recorder
+		status    int
+		sdkErr    error
+		wantCause string
+		want      error
+	}{
+		{"blocked address wins", bg, &recorder{dialErr: ErrBlockedAddress}, 0, nil, ErrBlockedAddress.Error(), ErrBlockedAddress},
+		{"401 means authentication", bg, &recorder{}, 401, errors.New("x"), "HTTP 401", ErrUnauthorized},
+		{"403 means authentication", bg, &recorder{}, 403, errors.New("x"), "HTTP 403", ErrUnauthorized},
+		{"expired budget", expired, &recorder{rtErr: refused}, 0, errors.New("x"), "timed out", ErrTimeout},
+		{"transport error beats the sdk string", bg, &recorder{rtErr: refused}, 0, errors.New(`calling "initialize": x`), "dial tcp: connect: connection refused", ErrNoServer},
+		{"http status", bg, &recorder{}, 404, errors.New("x"), "HTTP 404", ErrNoServer},
+		{"sdk protocol error is kept", bg, &recorder{}, 200, errors.New(`calling "initialize": unsupported protocol version`), `calling "initialize": unsupported protocol version`, ErrNoServer},
+		{"nothing known", bg, &recorder{}, 0, nil, "connection failed", ErrNoServer},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cause, err := classify(tt.ctx, tt.rec, tt.status, tt.sdkErr)
+			if cause != tt.wantCause {
+				t.Errorf("cause = %q, want %q", cause, tt.wantCause)
+			}
+			if !errors.Is(err, tt.want) {
+				t.Errorf("err = %v, want %v", err, tt.want)
 			}
 		})
 	}

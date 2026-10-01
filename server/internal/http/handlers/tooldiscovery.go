@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -168,32 +169,52 @@ func (h *ToolDiscoveryHandlers) count(ctx context.Context, err error) {
 	h.metrics.ToolDiscoveries.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
 }
 
-func writeDiscoveryError(w http.ResponseWriter, r *http.Request, res *tooldiscovery.Result, err error) {
-	switch {
-	case errors.Is(err, tooldiscovery.ErrBlockedAddress):
-		problem.Write(w, http.StatusUnprocessableEntity, "blocked-address",
-			fmt.Sprintf("The registry does not connect to this address: %s.", err), r.URL.Path)
-	case errors.Is(err, tooldiscovery.ErrUnauthorized):
-		problem.Write(w, http.StatusBadGateway, "upstream-unauthorized",
-			"This server requires authentication. Only public servers can be fetched.", r.URL.Path)
-	case errors.Is(err, tooldiscovery.ErrTooManyTools):
-		problem.Write(w, http.StatusBadGateway, "too-many-tools", err.Error(), r.URL.Path)
-	case errors.Is(err, tooldiscovery.ErrTimeout):
-		problem.Write(w, http.StatusGatewayTimeout, "timeout",
-			"The server did not answer in time.", r.URL.Path)
-	case errors.Is(err, tooldiscovery.ErrNoServer):
-		problem.Write(w, http.StatusBadGateway, "no-mcp-server", noServerDetail(res), r.URL.Path)
-	default:
-		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
-	}
+// toolDiscoveryProblem carries the attempts as an RFC 7807 extension member,
+// so the caller sees why each endpoint failed.
+type toolDiscoveryProblem struct {
+	problem.Detail
+	Attempts []toolDiscoveryAttempt `json:"attempts,omitempty"`
 }
 
-func noServerDetail(res *tooldiscovery.Result) string {
-	if res == nil || len(res.Attempts) == 0 {
-		return "No MCP server answered."
+func writeDiscoveryError(w http.ResponseWriter, r *http.Request, res *tooldiscovery.Result, err error) {
+	var status int
+	var slug, detail string
+	switch {
+	case errors.Is(err, tooldiscovery.ErrBlockedAddress):
+		status, slug = http.StatusUnprocessableEntity, "blocked-address"
+		detail = fmt.Sprintf("The registry does not connect to this address: %s.", err)
+	case errors.Is(err, tooldiscovery.ErrUnauthorized):
+		status, slug = http.StatusBadGateway, "upstream-unauthorized"
+		detail = "This server requires authentication. Only public servers can be fetched."
+	case errors.Is(err, tooldiscovery.ErrTooManyTools):
+		status, slug, detail = http.StatusBadGateway, "too-many-tools", err.Error()
+	case errors.Is(err, tooldiscovery.ErrTimeout):
+		status, slug = http.StatusGatewayTimeout, "timeout"
+		detail = "The server did not answer in time."
+	case errors.Is(err, tooldiscovery.ErrNoServer):
+		status, slug = http.StatusBadGateway, "no-mcp-server"
+		detail = "No MCP server answered. " + attemptFailures(res) + "."
+	default:
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
+		return
 	}
-	a := res.Attempts[0]
-	return fmt.Sprintf("No MCP server answered at %s over %s.", a.URL, a.Transport)
+	body := toolDiscoveryProblem{Detail: problem.New(status, slug, detail, r.URL.Path)}
+	if res != nil {
+		body.Attempts = attemptsToResponse(res.Attempts)
+	}
+	problem.WriteBody(w, status, body)
+}
+
+// attemptFailures reads "<url> (<transport>): <reason>" for each attempt.
+func attemptFailures(res *tooldiscovery.Result) string {
+	if res == nil || len(res.Attempts) == 0 {
+		return "Nothing was tried"
+	}
+	parts := make([]string, len(res.Attempts))
+	for i, a := range res.Attempts {
+		parts[i] = fmt.Sprintf("%s (%s): %s", a.URL, a.Transport, a.Error)
+	}
+	return strings.Join(parts, "; ")
 }
 
 func attemptsToResponse(in []tooldiscovery.Attempt) []toolDiscoveryAttempt {

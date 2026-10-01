@@ -142,6 +142,36 @@ describe("Fetch from server", () => {
     expect(hidden()).toEqual([{ name: "list_issues", description: "List issues in a repository." }])
   })
 
+  it("shows why each attempt failed", async () => {
+    authFetch.mockResolvedValue(
+      json(
+        502,
+        {
+          type: "https://registry/errors/no-mcp-server",
+          title: "Bad Gateway",
+          status: 502,
+          detail: "No MCP server answered. https://mcp.acme.dev/github (streamable_http): tls: x509: certificate signed by unknown authority; https://mcp.acme.dev/github (sse): tls: x509: certificate signed by unknown authority.",
+          attempts: [
+            { url: "https://mcp.acme.dev/github", transport: "streamable_http", status: 0, error: "tls: x509: certificate signed by unknown authority" },
+            { url: "https://mcp.acme.dev/github", transport: "sse", status: 404, error: "HTTP 404" },
+          ],
+        },
+        "application/problem+json",
+      ),
+    )
+    const user = userEvent.setup()
+    renderEditor()
+
+    await user.click(screen.getByRole("button", { name: /fetch from server/i }))
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("No MCP server answered.")
+    const lines = within(alert).getAllByRole("listitem")
+    expect(lines.map((l) => l.textContent)).toEqual([
+      "https://mcp.acme.dev/github · streamable_http: tls: x509: certificate signed by unknown authority",
+      "https://mcp.acme.dev/github · sse: HTTP 404",
+    ])
+  })
+
   it("says so when the server declares no tools", async () => {
     authFetch.mockResolvedValue(json(200, { ...discovery, tools: [] }))
     const user = userEvent.setup()

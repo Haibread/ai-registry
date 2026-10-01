@@ -27,37 +27,37 @@ type FieldError struct {
 	Message string `json:"message"`
 }
 
-// Write encodes a Problem Detail response and sets Content-Type to
-// application/problem+json.  slug becomes the type URL path segment, e.g.
-// "not-found" → "https://registry/errors/not-found".
-func Write(w http.ResponseWriter, status int, slug, detail, instance string) {
-	p := Detail{
+// New builds the Detail for status. slug becomes the type URL path segment,
+// e.g. "not-found" → "https://registry/errors/not-found".
+func New(status int, slug, detail, instance string) Detail {
+	return Detail{
 		Type:     fmt.Sprintf("https://registry/errors/%s", slug),
 		Title:    http.StatusText(status),
 		Status:   status,
 		Detail:   detail,
 		Instance: instance,
 	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(p); err != nil {
-		slog.Error("problem: failed to encode response", slog.String("err", err.Error()))
-	}
+}
+
+// Write encodes a Problem Detail response and sets Content-Type to
+// application/problem+json.
+func Write(w http.ResponseWriter, status int, slug, detail, instance string) {
+	WriteBody(w, status, New(status, slug, detail, instance))
 }
 
 // WriteWithErrors is like Write but also includes field-level validation errors.
 func WriteWithErrors(w http.ResponseWriter, status int, slug, detail, instance string, errs []FieldError) {
-	p := Detail{
-		Type:     fmt.Sprintf("https://registry/errors/%s", slug),
-		Title:    http.StatusText(status),
-		Status:   status,
-		Detail:   detail,
-		Instance: instance,
-		Errors:   errs,
-	}
+	p := New(status, slug, detail, instance)
+	p.Errors = errs
+	WriteBody(w, status, p)
+}
+
+// WriteBody encodes body as application/problem+json. It is for problems that
+// carry RFC 7807 extension members: body is a struct embedding Detail.
+func WriteBody(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(p); err != nil {
-		slog.Error("problem: failed to encode response", slog.String("err", err.Error()))
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		slog.Error("problem: failed to encode response", slog.String("error", err.Error()))
 	}
 }

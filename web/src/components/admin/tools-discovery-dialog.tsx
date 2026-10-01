@@ -25,7 +25,7 @@ import {
 } from "./tools-discovery"
 
 type Discovery = components["schemas"]["MCPToolDiscovery"]
-type Problem = components["schemas"]["Problem"]
+type Problem = components["schemas"]["MCPToolDiscoveryProblem"]
 
 export interface DiscoveryRequest {
   namespace: string
@@ -290,16 +290,29 @@ function DiscoveryError({ problem }: { problem: Problem }) {
           : slug === "timeout"
             ? { title: "The server did not answer in time.", Icon: AlertCircle }
             : { title: problem.title ?? "Fetching tools failed.", Icon: AlertCircle }
+  const failed = (problem.attempts ?? []).filter((a) => a.error)
+  // The attempts already say what the detail spells out, one line each.
   const detail =
     slug === "upstream-unauthorized"
       ? "Only public servers can be fetched. Paste the tools/list output or edit the list by hand."
-      : problem.detail
+      : failed.length > 0
+        ? null
+        : problem.detail
   return (
     <div role="alert" className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
       <div className="min-w-0 break-words">
         <p className="font-medium">{title}</p>
         {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
+        {failed.length > 0 && (
+          <ul aria-label="Attempts" className="mt-1 space-y-0.5 font-mono text-xs text-muted-foreground">
+            {failed.map((a, i) => (
+              <li key={i}>
+                {a.url} · {a.transport}: <span className="text-foreground">{a.error}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         <p className="mt-1 text-xs text-muted-foreground">You can still add the tools by hand.</p>
       </div>
     </div>

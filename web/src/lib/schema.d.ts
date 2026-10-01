@@ -2088,8 +2088,12 @@ export interface components {
             transport: "sse" | "streamable_http";
             /** @description HTTP status of the first response, 0 when none arrived. */
             status: number;
-            /** @description Why the attempt failed; absent on the attempt that succeeded. */
+            /** @description Why the attempt failed, with the underlying cause (an HTTP status, a TLS or DNS error, the MCP handshake error); absent on the attempt that succeeded. */
             error?: string;
+        };
+        /** @description A failed tool discovery. `detail` names the cause of each failed attempt; `attempts` lists them, in order, when any connection was tried. */
+        MCPToolDiscoveryProblem: components["schemas"]["Problem"] & {
+            attempts?: components["schemas"]["MCPToolDiscoveryAttempt"][];
         };
         MCPToolDiscovery: {
             /** @description The endpoint that answered, the declared URL without its fragment. */
@@ -4011,7 +4015,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["MCPToolDiscoveryProblem"];
                 };
             };
             429: components["responses"]["RateLimited"];
@@ -4026,7 +4030,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["MCPToolDiscoveryProblem"];
                 };
             };
             503: components["responses"]["ServiceUnavailable"];
@@ -4036,7 +4040,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["MCPToolDiscoveryProblem"];
                 };
             };
         };
