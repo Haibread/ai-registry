@@ -9,7 +9,7 @@
  *   - "JSON" — a raw textarea, the paste-from-`tools/list` path.
  *
  * Given a `discovery` source, a "Fetch from server" button asks the API to run
- * `tools/list` against the version's remote URL and merges the reviewed result
+ * `tools/list` against the version's remote URL, over its transport, and merges the reviewed result
  * into the same state; the list stays hand-editable afterwards.
  *
  * Both views funnel through {@link parseTools} / {@link serializeTools} so they
@@ -108,8 +108,6 @@ export interface ToolsDiscoverySource {
   /** The form's transport (runtime); `stdio` disables fetching. */
   transport: string
   remoteUrl: string
-  /** Replaces the form's remote URL with the endpoint that answered. */
-  onUseEndpoint?: (url: string) => void
 }
 
 interface ToolsEditorProps {
@@ -260,7 +258,7 @@ export function ToolsEditor({ name = "tools", initialTools = [], discovery }: To
           <p id="tools-discovery-hint" className="mt-1 text-xs text-muted-foreground">
             {discoveryBlocker ?? (
               <>
-                Fetch uses the Remote URL: <span className="break-all font-mono">{remoteUrl}</span>
+                Fetch connects to this exact Remote URL: <span className="break-all font-mono">{remoteUrl}</span>
               </>
             )}
           </p>
@@ -310,7 +308,6 @@ export function ToolsEditor({ name = "tools", initialTools = [], discovery }: To
           request={discoveryRequest}
           currentTools={editedTools}
           onApply={applyFromServer}
-          onUseEndpoint={discovery?.onUseEndpoint}
         />
       )}
 

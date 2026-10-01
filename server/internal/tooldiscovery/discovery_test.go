@@ -85,51 +85,31 @@ func mount(t *testing.T, path string, h http.Handler) *httptest.Server {
 	return ts
 }
 
-func TestCandidates(t *testing.T) {
+func TestEndpoint(t *testing.T) {
 	tests := []struct {
 		in      string
-		want    []string
+		want    string
 		wantErr bool
 	}{
-		{"https://mcp.acme.dev/github", []string{"https://mcp.acme.dev/github", "https://mcp.acme.dev/github/mcp", "https://mcp.acme.dev/github/sse"}, false},
-		{"https://mcp.acme.dev/github/", []string{"https://mcp.acme.dev/github/", "https://mcp.acme.dev/github/mcp", "https://mcp.acme.dev/github/sse"}, false},
-		{"https://mcp.acme.dev", []string{"https://mcp.acme.dev", "https://mcp.acme.dev/mcp", "https://mcp.acme.dev/sse"}, false},
-		{"https://mcp.acme.dev/mcp", []string{"https://mcp.acme.dev/mcp"}, false},
-		{"https://mcp.acme.dev/sse/", []string{"https://mcp.acme.dev/sse/"}, false},
-		{"https://mcp.acme.dev/x?tenant=a#frag", []string{"https://mcp.acme.dev/x?tenant=a", "https://mcp.acme.dev/x/mcp?tenant=a", "https://mcp.acme.dev/x/sse?tenant=a"}, false},
-		{"ftp://mcp.acme.dev", nil, true},
-		{"/relative", nil, true},
-		{"https://user:pw@mcp.acme.dev", nil, true},
+		{"https://mcp.acme.dev/github", "https://mcp.acme.dev/github", false},
+		{"https://mcp.acme.dev/github/", "https://mcp.acme.dev/github/", false},
+		{"https://mcp.acme.dev", "https://mcp.acme.dev", false},
+		{"http://mcp.acme.dev/sse", "http://mcp.acme.dev/sse", false},
+		{"https://mcp.acme.dev/x?tenant=a#frag", "https://mcp.acme.dev/x?tenant=a", false},
+		{"ftp://mcp.acme.dev", "", true},
+		{"/relative", "", true},
+		{"https://user:pw@mcp.acme.dev", "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			got, err := Candidates(tt.in)
+			got, err := Endpoint(tt.in)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !slices.Equal(got, tt.want) {
-				t.Errorf("got %v, want %v", got, tt.want)
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestTransportOrder(t *testing.T) {
-	tests := []struct {
-		endpoint string
-		hint     Transport
-		want     Transport
-	}{
-		{"https://a.dev/x", StreamableHTTP, StreamableHTTP},
-		{"https://a.dev/x", SSE, SSE},
-		{"https://a.dev/x/sse", StreamableHTTP, SSE},
-		{"https://a.dev/x/mcp", SSE, StreamableHTTP},
-	}
-	for _, tt := range tests {
-		got := transportOrder(tt.endpoint, tt.hint)
-		if len(got) != 2 || got[0] != tt.want || got[0] == got[1] {
-			t.Errorf("transportOrder(%q, %q) = %v, want %q first", tt.endpoint, tt.hint, got, tt.want)
-		}
 	}
 }
 
@@ -165,28 +145,39 @@ func TestGuardPermits(t *testing.T) {
 	}
 }
 
-func TestDiscover_GuessesMCPSuffix(t *testing.T) {
-	ts := serve(t, "/github/mcp", StreamableHTTP, newMCPServer(3, 0))
+func TestDiscover_DeclaredEndpoint(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		tr   Transport
+	}{
+		{"streamable http", "/github", StreamableHTTP},
+		{"sse", "/github", SSE},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := serve(t, tt.path, tt.tr, newMCPServer(3, 0))
 
-	res, err := newDiscoverer(t, nil).Discover(context.Background(), ts.URL+"/github", StreamableHTTP)
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
-	}
-	if res.Endpoint.URL != ts.URL+"/github/mcp" || res.Endpoint.Transport != StreamableHTTP {
-		t.Errorf("endpoint = %+v", res.Endpoint)
-	}
-	if res.Endpoint.Status != http.StatusOK || res.Endpoint.Error != "" {
-		t.Errorf("successful attempt = %+v", res.Endpoint)
-	}
-	if res.ServerName != "github-tools" || res.ServerVersion != "2.3.0" || res.ProtocolVersion == "" {
-		t.Errorf("server info = %q %q %q", res.ServerName, res.ServerVersion, res.ProtocolVersion)
-	}
-	if len(res.Tools) != 3 || res.Tools[0].Name != "tool_00" || res.Tools[0].Description != "Tool number 0." {
-		t.Errorf("tools = %+v", res.Tools)
-	}
-	first := res.Attempts[0]
-	if first.URL != ts.URL+"/github" || first.Status != http.StatusNotFound || first.Error != "HTTP 404" {
-		t.Errorf("first attempt = %+v", first)
+			res, err := newDiscoverer(t, nil).Discover(context.Background(), ts.URL+tt.path+"#frag", tt.tr)
+			if err != nil {
+				t.Fatalf("Discover: %v", err)
+			}
+			if res.Endpoint.URL != ts.URL+tt.path || res.Endpoint.Transport != tt.tr {
+				t.Errorf("endpoint = %+v", res.Endpoint)
+			}
+			if res.Endpoint.Status != http.StatusOK || res.Endpoint.Error != "" {
+				t.Errorf("successful attempt = %+v", res.Endpoint)
+			}
+			if len(res.Attempts) != 1 || res.Attempts[0] != res.Endpoint {
+				t.Errorf("attempts = %+v", res.Attempts)
+			}
+			if res.ServerName != "github-tools" || res.ServerVersion != "2.3.0" || res.ProtocolVersion == "" {
+				t.Errorf("server info = %q %q %q", res.ServerName, res.ServerVersion, res.ProtocolVersion)
+			}
+			if len(res.Tools) != 3 || res.Tools[0].Name != "tool_00" || res.Tools[0].Description != "Tool number 0." {
+				t.Errorf("tools = %+v", res.Tools)
+			}
+		})
 	}
 }
 
@@ -226,18 +217,36 @@ func TestDiscover_ProbesProtocolVersions(t *testing.T) {
 	}
 }
 
-func TestDiscover_FallsBackToLegacySSE(t *testing.T) {
-	ts := serve(t, "/sse", SSE, newMCPServer(2, 0))
+// TestDiscover_NoGuessing checks that neither a conventional subpath nor the
+// other transport is tried when the declared pair does not answer.
+func TestDiscover_NoGuessing(t *testing.T) {
+	tests := []struct {
+		name     string
+		mount    string
+		served   Transport
+		declared string
+		tr       Transport
+	}{
+		{"server under /mcp, base URL declared", "/mcp", StreamableHTTP, "", StreamableHTTP},
+		{"server under /sse, base URL declared", "/sse", SSE, "", SSE},
+		{"sse server, streamable http declared", "/x", SSE, "/x", StreamableHTTP},
+		{"streamable http server, sse declared", "/x", StreamableHTTP, "/x", SSE},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := serve(t, tt.mount, tt.served, newMCPServer(1, 0))
 
-	res, err := newDiscoverer(t, nil).Discover(context.Background(), ts.URL, StreamableHTTP)
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
-	}
-	if res.Endpoint.URL != ts.URL+"/sse" || res.Endpoint.Transport != SSE {
-		t.Errorf("endpoint = %+v", res.Endpoint)
-	}
-	if len(res.Tools) != 2 {
-		t.Errorf("got %d tools, want 2", len(res.Tools))
+			res, err := newDiscoverer(t, nil).Discover(context.Background(), ts.URL+tt.declared, tt.tr)
+			if !errors.Is(err, ErrNoServer) {
+				t.Fatalf("err = %v, want ErrNoServer", err)
+			}
+			if len(res.Attempts) != 1 {
+				t.Fatalf("got %d attempts, want 1: %+v", len(res.Attempts), res.Attempts)
+			}
+			if a := res.Attempts[0]; a.URL != ts.URL+tt.declared || a.Transport != tt.tr || a.Error == "" {
+				t.Errorf("attempt = %+v", a)
+			}
+		})
 	}
 }
 
@@ -303,8 +312,8 @@ func TestDiscover_Failures(t *testing.T) {
 		wantAttempts int
 	}{
 		{"unauthorized stops at once", unauthorized.URL, nil, ErrUnauthorized, 1},
-		{"nothing answers", notFound.URL, nil, ErrNoServer, 6},
-		{"html page is not an MCP server", notMCP.URL + "/mcp", nil, ErrNoServer, 2},
+		{"nothing answers", notFound.URL, nil, ErrNoServer, 1},
+		{"html page is not an MCP server", notMCP.URL + "/mcp", nil, ErrNoServer, 1},
 		{"loopback is blocked by default", notFound.URL, func(c *Config) { c.AllowedPrefixes = nil }, ErrBlockedAddress, 1},
 		{"budget runs out", slow.URL, func(c *Config) { c.Timeout = 300 * time.Millisecond }, ErrTimeout, 1},
 	}

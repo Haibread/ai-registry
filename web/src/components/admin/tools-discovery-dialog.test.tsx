@@ -39,11 +39,8 @@ function json(status: number, body: unknown, type = "application/json") {
 }
 
 const discovery = {
-  endpoint: { url: "https://mcp.acme.dev/github/mcp", transport: "streamable_http" },
-  attempts: [
-    { url: "https://mcp.acme.dev/github", transport: "streamable_http", status: 404, error: "HTTP 404" },
-    { url: "https://mcp.acme.dev/github/mcp", transport: "streamable_http", status: 200 },
-  ],
+  endpoint: { url: "https://mcp.acme.dev/github", transport: "streamable_http" },
+  attempts: [{ url: "https://mcp.acme.dev/github", transport: "streamable_http", status: 200 }],
   server_info: { name: "github-tools", version: "2.3.0" },
   protocol_version: "2025-06-18",
   tools: [
@@ -55,7 +52,6 @@ const discovery = {
 type Source = NonNullable<ComponentProps<typeof ToolsEditor>["discovery"]>
 
 function renderEditor(source: Partial<Source> = {}, initialTools = [{ name: "list_issues", description: "List issues in a repository." }]) {
-  const onUseEndpoint = vi.fn()
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const utils = render(
     <QueryClientProvider client={qc}>
@@ -65,14 +61,13 @@ function renderEditor(source: Partial<Source> = {}, initialTools = [{ name: "lis
           namespace: "acme",
           transport: "streamable_http",
           remoteUrl: "https://mcp.acme.dev/github",
-          onUseEndpoint,
           ...source,
         }}
       />
     </QueryClientProvider>,
   )
   const hidden = () => JSON.parse((utils.container.querySelector('input[name="tools"]') as HTMLInputElement).value)
-  return { ...utils, onUseEndpoint, hidden }
+  return { ...utils, hidden }
 }
 
 describe("Fetch from server", () => {
@@ -131,30 +126,6 @@ describe("Fetch from server", () => {
     await user.click(within(dialog).getByRole("button", { name: "Apply 2 changes" }))
 
     expect(hidden()[0].description).toBe("List issues, filtered by state and labels.")
-  })
-
-  it("offers the endpoint that answered as the Remote URL", async () => {
-    authFetch.mockResolvedValue(json(200, discovery))
-    const user = userEvent.setup()
-    const { onUseEndpoint } = renderEditor()
-
-    await user.click(screen.getByRole("button", { name: /fetch from server/i }))
-    const dialog = await screen.findByRole("dialog", { name: "Tools found on server" })
-    await user.click(await within(dialog).findByRole("button", { name: "Use this URL as Remote URL" }))
-
-    expect(onUseEndpoint).toHaveBeenCalledWith("https://mcp.acme.dev/github/mcp")
-    expect(within(dialog).getByText("Remote URL updated.")).toBeInTheDocument()
-  })
-
-  it("does not offer the endpoint when it is the declared URL", async () => {
-    authFetch.mockResolvedValue(json(200, { ...discovery, endpoint: { url: "https://mcp.acme.dev/github/", transport: "sse" } }))
-    const user = userEvent.setup()
-    renderEditor()
-
-    await user.click(screen.getByRole("button", { name: /fetch from server/i }))
-    const dialog = await screen.findByRole("dialog", { name: "Tools found on server" })
-    await within(dialog).findByText(/2 tools/)
-    expect(within(dialog).queryByRole("button", { name: "Use this URL as Remote URL" })).not.toBeInTheDocument()
   })
 
   it("explains a protected server and leaves the list alone", async () => {

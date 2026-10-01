@@ -1,12 +1,13 @@
 /**
  * The "Fetch from server" review dialog of the tools editor: asks the API to
- * run tools/list against the version's remote URL, shows how the result
+ * run tools/list against the version's remote URL and transport, exactly as
+ * declared, shows how the result
  * differs from the list being edited, and applies only the ticked rows.
  */
 
 import { useEffect, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { AlertCircle, Info, Loader2, Lock } from "lucide-react"
+import { AlertCircle, Loader2, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -39,8 +40,6 @@ interface ToolsDiscoveryDialogProps {
   currentTools: MCPTool[]
   /** Receives the next list and how many tools it changed. */
   onApply: (next: MCPTool[], changes: number) => void
-  /** Replaces the form's remote URL with the endpoint that answered. */
-  onUseEndpoint?: (url: string) => void
 }
 
 export function ToolsDiscoveryDialog({ open, onOpenChange, ...rest }: ToolsDiscoveryDialogProps) {
@@ -73,7 +72,7 @@ interface BodyProps extends Omit<ToolsDiscoveryDialogProps, "open" | "onOpenChan
   onClose: () => void
 }
 
-function DiscoveryBody({ request, currentTools, onApply, onUseEndpoint, onClose }: BodyProps) {
+function DiscoveryBody({ request, currentTools, onApply, onClose }: BodyProps) {
   const client = useAuthClient()
   const query = useQuery<Discovery, Problem>({
     queryKey: ["tool-discovery", request],
@@ -101,7 +100,7 @@ function DiscoveryBody({ request, currentTools, onApply, onUseEndpoint, onClose 
       {query.isPending && (
         <div role="status" className="flex items-center gap-2 rounded-md border p-3 text-sm">
           <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
-          Looking for an MCP server at {hostOf(request.url)}…
+          Connecting to the MCP server at {hostOf(request.url)}…
         </div>
       )}
 
@@ -122,10 +121,8 @@ function DiscoveryBody({ request, currentTools, onApply, onUseEndpoint, onClose 
       {query.isSuccess && (
         <DiscoveryReview
           discovery={query.data}
-          declaredUrl={request.url}
           currentTools={currentTools}
           onApply={onApply}
-          onUseEndpoint={onUseEndpoint}
           onClose={onClose}
         />
       )}
@@ -149,19 +146,15 @@ const STATUS_VARIANT = {
 
 interface ReviewProps {
   discovery: Discovery
-  declaredUrl: string
   currentTools: MCPTool[]
   onApply: (next: MCPTool[], changes: number) => void
-  onUseEndpoint?: (url: string) => void
   onClose: () => void
 }
 
-function DiscoveryReview({ discovery, declaredUrl, currentTools, onApply, onUseEndpoint, onClose }: ReviewProps) {
+function DiscoveryReview({ discovery, currentTools, onApply, onClose }: ReviewProps) {
   const [rows] = useState(() => diffTools(currentTools, discovery.tools))
   const [selected, setSelected] = useState(() => defaultSelection(rows))
-  const [endpointAdopted, setEndpointAdopted] = useState(false)
   const changes = countChanges(rows, selected)
-  const endpointDiffers = sameUrl(discovery.endpoint.url, declaredUrl) === false
 
   function toggle(name: string) {
     setSelected((prev) => {
@@ -179,36 +172,6 @@ function DiscoveryReview({ discovery, declaredUrl, currentTools, onApply, onUseE
 
   return (
     <>
-      {endpointDiffers && onUseEndpoint && (
-        <div className="flex gap-2 rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm dark:border-yellow-900 dark:bg-yellow-950">
-          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <div className="min-w-0 space-y-2">
-            <p>
-              <span className="font-medium">The server answered at </span>
-              <span className="break-all font-mono text-xs">{discovery.endpoint.url}</span>
-              <span className="block text-xs text-muted-foreground">
-                Clients using the Remote URL as declared will likely fail.
-              </span>
-            </p>
-            {endpointAdopted ? (
-              <p className="text-xs font-medium">Remote URL updated.</p>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onUseEndpoint(discovery.endpoint.url)
-                  setEndpointAdopted(true)
-                }}
-              >
-                Use this URL as Remote URL
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground">
           {discovery.attempts.length} {discovery.attempts.length === 1 ? "attempt" : "attempts"}
@@ -356,19 +319,5 @@ function hostOf(url: string): string {
     return new URL(url).host
   } catch {
     return url
-  }
-}
-
-/** Equal up to a trailing slash; null when either URL does not parse. */
-function sameUrl(a: string, b: string): boolean | null {
-  try {
-    const strip = (u: string) => {
-      const p = new URL(u)
-      p.hash = ""
-      return p.toString().replace(/\/+(\?|$)/, "$1")
-    }
-    return strip(a) === strip(b)
-  } catch {
-    return null
   }
 }

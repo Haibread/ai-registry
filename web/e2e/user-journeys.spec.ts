@@ -243,11 +243,8 @@ test.describe('Fetch tools from server', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          endpoint: { url: `${declared}/mcp`, transport: 'streamable_http' },
-          attempts: [
-            { url: declared, transport: 'streamable_http', status: 404, error: 'HTTP 404' },
-            { url: `${declared}/mcp`, transport: 'streamable_http', status: 200 },
-          ],
+          endpoint: { url: declared, transport: 'streamable_http' },
+          attempts: [{ url: declared, transport: 'streamable_http', status: 200 }],
           server_info: { name: 'github-tools', version: '2.3.0' },
           protocol_version: '2025-06-18',
           tools: [
@@ -277,8 +274,6 @@ test.describe('Fetch tools from server', () => {
     const dialog = page.getByRole('dialog', { name: 'Tools found on server' })
     await expect(dialog.getByText('github-tools 2.3.0 · protocol 2025-06-18 · 2 tools')).toBeVisible()
     expect(sent).toEqual({ namespace: pub.slug, url: declared, transport: 'streamable_http' })
-    await dialog.getByRole('button', { name: 'Use this URL as Remote URL' }).click()
-    await expect(page.locator('input[name="remote_url"]')).toHaveValue(`${declared}/mcp`)
     await dialog.getByRole('button', { name: 'Apply 2 changes' }).click()
     await expect(dialog).toBeHidden()
 
@@ -293,7 +288,7 @@ test.describe('Fetch tools from server', () => {
     const vres = await apiGet(page, `/api/v1/mcp/servers/${pub.slug}/${slug}/versions/1.0.0`)
     expect(vres.status()).toBe(200)
     const v = await vres.json()
-    expect(v.remotes).toEqual([{ type: 'streamable_http', url: `${declared}/mcp` }])
+    expect(v.remotes).toEqual([{ type: 'streamable_http', url: declared }])
     expect(v.tools).toEqual([
       { name: 'list_issues', description: 'List issues, open by default.', input_schema: { type: 'object' }, annotations: { readOnlyHint: true } },
       { name: 'merge_pull_request', description: 'Merge a pull request.', annotations: { destructiveHint: true } },

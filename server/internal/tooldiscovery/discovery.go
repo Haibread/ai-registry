@@ -1,6 +1,6 @@
 // Package tooldiscovery connects to a remote MCP server on a publisher's
 // behalf and returns the tools it advertises through tools/list and the
-// protocol revisions it accepts, guessing the exact endpoint from the URL the
+// protocol revisions it accepts. It contacts only the URL and transport the
 // publisher declared.
 package tooldiscovery
 
@@ -16,7 +16,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -44,7 +43,8 @@ var (
 	// ErrUnauthorized reports that a server exists but refused the anonymous
 	// connection (HTTP 401/403).
 	ErrUnauthorized = errors.New("server requires authentication")
-	// ErrNoServer reports that no candidate answered the MCP handshake.
+	// ErrNoServer reports that the declared URL did not answer the MCP
+	// handshake.
 	ErrNoServer = errors.New("no MCP server answered")
 	// ErrTimeout reports that the discovery budget ran out.
 	ErrTimeout = errors.New("discovery timed out")
@@ -54,7 +54,7 @@ var (
 
 // Config bounds what a single discovery may do.
 type Config struct {
-	// Timeout is the budget for the whole discovery, every attempt included.
+	// Timeout is the budget for the whole discovery.
 	Timeout time.Duration
 	// MaxTools caps the number of tools read across tools/list pages.
 	MaxTools int
@@ -67,7 +67,7 @@ type Config struct {
 	ClientVersion string
 }
 
-// Attempt is one connection attempt against one candidate endpoint.
+// Attempt is the connection attempt against the declared endpoint.
 type Attempt struct {
 	URL       string
 	Transport Transport
@@ -78,7 +78,8 @@ type Attempt struct {
 	Error string
 }
 
-// Result is what a discovery found. Attempts is filled even on failure.
+// Result is what a discovery found. Attempts holds the single attempt made,
+// and is filled even on failure.
 type Result struct {
 	Endpoint        Attempt
 	Attempts        []Attempt
@@ -115,16 +116,15 @@ func New(cfg Config, logger *slog.Logger) *Discoverer {
 	return &Discoverer{cfg: cfg, transport: otelhttp.NewTransport(tr), logger: logger}
 }
 
-// Discover guesses the MCP endpoint behind rawURL, runs the MCP handshake and
-// reads every tools/list page. hint is the transport the publisher declared;
-// it is tried first on candidates that do not name a transport themselves.
-func (d *Discoverer) Discover(ctx context.Context, rawURL string, hint Transport) (*Result, error) {
+// Discover connects to rawURL with transport tr, runs the MCP handshake and
+// reads every tools/list page.
+func (d *Discoverer) Discover(ctx context.Context, rawURL string, tr Transport) (*Result, error) {
 	ctx, span := otel.GetTracerProvider().Tracer(tracerName).Start(ctx, "mcp.tool_discovery",
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(attribute.String("mcp.discovery.declared_url", rawURL)))
 	defer span.End()
 
-	res, err := d.discover(ctx, rawURL, hint)
+	res, err := d.discover(ctx, rawURL, tr)
 	if res != nil {
 		span.SetAttributes(attribute.Int("mcp.discovery.attempts", len(res.Attempts)))
 		if err == nil {
@@ -142,43 +142,29 @@ func (d *Discoverer) Discover(ctx context.Context, rawURL string, hint Transport
 	return res, err
 }
 
-func (d *Discoverer) discover(ctx context.Context, rawURL string, hint Transport) (*Result, error) {
+func (d *Discoverer) discover(ctx context.Context, rawURL string, tr Transport) (*Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, d.cfg.Timeout)
 	defer cancel()
 
-	cands, err := Candidates(rawURL)
+	endpoint, err := Endpoint(rawURL)
 	if err != nil {
 		return nil, err
 	}
 	res := &Result{}
-	for _, c := range cands {
-		for _, tr := range transportOrder(c, hint) {
-			if ctx.Err() != nil {
-				return res, ErrTimeout
-			}
-			att, err := d.attempt(ctx, c, tr, res)
-			res.Attempts = append(res.Attempts, att)
-			d.logger.DebugContext(ctx, "tool discovery attempt",
-				slog.String("url", c), slog.String("transport", string(tr)),
-				slog.Int("status", att.Status), slog.String("error", att.Error))
-			switch {
-			case err == nil:
-				res.Endpoint = att
-				res.SupportedProtocolVersions = d.probeProtocolVersions(ctx, c, tr)
-				return res, nil
-			case errors.Is(err, ErrBlockedAddress), errors.Is(err, ErrUnauthorized),
-				errors.Is(err, ErrTooManyTools):
-				return res, err
-			}
-		}
+	att, err := d.attempt(ctx, endpoint, tr, res)
+	res.Attempts = []Attempt{att}
+	d.logger.DebugContext(ctx, "tool discovery attempt",
+		slog.String("url", endpoint), slog.String("transport", string(tr)),
+		slog.Int("status", att.Status), slog.String("error", att.Error))
+	if err != nil {
+		return res, err
 	}
-	if ctx.Err() != nil {
-		return res, ErrTimeout
-	}
-	return res, ErrNoServer
+	res.Endpoint = att
+	res.SupportedProtocolVersions = d.probeProtocolVersions(ctx, endpoint, tr)
+	return res, nil
 }
 
-// attempt connects to one candidate with one transport and, on success, fills
+// attempt connects to endpoint with transport tr and, on success, fills
 // res with the server identity and its tools.
 func (d *Discoverer) attempt(ctx context.Context, endpoint string, tr Transport, res *Result) (Attempt, error) {
 	att := Attempt{URL: endpoint, Transport: tr}
@@ -304,56 +290,17 @@ func classify(ctx context.Context, rec *recorder, status int) (string, error) {
 	}
 }
 
-// Candidates lists the endpoints tried for a declared URL, in order: the URL
-// as given, then with the conventional /mcp and /sse path suffixes unless the
-// path already ends with one of them.
-func Candidates(rawURL string) ([]string, error) {
+// Endpoint validates a declared URL and returns it without its fragment.
+func Endpoint(rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
-		return nil, fmt.Errorf("%q is not an absolute http(s) URL", rawURL)
+		return "", fmt.Errorf("%q is not an absolute http(s) URL", rawURL)
 	}
 	if u.User != nil {
-		return nil, fmt.Errorf("%q must not embed credentials", rawURL)
+		return "", fmt.Errorf("%q must not embed credentials", rawURL)
 	}
 	u.Fragment = ""
-	out := []string{u.String()}
-	path := strings.TrimRight(u.Path, "/")
-	switch path[strings.LastIndex(path, "/")+1:] {
-	case "mcp", "sse":
-		return out, nil
-	}
-	for _, suffix := range []string{"mcp", "sse"} {
-		c := *u
-		c.Path = path + "/" + suffix
-		c.RawPath = ""
-		out = append(out, c.String())
-	}
-	return out, nil
-}
-
-// transportOrder tries the transport a /mcp or /sse path names first, and
-// otherwise the declared one; the other transport follows, as the MCP spec's
-// backwards-compatibility procedure prescribes.
-func transportOrder(endpoint string, hint Transport) []Transport {
-	first := hint
-	switch {
-	case strings.HasSuffix(strings.TrimRight(endpointPath(endpoint), "/"), "/sse"):
-		first = SSE
-	case strings.HasSuffix(strings.TrimRight(endpointPath(endpoint), "/"), "/mcp"):
-		first = StreamableHTTP
-	}
-	if first == SSE {
-		return []Transport{SSE, StreamableHTTP}
-	}
-	return []Transport{StreamableHTTP, SSE}
-}
-
-func endpointPath(endpoint string) string {
-	u, err := url.Parse(endpoint)
-	if err != nil {
-		return ""
-	}
-	return u.Path
+	return u.String(), nil
 }
 
 // toDomainTool maps a tools/list entry to the registry's stored shape.

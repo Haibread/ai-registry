@@ -454,10 +454,6 @@ export default function AdminMCPNew() {
                   namespace,
                   transport: runtime,
                   remoteUrl,
-                  onUseEndpoint: (url) => {
-                    setRemoteUrl(url)
-                    setDirty(true)
-                  },
                 }}
               />
             </div>

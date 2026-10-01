@@ -25,14 +25,14 @@ import (
 )
 
 type fakeDiscoverer struct {
-	res     *tooldiscovery.Result
-	err     error
-	gotURL  string
-	gotHint tooldiscovery.Transport
+	res          *tooldiscovery.Result
+	err          error
+	gotURL       string
+	gotTransport tooldiscovery.Transport
 }
 
-func (f *fakeDiscoverer) Discover(_ context.Context, rawURL string, hint tooldiscovery.Transport) (*tooldiscovery.Result, error) {
-	f.gotURL, f.gotHint = rawURL, hint
+func (f *fakeDiscoverer) Discover(_ context.Context, rawURL string, tr tooldiscovery.Transport) (*tooldiscovery.Result, error) {
+	f.gotURL, f.gotTransport = rawURL, tr
 	return f.res, f.err
 }
 
@@ -112,6 +112,32 @@ func TestToolDiscovery_Validation(t *testing.T) {
 	}
 }
 
+func TestToolDiscovery_PassesDeclaredEndpoint(t *testing.T) {
+	resetTables(t)
+	seedPublisher(t, "acme", "Acme")
+	tests := []struct {
+		transport string
+		want      tooldiscovery.Transport
+	}{
+		{"http", tooldiscovery.StreamableHTTP},
+		{"streamable_http", tooldiscovery.StreamableHTTP},
+		{"sse", tooldiscovery.SSE},
+	}
+	for _, tt := range tests {
+		t.Run(tt.transport, func(t *testing.T) {
+			d := &fakeDiscoverer{res: &tooldiscovery.Result{Tools: []domain.MCPTool{}}}
+			rec := postDiscovery(t, newDiscoveryRouter(d), adminCtx(),
+				fmt.Sprintf(`{"namespace":"acme","url":"https://mcp.acme.dev/x","transport":%q}`, tt.transport))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String())
+			}
+			if d.gotURL != "https://mcp.acme.dev/x" || d.gotTransport != tt.want {
+				t.Errorf("discoverer got %q %q, want %q", d.gotURL, d.gotTransport, tt.want)
+			}
+		})
+	}
+}
+
 func TestToolDiscovery_Disabled(t *testing.T) {
 	rec := postDiscovery(t, newDiscoveryRouter(nil), adminCtx(),
 		`{"namespace":"acme","url":"https://mcp.acme.dev","transport":"sse"}`)
@@ -122,9 +148,7 @@ func TestToolDiscovery_MapsFailures(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "acme", "Acme")
 	tried := &tooldiscovery.Result{Attempts: []tooldiscovery.Attempt{
-		{URL: "https://mcp.acme.dev/x", Transport: tooldiscovery.StreamableHTTP, Status: 404},
-		{URL: "https://mcp.acme.dev/x", Transport: tooldiscovery.SSE, Status: 404},
-		{URL: "https://mcp.acme.dev/x/mcp", Transport: tooldiscovery.StreamableHTTP, Status: 404},
+		{URL: "https://mcp.acme.dev/x", Transport: tooldiscovery.StreamableHTTP, Status: 404, Error: "HTTP 404"},
 	}}
 	tests := []struct {
 		err        error
@@ -143,15 +167,16 @@ func TestToolDiscovery_MapsFailures(t *testing.T) {
 				`{"namespace":"acme","url":"https://mcp.acme.dev/x","transport":"http"}`)
 			body := rec.Body.String()
 			assertProblemType(t, rec, tt.wantStatus, tt.wantSlug)
-			if tt.wantSlug == "no-mcp-server" && !bytes.Contains([]byte(body), []byte("https://mcp.acme.dev/x, https://mcp.acme.dev/x/mcp.")) {
-				t.Errorf("detail does not list each tried URL once: %s", body)
+			if tt.wantSlug == "no-mcp-server" && !bytes.Contains([]byte(body), []byte("https://mcp.acme.dev/x over streamable_http.")) {
+				t.Errorf("detail does not name the declared endpoint: %s", body)
 			}
 		})
 	}
 }
 
 // TestToolDiscovery_EndToEnd runs the real discoverer against an MCP server
-// mounted under /mcp while the publisher declared the bare base URL.
+// mounted under /mcp: declaring that path finds it, declaring the bare base
+// URL does not.
 func TestToolDiscovery_EndToEnd(t *testing.T) {
 	resetTables(t)
 	seedPublisher(t, "acme", "Acme")
@@ -179,6 +204,10 @@ func TestToolDiscovery_EndToEnd(t *testing.T) {
 
 	rec := postDiscovery(t, newDiscoveryRouter(d), adminCtx(),
 		fmt.Sprintf(`{"namespace":"acme","url":%q,"transport":"streamable_http"}`, ts.URL))
+	assertProblemType(t, rec, http.StatusBadGateway, "no-mcp-server")
+
+	rec = postDiscovery(t, newDiscoveryRouter(d), adminCtx(),
+		fmt.Sprintf(`{"namespace":"acme","url":%q,"transport":"streamable_http"}`, ts.URL+"/mcp"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String())
 	}
@@ -206,7 +235,7 @@ func TestToolDiscovery_EndToEnd(t *testing.T) {
 	if got.Endpoint.URL != ts.URL+"/mcp" || got.Endpoint.Transport != "streamable_http" {
 		t.Errorf("endpoint = %+v", got.Endpoint)
 	}
-	if n := len(got.Attempts); n < 2 || got.Attempts[0].Status != 404 || got.Attempts[n-1].Error != "" {
+	if len(got.Attempts) != 1 || got.Attempts[0].URL != ts.URL+"/mcp" || got.Attempts[0].Status != 200 || got.Attempts[0].Error != "" {
 		t.Errorf("attempts = %+v", got.Attempts)
 	}
 	if got.ServerInfo.Name != "github-tools" || got.ServerInfo.Version != "2.3.0" || got.ProtocolVersion == "" {
