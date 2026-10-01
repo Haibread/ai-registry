@@ -15,8 +15,8 @@ export const fieldExplanations: Record<string, string> = {
     "Streamable HTTP. The server is hosted remotely and uses HTTP with streaming support for bidirectional communication.",
 
   // Metadata fields
-  protocol_version:
-    "The version of the MCP protocol this server implements. Hosts and servers must agree on a compatible protocol version.",
+  protocol_versions:
+    "The MCP protocol revisions this server supports. A host can connect when it supports at least one of them.",
   a2a_protocol_version:
     "The version of the A2A (Agent-to-Agent) protocol this agent implements.",
   runtime:

@@ -45,7 +45,7 @@ const seedDraftVersion = async (page: Page, version: string) => {
         },
       ],
       capabilities: { tools: [] },
-      protocol_version: '2024-11-05',
+      protocol_versions: ['2024-11-05'],
     },
   )
   expect(r.status(), `seed v${version}`).toBe(201)

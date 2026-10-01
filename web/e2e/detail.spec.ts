@@ -73,7 +73,7 @@ test.describe('Public detail pages', () => {
       {
         version: '1.0.0',
         runtime: 'sse',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           {
             registryType: 'npm',

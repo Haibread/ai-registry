@@ -79,10 +79,12 @@ type MCPServerSpec struct {
 type MCPVersionSpec struct {
 	Version string `yaml:"version" json:"version"`
 	// Status: "draft" | "published" | "deprecated". Defaults to "draft".
-	Status          string        `yaml:"status"           json:"status"`
-	StatusMessage   string        `yaml:"status_message"   json:"status_message"`
-	ProtocolVersion string        `yaml:"protocol_version" json:"protocol_version"`
-	Packages        []PackageSpec `yaml:"packages"         json:"packages"`
+	Status        string `yaml:"status"           json:"status"`
+	StatusMessage string `yaml:"status_message"   json:"status_message"`
+	// ProtocolVersions lists the MCP protocol revisions the version
+	// supports. Defaults to the latest revision the registry knows of.
+	ProtocolVersions []string      `yaml:"protocol_versions" json:"protocol_versions"`
+	Packages         []PackageSpec `yaml:"packages"          json:"packages"`
 	// Remotes lists directly reachable endpoints of a hosted server,
 	// mirroring the `remotes` array of the MCP registry server.json. A
 	// version needs at least one package or one remote.

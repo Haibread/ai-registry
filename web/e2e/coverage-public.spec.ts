@@ -49,7 +49,7 @@ test.describe('Public coverage', () => {
       {
         version: '1.0.0',
         runtime: 'stdio',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [{ registryType: 'npm', identifier: '@e2e/public', version: '1.0.0', transport: { type: 'stdio' } }],
       },
     )).ok()).toBeTruthy()
@@ -289,7 +289,7 @@ test.describe('Public coverage: pagination', () => {
         {
           version: '1.0.0',
           runtime: 'stdio',
-          protocol_version: '2025-03-26',
+          protocol_versions: ['2025-03-26'],
           packages: [{ registryType: 'npm', identifier: `@e2e/page-${i}`, version: '1.0.0', transport: { type: 'stdio' } }],
         },
       )).ok()).toBeTruthy()

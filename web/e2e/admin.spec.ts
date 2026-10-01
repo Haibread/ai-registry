@@ -135,7 +135,7 @@ test.describe('Admin: MCP Server CRUD', () => {
     expect((await apiPost(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}/versions`, {
       version: '0.1.0',
       runtime: 'stdio',
-      protocol_version: '2025-03-26',
+      protocol_versions: ['2025-03-26'],
       packages: [{ registryType: 'npm', identifier: '@e2e/test-server', version: '0.1.0', transport: { type: 'stdio' } }],
     })).ok()).toBeTruthy()
     expect((await apiPost(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}/versions/0.1.0/publish`, {})).ok()).toBeTruthy()
@@ -165,7 +165,7 @@ test.describe('Admin: MCP Server CRUD', () => {
       {
         version: '1.0.0',
         runtime: 'stdio',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           { registryType: 'npm', identifier: '@e2e/test-server', version: '1.0.0', transport: { type: 'stdio' } },
         ],

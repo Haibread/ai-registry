@@ -95,7 +95,8 @@ mcp_servers:
     versions:
       - version: "1.0.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         packages:
           - registry_type: "npm"
             identifier: "@acme/my-server"
@@ -257,6 +258,33 @@ mcp_servers:
 	_, err := bootstrap.LoadSpec(path)
 	if err == nil {
 		t.Error("expected validation error for missing version string, got nil")
+	}
+}
+
+func TestLoadSpec_ValidationError_BadProtocolVersions(t *testing.T) {
+	path := writeFile(t, "bootstrap.yaml", `
+publishers:
+  - slug: "acme"
+    name: "Acme Corp"
+mcp_servers:
+  - publisher: "acme"
+    slug: "srv"
+    name: "Server"
+    versions:
+      - version: "1.0.0"
+        protocol_versions:
+          - "2025-03-26"
+          - "2025-03-26"
+        packages:
+          - registry_type: "npm"
+            identifier: "pkg"
+            version: "1.0.0"
+            transport:
+              type: "stdio"
+`)
+	_, err := bootstrap.LoadSpec(path)
+	if err == nil || !strings.Contains(err.Error(), "protocol_versions") {
+		t.Errorf("expected protocol_versions validation error, got %v", err)
 	}
 }
 

@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,13 +17,13 @@ import (
 func TestMCPServerVersion_JSONShape(t *testing.T) {
 	published := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
 	v := domain.MCPServerVersion{
-		ID:              "01J",
-		ServerID:        "01S",
-		Version:         "1.0.0",
-		Runtime:         domain.RuntimeStdio,
-		ProtocolVersion: "2025-03-26",
-		Status:          domain.VersionStatusActive,
-		PublishedAt:     &published,
+		ID:               "01J",
+		ServerID:         "01S",
+		Version:          "1.0.0",
+		Runtime:          domain.RuntimeStdio,
+		ProtocolVersions: []string{"2025-03-26"},
+		Status:           domain.VersionStatusActive,
+		PublishedAt:      &published,
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -33,7 +34,7 @@ func TestMCPServerVersion_JSONShape(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	for _, key := range []string{
-		"id", "server_id", "version", "runtime", "protocol_version",
+		"id", "server_id", "version", "runtime", "protocol_versions",
 		"status", "published_at", "created_at", "updated_at",
 	} {
 		if _, ok := out[key]; !ok {
@@ -340,6 +341,37 @@ func TestValidateTools(t *testing.T) {
 			err := domain.ValidateTools(json.RawMessage(tt.input))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateTools(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateProtocolVersions(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      []string
+		want    []string
+		wantErr bool
+	}{
+		{"single", []string{"2025-03-26"}, []string{"2025-03-26"}, false},
+		{"sorted newest first", []string{"2024-11-05", "2025-06-18", "2025-03-26"}, []string{"2025-06-18", "2025-03-26", "2024-11-05"}, false},
+		{"trimmed", []string{" 2025-03-26 "}, []string{"2025-03-26"}, false},
+		{"nil", nil, nil, true},
+		{"empty", []string{}, nil, true},
+		{"blank entry", []string{"2025-03-26", ""}, nil, true},
+		{"not a date", []string{"v1"}, nil, true},
+		{"impossible date", []string{"2025-13-40"}, nil, true},
+		{"duplicate", []string{"2025-03-26", "2025-03-26"}, nil, true},
+		{"duplicate after trim", []string{"2025-03-26", "2025-03-26 "}, nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := domain.ValidateProtocolVersions(tc.in)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
 	}

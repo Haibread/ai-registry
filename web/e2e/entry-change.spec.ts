@@ -70,7 +70,7 @@ test.describe('Entry-change review queue', () => {
       runtime: 'stdio',
       packages: [{ registryType: 'npm', identifier: '@e2e/pkg', version: V1, transport: { type: 'stdio' } }],
       capabilities: { tools: [] },
-      protocol_version: '2024-11-05',
+      protocol_versions: ['2024-11-05'],
     })
     expect(res.status(), 'create version').toBe(201)
 

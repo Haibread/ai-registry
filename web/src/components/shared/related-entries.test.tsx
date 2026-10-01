@@ -31,7 +31,7 @@ const mcpBase = {
   latest_version: {
     version: '1.0.0',
     runtime: 'http',
-    protocol_version: '2025-03-26',
+    protocol_versions: ['2025-03-26'],
     packages: [],
   },
 }

@@ -4,11 +4,12 @@
  * The contract under test is the prefill behavior: when the parent passes the
  * latest existing version, the form seeds every field from it (so authoring
  * v(n+1) is a small delta), suggests a patch-bumped version number, and says
- * where the values came from. Submit wiring is covered by the e2e journeys.
+ * where the values came from. The submit test covers the payload shaping the form owns; the round-trip is
+ * covered by the e2e journeys.
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ComponentProps } from 'react'
@@ -17,6 +18,7 @@ vi.mock('@/auth/tokens', () => ({
   authFetch: vi.fn(),
 }))
 
+import { authFetch } from '@/auth/tokens'
 import { NewVersionForm } from './new-version-form'
 
 function renderForm(props: Partial<ComponentProps<typeof NewVersionForm>> = {}) {
@@ -41,7 +43,7 @@ const mcpPrefill = {
   id: '01HV1',
   version: '1.2.3',
   runtime: 'sse' as const,
-  protocol_version: '2025-03-26',
+  protocol_versions: ['2025-06-18', '2025-03-26'],
   packages: [
     {
       registryType: 'npm',
@@ -101,7 +103,7 @@ describe('NewVersionForm prefill (mcp)', () => {
 
     expect(screen.getByText(/pre-filled from/i)).toHaveTextContent('v1.2.3')
     expect(screen.getByLabelText(/^version/i)).toHaveValue('1.2.4')
-    expect(screen.getByLabelText(/protocol version/i)).toHaveValue('2025-03-26')
+    expect(screen.getByLabelText(/protocol versions/i)).toHaveValue('2025-06-18, 2025-03-26')
 
     // Transport carried over → SSE, which reveals the seeded remote endpoint.
     expect(screen.getByRole('combobox', { name: /transport/i })).toHaveTextContent('SSE')
@@ -157,5 +159,22 @@ describe('NewVersionForm prefill (agent)', () => {
     expect(screen.getByLabelText(/provider url/i)).toHaveValue('https://acme.example.com')
     expect(screen.getByLabelText(/documentation url/i)).toHaveValue('https://docs.example.com')
     expect(screen.getByLabelText(/icon url/i)).toHaveValue('https://acme.example.com/icon.png')
+  })
+})
+
+describe('NewVersionForm submit (mcp)', () => {
+  it('sends the comma-separated protocol revisions as a list', async () => {
+    vi.mocked(authFetch).mockResolvedValue(new Response('{}', { status: 201 }))
+    renderForm()
+
+    fireEvent.change(screen.getByLabelText(/^version/i), { target: { value: '1.0.0' } })
+    fireEvent.change(screen.getByLabelText(/protocol versions/i), {
+      target: { value: '2025-06-18, 2025-03-26 ,' },
+    })
+    fireEvent.submit(screen.getByLabelText(/^version/i).closest('form')!)
+
+    await waitFor(() => expect(authFetch).toHaveBeenCalled())
+    const [, init] = vi.mocked(authFetch).mock.calls[0]
+    expect(JSON.parse(init!.body as string).protocol_versions).toEqual(['2025-06-18', '2025-03-26'])
   })
 })

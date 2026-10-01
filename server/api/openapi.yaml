@@ -4666,7 +4666,7 @@ components:
       required:
         - version
         - runtime
-        - protocol_version
+        - protocol_versions
       properties:
         version:
           type: string
@@ -4677,8 +4677,14 @@ components:
             - http
             - sse
             - streamable_http
-        protocol_version:
-          type: string
+        protocol_versions:
+          type: array
+          description: MCP protocol revisions (YYYY-MM-DD) the server supports, newest first.
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: date
         packages:
           type: array
           items:
@@ -4837,7 +4843,7 @@ components:
         - id
         - version
         - runtime
-        - protocol_version
+        - protocol_versions
         - status
         - created_at
         - updated_at
@@ -4855,8 +4861,14 @@ components:
             - http
             - sse
             - streamable_http
-        protocol_version:
-          type: string
+        protocol_versions:
+          type: array
+          description: MCP protocol revisions (YYYY-MM-DD) the server supports, newest first.
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: date
         packages:
           type: array
           items:
@@ -4966,7 +4978,7 @@ components:
       required:
         - version
         - runtime
-        - protocol_version
+        - protocol_versions
       properties:
         version:
           type: string
@@ -4978,8 +4990,14 @@ components:
             - http
             - sse
             - streamable_http
-        protocol_version:
-          type: string
+        protocol_versions:
+          type: array
+          description: MCP protocol revisions (YYYY-MM-DD) the server supports, newest first.
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: date
         packages:
           type: array
           items:

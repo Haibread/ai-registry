@@ -61,7 +61,7 @@ const STDIO_SERVER = {
   latest_version: {
     version: '1.0.0',
     runtime: 'stdio',
-    protocol_version: '2025-03-26',
+    protocol_versions: ['2025-03-26'],
     published_at: '2025-02-01T00:00:00Z',
     capabilities: {
       tools: { listChanged: true },

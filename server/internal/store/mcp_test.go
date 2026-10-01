@@ -128,12 +128,12 @@ func TestMCPServerVersionLifecycle(t *testing.T) {
 
 	// Create a draft version.
 	ver, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         "1.0.0",
-		Runtime:         domain.RuntimeStdio,
-		Packages:        validPackages,
-		Capabilities:    json.RawMessage(`{"tools":[]}`),
-		ProtocolVersion: "2024-11-05",
+		ServerID:         srv.ID,
+		Version:          "1.0.0",
+		Runtime:          domain.RuntimeStdio,
+		Packages:         validPackages,
+		Capabilities:     json.RawMessage(`{"tools":[]}`),
+		ProtocolVersions: []string{"2024-11-05"},
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
@@ -164,7 +164,7 @@ func TestMCPServerVersionLifecycle(t *testing.T) {
 	// Duplicate version should return ErrConflict.
 	_, err = sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, ProtocolVersion: "2024-11-05",
+		Packages: validPackages, ProtocolVersions: []string{"2024-11-05"},
 	})
 	if err != store.ErrConflict {
 		t.Errorf("expected ErrConflict on duplicate version, got %v", err)
@@ -229,7 +229,7 @@ func TestDeprecateMCPServer(t *testing.T) {
 	// Publish a version first, which promotes server to published.
 	sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, ProtocolVersion: "2024-11-05",
+		Packages: validPackages, ProtocolVersions: []string{"2024-11-05"},
 	})
 	sharedDB.PublishMCPServerVersion(ctx, srv.ID, "1.0.0")
 
@@ -273,7 +273,7 @@ func TestListMCPServerVersions(t *testing.T) {
 	for _, v := range []string{"1.0.0", "1.1.0", "2.0.0"} {
 		if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 			ServerID: srv.ID, Version: v, Runtime: domain.RuntimeStdio,
-			Packages: validPackages, ProtocolVersion: "2024-11-05",
+			Packages: validPackages, ProtocolVersions: []string{"2024-11-05"},
 		}); err != nil {
 			t.Fatalf("CreateMCPServerVersion(%s): %v", v, err)
 		}
@@ -326,7 +326,7 @@ func TestGetLatestPublishedVersion(t *testing.T) {
 	// Create a draft version and confirm it is still not returned.
 	sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "0.9.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, ProtocolVersion: "2024-11-05",
+		Packages: validPackages, ProtocolVersions: []string{"2024-11-05"},
 	})
 	_, err = sharedDB.GetLatestPublishedVersion(ctx, srv.ID)
 	if err != store.ErrNotFound {
@@ -336,14 +336,14 @@ func TestGetLatestPublishedVersion(t *testing.T) {
 	// Publish 1.0.0.
 	sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, ProtocolVersion: "2024-11-05",
+		Packages: validPackages, ProtocolVersions: []string{"2024-11-05"},
 	})
 	sharedDB.PublishMCPServerVersion(ctx, srv.ID, "1.0.0")
 
 	// Publish 2.0.0.
 	sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "2.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, ProtocolVersion: "2024-11-05",
+		Packages: validPackages, ProtocolVersions: []string{"2024-11-05"},
 	})
 	sharedDB.PublishMCPServerVersion(ctx, srv.ID, "2.0.0")
 
@@ -759,11 +759,11 @@ func TestDeleteMCPServer(t *testing.T) {
 	}
 	// Add a version so we can verify it's also soft-deleted.
 	_, err = sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         "1.0.0",
-		Runtime:         domain.RuntimeStdio,
-		Packages:        validPackages,
-		ProtocolVersion: "2025-03-26",
+		ServerID:         srv.ID,
+		Version:          "1.0.0",
+		Runtime:          domain.RuntimeStdio,
+		Packages:         validPackages,
+		ProtocolVersions: []string{"2025-03-26"},
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
@@ -954,12 +954,12 @@ func TestMCPServerVersion_ToolsRoundTrip(t *testing.T) {
 	]`)
 
 	ver, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         "1.0.0",
-		Runtime:         domain.RuntimeStdio,
-		Packages:        validPackages,
-		Tools:           toolsIn,
-		ProtocolVersion: "2024-11-05",
+		ServerID:         srv.ID,
+		Version:          "1.0.0",
+		Runtime:          domain.RuntimeStdio,
+		Packages:         validPackages,
+		Tools:            toolsIn,
+		ProtocolVersions: []string{"2024-11-05"},
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
@@ -1073,11 +1073,11 @@ func TestMCPServerVersion_ToolsDefaultEmptyArray(t *testing.T) {
 	}
 
 	ver, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         "0.1.0",
-		Runtime:         domain.RuntimeStdio,
-		Packages:        validPackages,
-		ProtocolVersion: "2024-11-05",
+		ServerID:         srv.ID,
+		Version:          "0.1.0",
+		Runtime:          domain.RuntimeStdio,
+		Packages:         validPackages,
+		ProtocolVersions: []string{"2024-11-05"},
 		// Tools intentionally omitted.
 	})
 	if err != nil {

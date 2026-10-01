@@ -2149,7 +2149,8 @@ export interface components {
             version: string;
             /** @enum {string} */
             runtime: "stdio" | "http" | "sse" | "streamable_http";
-            protocol_version: string;
+            /** @description MCP protocol revisions (YYYY-MM-DD) the server supports, newest first. */
+            protocol_versions: string[];
             packages?: components["schemas"]["PackageEntry"][];
             /** @description Remote endpoints for hosted deployments of this server. */
             remotes?: components["schemas"]["RemoteEntry"][];
@@ -2225,7 +2226,8 @@ export interface components {
             version: string;
             /** @enum {string} */
             runtime: "stdio" | "http" | "sse" | "streamable_http";
-            protocol_version: string;
+            /** @description MCP protocol revisions (YYYY-MM-DD) the server supports, newest first. */
+            protocol_versions: string[];
             packages?: components["schemas"]["PackageEntry"][];
             /** @description Remote endpoints for hosted deployments of this server. */
             remotes?: components["schemas"]["RemoteEntry"][];
@@ -2283,7 +2285,8 @@ export interface components {
             version: string;
             /** @enum {string} */
             runtime: "stdio" | "http" | "sse" | "streamable_http";
-            protocol_version: string;
+            /** @description MCP protocol revisions (YYYY-MM-DD) the server supports, newest first. */
+            protocol_versions: string[];
             packages?: components["schemas"]["PackageEntry"][];
             /** @description Remote endpoints for hosted deployments of this server. */
             remotes?: components["schemas"]["RemoteEntry"][];

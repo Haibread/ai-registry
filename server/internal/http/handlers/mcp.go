@@ -362,23 +362,28 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Version         string          `json:"version"`
-		Runtime         string          `json:"runtime"`
-		Packages        json.RawMessage `json:"packages"`
-		Remotes         json.RawMessage `json:"remotes"`
-		Capabilities    json.RawMessage `json:"capabilities"`
-		Tools           json.RawMessage `json:"tools"`
-		Tags            []string        `json:"tags"`
-		ProtocolVersion string          `json:"protocol_version"`
-		Checksum        string          `json:"checksum"`
-		Signature       string          `json:"signature"`
+		Version          string          `json:"version"`
+		Runtime          string          `json:"runtime"`
+		Packages         json.RawMessage `json:"packages"`
+		Remotes          json.RawMessage `json:"remotes"`
+		Capabilities     json.RawMessage `json:"capabilities"`
+		Tools            json.RawMessage `json:"tools"`
+		Tags             []string        `json:"tags"`
+		ProtocolVersions []string        `json:"protocol_versions"`
+		Checksum         string          `json:"checksum"`
+		Signature        string          `json:"signature"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if body.Version == "" || body.Runtime == "" || body.ProtocolVersion == "" {
+	if body.Version == "" || body.Runtime == "" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
-			"version, runtime, and protocol_version are required", r.URL.Path)
+			"version and runtime are required", r.URL.Path)
+		return
+	}
+	protocolVersions, err := domain.ValidateProtocolVersions(body.ProtocolVersions)
+	if err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
 	// packages is optional (see CreateMCPServerVersionRequest in openapi.yaml);
@@ -412,17 +417,17 @@ func (h *MCPHandlers) CreateVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v, err := h.db.CreateMCPServerVersion(r.Context(), store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         body.Version,
-		Runtime:         domain.Runtime(body.Runtime),
-		Packages:        body.Packages,
-		Remotes:         body.Remotes,
-		Capabilities:    body.Capabilities,
-		Tools:           body.Tools,
-		Tags:            tags,
-		ProtocolVersion: body.ProtocolVersion,
-		Checksum:        body.Checksum,
-		Signature:       body.Signature,
+		ServerID:         srv.ID,
+		Version:          body.Version,
+		Runtime:          domain.Runtime(body.Runtime),
+		Packages:         body.Packages,
+		Remotes:          body.Remotes,
+		Capabilities:     body.Capabilities,
+		Tools:            body.Tools,
+		Tags:             tags,
+		ProtocolVersions: protocolVersions,
+		Checksum:         body.Checksum,
+		Signature:        body.Signature,
 	})
 	if errors.Is(err, store.ErrConflict) {
 		problem.Write(w, http.StatusConflict, "conflict",
@@ -800,15 +805,15 @@ func serverToResponse(srv *store.MCPServerRow) map[string]any {
 			lvTags = []string{}
 		}
 		m["latest_version"] = map[string]any{
-			"version":          lv.Version,
-			"runtime":          string(lv.Runtime),
-			"protocol_version": lv.ProtocolVersion,
-			"packages":         lv.Packages,
-			"remotes":          remotes,
-			"capabilities":     lv.Capabilities,
-			"tools":            tools,
-			"tags":             lvTags,
-			"published_at":     lv.PublishedAt,
+			"version":           lv.Version,
+			"runtime":           string(lv.Runtime),
+			"protocol_versions": lv.ProtocolVersions,
+			"packages":          lv.Packages,
+			"remotes":           remotes,
+			"capabilities":      lv.Capabilities,
+			"tools":             tools,
+			"tags":              lvTags,
+			"published_at":      lv.PublishedAt,
 		}
 	}
 	return m

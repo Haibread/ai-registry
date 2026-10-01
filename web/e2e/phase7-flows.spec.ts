@@ -100,7 +100,7 @@ test.describe('group-based authorization end-to-end', () => {
         },
       ],
       capabilities: { tools: [] },
-      protocol_version: '2024-11-05',
+      protocol_versions: ['2024-11-05'],
     })
     expect(res.status(), 'create draft version').toBe(201)
   })
@@ -174,7 +174,7 @@ test.describe('group-based authorization end-to-end', () => {
           },
         ],
         capabilities: { tools: [] },
-        protocol_version: '2024-11-05',
+        protocol_versions: ['2024-11-05'],
       },
     )
     expect(res.status(), 'user create version should be forbidden').toBe(403)

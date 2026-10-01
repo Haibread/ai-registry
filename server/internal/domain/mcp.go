@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -76,22 +78,22 @@ const (
 // server/api/openapi.yaml, and with the frontend VersionHistory component
 // which reads these snake_case keys.
 type MCPServerVersion struct {
-	ID              string          `json:"id"`
-	ServerID        string          `json:"server_id"`
-	Version         string          `json:"version"` // semver
-	Runtime         Runtime         `json:"runtime"`
-	Packages        json.RawMessage `json:"packages,omitempty"`     // MCP packages array
-	Remotes         json.RawMessage `json:"remotes,omitempty"`      // MCP remotes array (hosted endpoints)
-	Capabilities    json.RawMessage `json:"capabilities,omitempty"` // MCP capabilities object (capability-negotiation flags)
-	Tools           json.RawMessage `json:"tools,omitempty"`        // []MCPTool — publisher-declared tool list
-	Tags            []string        `json:"tags"`                   // instance-tag slugs ticked on this version
-	ProtocolVersion string          `json:"protocol_version"`
-	Checksum        string          `json:"checksum,omitempty"`
-	Signature       string          `json:"signature,omitempty"`
-	Status          VersionStatus   `json:"status"` // active | deprecated | deleted
-	StatusMessage   string          `json:"status_message,omitempty"`
-	StatusChangedAt time.Time       `json:"status_changed_at"`
-	PublishedAt     *time.Time      `json:"published_at,omitempty"`
+	ID               string          `json:"id"`
+	ServerID         string          `json:"server_id"`
+	Version          string          `json:"version"` // semver
+	Runtime          Runtime         `json:"runtime"`
+	Packages         json.RawMessage `json:"packages,omitempty"`     // MCP packages array
+	Remotes          json.RawMessage `json:"remotes,omitempty"`      // MCP remotes array (hosted endpoints)
+	Capabilities     json.RawMessage `json:"capabilities,omitempty"` // MCP capabilities object (capability-negotiation flags)
+	Tools            json.RawMessage `json:"tools,omitempty"`        // []MCPTool — publisher-declared tool list
+	Tags             []string        `json:"tags"`                   // instance-tag slugs ticked on this version
+	ProtocolVersions []string        `json:"protocol_versions"`      // supported MCP revisions, newest first
+	Checksum         string          `json:"checksum,omitempty"`
+	Signature        string          `json:"signature,omitempty"`
+	Status           VersionStatus   `json:"status"` // active | deprecated | deleted
+	StatusMessage    string          `json:"status_message,omitempty"`
+	StatusChangedAt  time.Time       `json:"status_changed_at"`
+	PublishedAt      *time.Time      `json:"published_at,omitempty"`
 	// Change-approval workflow state. Surfaced on authenticated reads
 	// so reviewers can read the revision they need to send back in the
 	// approve body. Empty / zero on rows that have never been part of
@@ -308,4 +310,27 @@ func ValidateTools(raw json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+// ValidateProtocolVersions checks the MCP protocol revisions a version
+// supports — at least one, each a YYYY-MM-DD revision identifier as the MCP
+// spec defines them, no duplicates — and returns them newest first.
+func ValidateProtocolVersions(versions []string) ([]string, error) {
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("protocol_versions must contain at least one entry")
+	}
+	out := make([]string, 0, len(versions))
+	for i, v := range versions {
+		v = strings.TrimSpace(v)
+		if _, err := time.Parse(time.DateOnly, v); err != nil {
+			return nil, fmt.Errorf("protocol_versions[%d] %q is not a YYYY-MM-DD protocol revision", i, v)
+		}
+		if slices.Contains(out, v) {
+			return nil, fmt.Errorf("protocol_versions[%d] %q is duplicated within the array", i, v)
+		}
+		out = append(out, v)
+	}
+	slices.Sort(out)
+	slices.Reverse(out)
+	return out, nil
 }

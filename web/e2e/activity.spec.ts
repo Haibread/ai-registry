@@ -60,7 +60,7 @@ test.describe('Activity feed + admin audit', () => {
       {
         version: '1.0.0',
         runtime: 'stdio',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           {
             registryType: 'npm',

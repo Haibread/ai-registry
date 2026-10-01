@@ -28,7 +28,7 @@ function makeServer(overrides: Partial<MCPServer> = {}): MCPServer {
       // server/internal/domain/mcp.go). Use the schema-valid enum, not a
       // language name — the as-MCPServer cast was hiding bogus 'node' values.
       runtime: 'http',
-      protocol_version: '2025-03-26',
+      protocol_versions: ['2025-03-26'],
       packages: [
         {
           registryType: 'npm',
@@ -85,7 +85,7 @@ describe('ServerCard', () => {
         // in the assertion below — we're verifying the transport block is
         // suppressed when the package's transport.type is stdio.
         runtime: 'http',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           {
             registryType: 'pypi',
@@ -121,7 +121,7 @@ describe('ServerCard', () => {
       latest_version: {
         version: '2.0.0',
         runtime: 'http',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           {
             registryType: 'npm',
@@ -142,7 +142,7 @@ describe('ServerCard', () => {
       latest_version: {
         version: '2.0.0',
         runtime: 'http',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           {
             registryType: 'npm',
@@ -177,7 +177,7 @@ describe('ServerCard', () => {
       latest_version: {
         version: '2.0.0',
         runtime: 'http',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
         ],
@@ -202,7 +202,7 @@ describe('ServerCard', () => {
       latest_version: {
         version: '2.0.0',
         runtime: 'http',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
         ],
@@ -221,7 +221,7 @@ describe('ServerCard', () => {
       latest_version: {
         version: '2.0.0',
         runtime: 'http',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           { registryType: 'npm', identifier: '@acme/f', version: '2.0.0', transport: { type: 'stdio' } },
         ],

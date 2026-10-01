@@ -32,7 +32,7 @@ test.describe('Request public release on approval', () => {
       const ver = await apiPost(page, `/api/v1/mcp/servers/${PUB}/${slug}/versions`, {
         version: '1.0.0',
         runtime: 'stdio',
-        protocol_version: '2024-11-05',
+        protocol_versions: ['2024-11-05'],
         packages: [
           { registryType: 'npm', identifier: `@e2e/${slug}`, version: '1.0.0', transport: { type: 'stdio' } },
         ],

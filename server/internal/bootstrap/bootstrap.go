@@ -437,7 +437,7 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 		// spec now declares a non-empty list. This lets a stack that was
 		// seeded before the tools field existed catch up on the next
 		// bootstrap run without wiping the database. We do NOT touch
-		// packages, runtime, capabilities, or protocol_version — those
+		// packages, runtime, capabilities, or protocol_versions — those
 		// stay frozen to preserve the MCP publish-immutability contract.
 		if len(v.Tools) > 0 {
 			var current []byte
@@ -476,9 +476,13 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 		}
 	}
 	runtime := deriveRuntime(v.Packages, v.Remotes)
-	protocolVersion := v.ProtocolVersion
-	if protocolVersion == "" {
-		protocolVersion = "2025-03-26"
+	protocolVersions := v.ProtocolVersions
+	if len(protocolVersions) == 0 {
+		protocolVersions = []string{"2025-03-26"}
+	}
+	protocolVersions, err = domain.ValidateProtocolVersions(protocolVersions)
+	if err != nil {
+		return err
 	}
 
 	var capabilities json.RawMessage
@@ -490,15 +494,15 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 	}
 
 	ver, err := db.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        serverID,
-		Version:         v.Version,
-		Runtime:         runtime,
-		Packages:        packages,
-		Remotes:         remotes,
-		Capabilities:    capabilities,
-		Tools:           tools,
-		Tags:            domain.NormalizeVersionTags(entryTags),
-		ProtocolVersion: protocolVersion,
+		ServerID:         serverID,
+		Version:          v.Version,
+		Runtime:          runtime,
+		Packages:         packages,
+		Remotes:          remotes,
+		Capabilities:     capabilities,
+		Tools:            tools,
+		Tags:             domain.NormalizeVersionTags(entryTags),
+		ProtocolVersions: protocolVersions,
 	})
 	if err != nil {
 		return fmt.Errorf("creating version: %w", err)
@@ -857,6 +861,11 @@ func validateSpec(s *Spec) error {
 			}
 			for k, rm := range v.Remotes {
 				if err := domain.ValidateHTTPURL(fmt.Sprintf("remotes[%d].url", k), rm.URL); err != nil {
+					errs = append(errs, fmt.Sprintf("%s.versions[%d]: %s", prefix, j, err))
+				}
+			}
+			if len(v.ProtocolVersions) > 0 {
+				if _, err := domain.ValidateProtocolVersions(v.ProtocolVersions); err != nil {
 					errs = append(errs, fmt.Sprintf("%s.versions[%d]: %s", prefix, j, err))
 				}
 			}

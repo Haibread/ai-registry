@@ -177,7 +177,7 @@ func TestTagHandler_DeleteInUseConflicts(t *testing.T) {
 	}
 	if _, err := testDB.CreateMCPServerVersion(context.Background(), store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "1.0.0", Runtime: "stdio",
-		Packages: validPackages, ProtocolVersion: "2025-01-01",
+		Packages: validPackages, ProtocolVersions: []string{"2025-01-01"},
 		Tags: []string{"free"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
@@ -208,7 +208,7 @@ func TestMCPHandler_CreateVersion_TagValidation(t *testing.T) {
 
 	// Unknown tag → 422 naming the offender.
 	rec := fireTag(t, mcpRouter, http.MethodPost, "/api/v1/mcp/servers/acme/srv/versions",
-		`{"version":"1.0.0","runtime":"stdio","protocol_version":"2025-01-01","tags":["free","nope"]}`)
+		`{"version":"1.0.0","runtime":"stdio","protocol_versions":["2025-01-01"],"tags":["free","nope"]}`)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("unknown tag: got %d\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -218,7 +218,7 @@ func TestMCPHandler_CreateVersion_TagValidation(t *testing.T) {
 
 	// Valid tags stick (duplicates collapse, output sorted).
 	rec = fireTag(t, mcpRouter, http.MethodPost, "/api/v1/mcp/servers/acme/srv/versions",
-		`{"version":"1.0.0","runtime":"stdio","protocol_version":"2025-01-01","tags":["free","free"]}`)
+		`{"version":"1.0.0","runtime":"stdio","protocol_versions":["2025-01-01"],"tags":["free","free"]}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("valid tags: got %d\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -237,7 +237,7 @@ func TestMCPHandler_CreateVersion_TagValidation(t *testing.T) {
 		t.Fatalf("deactivate: got %d", rec.Code)
 	}
 	rec = fireTag(t, mcpRouter, http.MethodPost, "/api/v1/mcp/servers/acme/srv/versions",
-		`{"version":"2.0.0","runtime":"stdio","protocol_version":"2025-01-01","tags":["free"]}`)
+		`{"version":"2.0.0","runtime":"stdio","protocol_versions":["2025-01-01"],"tags":["free"]}`)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("deactivated tag tick: got %d, want 422\nbody: %s", rec.Code, rec.Body.String())
 	}
@@ -273,7 +273,7 @@ func TestTagHandler_ManagedTagsAreReadOnly(t *testing.T) {
 	mcpRouter := newMCPRouter()
 	seedMCPServer(t, "acme", "srv")
 	rec = fireTag(t, mcpRouter, http.MethodPost, "/api/v1/mcp/servers/acme/srv/versions",
-		`{"version":"1.0.0","runtime":"stdio","protocol_version":"2025-01-01","tags":["free"]}`)
+		`{"version":"1.0.0","runtime":"stdio","protocol_versions":["2025-01-01"],"tags":["free"]}`)
 	if rec.Code != http.StatusCreated {
 		t.Errorf("ticking a managed tag should work: got %d %s", rec.Code, rec.Body.String())
 	}

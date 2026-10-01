@@ -22,12 +22,12 @@ func seedDraftMCPVersion(t *testing.T, ctx context.Context, ns, slug, ver string
 		t.Fatalf("CreateMCPServer: %v", err)
 	}
 	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         ver,
-		Runtime:         domain.RuntimeStdio,
-		Packages:        validPackages,
-		Capabilities:    json.RawMessage(`{}`),
-		ProtocolVersion: "2024-11-05",
+		ServerID:         srv.ID,
+		Version:          ver,
+		Runtime:          domain.RuntimeStdio,
+		Packages:         validPackages,
+		Capabilities:     json.RawMessage(`{}`),
+		ProtocolVersions: []string{"2024-11-05"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
 	}
@@ -124,12 +124,12 @@ func TestSubmitMCPVersion_StackingRejectedByPartialUniqueIndex(t *testing.T) {
 	ctx := context.Background()
 	srvID := seedDraftMCPVersion(t, ctx, "acme", "weather", "1.0.0")
 	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        srvID,
-		Version:         "1.1.0",
-		Runtime:         domain.RuntimeStdio,
-		Packages:        validPackages,
-		Capabilities:    json.RawMessage(`{}`),
-		ProtocolVersion: "2024-11-05",
+		ServerID:         srvID,
+		Version:          "1.1.0",
+		Runtime:          domain.RuntimeStdio,
+		Packages:         validPackages,
+		Capabilities:     json.RawMessage(`{}`),
+		ProtocolVersions: []string{"2024-11-05"},
 	}); err != nil {
 		t.Fatalf("create v1.1.0: %v", err)
 	}
@@ -691,11 +691,11 @@ func TestVersionPublicReadFilter_HidesPendingAndRejected(t *testing.T) {
 	mkVer := func(ver string) {
 		t.Helper()
 		if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-			ServerID:        srv.ID,
-			Version:         ver,
-			Runtime:         domain.RuntimeStdio,
-			Packages:        validPackages,
-			ProtocolVersion: "2024-11-05",
+			ServerID:         srv.ID,
+			Version:          ver,
+			Runtime:          domain.RuntimeStdio,
+			Packages:         validPackages,
+			ProtocolVersions: []string{"2024-11-05"},
 		}); err != nil {
 			t.Fatalf("create v%s: %v", ver, err)
 		}
