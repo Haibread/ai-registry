@@ -678,10 +678,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * List the tools a remote MCP server exposes
+         * List the tools and protocol revisions of a remote MCP server
          * @description Connects to a remote MCP server on the caller's behalf, runs the MCP
          *     handshake and reads every `tools/list` page, so an authoring form can
          *     pre-fill a version's `tools`. Nothing is stored.
+         *
+         *     Once the endpoint is found, every protocol revision the registry's MCP
+         *     client speaks is offered in its own handshake; the revisions the server
+         *     accepts unchanged are returned as `supported_protocol_versions`, to
+         *     pre-fill a version's `protocol_versions`.
          *
          *     The endpoint is guessed from `url`: the URL as given, then with a `/mcp`
          *     and a `/sse` path suffix unless the path already ends with one. On each
@@ -2102,7 +2107,10 @@ export interface components {
                 name: string;
                 version?: string;
             };
+            /** @description The revision negotiated by the discovery handshake. */
             protocol_version: string;
+            /** @description Revisions (YYYY-MM-DD) the server accepted when offered one at a time, newest first. Empty when every probe failed. */
+            supported_protocol_versions: string[];
             tools: components["schemas"]["MCPTool"][];
         };
         InstanceTag: {

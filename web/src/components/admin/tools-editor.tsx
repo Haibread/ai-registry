@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { CopyButton } from "@/components/ui/copy-button"
-import { cn } from "@/lib/utils"
+import { cn, isHttpUrl } from "@/lib/utils"
 import {
   parseTools,
   serializeTools,
@@ -119,15 +119,6 @@ interface ToolsEditorProps {
   initialTools?: MCPTool[]
   /** Enables "Fetch from server". */
   discovery?: ToolsDiscoverySource
-}
-
-function isHttpUrl(raw: string): boolean {
-  try {
-    const u = new URL(raw)
-    return u.protocol === "http:" || u.protocol === "https:"
-  } catch {
-    return false
-  }
 }
 
 export function ToolsEditor({ name = "tools", initialTools = [], discovery }: ToolsEditorProps) {

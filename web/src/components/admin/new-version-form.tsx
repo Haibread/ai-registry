@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { authFetch } from '@/auth/tokens'
+import { ProtocolVersionsInput } from './protocol-versions-input'
 import { ToolsEditor } from './tools-editor'
 import { InstanceTagPicker } from './instance-tag-picker'
 import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
@@ -150,8 +151,7 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
       setError(null)
       const version = (fd.get('version') as string).trim()
       if (!version) throw new Error('Version is required.')
-      const protocolVersion = (fd.get('protocol_version') as string).trim()
-      const protocolVersions = protocolVersion.split(',').map((p) => p.trim()).filter(Boolean)
+      const protocolVersion = ((fd.get('protocol_version') as string | null) ?? '').trim()
       const instanceTags = collectInstanceTags(fd)
 
       if (kind === 'mcp') {
@@ -198,7 +198,7 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
           body: JSON.stringify({
             version,
             runtime,
-            protocol_versions: protocolVersions.length > 0 ? protocolVersions : ['2025-03-26'],
+            protocol_versions: JSON.parse(fd.get('protocol_versions') as string) as string[],
             ...(packages.length > 0 ? { packages } : {}),
             ...(remotes.length > 0 ? { remotes } : {}),
             ...(tools !== undefined ? { tools } : {}),
@@ -329,24 +329,17 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
             title="Semantic version, e.g. 1.0.0"
           />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="protocol_version">
-            {kind === 'mcp' ? 'Protocol versions' : 'Protocol version'}
-          </Label>
-          <Input
-            id="protocol_version"
-            name="protocol_version"
-            placeholder={kind === 'mcp' ? '2025-06-18, 2025-03-26' : '0.2.1'}
-            defaultValue={
-              prefill && 'protocol_versions' in prefill
-                ? prefill.protocol_versions.join(', ')
-                : (prefill?.protocol_version ?? '')
-            }
-          />
-          {kind === 'mcp' && (
-            <p className="text-xs text-muted-foreground">Comma-separated list of supported revisions.</p>
-          )}
-        </div>
+        {kind === 'agent' && (
+          <div className="space-y-1.5">
+            <Label htmlFor="protocol_version">Protocol version</Label>
+            <Input
+              id="protocol_version"
+              name="protocol_version"
+              placeholder="0.2.1"
+              defaultValue={agentPrefill?.protocol_version ?? ''}
+            />
+          </div>
+        )}
       </div>
 
       <InstanceTagPicker defaultSelected={prefill?.tags ?? []} />
@@ -386,6 +379,11 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
               </p>
             </div>
           )}
+
+          <ProtocolVersionsInput
+            defaultValue={mcpPrefill?.protocol_versions}
+            discovery={{ namespace, transport: runtime, remoteUrl }}
+          />
 
           <fieldset className="space-y-3 rounded-md border p-3">
             <legend className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">

@@ -47,6 +47,7 @@ import { useRecordView, useRecordCopy } from '@/hooks/use-record-event'
 import { getPublicClient } from '@/lib/api-client'
 import { formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import { getFieldExplanation } from '@/lib/field-explanations'
+import { ProtocolVersionBadges } from '@/components/mcp/protocol-version-badges'
 
 export default function MCPDetailPage() {
   const { ns, slug } = useParams<{ ns: string; slug: string }>()
@@ -284,7 +285,7 @@ export default function MCPDetailPage() {
                       icon={<Code2 />}
                       tooltip={getFieldExplanation('protocol_versions') ?? undefined}
                     >
-                      <span className="font-mono">{lv.protocol_versions.join(', ')}</span>
+                      <ProtocolVersionBadges versions={lv.protocol_versions} />
                     </StatTile>
                   )}
                   {hasRemote && (

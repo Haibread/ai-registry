@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
+import { ProtocolVersionBadges } from '@/components/mcp/protocol-version-badges'
 
 type Item = components['schemas']['ReviewQueueItem']
 type MCPVersion = components['schemas']['MCPServerVersion']
@@ -210,7 +211,9 @@ function MCPVersionSummary({ v }: { v: MCPVersion }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
       <SummaryRow label="Runtime">{v.runtime}</SummaryRow>
-      <SummaryRow label="Protocol">{v.protocol_versions.join(', ')}</SummaryRow>
+      <SummaryRow label="Protocol">
+        <ProtocolVersionBadges versions={v.protocol_versions} />
+      </SummaryRow>
       <SummaryRow label="Packages">
         {packages.length === 0
           ? '—'
