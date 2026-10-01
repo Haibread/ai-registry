@@ -264,8 +264,8 @@ export default function AdminMCPDetail() {
           <>
             <dt className="text-muted-foreground">Runtime</dt>
             <dd><Badge variant="secondary">{lv.runtime}</Badge></dd>
-            <dt className="text-muted-foreground">Protocol version</dt>
-            <dd className="font-mono">{lv.protocol_version}</dd>
+            <dt className="text-muted-foreground">Protocol versions</dt>
+            <dd className="font-mono">{lv.protocol_versions.join(', ')}</dd>
             {lv.published_at && (
               <>
                 <dt className="text-muted-foreground">Published</dt>

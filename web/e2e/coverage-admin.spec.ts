@@ -129,7 +129,7 @@ test.describe('Admin: bulk actions', () => {
       expect((await apiPost(page, `/api/v1/mcp/servers/${PUB_SLUG}/${slug}/versions`, {
         version: '1.0.0',
         runtime: 'stdio',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [{ registryType: 'npm', identifier: `@e2e/bulk-${slug}`, version: '1.0.0', transport: { type: 'stdio' } }],
       })).ok()).toBeTruthy()
       expect((await apiPost(page, `/api/v1/mcp/servers/${PUB_SLUG}/${slug}/versions/1.0.0/publish`, {})).ok()).toBeTruthy()

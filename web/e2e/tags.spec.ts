@@ -90,7 +90,7 @@ test.describe('Instance tags: publisher tick → public display + filter', () =>
     res = await apiPost(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}/versions`, {
       version: '1.0.0',
       runtime: 'stdio',
-      protocol_version: '2025-03-26',
+      protocol_versions: ['2025-03-26'],
       tags: [TAG_SLUG],
     })
     expect(res.status(), await res.text()).toBe(201)
@@ -120,7 +120,7 @@ test.describe('Instance tags: publisher tick → public display + filter', () =>
     const res = await apiPost(page, `/api/v1/mcp/servers/${PUBLISHER_SLUG}/${MCP_SLUG}/versions`, {
       version: '2.0.0',
       runtime: 'stdio',
-      protocol_version: '2025-03-26',
+      protocol_versions: ['2025-03-26'],
       tags: [`${TAG_SLUG}-does-not-exist`],
     })
     expect(res.status()).toBe(422)

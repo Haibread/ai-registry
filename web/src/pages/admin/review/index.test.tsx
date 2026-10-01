@@ -171,7 +171,7 @@ describe('AdminReviewQueue', () => {
             data: {
               version: '1.0.0',
               runtime: 'stdio',
-              protocol_version: '2025-03-26',
+              protocol_versions: ['2025-03-26'],
               packages: [{ registryType: 'npm', identifier: '@acme/weather', version: '1.0.0', transport: { type: 'stdio' } }],
               tools: [{ name: 'get_forecast' }, { name: 'get_alerts' }],
             },

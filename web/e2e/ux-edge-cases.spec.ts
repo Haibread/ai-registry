@@ -99,7 +99,7 @@ test.describe('A failed detail action surfaces the error', () => {
     expect((await apiPost(page, `/api/v1/mcp/servers/${pub.slug}/${slug}/versions`, {
       version: '1.0.0',
       runtime: 'stdio',
-      protocol_version: '2025-03-26',
+      protocol_versions: ['2025-03-26'],
       packages: [{ registryType: 'npm', identifier: '@e2e/toast', version: '1.0.0', transport: { type: 'stdio' } }],
     })).status()).toBe(201)
     expect((await apiPost(page, `/api/v1/mcp/servers/${pub.slug}/${slug}/versions/1.0.0/publish`, {})).status()).toBe(200)

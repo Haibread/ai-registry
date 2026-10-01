@@ -76,12 +76,12 @@ func seedDraftMCPServerVersion(t *testing.T, ns, slug, ver string) {
 		t.Fatalf("CreateMCPServer: %v", err)
 	}
 	if _, err := testDB.CreateMCPServerVersion(context.Background(), store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         ver,
-		Runtime:         domain.RuntimeStdio,
-		Packages:        json.RawMessage(`[{"registryType":"npm","identifier":"@scope/p","version":"1.0.0","transport":{"type":"stdio"}}]`),
-		Capabilities:    json.RawMessage(`{}`),
-		ProtocolVersion: "2024-11-05",
+		ServerID:         srv.ID,
+		Version:          ver,
+		Runtime:          domain.RuntimeStdio,
+		Packages:         json.RawMessage(`[{"registryType":"npm","identifier":"@scope/p","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		Capabilities:     json.RawMessage(`{}`),
+		ProtocolVersions: []string{"2024-11-05"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
 	}

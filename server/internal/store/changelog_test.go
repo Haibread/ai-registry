@@ -39,7 +39,7 @@ func TestChangelog_IncludesPublishedPublicVersions(t *testing.T) {
 	}
 	v, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersion: "2025-03-26",
+		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersions: []string{"2025-03-26"},
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
@@ -54,7 +54,7 @@ func TestChangelog_IncludesPublishedPublicVersions(t *testing.T) {
 	})
 	pv, _ := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: priv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersion: "2025-03-26",
+		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersions: []string{"2025-03-26"},
 	})
 	if err := sharedDB.PublishMCPServerVersion(ctx, priv.ID, pv.Version); err != nil {
 		t.Fatalf("PublishMCPServerVersion private: %v", err)
@@ -94,7 +94,7 @@ func TestChangelog_ExcludesUnpublishedVersions(t *testing.T) {
 	// Create draft version — never published
 	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "0.1.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersion: "2025-03-26",
+		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersions: []string{"2025-03-26"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
 	}

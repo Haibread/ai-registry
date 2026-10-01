@@ -99,7 +99,7 @@ func TestDeleteInstanceTag_InUseConflicts(t *testing.T) {
 	}
 	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
-		ProtocolVersion: "2024-11-05", Tags: []string{"free"},
+		ProtocolVersions: []string{"2024-11-05"}, Tags: []string{"free"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestVersionTags_FlowThroughReads(t *testing.T) {
 
 	v1, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, ProtocolVersion: "2024-11-05",
+		Packages: validPackages, ProtocolVersions: []string{"2024-11-05"},
 		Tags: []string{"early-access", "free"},
 	})
 	if err != nil {
@@ -226,7 +226,7 @@ func TestVersionTags_FlowThroughReads(t *testing.T) {
 	// Publish v2 without "early-access" → entry now reflects v2 only.
 	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "2.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, ProtocolVersion: "2024-11-05",
+		Packages: validPackages, ProtocolVersions: []string{"2024-11-05"},
 		Tags: []string{"free"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion v2: %v", err)

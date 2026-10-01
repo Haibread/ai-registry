@@ -63,11 +63,11 @@ func TestGetPublisherStats(t *testing.T) {
 
 	// A submitted version on the draft server → pending_review = 1.
 	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        draftSrv.ID,
-		Version:         "1.0.0",
-		Runtime:         domain.RuntimeStdio,
-		Packages:        json.RawMessage(`[{"registryType":"npm","identifier":"@x/y","version":"1.0.0","transport":{"type":"stdio"}}]`),
-		ProtocolVersion: "2024-11-05",
+		ServerID:         draftSrv.ID,
+		Version:          "1.0.0",
+		Runtime:          domain.RuntimeStdio,
+		Packages:         json.RawMessage(`[{"registryType":"npm","identifier":"@x/y","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		ProtocolVersions: []string{"2024-11-05"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
 	}

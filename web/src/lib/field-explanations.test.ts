@@ -31,9 +31,9 @@ describe("getFieldExplanation", () => {
     expect(getFieldExplanation("Bearer")).toBe(fieldExplanations.Bearer)
   })
 
-  it("returns the explanation for protocol_version", () => {
-    expect(getFieldExplanation("protocol_version")).toBe(
-      fieldExplanations.protocol_version,
+  it("returns the explanation for protocol_versions", () => {
+    expect(getFieldExplanation("protocol_versions")).toBe(
+      fieldExplanations.protocol_versions,
     )
   })
 

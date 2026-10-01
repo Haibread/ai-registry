@@ -116,7 +116,10 @@ export default function AdminMCPNew() {
         return { namespace: ns, slug }
       }
 
-      const protocolVersion = (formData.get('protocol_version') as string).trim() || '2025-03-26'
+      const protocolVersions = (formData.get('protocol_version') as string)
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean)
       const pkgIdentifier = (formData.get('pkg_identifier') as string).trim()
       const pkgVersion = (formData.get('pkg_version') as string).trim()
       const pkgUrl = (formData.get('pkg_url') as string).trim()
@@ -161,7 +164,7 @@ export default function AdminMCPNew() {
         body: JSON.stringify({
           version,
           runtime,
-          protocol_version: protocolVersion,
+          protocol_versions: protocolVersions.length > 0 ? protocolVersions : ['2025-03-26'],
           ...(packages.length > 0 ? { packages } : {}),
           ...(remotes.length > 0 ? { remotes } : {}),
           ...(tools !== undefined ? { tools } : {}),
@@ -343,13 +346,14 @@ export default function AdminMCPNew() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="protocol_version">Protocol version</Label>
+                <Label htmlFor="protocol_version">Protocol versions</Label>
                 <Input
                   id="protocol_version"
                   name="protocol_version"
-                  placeholder="2025-03-26"
+                  placeholder="2025-06-18, 2025-03-26"
                   defaultValue="2025-03-26"
                 />
+                <p className="text-xs text-muted-foreground">Comma-separated list of supported revisions.</p>
               </div>
             </div>
 

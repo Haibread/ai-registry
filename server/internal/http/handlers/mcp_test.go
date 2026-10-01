@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -79,11 +80,11 @@ func createMCPVersion(t *testing.T, ns, slug, ver string) {
 		t.Fatalf("GetMCPServer: %v", err)
 	}
 	_, err = testDB.CreateMCPServerVersion(context.Background(), store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         ver,
-		Runtime:         "stdio",
-		Packages:        validPackages,
-		ProtocolVersion: "2025-01-01",
+		ServerID:         srv.ID,
+		Version:          ver,
+		Runtime:          "stdio",
+		Packages:         validPackages,
+		ProtocolVersions: []string{"2025-01-01"},
 	})
 	if err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
@@ -536,10 +537,10 @@ func TestMCPHandler_CreateVersion_Valid(t *testing.T) {
 	seedMCPServer(t, "ns-cv", "srv-cv")
 
 	body := map[string]any{
-		"version":          "1.0.0",
-		"runtime":          "stdio",
-		"protocol_version": "2025-01-01",
-		"packages":         json.RawMessage(`[{"registryType":"npm","identifier":"@test/pkg","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		"version":           "1.0.0",
+		"runtime":           "stdio",
+		"protocol_versions": []string{"2025-01-01"},
+		"packages":          json.RawMessage(`[{"registryType":"npm","identifier":"@test/pkg","version":"1.0.0","transport":{"type":"stdio"}}]`),
 	}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cv/srv-cv/versions",
@@ -561,6 +562,59 @@ func TestMCPHandler_CreateVersion_Valid(t *testing.T) {
 	}
 }
 
+// TestMCPHandler_CreateVersion_ProtocolVersions verifies that every supported
+// protocol revision is kept, returned newest first, and surfaces on the
+// entry's latest_version once published.
+func TestMCPHandler_CreateVersion_ProtocolVersions(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "ns-cvpv", "srv-cvpv")
+
+	payload := `{"version":"1.0.0","runtime":"stdio","protocol_versions":["2024-11-05","2025-06-18","2025-03-26"]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvpv/srv-cvpv/versions",
+		bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(adminCtx())
+	rec := httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
+	}
+	want := []string{"2025-06-18", "2025-03-26", "2024-11-05"}
+	var created struct {
+		ProtocolVersions []string `json:"protocol_versions"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !slices.Equal(created.ProtocolVersions, want) {
+		t.Errorf("created protocol_versions = %v, want %v", created.ProtocolVersions, want)
+	}
+
+	srv, err := testDB.GetMCPServer(context.Background(), "ns-cvpv", "srv-cvpv", false)
+	if err != nil {
+		t.Fatalf("get server: %v", err)
+	}
+	if err := testDB.PublishMCPServerVersion(context.Background(), srv.ID, "1.0.0"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/mcp/servers/ns-cvpv/srv-cvpv", nil)
+	req = req.WithContext(adminCtx())
+	rec = httptest.NewRecorder()
+	newMCPRouter().ServeHTTP(rec, req)
+	var detail struct {
+		LatestVersion struct {
+			ProtocolVersions []string `json:"protocol_versions"`
+		} `json:"latest_version"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if !slices.Equal(detail.LatestVersion.ProtocolVersions, want) {
+		t.Errorf("latest_version.protocol_versions = %v, want %v", detail.LatestVersion.ProtocolVersions, want)
+	}
+}
+
 // TestMCPHandler_CreateVersion_NoPackages verifies that packages is optional:
 // a version created without any package entries (e.g. via the admin "new server"
 // form with the package section left blank) succeeds rather than failing 422.
@@ -570,9 +624,9 @@ func TestMCPHandler_CreateVersion_NoPackages(t *testing.T) {
 	seedMCPServer(t, "ns-cvnp", "srv-cvnp")
 
 	body := map[string]any{
-		"version":          "1.0.0",
-		"runtime":          "stdio",
-		"protocol_version": "2025-01-01",
+		"version":           "1.0.0",
+		"runtime":           "stdio",
+		"protocol_versions": []string{"2025-01-01"},
 	}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvnp/srv-cvnp/versions",
@@ -596,10 +650,10 @@ func TestMCPHandler_CreateVersion_WithRemotes(t *testing.T) {
 	seedMCPServer(t, "ns-cvr", "srv-cvr")
 
 	body := map[string]any{
-		"version":          "1.0.0",
-		"runtime":          "sse",
-		"protocol_version": "2025-01-01",
-		"remotes":          json.RawMessage(`[{"type":"sse","url":"https://mcp.example.com/sse"}]`),
+		"version":           "1.0.0",
+		"runtime":           "sse",
+		"protocol_versions": []string{"2025-01-01"},
+		"remotes":           json.RawMessage(`[{"type":"sse","url":"https://mcp.example.com/sse"}]`),
 	}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvr/srv-cvr/versions",
@@ -635,7 +689,7 @@ func TestMCPHandler_CreateVersion_BadRemotes(t *testing.T) {
 	resetTables(t)
 	seedMCPServer(t, "ns-cvbr", "srv-cvbr")
 
-	payload := `{"version":"1.0.0","runtime":"sse","protocol_version":"2025-01-01","remotes":[{"type":"sse"}]}`
+	payload := `{"version":"1.0.0","runtime":"sse","protocol_versions":["2025-01-01"],"remotes":[{"type":"sse"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvbr/srv-cvbr/versions",
 		bytes.NewBufferString(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -656,9 +710,13 @@ func TestMCPHandler_CreateVersion_MissingFields(t *testing.T) {
 		name    string
 		payload string
 	}{
-		{"missing version", `{"runtime":"stdio","protocol_version":"2025-01-01","packages":[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]}`},
-		{"missing runtime", `{"version":"1.0.0","protocol_version":"2025-01-01","packages":[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]}`},
-		{"missing protocol_version", `{"version":"1.0.0","runtime":"stdio","packages":[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]}`},
+		{"missing version", `{"runtime":"stdio","protocol_versions":["2025-01-01"],"packages":[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]}`},
+		{"missing runtime", `{"version":"1.0.0","protocol_versions":["2025-01-01"],"packages":[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]}`},
+		{"missing protocol_versions", `{"version":"1.0.0","runtime":"stdio","packages":[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]}`},
+		{"empty protocol_versions", `{"version":"1.0.0","runtime":"stdio","protocol_versions":[]}`},
+		{"malformed protocol version", `{"version":"1.0.0","runtime":"stdio","protocol_versions":["latest"]}`},
+		{"duplicated protocol version", `{"version":"1.0.0","runtime":"stdio","protocol_versions":["2025-01-01","2025-01-01"]}`},
+		{"legacy scalar protocol_version", `{"version":"1.0.0","runtime":"stdio","protocol_version":"2025-01-01"}`},
 	}
 
 	r := newMCPRouter()
@@ -681,7 +739,7 @@ func TestMCPHandler_CreateVersion_BadPackages(t *testing.T) {
 	resetTables(t)
 	seedMCPServer(t, "ns-cvbp", "srv-cvbp")
 
-	payload := `{"version":"1.0.0","runtime":"stdio","protocol_version":"2025-01-01","packages":[{"registryType":"","identifier":"","version":"","transport":{"type":""}}]}`
+	payload := `{"version":"1.0.0","runtime":"stdio","protocol_versions":["2025-01-01"],"packages":[{"registryType":"","identifier":"","version":"","transport":{"type":""}}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-cvbp/srv-cvbp/versions",
 		bytes.NewBufferString(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -702,10 +760,10 @@ func TestMCPHandler_CreateVersion_WithTools(t *testing.T) {
 	seedMCPServer(t, "ns-cvwt", "srv-cvwt")
 
 	body := map[string]any{
-		"version":          "1.0.0",
-		"runtime":          "stdio",
-		"protocol_version": "2025-01-01",
-		"packages":         json.RawMessage(`[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		"version":           "1.0.0",
+		"runtime":           "stdio",
+		"protocol_versions": []string{"2025-01-01"},
+		"packages":          json.RawMessage(`[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]`),
 		"tools": json.RawMessage(`[
 			{"name":"read_file","description":"reads"},
 			{"name":"write_file","input_schema":{"type":"object"}}
@@ -747,7 +805,7 @@ func TestMCPHandler_CreateVersion_InvalidTools(t *testing.T) {
 	payload := `{
 		"version":"1.0.0",
 		"runtime":"stdio",
-		"protocol_version":"2025-01-01",
+		"protocol_versions":["2025-01-01"],
 		"packages":[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}],
 		"tools":[{"description":"missing name"}]
 	}`
@@ -772,11 +830,11 @@ func TestMCPHandler_GetServer_IncludesToolsOnLatestVersion(t *testing.T) {
 	seedMCPServer(t, "ns-gsv", "srv-gsv")
 	// Publish a version with tools declared.
 	body := map[string]any{
-		"version":          "1.0.0",
-		"runtime":          "stdio",
-		"protocol_version": "2025-01-01",
-		"packages":         json.RawMessage(`[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]`),
-		"tools":            json.RawMessage(`[{"name":"a"},{"name":"b"},{"name":"c"}]`),
+		"version":           "1.0.0",
+		"runtime":           "stdio",
+		"protocol_versions": []string{"2025-01-01"},
+		"packages":          json.RawMessage(`[{"registryType":"npm","identifier":"@t/p","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		"tools":             json.RawMessage(`[{"name":"a"},{"name":"b"},{"name":"c"}]`),
 	}
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/servers/ns-gsv/srv-gsv/versions",

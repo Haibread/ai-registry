@@ -130,7 +130,8 @@ mcp_servers:
     versions:
       - version: "1.0.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -180,7 +181,8 @@ mcp_servers:
               type: "stdio"
       - version: "2.0.0"
         status: "draft"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -244,7 +246,8 @@ mcp_servers:
     versions:
       - version: "1.2.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -311,7 +314,8 @@ mcp_servers:
       - version: "1.0.0"
         status: "deprecated"
         status_message: "Replaced by anthropic/knowledge-base"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: false
@@ -360,7 +364,8 @@ mcp_servers:
     versions:
       - version: "0.5.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -372,7 +377,8 @@ mcp_servers:
               type: "stdio"
       - version: "1.0.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -435,7 +441,8 @@ mcp_servers:
     versions:
       - version: "2.1.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -493,7 +500,8 @@ mcp_servers:
     versions:
       - version: "1.0.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: false
@@ -527,7 +535,8 @@ mcp_servers:
     versions:
       - version: "0.3.0"
         status: "draft"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -567,7 +576,8 @@ mcp_servers:
     versions:
       - version: "0.3.1"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -613,7 +623,8 @@ mcp_servers:
     versions:
       - version: "1.2.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -648,7 +659,8 @@ mcp_servers:
     versions:
       - version: "0.5.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -699,7 +711,8 @@ mcp_servers:
     versions:
       - version: "1.0.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -730,7 +743,8 @@ mcp_servers:
     versions:
       - version: "0.9.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -763,7 +777,8 @@ mcp_servers:
     versions:
       - version: "1.0.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: true
@@ -801,7 +816,8 @@ mcp_servers:
     versions:
       - version: "1.0.0"
         status: "published"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: false
@@ -841,7 +857,8 @@ mcp_servers:
     versions:
       - version: "0.1.0"
         status: "draft"
-        protocol_version: "2025-03-26"
+        protocol_versions:
+          - "2025-03-26"
         capabilities:
           tools:
             listChanged: false

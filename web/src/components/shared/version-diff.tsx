@@ -13,6 +13,7 @@ interface VersionLike {
   version: string
   runtime?: string | null
   protocol_version?: string | null
+  protocol_versions?: string[] | null
   checksum?: string | null
   signature?: string | null
   packages?: unknown
@@ -31,6 +32,7 @@ interface VersionDiffProps {
 const COMPARABLE_FIELDS: (keyof VersionLike)[] = [
   'runtime',
   'protocol_version',
+  'protocol_versions',
   'checksum',
   'signature',
   'packages',
@@ -43,6 +45,7 @@ const COMPARABLE_FIELDS: (keyof VersionLike)[] = [
 function stringify(v: unknown): string {
   if (v === null || v === undefined) return '—'
   if (typeof v === 'string') return v || '—'
+  if (Array.isArray(v) && v.every((x) => typeof x === 'string')) return v.join(', ') || '—'
   try {
     return JSON.stringify(v, null, 2)
   } catch {

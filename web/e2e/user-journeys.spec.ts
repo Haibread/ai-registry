@@ -69,7 +69,7 @@ async function seedMcpVersion(admin: Page, pubSlug: string, slug: string, versio
   const r = await apiPost(admin, `/api/v1/mcp/servers/${pubSlug}/${slug}/versions`, {
     version,
     runtime: 'stdio',
-    protocol_version: '2025-03-26',
+    protocol_versions: ['2025-03-26'],
     packages: [{ registryType: 'npm', identifier: `@e2e/${slug}`, version, transport: { type: 'stdio' } }],
   })
   expect(r.status(), `seed version ${version}: ${await r.text()}`).toBe(201)
@@ -493,7 +493,7 @@ test.describe('Bulk deprecate asks for confirmation', () => {
       r = await apiPost(page, `/api/v1/mcp/servers/${pub.slug}/${s}/versions`, {
         version: '1.0.0',
         runtime: 'stdio',
-        protocol_version: '2025-03-26',
+        protocol_versions: ['2025-03-26'],
         packages: [
           { registryType: 'npm', identifier: `@e2e/${s}`, version: '1.0.0', transport: { type: 'stdio' } },
         ],

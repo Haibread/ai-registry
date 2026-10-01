@@ -305,11 +305,11 @@ func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 		t.Fatalf("CreateMCPServer: %v", err)
 	}
 	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
-		ServerID:        srv.ID,
-		Version:         "1.0.0",
-		Runtime:         domain.RuntimeStdio,
-		Packages:        []byte(`[{"registryType":"npm","identifier":"@tombstone/srv","version":"1.0.0","transport":{"type":"stdio"}}]`),
-		ProtocolVersion: "2025-03-26",
+		ServerID:         srv.ID,
+		Version:          "1.0.0",
+		Runtime:          domain.RuntimeStdio,
+		Packages:         []byte(`[{"registryType":"npm","identifier":"@tombstone/srv","version":"1.0.0","transport":{"type":"stdio"}}]`),
+		ProtocolVersions: []string{"2025-03-26"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestDeletePublisher_CascadesActiveResources(t *testing.T) {
 	}
 	if _, err := sharedDB.CreateMCPServerVersion(ctx, store.CreateMCPServerVersionParams{
 		ServerID: srv.ID, Version: "1.0.0", Runtime: domain.RuntimeStdio,
-		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersion: "2025-03-26",
+		Packages: validPackages, Capabilities: []byte(`{}`), ProtocolVersions: []string{"2025-03-26"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
 	}

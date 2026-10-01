@@ -280,11 +280,11 @@ export default function MCPDetailPage() {
                   {lv && (
                     <StatTile
                       className="flex-1 px-5 py-4"
-                      label="Protocol version"
+                      label={lv.protocol_versions.length > 1 ? 'Protocol versions' : 'Protocol version'}
                       icon={<Code2 />}
-                      tooltip={getFieldExplanation('protocol_version') ?? undefined}
+                      tooltip={getFieldExplanation('protocol_versions') ?? undefined}
                     >
-                      <span className="font-mono">{lv.protocol_version}</span>
+                      <span className="font-mono">{lv.protocol_versions.join(', ')}</span>
                     </StatTile>
                   )}
                   {hasRemote && (
