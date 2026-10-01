@@ -20,6 +20,7 @@ import { ErrorState } from '@/components/ui/error-state'
 import { useAuthClient } from '@/lib/api-client'
 import { formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport, problemMessage, HTTPError, isNotFound } from '@/lib/utils'
 import { usePermissions } from '@/auth/useMe'
+import { ProtocolVersionBadges } from '@/components/mcp/protocol-version-badges'
 
 export default function AdminMCPDetail() {
   const { ns, slug } = useParams<{ ns: string; slug: string }>()
@@ -265,7 +266,9 @@ export default function AdminMCPDetail() {
             <dt className="text-muted-foreground">Runtime</dt>
             <dd><Badge variant="secondary">{lv.runtime}</Badge></dd>
             <dt className="text-muted-foreground">Protocol versions</dt>
-            <dd className="font-mono">{lv.protocol_versions.join(', ')}</dd>
+            <dd>
+              <ProtocolVersionBadges versions={lv.protocol_versions} />
+            </dd>
             {lv.published_at && (
               <>
                 <dt className="text-muted-foreground">Published</dt>

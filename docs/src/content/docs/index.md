@@ -31,8 +31,8 @@ discover them.
 - **Observable** — OpenTelemetry traces, metrics and logs over OTLP.
 
 It hosts metadata only: it does not run, proxy or sandbox the servers and
-agents it lists. The one connection it makes to a listed server is the
-`tools/list` an author asks for from the MCP forms.
+agents it lists. The only connections it makes to a listed server are the
+handshakes and `tools/list` an author asks for from the MCP forms.
 
 ## Where to start
 

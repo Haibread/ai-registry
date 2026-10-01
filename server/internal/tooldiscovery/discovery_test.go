@@ -35,7 +35,12 @@ func newDiscoverer(t *testing.T, mutate func(*Config)) *Discoverer {
 }
 
 func newMCPServer(nTools, pageSize int) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "github-tools", Version: "2.3.0"}, &mcp.ServerOptions{PageSize: pageSize})
+	return newMCPServerSpeaking(nTools, pageSize, nil)
+}
+
+func newMCPServerSpeaking(nTools, pageSize int, versions []string) *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: "github-tools", Version: "2.3.0"},
+		&mcp.ServerOptions{PageSize: pageSize, SupportedProtocolVersions: versions})
 	noop := func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{}, nil
 	}
@@ -60,6 +65,19 @@ func serve(t *testing.T, path string, tr Transport, s *mcp.Server) *httptest.Ser
 	} else {
 		h = mcp.NewStreamableHTTPHandler(get, nil)
 	}
+	return mount(t, path, h)
+}
+
+// serveStateless mounts a stateless streamable HTTP server, the only kind the
+// SDK lets speak the 2026-07-28 revision.
+func serveStateless(t *testing.T, path string, s *mcp.Server) *httptest.Server {
+	t.Helper()
+	get := func(*http.Request) *mcp.Server { return s }
+	return mount(t, path, mcp.NewStreamableHTTPHandler(get, &mcp.StreamableHTTPOptions{Stateless: true}))
+}
+
+func mount(t *testing.T, path string, h http.Handler) *httptest.Server {
+	t.Helper()
 	mux := http.NewServeMux()
 	mux.Handle(path, h)
 	ts := httptest.NewServer(mux)
@@ -169,6 +187,42 @@ func TestDiscover_GuessesMCPSuffix(t *testing.T) {
 	first := res.Attempts[0]
 	if first.URL != ts.URL+"/github" || first.Status != http.StatusNotFound || first.Error != "HTTP 404" {
 		t.Errorf("first attempt = %+v", first)
+	}
+}
+
+func TestDiscover_ProbesProtocolVersions(t *testing.T) {
+	legacy := slices.DeleteFunc(mcp.SupportedProtocolVersions(), func(v string) bool { return v >= "2026-07-28" })
+	tests := []struct {
+		name      string
+		tr        Transport
+		stateless bool
+		versions  []string
+		want      []string
+	}{
+		{"stateful server", StreamableHTTP, false, nil, legacy},
+		{"stateless server", StreamableHTTP, true, nil, mcp.SupportedProtocolVersions()},
+		{"a subset", StreamableHTTP, false, []string{"2025-06-18", "2025-03-26"}, []string{"2025-06-18", "2025-03-26"}},
+		{"newest only", StreamableHTTP, true, []string{"2026-07-28"}, []string{"2026-07-28"}},
+		{"legacy sse subset", SSE, false, []string{"2025-03-26", "2024-11-05"}, []string{"2025-03-26", "2024-11-05"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newMCPServerSpeaking(1, 0, tt.versions)
+			var ts *httptest.Server
+			if tt.stateless {
+				ts = serveStateless(t, "/mcp", s)
+			} else {
+				ts = serve(t, "/mcp", tt.tr, s)
+			}
+
+			res, err := newDiscoverer(t, nil).Discover(context.Background(), ts.URL+"/mcp", tt.tr)
+			if err != nil {
+				t.Fatalf("Discover: %v", err)
+			}
+			if !slices.Equal(res.SupportedProtocolVersions, tt.want) {
+				t.Errorf("supported = %v, want %v", res.SupportedProtocolVersions, tt.want)
+			}
+		})
 	}
 }
 

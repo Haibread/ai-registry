@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -195,8 +196,9 @@ func TestToolDiscovery_EndToEnd(t *testing.T) {
 			Name    string `json:"name"`
 			Version string `json:"version"`
 		} `json:"server_info"`
-		ProtocolVersion string           `json:"protocol_version"`
-		Tools           []domain.MCPTool `json:"tools"`
+		ProtocolVersion           string           `json:"protocol_version"`
+		SupportedProtocolVersions []string         `json:"supported_protocol_versions"`
+		Tools                     []domain.MCPTool `json:"tools"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatal(err)
@@ -217,5 +219,11 @@ func TestToolDiscovery_EndToEnd(t *testing.T) {
 	raw, _ := json.Marshal(got.Tools)
 	if err := domain.ValidateTools(raw); err != nil {
 		t.Errorf("ValidateTools rejects discovered tools: %v", err)
+	}
+	if !slices.Contains(got.SupportedProtocolVersions, got.ProtocolVersion) {
+		t.Errorf("supported_protocol_versions = %v, missing the negotiated %q", got.SupportedProtocolVersions, got.ProtocolVersion)
+	}
+	if _, err := domain.ValidateProtocolVersions(got.SupportedProtocolVersions); err != nil {
+		t.Errorf("ValidateProtocolVersions rejects discovered revisions: %v", err)
 	}
 }

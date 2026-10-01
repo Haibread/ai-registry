@@ -21,6 +21,7 @@ import { usePermissions } from '@/auth/useMe'
 import { authFetch } from '@/auth/tokens'
 import { problemMessage } from '@/lib/utils'
 import { SlugField } from '@/components/admin/slug-field'
+import { ProtocolVersionsInput } from '@/components/admin/protocol-versions-input'
 import { ToolsEditor } from '@/components/admin/tools-editor'
 import { InstanceTagPicker } from '@/components/admin/instance-tag-picker'
 import { DirtyFormGuard } from '@/components/ui/dirty-form-guard'
@@ -116,10 +117,7 @@ export default function AdminMCPNew() {
         return { namespace: ns, slug }
       }
 
-      const protocolVersions = (formData.get('protocol_version') as string)
-        .split(',')
-        .map((p) => p.trim())
-        .filter(Boolean)
+      const protocolVersions = JSON.parse(formData.get('protocol_versions') as string) as string[]
       const pkgIdentifier = (formData.get('pkg_identifier') as string).trim()
       const pkgVersion = (formData.get('pkg_version') as string).trim()
       const pkgUrl = (formData.get('pkg_url') as string).trim()
@@ -164,7 +162,7 @@ export default function AdminMCPNew() {
         body: JSON.stringify({
           version,
           runtime,
-          protocol_versions: protocolVersions.length > 0 ? protocolVersions : ['2025-03-26'],
+          protocol_versions: protocolVersions,
           ...(packages.length > 0 ? { packages } : {}),
           ...(remotes.length > 0 ? { remotes } : {}),
           ...(tools !== undefined ? { tools } : {}),
@@ -334,27 +332,15 @@ export default function AdminMCPNew() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="version">Version</Label>
-                <Input
-                  id="version"
-                  name="version"
-                  placeholder="1.0.0"
-                  pattern="^\d+\.\d+\.\d+.*"
-                  title="Semantic version, e.g. 1.0.0"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="protocol_version">Protocol versions</Label>
-                <Input
-                  id="protocol_version"
-                  name="protocol_version"
-                  placeholder="2025-06-18, 2025-03-26"
-                  defaultValue="2025-03-26"
-                />
-                <p className="text-xs text-muted-foreground">Comma-separated list of supported revisions.</p>
-              </div>
+            <div className="space-y-1.5 sm:w-1/2">
+              <Label htmlFor="version">Version</Label>
+              <Input
+                id="version"
+                name="version"
+                placeholder="1.0.0"
+                pattern="^\d+\.\d+\.\d+.*"
+                title="Semantic version, e.g. 1.0.0"
+              />
             </div>
 
             <InstanceTagPicker />
@@ -398,6 +384,8 @@ export default function AdminMCPNew() {
                 </p>
               </div>
             )}
+
+            <ProtocolVersionsInput discovery={{ namespace, transport: runtime, remoteUrl }} />
 
             {/* ── Package ──────────────────────────────────────────────── */}
             <div className="rounded-md border border-dashed p-4 space-y-3">

@@ -1,6 +1,7 @@
 // Package tooldiscovery connects to a remote MCP server on a publisher's
-// behalf and returns the tools it advertises through tools/list, guessing the
-// exact endpoint from the URL the publisher declared.
+// behalf and returns the tools it advertises through tools/list and the
+// protocol revisions it accepts, guessing the exact endpoint from the URL the
+// publisher declared.
 package tooldiscovery
 
 import (
@@ -84,7 +85,10 @@ type Result struct {
 	ServerName      string
 	ServerVersion   string
 	ProtocolVersion string
-	Tools           []domain.MCPTool
+	// SupportedProtocolVersions lists, newest first, the revisions the server
+	// accepted when offered one at a time.
+	SupportedProtocolVersions []string
+	Tools                     []domain.MCPTool
 }
 
 // Discoverer runs discoveries. It is safe for concurrent use.
@@ -127,7 +131,8 @@ func (d *Discoverer) Discover(ctx context.Context, rawURL string, hint Transport
 			span.SetAttributes(
 				attribute.String("mcp.discovery.endpoint", res.Endpoint.URL),
 				attribute.String("mcp.discovery.transport", string(res.Endpoint.Transport)),
-				attribute.Int("mcp.discovery.tools", len(res.Tools)))
+				attribute.Int("mcp.discovery.tools", len(res.Tools)),
+				attribute.StringSlice("mcp.discovery.protocol_versions", res.SupportedProtocolVersions))
 		}
 	}
 	if err != nil {
@@ -159,6 +164,7 @@ func (d *Discoverer) discover(ctx context.Context, rawURL string, hint Transport
 			switch {
 			case err == nil:
 				res.Endpoint = att
+				res.SupportedProtocolVersions = d.probeProtocolVersions(ctx, c, tr)
 				return res, nil
 			case errors.Is(err, ErrBlockedAddress), errors.Is(err, ErrUnauthorized),
 				errors.Is(err, ErrTooManyTools):
@@ -177,21 +183,7 @@ func (d *Discoverer) discover(ctx context.Context, rawURL string, hint Transport
 func (d *Discoverer) attempt(ctx context.Context, endpoint string, tr Transport, res *Result) (Attempt, error) {
 	att := Attempt{URL: endpoint, Transport: tr}
 	rec := &recorder{ctx: ctx, base: d.transport, limit: d.cfg.MaxResponseBytes}
-	httpClient := &http.Client{Transport: rec}
-
-	var t mcp.Transport
-	if tr == SSE {
-		t = &mcp.SSEClientTransport{Endpoint: endpoint, HTTPClient: httpClient}
-	} else {
-		t = &mcp.StreamableClientTransport{
-			Endpoint:             endpoint,
-			HTTPClient:           httpClient,
-			MaxRetries:           -1,
-			DisableStandaloneSSE: true,
-		}
-	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "ai-registry", Version: d.cfg.ClientVersion}, nil)
-	sess, err := client.Connect(ctx, t, nil)
+	sess, err := d.connect(ctx, endpoint, tr, rec, nil)
 	att.Status = rec.firstStatus()
 	if err != nil {
 		att.Error, err = classify(ctx, rec, att.Status)
@@ -218,6 +210,58 @@ func (d *Discoverer) attempt(ctx context.Context, endpoint string, tr Transport,
 	res.ProtocolVersion = init.ProtocolVersion
 	res.Tools = tools
 	return att, nil
+}
+
+func (d *Discoverer) connect(ctx context.Context, endpoint string, tr Transport, rec *recorder, opts *mcp.ClientSessionOptions) (*mcp.ClientSession, error) {
+	httpClient := &http.Client{Transport: rec}
+	var t mcp.Transport
+	if tr == SSE {
+		t = &mcp.SSEClientTransport{Endpoint: endpoint, HTTPClient: httpClient}
+	} else {
+		t = &mcp.StreamableClientTransport{
+			Endpoint:             endpoint,
+			HTTPClient:           httpClient,
+			MaxRetries:           -1,
+			DisableStandaloneSSE: true,
+		}
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "ai-registry", Version: d.cfg.ClientVersion}, nil)
+	return client.Connect(ctx, t, opts)
+}
+
+// probeProtocolVersions offers the server every revision the SDK speaks, one
+// handshake each. MCP negotiation has a server answer with the requested
+// revision when it supports it and with another one otherwise.
+func (d *Discoverer) probeProtocolVersions(ctx context.Context, endpoint string, tr Transport) []string {
+	versions := mcp.SupportedProtocolVersions()
+	accepted := make([]bool, len(versions))
+	var wg sync.WaitGroup
+	for i, v := range versions {
+		wg.Go(func() { accepted[i] = d.accepts(ctx, endpoint, tr, v) })
+	}
+	wg.Wait()
+	supported := []string{}
+	for i, v := range versions {
+		if accepted[i] {
+			supported = append(supported, v)
+		}
+	}
+	return supported
+}
+
+func (d *Discoverer) accepts(ctx context.Context, endpoint string, tr Transport, version string) bool {
+	rec := &recorder{ctx: ctx, base: d.transport, limit: d.cfg.MaxResponseBytes}
+	sess, err := d.connect(ctx, endpoint, tr, rec, &mcp.ClientSessionOptions{ProtocolVersion: version})
+	if err != nil {
+		d.logger.DebugContext(ctx, "protocol version probe failed",
+			slog.String("url", endpoint), slog.String("version", version), slog.String("error", err.Error()))
+		return false
+	}
+	defer func() { _ = sess.Close() }()
+	negotiated := sess.InitializeResult().ProtocolVersion
+	d.logger.DebugContext(ctx, "protocol version probe",
+		slog.String("url", endpoint), slog.String("offered", version), slog.String("negotiated", negotiated))
+	return negotiated == version
 }
 
 func (d *Discoverer) listTools(ctx context.Context, sess *mcp.ClientSession) ([]domain.MCPTool, error) {

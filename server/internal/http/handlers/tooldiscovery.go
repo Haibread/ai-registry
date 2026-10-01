@@ -18,7 +18,7 @@ import (
 	"github.com/haibread/ai-registry/internal/tooldiscovery"
 )
 
-// ToolDiscoverer lists the tools a remote MCP server exposes.
+// ToolDiscoverer lists the tools and protocol revisions of a remote MCP server.
 type ToolDiscoverer interface {
 	Discover(ctx context.Context, rawURL string, hint tooldiscovery.Transport) (*tooldiscovery.Result, error)
 }
@@ -54,15 +54,16 @@ type toolDiscoveryServerInfo struct {
 }
 
 type toolDiscoveryResponse struct {
-	Endpoint        toolDiscoveryEndpoint    `json:"endpoint"`
-	Attempts        []toolDiscoveryAttempt   `json:"attempts"`
-	ServerInfo      *toolDiscoveryServerInfo `json:"server_info,omitempty"`
-	ProtocolVersion string                   `json:"protocol_version"`
-	Tools           []domain.MCPTool         `json:"tools"`
+	Endpoint                  toolDiscoveryEndpoint    `json:"endpoint"`
+	Attempts                  []toolDiscoveryAttempt   `json:"attempts"`
+	ServerInfo                *toolDiscoveryServerInfo `json:"server_info,omitempty"`
+	ProtocolVersion           string                   `json:"protocol_version"`
+	SupportedProtocolVersions []string                 `json:"supported_protocol_versions"`
+	Tools                     []domain.MCPTool         `json:"tools"`
 }
 
 // Discover connects to the declared remote URL, guesses the MCP endpoint and
-// returns its tools. Nothing is stored.
+// returns its tools and supported protocol revisions. Nothing is stored.
 func (h *ToolDiscoveryHandlers) Discover(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsAuthenticated(r.Context()) {
 		problem.Write(w, http.StatusUnauthorized, "unauthorized",
@@ -133,10 +134,11 @@ func (h *ToolDiscoveryHandlers) Discover(w http.ResponseWriter, r *http.Request)
 	}
 
 	out := toolDiscoveryResponse{
-		Endpoint:        toolDiscoveryEndpoint{URL: res.Endpoint.URL, Transport: string(res.Endpoint.Transport)},
-		Attempts:        attemptsToResponse(res.Attempts),
-		ProtocolVersion: res.ProtocolVersion,
-		Tools:           res.Tools,
+		Endpoint:                  toolDiscoveryEndpoint{URL: res.Endpoint.URL, Transport: string(res.Endpoint.Transport)},
+		Attempts:                  attemptsToResponse(res.Attempts),
+		ProtocolVersion:           res.ProtocolVersion,
+		SupportedProtocolVersions: res.SupportedProtocolVersions,
+		Tools:                     res.Tools,
 	}
 	if res.ServerName != "" {
 		out.ServerInfo = &toolDiscoveryServerInfo{Name: res.ServerName, Version: res.ServerVersion}

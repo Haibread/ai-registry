@@ -103,7 +103,8 @@ describe('NewVersionForm prefill (mcp)', () => {
 
     expect(screen.getByText(/pre-filled from/i)).toHaveTextContent('v1.2.3')
     expect(screen.getByLabelText(/^version/i)).toHaveValue('1.2.4')
-    expect(screen.getByLabelText(/protocol versions/i)).toHaveValue('2025-06-18, 2025-03-26')
+    expect(screen.getByRole('button', { name: 'Remove 2025-06-18' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove 2025-03-26' })).toBeInTheDocument()
 
     // Transport carried over → SSE, which reveals the seeded remote endpoint.
     expect(screen.getByRole('combobox', { name: /transport/i })).toHaveTextContent('SSE')
@@ -163,14 +164,14 @@ describe('NewVersionForm prefill (agent)', () => {
 })
 
 describe('NewVersionForm submit (mcp)', () => {
-  it('sends the comma-separated protocol revisions as a list', async () => {
+  it('sends the protocol revision tokens as a list', async () => {
     vi.mocked(authFetch).mockResolvedValue(new Response('{}', { status: 201 }))
     renderForm()
 
     fireEvent.change(screen.getByLabelText(/^version/i), { target: { value: '1.0.0' } })
-    fireEvent.change(screen.getByLabelText(/protocol versions/i), {
-      target: { value: '2025-06-18, 2025-03-26 ,' },
-    })
+    const revisions = screen.getByLabelText(/protocol versions/i)
+    fireEvent.change(revisions, { target: { value: '2025-06-18' } })
+    fireEvent.keyDown(revisions, { key: 'Enter' })
     fireEvent.submit(screen.getByLabelText(/^version/i).closest('form')!)
 
     await waitFor(() => expect(authFetch).toHaveBeenCalled())

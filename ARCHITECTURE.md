@@ -31,7 +31,7 @@ flowchart LR
     server -->|"pgx, SQL"| pg
     server -->|"Auth Code + PKCE, JWKS fetch"| idp
     server -->|"OTLP traces, metrics, logs"| otel
-    server -->|"MCP initialize + tools/list,<br/>anonymous, on an author's request"| mcpremote
+    server -->|"MCP initialize + tools/list, revision probes,<br/>anonymous, on an author's request"| mcpremote
 ```
 
 In Kubernetes the Ingress routes `/api` straight to the server and everything
@@ -66,7 +66,7 @@ flush. See [server/cmd/server/main.go](server/cmd/server/main.go).
 | [`internal/domain`](server/internal/domain/) | Entity types, the role lattice, validation, lifecycle rules. No I/O. |
 | [`internal/store`](server/internal/store/) | Hand-written SQL over `pgx`, migrations runner, seeding. Every query is traced. |
 | [`internal/agents`](server/internal/agents/) | Builds A2A Agent Cards from stored agent versions. |
-| [`internal/tooldiscovery`](server/internal/tooldiscovery/) | MCP client behind "Fetch from server": guesses a remote server's endpoint, runs `tools/list`, refuses internal addresses. Stores nothing. |
+| [`internal/tooldiscovery`](server/internal/tooldiscovery/) | MCP client behind "Fetch from server" and "Detect from server": guesses a remote server's endpoint, runs `tools/list`, probes the protocol revisions it accepts, refuses internal addresses. Stores nothing. |
 | [`internal/bootstrap`](server/internal/bootstrap/) | Declarative YAML/JSON loader that upserts publishers, servers and agents. |
 | [`internal/config`](server/internal/config/) | Resolves every setting from env, YAML file, then default. |
 | [`internal/observability`](server/internal/observability/) | The one OTel SDK setup (tracer, meter, logger providers) and the metric definitions. |
@@ -326,10 +326,15 @@ The browser could not make that call itself, since the SPA's CSP allows
 to non-UI clients. The endpoint is guessed rather
 than asked for: the declared URL, then with `/mcp` and `/sse` appended, each
 with the declared transport first and the other one second, as the MCP spec's
-backwards-compatibility procedure prescribes. Nothing is persisted: the result
+backwards-compatibility procedure prescribes. On the endpoint that answered,
+every revision the SDK speaks is then offered in its own handshake: MCP version
+negotiation has a server echo a requested revision it supports and counter with
+another one otherwise, so the echoed revisions are the ones it supports. The
+probe list is the SDK's, so it follows SDK upgrades with no registry change.
+Nothing is persisted: the result
 reaches the catalog only through the ordinary version-create call, so review,
-validation and immutability apply unchanged, and the tool list stays
-hand-editable before and after a fetch.
+validation and immutability apply unchanged, and the tool list and the
+protocol revisions stay hand-editable before and after a fetch.
 
 **Outbound connections to author-supplied URLs go through an address guard.**
 The check runs in the dialer, on the address about to be connected to after DNS
@@ -398,10 +403,12 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
 - There are no registry-native API keys: machine access requires an OIDC
   provider issuing tokens with the configured audience.
 - The catalog covers MCP servers and A2A agents only.
-- "Fetch from server" reaches only remote servers that accept anonymous
-  connections. A stdio server runs on the consumer's machine and a server
-  behind authentication rejects the registry, so their tools are entered by
-  hand or pasted from a `tools/list` output. It needs direct egress from the
+- "Fetch from server" and "Detect from server" reach only remote servers
+  that accept anonymous connections. A stdio server runs on the consumer's
+  machine and a server behind authentication rejects the registry, so their
+  tools are entered by hand or pasted from a `tools/list` output, and their
+  protocol revisions typed in. Only the revisions the registry's MCP SDK speaks
+  can be detected. It needs direct egress from the
   server to the MCP host: it does not use an HTTP proxy, and with the chart's
   egress NetworkPolicy on, the destination must be allowed in `extraRules`.
 - An entry describes a single deployment: one endpoint, transport, auth scheme

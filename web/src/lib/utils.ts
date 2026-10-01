@@ -8,6 +8,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function isHttpUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    return u.protocol === "http:" || u.protocol === "https:"
+  } catch {
+    return false
+  }
+}
+
 /**
  * Extract a human-readable message from an API error, preferring the RFC 7807
  * problem fields (`detail`, then `title`) the server returns, and falling back
