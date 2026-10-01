@@ -188,8 +188,8 @@ kubectl describe certificate <cert-name>
 **Symptoms**
 
 - Admin UI login loops back to the sign-in page.
-- api logs: `jwks fetch failed` or `id_token validation failed` during the OIDC
-  callback.
+- api logs: `jwks fetch failed` or `oidc code exchange failed` (its `error`
+  field names the cause, e.g. `validating id_token`) during the OIDC callback.
 
 OIDC is brokered server-side and the registry issues its own bearer tokens, so
 an IdP outage blocks *new* OIDC logins only. Existing sessions keep refreshing
@@ -302,6 +302,10 @@ change, follow §5 to roll it forward instead.
 
 **Triage**
 
+- Read the cause first. Each failed attempt logs `tool discovery attempt
+  failed` at warn level with `url`, `transport`, `status` and `error` (an
+  HTTP status, a TLS or DNS error, or the MCP handshake error), and the
+  dialog and the problem response's `attempts` show the same reasons.
 - `timeout` / `no_mcp_server` for every server: the api pod has no route to
   the internet. With `global.networkPolicy.egress.enabled`, allow the MCP
   hosts (TCP 443) in `egress.extraRules`. Discovery ignores `HTTP_PROXY`, so a

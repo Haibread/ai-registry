@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/haibread/ai-registry/internal/problem"
 	"github.com/haibread/ai-registry/internal/store"
 )
 
@@ -45,7 +44,7 @@ func (h *AuditHandlers) ListEvents(w http.ResponseWriter, r *http.Request) {
 
 	events, err := h.db.ListAuditEvents(r.Context(), p)
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", "failed to list audit events", r.URL.Path)
+		internalErrorDetail(w, r, err, "failed to list audit events")
 		return
 	}
 

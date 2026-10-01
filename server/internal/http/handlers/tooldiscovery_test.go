@@ -167,8 +167,26 @@ func TestToolDiscovery_MapsFailures(t *testing.T) {
 				`{"namespace":"acme","url":"https://mcp.acme.dev/x","transport":"http"}`)
 			body := rec.Body.String()
 			assertProblemType(t, rec, tt.wantStatus, tt.wantSlug)
-			if tt.wantSlug == "no-mcp-server" && !bytes.Contains([]byte(body), []byte("https://mcp.acme.dev/x over streamable_http.")) {
-				t.Errorf("detail does not name the declared endpoint: %s", body)
+			var got struct {
+				Detail   string `json:"detail"`
+				Attempts []struct {
+					URL       string `json:"url"`
+					Transport string `json:"transport"`
+					Status    int    `json:"status"`
+					Error     string `json:"error"`
+				} `json:"attempts"`
+			}
+			if err := json.Unmarshal([]byte(body), &got); err != nil {
+				t.Fatalf("decode: %v: %s", err, body)
+			}
+			if len(got.Attempts) != 1 || got.Attempts[0].URL != "https://mcp.acme.dev/x" ||
+				got.Attempts[0].Transport != "streamable_http" || got.Attempts[0].Status != 404 ||
+				got.Attempts[0].Error != "HTTP 404" {
+				t.Errorf("attempts extension = %+v", got.Attempts)
+			}
+			want := "No MCP server answered. https://mcp.acme.dev/x (streamable_http): HTTP 404."
+			if tt.wantSlug == "no-mcp-server" && got.Detail != want {
+				t.Errorf("detail = %q, want %q", got.Detail, want)
 			}
 		})
 	}

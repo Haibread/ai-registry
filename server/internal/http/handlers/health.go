@@ -39,7 +39,7 @@ func Readyz(db Pinger, draining *atomic.Bool) http.HandlerFunc {
 			return
 		}
 		if err := db.Ping(r.Context()); err != nil {
-			slog.ErrorContext(r.Context(), "readyz: database ping failed", slog.String("err", err.Error()))
+			slog.ErrorContext(r.Context(), "readyz: database ping failed", slog.String("error", err.Error()))
 			writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
 			return
 		}
@@ -52,15 +52,22 @@ func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.ErrorContext(r.Context(), "writeJSON: failed to encode response",
-			slog.String("err", err.Error()))
+			slog.String("error", err.Error()))
 	}
 }
 
 // internalError logs err and writes a generic 500 problem response.
 // The raw error is never forwarded to the client to avoid leaking internals.
 func internalError(w http.ResponseWriter, r *http.Request, err error) {
-	slog.ErrorContext(r.Context(), "internal error", slog.String("err", err.Error()))
-	problem.Write(w, http.StatusInternalServerError, "internal", "an internal error occurred", r.URL.Path)
+	internalErrorDetail(w, r, err, "an internal error occurred")
+}
+
+// internalErrorDetail is internalError with a caller-chosen client message.
+func internalErrorDetail(w http.ResponseWriter, r *http.Request, err error, detail string) {
+	slog.ErrorContext(r.Context(), "internal error",
+		slog.String("method", r.Method), slog.String("path", r.URL.Path),
+		slog.String("error", err.Error()))
+	problem.Write(w, http.StatusInternalServerError, "internal", detail, r.URL.Path)
 }
 
 // decodeJSON deserialises the request body into v. Decoding is strict: unknown

@@ -366,8 +366,9 @@ focus rings, landmarks, ARIA labels on icon-only buttons.
   event but never blocks a write.
 - **Every handler is traced and every DB call is a child span.** Tracer and
   meter come from context; nothing creates its own provider. Structured logs
-  carry `trace_id` / `span_id`. Tokens, refresh tokens and `Authorization`
-  headers are never logged.
+  carry `trace_id` / `span_id`. Every 500 and every failed outbound call (tool
+  discovery, the IdP's token and JWKS endpoints) logs its underlying error.
+  Tokens, refresh tokens and `Authorization` headers are never logged.
 - **Errors are RFC 7807 problem documents**, with discriminated `type`s for the
   conflicts a client must tell apart.
 - **Entry links are absolute `http(s)` URLs.** Every write path — API create,

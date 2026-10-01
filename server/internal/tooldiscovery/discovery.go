@@ -6,6 +6,8 @@ package tooldiscovery
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +20,7 @@ import (
 	"net/url"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -125,6 +128,15 @@ func (d *Discoverer) Discover(ctx context.Context, rawURL string, tr Transport) 
 	defer span.End()
 
 	res, err := d.discover(ctx, rawURL, tr)
+	if err != nil {
+		attempts := 0
+		if res != nil {
+			attempts = len(res.Attempts)
+		}
+		d.logger.WarnContext(ctx, "tool discovery failed",
+			slog.String("declared_url", rawURL), slog.Int("attempts", attempts),
+			slog.String("error", err.Error()))
+	}
 	if res != nil {
 		span.SetAttributes(attribute.Int("mcp.discovery.attempts", len(res.Attempts)))
 		if err == nil {
@@ -153,15 +165,26 @@ func (d *Discoverer) discover(ctx context.Context, rawURL string, tr Transport) 
 	res := &Result{}
 	att, err := d.attempt(ctx, endpoint, tr, res)
 	res.Attempts = []Attempt{att}
-	d.logger.DebugContext(ctx, "tool discovery attempt",
-		slog.String("url", endpoint), slog.String("transport", string(tr)),
-		slog.Int("status", att.Status), slog.String("error", att.Error))
+	d.logAttempt(ctx, att)
 	if err != nil {
 		return res, err
 	}
 	res.Endpoint = att
 	res.SupportedProtocolVersions = d.probeProtocolVersions(ctx, endpoint, tr)
 	return res, nil
+}
+
+func (d *Discoverer) logAttempt(ctx context.Context, att Attempt) {
+	attrs := []slog.Attr{
+		slog.String("url", att.URL), slog.String("transport", string(att.Transport)),
+		slog.Int("status", att.Status),
+	}
+	if att.Error == "" {
+		d.logger.LogAttrs(ctx, slog.LevelDebug, "tool discovery attempt succeeded", attrs...)
+		return
+	}
+	d.logger.LogAttrs(ctx, slog.LevelWarn, "tool discovery attempt failed",
+		append(attrs, slog.String("error", att.Error))...)
 }
 
 // attempt connects to endpoint with transport tr and, on success, fills
@@ -172,7 +195,7 @@ func (d *Discoverer) attempt(ctx context.Context, endpoint string, tr Transport,
 	sess, err := d.connect(ctx, endpoint, tr, rec, nil)
 	att.Status = rec.firstStatus()
 	if err != nil {
-		att.Error, err = classify(ctx, rec, att.Status)
+		att.Error, err = classify(ctx, rec, att.Status, err)
 		return att, err
 	}
 	defer func() { _ = sess.Close() }()
@@ -184,7 +207,7 @@ func (d *Discoverer) attempt(ctx context.Context, endpoint string, tr Transport,
 			att.Error = err.Error()
 			return att, err
 		}
-		att.Error, err = classify(ctx, rec, att.Status)
+		att.Error, err = classify(ctx, rec, att.Status, err)
 		return att, err
 	}
 
@@ -271,9 +294,11 @@ func (d *Discoverer) listTools(ctx context.Context, sess *mcp.ClientSession) ([]
 	return tools, nil
 }
 
-// classify turns a failed attempt into a short, user-facing reason and the
-// sentinel the caller branches on.
-func classify(ctx context.Context, rec *recorder, status int) (string, error) {
+// classify turns a failed attempt into a short reason that keeps the
+// underlying cause, and the sentinel the caller branches on. sdkErr is what
+// the MCP SDK returned; a transport failure the recorder saw takes precedence,
+// since the SDK flattens most of them into strings.
+func classify(ctx context.Context, rec *recorder, status int, sdkErr error) (string, error) {
 	switch {
 	case rec.blocked() != nil:
 		return rec.blocked().Error(), rec.blocked()
@@ -281,13 +306,64 @@ func classify(ctx context.Context, rec *recorder, status int) (string, error) {
 		return fmt.Sprintf("HTTP %d", status), ErrUnauthorized
 	case ctx.Err() != nil:
 		return "timed out", ErrTimeout
+	case rec.transportErr() != nil:
+		return transportCause(rec.transportErr()), ErrNoServer
 	case status >= 300:
 		return fmt.Sprintf("HTTP %d", status), ErrNoServer
+	case sdkErr != nil:
+		return shorten(sdkErr.Error()), ErrNoServer
 	case status == 0:
 		return "connection failed", ErrNoServer
 	default:
 		return "not an MCP server", ErrNoServer
 	}
+}
+
+// transportCause reduces a failed round trip to its most telling layer: the
+// certificate check, the DNS lookup or the socket operation, without the
+// request line net/http prefixes.
+func transportCause(err error) string {
+	var certErr *tls.CertificateVerificationError
+	var unknownCA x509.UnknownAuthorityError
+	var hostErr x509.HostnameError
+	var invalidErr x509.CertificateInvalidError
+	var recordErr tls.RecordHeaderError
+	var opErr *net.OpError
+	var dnsErr *net.DNSError
+	var urlErr *url.Error
+	switch {
+	case errors.As(err, &certErr):
+		return shorten("tls: " + certErr.Err.Error())
+	case errors.As(err, &unknownCA):
+		return shorten("tls: " + unknownCA.Error())
+	case errors.As(err, &hostErr):
+		return shorten("tls: " + hostErr.Error())
+	case errors.As(err, &invalidErr):
+		return shorten("tls: " + invalidErr.Error())
+	case errors.As(err, &recordErr):
+		return shorten(recordErr.Error())
+	case errors.As(err, &opErr):
+		return shorten(opErr.Error())
+	case errors.As(err, &dnsErr):
+		return shorten(dnsErr.Error())
+	case errors.As(err, &urlErr):
+		return shorten(urlErr.Err.Error())
+	default:
+		return shorten(err.Error())
+	}
+}
+
+const maxCauseLen = 300
+
+func shorten(s string) string {
+	if len(s) <= maxCauseLen {
+		return s
+	}
+	cut := maxCauseLen
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }
 
 // Endpoint validates a declared URL and returns it without its fragment.
@@ -357,6 +433,7 @@ type recorder struct {
 	status   int
 	okStatus int
 	dialErr  error
+	rtErr    error
 }
 
 func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -370,6 +447,10 @@ func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 		release()
 		if r.dialErr == nil && errors.Is(err, ErrBlockedAddress) {
 			r.dialErr = err
+		}
+		// A cancelled request is the SDK tearing down after the real failure.
+		if r.rtErr == nil && !errors.Is(err, context.Canceled) {
+			r.rtErr = err
 		}
 		return nil, err
 	}
@@ -397,6 +478,13 @@ func (r *recorder) firstOKStatus() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.okStatus
+}
+
+// transportErr is the first round trip that failed below HTTP, if any.
+func (r *recorder) transportErr() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.rtErr
 }
 
 func (r *recorder) blocked() error {

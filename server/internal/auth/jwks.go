@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"sync"
@@ -66,6 +67,8 @@ func (c *JWKSCache) GetKey(ctx context.Context, kid string) (*rsa.PublicKey, err
 
 	// Slow path: refresh.
 	if err := c.refresh(ctx); err != nil {
+		slog.WarnContext(ctx, "jwks fetch failed",
+			slog.String("endpoint", c.endpoint), slog.String("error", err.Error()))
 		return nil, err
 	}
 

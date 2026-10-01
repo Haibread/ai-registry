@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -148,6 +149,7 @@ func (h *OIDCAuthHandlers) Callback(w http.ResponseWriter, r *http.Request) {
 
 	identity, idToken, err := h.broker.Exchange(r.Context(), code, verifier, nonce)
 	if err != nil {
+		slog.WarnContext(r.Context(), "oidc code exchange failed", slog.String("error", err.Error()))
 		problem.Write(w, http.StatusUnauthorized, "unauthorized",
 			"could not complete sign-in with the identity provider", r.URL.Path)
 		return
@@ -155,6 +157,8 @@ func (h *OIDCAuthHandlers) Callback(w http.ResponseWriter, r *http.Request) {
 
 	u, err := auth.ResolveOrProvisionFederated(r.Context(), h.store, identity)
 	if err != nil {
+		slog.WarnContext(r.Context(), "resolving the federated account failed",
+			slog.String("email", identity.Email), slog.String("error", err.Error()))
 		problem.Write(w, http.StatusUnauthorized, "unauthorized",
 			"could not resolve your account", r.URL.Path)
 		return

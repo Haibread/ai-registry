@@ -1354,7 +1354,7 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: "#/components/schemas/Problem"
+                $ref: "#/components/schemas/MCPToolDiscoveryProblem"
         "429":
           $ref: "#/components/responses/RateLimited"
         "502":
@@ -1366,7 +1366,7 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: "#/components/schemas/Problem"
+                $ref: "#/components/schemas/MCPToolDiscoveryProblem"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "504":
@@ -1374,7 +1374,7 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: "#/components/schemas/Problem"
+                $ref: "#/components/schemas/MCPToolDiscoveryProblem"
 
   /api/v1/mcp/servers:
     get:
@@ -4505,7 +4505,23 @@ components:
           description: HTTP status of the first response, 0 when none arrived.
         error:
           type: string
-          description: Why the attempt failed; absent on the attempt that succeeded.
+          description: >
+            Why the attempt failed, with the underlying cause (an HTTP status,
+            a TLS or DNS error, the MCP handshake error); absent on the attempt
+            that succeeded.
+
+    MCPToolDiscoveryProblem:
+      description: >
+        A failed tool discovery. `detail` names the cause of each failed
+        attempt; `attempts` lists them, in order, when any connection was tried.
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            attempts:
+              type: array
+              items:
+                $ref: "#/components/schemas/MCPToolDiscoveryAttempt"
 
     MCPToolDiscovery:
       type: object

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/haibread/ai-registry/internal/domain"
@@ -63,6 +64,9 @@ func RequirePublisherRole(rs RoleStore, required domain.Role, resolve PublisherR
 				PublisherID:     publisherID,
 			})
 			if err != nil {
+				slog.ErrorContext(r.Context(), "resolving publisher roles failed",
+					slog.String("path", r.URL.Path), slog.String("publisher_id", publisherID),
+					slog.String("error", err.Error()))
 				problem.Write(w, http.StatusInternalServerError, "internal",
 					"Failed to resolve authorization.", r.URL.Path)
 				return

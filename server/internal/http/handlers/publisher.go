@@ -39,7 +39,7 @@ func (h *PublisherHandlers) ListPublishers(w http.ResponseWriter, r *http.Reques
 		Cursor: r.URL.Query().Get("cursor"),
 	})
 	if err != nil {
-		problem.Write(w, http.StatusInternalServerError, "internal", "failed to list publishers", r.URL.Path)
+		internalErrorDetail(w, r, err, "failed to list publishers")
 		return
 	}
 

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -98,6 +99,7 @@ func (a *Authenticator) serviceTokenPrincipal(ctx context.Context, raw string) *
 	}
 	id, err := a.idp.VerifyServiceToken(ctx, raw)
 	if err != nil {
+		slog.DebugContext(ctx, "bearer token rejected", slog.String("error", err.Error()))
 		return nil
 	}
 	return &Principal{
