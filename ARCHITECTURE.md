@@ -66,7 +66,7 @@ flush. See [server/cmd/server/main.go](server/cmd/server/main.go).
 | [`internal/domain`](server/internal/domain/) | Entity types, the role lattice, validation, lifecycle rules. No I/O. |
 | [`internal/store`](server/internal/store/) | Hand-written SQL over `pgx`, migrations runner, seeding. Every query is traced. |
 | [`internal/agents`](server/internal/agents/) | Builds A2A Agent Cards from stored agent versions. |
-| [`internal/tooldiscovery`](server/internal/tooldiscovery/) | MCP client behind "Fetch from server" and "Detect from server": guesses a remote server's endpoint, runs `tools/list`, probes the protocol revisions it accepts, refuses internal addresses. Stores nothing. |
+| [`internal/tooldiscovery`](server/internal/tooldiscovery/) | MCP client behind "Fetch from server" and "Detect from server": connects to a remote server's declared URL and transport, runs `tools/list`, probes the protocol revisions it accepts, refuses internal addresses. Stores nothing. |
 | [`internal/bootstrap`](server/internal/bootstrap/) | Declarative YAML/JSON loader that upserts publishers, servers and agents. |
 | [`internal/config`](server/internal/config/) | Resolves every setting from env, YAML file, then default. |
 | [`internal/observability`](server/internal/observability/) | The one OTel SDK setup (tracer, meter, logger providers) and the metric definitions. |
@@ -323,15 +323,15 @@ the official MCP Go SDK, and returns the tools it lists; the authoring form
 shows a diff against the list being edited and applies only the ticked rows.
 The browser could not make that call itself, since the SPA's CSP allows
 `fetch` to its own origin only, and putting it in the API keeps it available
-to non-UI clients. The endpoint is guessed rather
-than asked for: the declared URL, then with `/mcp` and `/sse` appended, each
-with the declared transport first and the other one second, as the MCP spec's
-backwards-compatibility procedure prescribes. On the endpoint that answered,
-every revision the SDK speaks is then offered in its own handshake: MCP version
-negotiation has a server echo a requested revision it supports and counter with
-another one otherwise, so the echoed revisions are the ones it supports. The
-probe list is the SDK's, so it follows SDK upgrades with no registry change.
-Nothing is persisted: the result
+to non-UI clients. It contacts exactly the URL and transport the version
+declares, with no path suffixes and no fallback to the other transport: the
+check is of what clients will be told to connect to, so a server reachable
+only at some other address fails the fetch rather than being found behind the
+author's back. Once connected, every revision the SDK speaks is offered in its
+own handshake: MCP version negotiation has a server echo a requested revision
+it supports and counter with another one otherwise, so the echoed revisions are
+the ones it supports. The probe list is the SDK's, so it follows SDK upgrades
+with no registry change. Nothing is persisted: the result
 reaches the catalog only through the ordinary version-create call, so review,
 validation and immutability apply unchanged, and the tool list and the
 protocol revisions stay hand-editable before and after a fetch.

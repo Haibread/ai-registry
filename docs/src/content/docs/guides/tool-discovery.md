@@ -7,8 +7,10 @@ sidebar:
 
 On the MCP forms, "Fetch from server" lists the tools of the remote server at
 the version's Remote URL and merges the ones you tick into the tool list,
-which stays editable by hand. The server guesses the endpoint (`/mcp`, `/sse`)
-and connects anonymously; it refuses internal addresses unless
+which stays editable by hand. The server connects anonymously to exactly the
+Remote URL and transport the form declares, with no `/mcp` or `/sse` path
+guessing and no fallback to the other transport, so the Remote URL must be the
+full MCP endpoint; it refuses internal addresses unless
 `TOOL_DISCOVERY_ALLOWED_CIDRS` allows them. The `tool_discovery` block of
 [deploy/config.example.yaml](https://github.com/Haibread/ai-registry/blob/main/deploy/config.example.yaml) holds the settings.
 

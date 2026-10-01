@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -20,7 +19,7 @@ import (
 
 // ToolDiscoverer lists the tools and protocol revisions of a remote MCP server.
 type ToolDiscoverer interface {
-	Discover(ctx context.Context, rawURL string, hint tooldiscovery.Transport) (*tooldiscovery.Result, error)
+	Discover(ctx context.Context, rawURL string, tr tooldiscovery.Transport) (*tooldiscovery.Result, error)
 }
 
 // ToolDiscoveryHandlers serves POST /api/v1/mcp/tool-discoveries.
@@ -62,7 +61,7 @@ type toolDiscoveryResponse struct {
 	Tools                     []domain.MCPTool         `json:"tools"`
 }
 
-// Discover connects to the declared remote URL, guesses the MCP endpoint and
+// Discover connects to the declared remote URL with the declared transport and
 // returns its tools and supported protocol revisions. Nothing is stored.
 func (h *ToolDiscoveryHandlers) Discover(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsAuthenticated(r.Context()) {
@@ -88,12 +87,12 @@ func (h *ToolDiscoveryHandlers) Discover(w http.ResponseWriter, r *http.Request)
 			"namespace, url, and transport are required", r.URL.Path)
 		return
 	}
-	var hint tooldiscovery.Transport
+	var transport tooldiscovery.Transport
 	switch body.Transport {
 	case "http", "streamable_http":
-		hint = tooldiscovery.StreamableHTTP
+		transport = tooldiscovery.StreamableHTTP
 	case "sse":
-		hint = tooldiscovery.SSE
+		transport = tooldiscovery.SSE
 	default:
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"transport must be one of http, sse, streamable_http", r.URL.Path)
@@ -126,7 +125,7 @@ func (h *ToolDiscoveryHandlers) Discover(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	res, err := h.discoverer.Discover(r.Context(), body.URL, hint)
+	res, err := h.discoverer.Discover(r.Context(), body.URL, transport)
 	h.count(r.Context(), err)
 	if err != nil {
 		writeDiscoveryError(w, r, res, err)
@@ -183,26 +182,18 @@ func writeDiscoveryError(w http.ResponseWriter, r *http.Request, res *tooldiscov
 		problem.Write(w, http.StatusGatewayTimeout, "timeout",
 			"The server did not answer in time.", r.URL.Path)
 	case errors.Is(err, tooldiscovery.ErrNoServer):
-		problem.Write(w, http.StatusBadGateway, "no-mcp-server",
-			"No MCP server answered. Tried "+triedURLs(res)+".", r.URL.Path)
+		problem.Write(w, http.StatusBadGateway, "no-mcp-server", noServerDetail(res), r.URL.Path)
 	default:
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 	}
 }
 
-func triedURLs(res *tooldiscovery.Result) string {
-	if res == nil {
-		return "nothing"
+func noServerDetail(res *tooldiscovery.Result) string {
+	if res == nil || len(res.Attempts) == 0 {
+		return "No MCP server answered."
 	}
-	var urls []string
-	seen := map[string]bool{}
-	for _, a := range res.Attempts {
-		if !seen[a.URL] {
-			seen[a.URL] = true
-			urls = append(urls, a.URL)
-		}
-	}
-	return strings.Join(urls, ", ")
+	a := res.Attempts[0]
+	return fmt.Sprintf("No MCP server answered at %s over %s.", a.URL, a.Transport)
 }
 
 func attemptsToResponse(in []tooldiscovery.Attempt) []toolDiscoveryAttempt {

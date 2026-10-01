@@ -455,10 +455,6 @@ export function NewVersionForm({ kind, namespace, slug, prefill, onCreated, onCa
               namespace,
               transport: runtime,
               remoteUrl,
-              onUseEndpoint: (url) => {
-                setRemoteUrl(url)
-                setDirty(true)
-              },
             }}
           />
 

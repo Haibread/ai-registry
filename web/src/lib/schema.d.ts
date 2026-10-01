@@ -683,16 +683,14 @@ export interface paths {
          *     handshake and reads every `tools/list` page, so an authoring form can
          *     pre-fill a version's `tools`. Nothing is stored.
          *
-         *     Once the endpoint is found, every protocol revision the registry's MCP
-         *     client speaks is offered in its own handshake; the revisions the server
-         *     accepts unchanged are returned as `supported_protocol_versions`, to
-         *     pre-fill a version's `protocol_versions`.
+         *     Every protocol revision the registry's MCP client speaks is then offered
+         *     in its own handshake; the revisions the server accepts unchanged are
+         *     returned as `supported_protocol_versions`, to pre-fill a version's
+         *     `protocol_versions`.
          *
-         *     The endpoint is guessed from `url`: the URL as given, then with a `/mcp`
-         *     and a `/sse` path suffix unless the path already ends with one. On each
-         *     candidate the transport the path names (or else `transport`) is tried
-         *     first, then the other one. The first candidate that completes the
-         *     handshake wins; a 401/403 stops the search.
+         *     Only `url` is contacted, with `transport` only: no path suffix is
+         *     appended and the other transport is not tried, so `url` must be the
+         *     full MCP endpoint.
          *
          *     The registry refuses to connect to loopback, private, link-local and
          *     other reserved addresses unless the deployment allows them, and only
@@ -2078,7 +2076,7 @@ export interface components {
              */
             url: string;
             /**
-             * @description The declared transport, tried first. `http` means `streamable_http`.
+             * @description The declared transport, the only one used. `http` means `streamable_http`.
              * @enum {string}
              */
             transport: "http" | "sse" | "streamable_http";
@@ -2094,14 +2092,14 @@ export interface components {
             error?: string;
         };
         MCPToolDiscovery: {
-            /** @description The candidate that answered. It may differ from the declared URL. */
+            /** @description The endpoint that answered, the declared URL without its fragment. */
             endpoint: {
                 /** Format: uri */
                 url: string;
                 /** @enum {string} */
                 transport: "sse" | "streamable_http";
             };
-            /** @description Every attempt made, in order, the successful one last. */
+            /** @description The single attempt made against the declared endpoint. */
             attempts: components["schemas"]["MCPToolDiscoveryAttempt"][];
             server_info?: {
                 name: string;
@@ -4019,7 +4017,7 @@ export interface operations {
             429: components["responses"]["RateLimited"];
             /**
              * @description The remote server could not be used. Inspect `type`:
-             *       .../errors/no-mcp-server           no candidate completed the MCP handshake
+             *       .../errors/no-mcp-server           `url` did not complete the MCP handshake over `transport`
              *       .../errors/upstream-unauthorized   the server requires authentication
              *       .../errors/too-many-tools          the server lists more tools than the registry accepts
              */

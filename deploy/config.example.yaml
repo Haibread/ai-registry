@@ -54,12 +54,12 @@ log:
   level: "info"
 
 # "Fetch from server" in the MCP authoring forms: the registry connects to a
-# remote MCP server's URL, guesses the exact endpoint (/mcp, /sse) and runs
+# remote MCP server's declared URL with its declared transport and runs
 # tools/list. Connections are anonymous and never reach loopback, private,
 # link-local or other reserved addresses unless listed in allowed_cidrs.
 tool_discovery:
   enabled: true
-  # Budget for one discovery, every endpoint guess included.
+  # Budget for one discovery.
   timeout: "10s"
   # Ranges exempted from the internal-address block, for MCP servers hosted
   # on an internal network, e.g. ["10.20.0.0/16"].

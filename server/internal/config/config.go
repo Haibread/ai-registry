@@ -68,7 +68,7 @@ type ToolDiscoveryConfig struct {
 	// Enabled turns POST /api/v1/mcp/tool-discoveries on. When false the
 	// route answers 503.
 	Enabled bool
-	// Timeout is the budget for one discovery, every endpoint guess included.
+	// Timeout is the budget for one discovery.
 	Timeout time.Duration
 	// AllowedCIDRs exempts ranges from the block on loopback, private,
 	// link-local and other reserved addresses, for MCP servers hosted on an
