@@ -110,6 +110,11 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - version-update:semver-major
+      # 2.5.15 panics reading our .gitignore files ("path is expected to be
+      # under the root"): https://github.com/biomejs/biome/issues/12158
+      - dependency-name: "@biomejs/biome"
+        versions:
+          - 2.5.15
     groups:
       docs-deps:
         patterns:
