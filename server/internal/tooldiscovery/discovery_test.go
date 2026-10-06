@@ -328,7 +328,7 @@ func TestDiscover_Failures(t *testing.T) {
 	}{
 		{"unauthorized stops at once", unauthorized.URL, nil, ErrUnauthorized, 1, "HTTP 401"},
 		{"nothing answers", notFound.URL, nil, ErrNoServer, 1, "HTTP 404"},
-		{"html page is not an MCP server", notMCP.URL + "/mcp", nil, ErrNoServer, 1, "content type"},
+		{"html page is not an MCP server", notMCP.URL + "/mcp", nil, ErrNoServer, 1, `unsupported content type "text/html"`},
 		{"untrusted certificate", selfSigned.URL + "/mcp", nil, ErrNoServer, 1, "tls: "},
 		{"connection refused", closed.URL + "/mcp", nil, ErrNoServer, 1, "connection refused"},
 		{"loopback is blocked by default", notFound.URL, func(c *Config) { c.AllowedPrefixes = nil }, ErrBlockedAddress, 1, "127.0.0.1"},
