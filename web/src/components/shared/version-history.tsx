@@ -1,5 +1,6 @@
 /**
- * VersionHistory — timeline list of all published versions for an entry.
+ * VersionHistory — timeline list of an entry's versions: the published ones,
+ * plus the unpublished ones when the viewer is a member of the publisher.
  *
  * Fetches the versions endpoint and renders a compact timeline. Includes an
  * opt-in compare mode: reviewers click "Compare versions" to enter selection
@@ -12,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { VersionDiff } from './version-diff'
-import { getPublicClient } from '@/lib/api-client'
+import { useCatalogClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 
 /**
@@ -37,10 +38,11 @@ interface VersionHistoryProps {
 }
 
 export function VersionHistory({ type, namespace, slug, latestVersion }: VersionHistoryProps) {
-  const api = getPublicClient()
+  const { api, viewer, ready } = useCatalogClient()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['versions', type, namespace, slug],
+    queryKey: ['versions', type, namespace, slug, viewer],
+    enabled: ready,
     queryFn: async () => {
       if (type === 'mcp') {
         const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions', {

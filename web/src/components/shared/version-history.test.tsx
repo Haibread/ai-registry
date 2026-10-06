@@ -7,6 +7,7 @@ import { VersionHistory, VersionHistoryView } from './version-history'
 const mockGET = vi.fn()
 vi.mock('@/lib/api-client', () => ({
   getPublicClient: () => ({ GET: mockGET }),
+  useCatalogClient: () => ({ api: { GET: mockGET }, viewer: 'anonymous', ready: true }),
 }))
 
 function wrapper({ children }: { children: React.ReactNode }) {

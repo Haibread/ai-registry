@@ -30,6 +30,7 @@ const mockGET = vi.fn()
 const mockPOST = vi.fn().mockResolvedValue({})
 vi.mock('@/lib/api-client', () => ({
   getPublicClient: () => ({ GET: mockGET, POST: mockPOST }),
+  useCatalogClient: () => ({ api: { GET: mockGET, POST: mockPOST }, viewer: 'anonymous', ready: true }),
 }))
 
 import AgentDetailPage from './detail'

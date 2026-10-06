@@ -33,6 +33,7 @@ const mockGET = vi.fn()
 const mockPOST = vi.fn().mockResolvedValue({})
 vi.mock('@/lib/api-client', () => ({
   getPublicClient: () => ({ GET: mockGET, POST: mockPOST }),
+  useCatalogClient: () => ({ api: { GET: mockGET, POST: mockPOST }, viewer: 'anonymous', ready: true }),
 }))
 
 import MCPDetailPage from './detail'
@@ -410,5 +411,71 @@ describe('MCPDetailPage — README', () => {
 
     await screen.findByRole('heading', { level: 1 })
     expect(container.querySelector('.prose')).toBeNull()
+  })
+})
+
+describe('MCPDetailPage — unpublished entry seen by a member', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPOST.mockResolvedValue({})
+  })
+
+  const { latest_version: published, ...withoutVersion } = STDIO_SERVER
+  const DRAFT_SERVER = { ...withoutVersion, status: 'draft', visibility: 'private' }
+
+  function primeDraft() {
+    mockGET.mockImplementation((path: string) => {
+      if (path.endsWith('/versions')) {
+        return Promise.resolve({
+          data: {
+            items: [{
+              ...published,
+              id: 'v1',
+              version: '0.1.0',
+              published_at: undefined,
+              status: 'active',
+              tools: [{ name: 'draft_tool', description: 'Only in the draft' }],
+            }],
+          },
+        })
+      }
+      if (path.includes('/mcp/servers/{namespace}/{slug}') && !path.includes('versions')) {
+        return Promise.resolve({ data: DRAFT_SERVER })
+      }
+      return Promise.resolve({ data: { items: [], total_count: 0 } })
+    })
+  }
+
+  it('says who can see it and links to its admin page', async () => {
+    primeDraft()
+    renderDetail()
+    const banner = await screen.findByRole('status')
+    expect(banner).toHaveTextContent(/only members of anthropic can see this server/i)
+    expect(await screen.findByText(/showing unpublished version/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /manage/i })).toHaveAttribute('href', '/admin/mcp/anthropic/filesystem')
+  })
+
+  it('shows the tools of the newest unpublished version', async () => {
+    const user = userEvent.setup()
+    primeDraft()
+    renderDetail()
+    await screen.findByText(/showing unpublished version/i)
+    await user.click(screen.getByRole('tab', { name: /tools \(1\)/i }))
+    expect(screen.getByText('draft_tool')).toBeInTheDocument()
+  })
+
+  it('does not count the visit as a catalog view', async () => {
+    const { useRecordView } = await import('@/hooks/use-record-event')
+    primeDraft()
+    renderDetail()
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+    expect(useRecordView).not.toHaveBeenCalledWith('mcp', 'anthropic', 'filesystem')
+  })
+
+  it('shows no banner on a published public entry', async () => {
+    primeGET(STDIO_SERVER)
+    renderDetail()
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+    expect(screen.queryByText(/can see this server/i)).not.toBeInTheDocument()
   })
 })
