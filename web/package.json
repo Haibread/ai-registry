@@ -1,6 +1,6 @@
 {
   "name": "ai-registry-web",
-  "version": "0.4.0-rc12",
+  "version": "0.4.0-rc13",
   "private": true,
   "license": "MIT",
   "type": "module",
