@@ -2,8 +2,8 @@ apiVersion: v2
 name: ai-registry
 description: A centralized registry for MCP servers
 type: application
-version: 0.4.0-rc13
-appVersion: "0.4.0-rc13"
+version: 0.4.0
+appVersion: "0.4.0"
 keywords:
   - ai
   - mcp
