@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	otellog "go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -123,7 +122,7 @@ func Setup(ctx context.Context, cfg Config) (shutdown func(context.Context) erro
 			sdklog.WithResource(res),
 			sdklog.WithProcessor(sdklog.NewBatchProcessor(logExp)),
 		)
-		otellog.SetLoggerProvider(lp)
+		otel.SetLoggerProvider(lp)
 		shutdownFns = append(shutdownFns, lp.Shutdown)
 	}
 
@@ -177,6 +176,6 @@ func NewLoggerWithExport(level string, otlpEnabled bool) *slog.Logger {
 	// The otelslog bridge extracts the active span context itself, so it does
 	// not need the traceHandler wrapper.
 	bridge := otelslog.NewHandler("ai-registry",
-		otelslog.WithLoggerProvider(otellog.GetLoggerProvider()))
+		otelslog.WithLoggerProvider(otel.GetLoggerProvider()))
 	return slog.New(NewFanoutHandler(stdout, bridge))
 }
