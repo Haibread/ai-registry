@@ -11,6 +11,7 @@ import {
   Scale,
   Link2,
   Shield,
+  EyeOff,
 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
@@ -44,7 +45,7 @@ import { VersionHistory } from '@/components/shared/version-history'
 import { StickyDetailHeader } from '@/components/shared/sticky-detail-header'
 import { ReportDialog } from '@/components/shared/report-dialog'
 import { useRecordView, useRecordCopy } from '@/hooks/use-record-event'
-import { getPublicClient } from '@/lib/api-client'
+import { useCatalogClient } from '@/lib/api-client'
 import { formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
 import { getFieldExplanation } from '@/lib/field-explanations'
 import { ProtocolVersionBadges } from '@/components/mcp/protocol-version-badges'
@@ -53,13 +54,23 @@ export default function MCPDetailPage() {
   const { ns, slug } = useParams<{ ns: string; slug: string }>()
   const location = useLocation()
   const navigate = useNavigate()
-  const api = getPublicClient()
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['mcp-server', ns, slug],
+  const { api, viewer, ready } = useCatalogClient()
+  const { data, isPending, isError } = useQuery({
+    queryKey: ['mcp-server', ns, slug, viewer],
     queryFn: () => api.GET('/api/v1/mcp/servers/{namespace}/{slug}', {
       params: { path: { namespace: ns!, slug: slug! } },
     }).then(r => r.data),
-    enabled: !!ns && !!slug,
+    enabled: ready && !!ns && !!slug,
+  })
+  // latest_version only ever holds a published version. A member looking at
+  // an entry that has none yet gets its newest version instead, so the page
+  // still shows what is being prepared.
+  const { data: unpublishedVersion } = useQuery({
+    queryKey: ['mcp-server-unpublished-version', ns, slug, viewer],
+    queryFn: () => api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions', {
+      params: { path: { namespace: ns!, slug: slug! } },
+    }).then(r => r.data?.items[0] ?? null),
+    enabled: !!data && !data.latest_version,
   })
 
   // Tab state synced to URL hash
@@ -72,12 +83,14 @@ export default function MCPDetailPage() {
   // tracking hooks before any early returns so hook order is stable across
   // loading → loaded transitions.
   const titleRef = useRef<HTMLHeadingElement>(null)
-  useRecordView('mcp', data?.namespace, data?.slug)
+  // Only the public catalog counts views; a member previewing a private entry
+  // is not an audience.
+  useRecordView('mcp', data?.visibility === 'public' ? data.namespace : undefined, data?.slug)
   const recordCopy = useRecordCopy('mcp', data?.namespace, data?.slug)
   const { data: tagData } = useInstanceTags()
   const tagIndex = indexInstanceTags(tagData?.items)
 
-  if (isLoading) return (
+  if (isPending && !isError) return (
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 container py-8">
@@ -101,7 +114,8 @@ export default function MCPDetailPage() {
     </div>
   )
 
-  const lv = data.latest_version
+  const lv = data.latest_version ?? unpublishedVersion ?? undefined
+  const isPreview = data.visibility === 'private' || !data.latest_version
   const capabilities = (lv as Record<string, unknown> | undefined)?.capabilities as Record<string, unknown> | undefined
   // Packages that connect to a remote URL rather than running locally.
   // For these, the endpoint URL is the primary thing a caller needs — we
@@ -137,6 +151,26 @@ export default function MCPDetailPage() {
             { label: data.slug },
           ]}
         />
+
+        {isPreview && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+          >
+            <EyeOff className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0">
+              {data.visibility === 'private'
+                ? <>Only members of <span className="font-mono">{data.namespace}</span> can see this server.</>
+                : 'This server is not in the public catalog.'}
+              {!data.latest_version && lv && (
+                <> Showing unpublished version <span className="font-mono">v{lv.version}</span>.</>
+              )}
+            </span>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/admin/mcp/${data.namespace}/${data.slug}`}>Manage</Link>
+            </Button>
+          </div>
+        )}
 
         {/* Title row */}
         <div className="space-y-2">
