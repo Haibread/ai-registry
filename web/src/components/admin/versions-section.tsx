@@ -340,7 +340,7 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
                       <>
                         <div className="flex items-center gap-1">
                           {v.review_decision === 'approved' ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                           ) : v.review_decision === 'rejected' ? (
                             <AlertCircle className="h-3.5 w-3.5 text-destructive" />
                           ) : null}

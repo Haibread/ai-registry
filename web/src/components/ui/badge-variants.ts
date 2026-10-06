@@ -17,8 +17,9 @@ export const badgeVariants = cva(
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         destructive: "border-transparent bg-destructive text-destructive-foreground",
         outline: "text-foreground",
-        success: "border-transparent bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-        warning: "border-transparent bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+        success: "border-transparent bg-success/10 text-success",
+        warning: "border-transparent bg-warning/10 text-warning",
+        highlight: "border-transparent bg-highlight/15 text-highlight-foreground",
         // text-foreground/75 (not text-muted-foreground): the muted
         // foreground on the tinted badge background measured 4.3:1, just
         // below WCAG AA. The blend clears it in both themes.
@@ -38,8 +39,9 @@ export function statusVariant(
   switch (status) {
     case "published":
       return "success"
+    // Deprecated still works, so it warns rather than reading as an error.
     case "deprecated":
-      return "destructive"
+      return "warning"
     case "deleted":
       return "outline"
     case "draft":

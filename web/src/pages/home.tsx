@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Building2, TrendingUp } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ArrowRight, TrendingUp } from 'lucide-react'
 import { CardGridSkeleton } from '@/components/ui/card-grid-skeleton'
-import { ResourceIcon } from '@/components/ui/resource-icon'
 import { SearchBar } from '@/components/ui/search-bar'
-import { ProtocolExplainer } from '@/components/home/protocol-explainer'
+import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
+import { ProtocolTiles } from '@/components/home/protocol-tiles'
+import { LogoMark } from '@/components/layout/logo'
 import { ServerCard } from '@/components/mcp/server-card'
 import { AgentCard } from '@/components/agents/agent-card'
 import { Header } from '@/components/layout/header'
@@ -15,6 +14,11 @@ import { Footer } from '@/components/layout/footer'
 import { getPublicClient } from '@/lib/api-client'
 
 type ListingView = 'featured' | 'updated'
+
+const LISTING_OPTIONS: SegmentedOption<ListingView>[] = [
+  { value: 'featured', label: 'Featured' },
+  { value: 'updated', label: 'Recently updated' },
+]
 
 export default function HomePage() {
   const api = getPublicClient()
@@ -100,155 +104,102 @@ export default function HomePage() {
     ? updatedAgents === undefined
     : featuredAgents === undefined
 
+  const newThisWeek =
+    (stats?.new_mcp_servers_this_week ?? 0) +
+    (stats?.new_agents_this_week ?? 0) +
+    (stats?.new_publishers_this_week ?? 0)
+  const statItems = [
+    { label: 'MCP servers', value: stats?.mcp_servers },
+    { label: 'agents', value: stats?.agents },
+    { label: 'publishers', value: stats?.publishers },
+  ]
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1">
-        {/* Hero */}
-        <section className="border-b bg-muted/30 py-16">
-          <div className="container text-center space-y-6">
-            <h1 className="text-4xl font-bold tracking-tight">AI Registry</h1>
-            <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-              A centralized catalog of MCP servers and AI agents. Discover, publish, and integrate.
-            </p>
-            <SearchBar />
+        <section className="border-b bg-muted/40">
+          <div className="container grid items-center gap-10 py-12 md:py-16 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="space-y-6">
+              <h1 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl lg:leading-[1.1]">
+                Discover, publish and integrate MCP servers and AI agents.
+              </h1>
+              <p className="max-w-xl text-lg text-muted-foreground">
+                One catalog for the tools and agents your models can call, with versions,
+                publishers and ready-to-paste client config.
+              </p>
+              <SearchBar />
+              <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm text-muted-foreground">
+                {statItems.map((s) => (
+                  <div key={s.label} className="flex items-baseline gap-1.5">
+                    <dt className="sr-only">{s.label}</dt>
+                    <dd className="text-base font-semibold text-foreground tabular-nums">{s.value ?? '—'}</dd>
+                    <span aria-hidden="true">{s.label}</span>
+                  </div>
+                ))}
+                {newThisWeek > 0 && (
+                  <div className="flex items-center gap-1 font-medium text-success">
+                    <dt className="sr-only">New this week</dt>
+                    <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+                    <dd>+{newThisWeek} this week</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+            <LogoMark className="hidden h-auto w-72 lg:block xl:w-80" />
           </div>
         </section>
 
-        {/* Stats */}
-        <section className="border-b py-8">
-          <div className="container grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
-            <Link to="/mcp" className="group">
-              <Card className="h-full transition-shadow hover:shadow-md">
-                <CardHeader className="pt-4 pb-1">
-                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-center gap-1.5 group-hover:text-primary transition-colors">
-                    <ResourceIcon type="mcp-server" className="h-3.5 w-3.5" /> MCP Servers
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <p className="text-2xl font-bold text-center">{stats?.mcp_servers ?? '—'}</p>
-                  <p className="text-[10px] text-center text-green-600 dark:text-green-400 flex items-center justify-center gap-0.5 mt-0.5 min-h-[14px]">
-                    {stats?.new_mcp_servers_this_week != null && stats.new_mcp_servers_this_week > 0 && (
-                      <>
-                        <TrendingUp className="h-2.5 w-2.5" />+{stats.new_mcp_servers_this_week} this week
-                      </>
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-            <Link to="/agents" className="group">
-              <Card className="h-full transition-shadow hover:shadow-md">
-                <CardHeader className="pt-4 pb-1">
-                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-center gap-1.5 group-hover:text-primary transition-colors">
-                    <ResourceIcon type="agent" className="h-3.5 w-3.5" /> Agents
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <p className="text-2xl font-bold text-center">{stats?.agents ?? '—'}</p>
-                  <p className="text-[10px] text-center text-green-600 dark:text-green-400 flex items-center justify-center gap-0.5 mt-0.5 min-h-[14px]">
-                    {stats?.new_agents_this_week != null && stats.new_agents_this_week > 0 && (
-                      <>
-                        <TrendingUp className="h-2.5 w-2.5" />+{stats.new_agents_this_week} this week
-                      </>
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-            <Card className="h-full">
-              <CardHeader className="pt-4 pb-1">
-                <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5" /> Publishers
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pb-4">
-                <p className="text-2xl font-bold text-center">{stats?.publishers ?? '—'}</p>
-                <p className="text-[10px] text-center text-green-600 dark:text-green-400 flex items-center justify-center gap-0.5 mt-0.5 min-h-[14px]">
-                  {stats?.new_publishers_this_week != null && stats.new_publishers_this_week > 0 && (
-                    <>
-                      <TrendingUp className="h-2.5 w-2.5" />+{stats.new_publishers_this_week} this week
-                    </>
-                  )}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+        <section className="container pt-10">
+          <ProtocolTiles mcpCount={stats?.mcp_servers} agentCount={stats?.agents} />
         </section>
 
-        {/* Protocol explainer */}
-        <section className="py-6">
-          <div className="container max-w-2xl">
-            <ProtocolExplainer />
+        <section className="container space-y-10 py-10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold tracking-tight">
+              {listingView === 'updated' ? 'Recently updated' : 'Featured'}
+            </h2>
+            <SegmentedControl
+              label="Listing"
+              options={LISTING_OPTIONS}
+              value={listingView}
+              onChange={setListingView}
+            />
           </div>
-        </section>
 
-        {/* View toggle */}
-        <div className="container flex justify-center py-2">
-          <div className="inline-flex items-center gap-1 rounded-lg border p-1">
-            <button
-              type="button"
-              onClick={() => setListingView('featured')}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                listingView === 'featured'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-              }`}
-            >
-              Featured / New
-            </button>
-            <button
-              type="button"
-              onClick={() => setListingView('updated')}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                listingView === 'updated'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-              }`}
-            >
-              Recently Updated
-            </button>
-          </div>
-        </div>
-
-        {/* MCP Servers */}
-        <section className="py-10 border-b">
-          <div className="container">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold">{mcpLabel}</h2>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/mcp" className="flex items-center gap-1">View all <ArrowRight className="h-4 w-4" /></Link>
-              </Button>
+          <div className="space-y-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <h3 className="font-semibold text-muted-foreground">{mcpLabel}</h3>
+              <Link to="/mcp" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                View all <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
             </div>
             {isLoadingMcp ? (
-              <CardGridSkeleton count={6} />
+              <CardGridSkeleton count={3} />
             ) : mcpServers.length > 0 ? (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {mcpServers.map((s) => <ServerCard key={s.id} server={s} />)}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No MCP servers published yet.</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">No MCP servers published yet.</p>
             )}
           </div>
-        </section>
 
-        {/* Agents */}
-        <section className="py-10">
-          <div className="container">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold">{agentLabel}</h2>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/agents" className="flex items-center gap-1">View all <ArrowRight className="h-4 w-4" /></Link>
-              </Button>
+          <div className="space-y-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <h3 className="font-semibold text-muted-foreground">{agentLabel}</h3>
+              <Link to="/agents" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                View all <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
             </div>
             {isLoadingAgents ? (
-              <CardGridSkeleton count={6} />
+              <CardGridSkeleton count={3} />
             ) : agents.length > 0 ? (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {agents.map((a) => <AgentCard key={a.id} agent={a} />)}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No agents published yet.</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">No agents published yet.</p>
             )}
           </div>
         </section>

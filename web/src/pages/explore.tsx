@@ -19,14 +19,21 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ResourceIcon } from '@/components/ui/resource-icon'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
 import { getPublicClient } from '@/lib/api-client'
 
 type TypeTab = 'all' | 'mcp' | 'agents'
 
-const TABS: { value: TypeTab; label: string; iconType?: 'mcp-server' | 'agent' }[] = [
+const TYPE_OPTIONS: SegmentedOption<TypeTab>[] = [
   { value: 'all', label: 'All' },
-  { value: 'mcp', label: 'MCP Servers', iconType: 'mcp-server' },
-  { value: 'agents', label: 'Agents', iconType: 'agent' },
+  {
+    value: 'mcp',
+    label: <><ResourceIcon type="mcp-server" className="h-3.5 w-3.5" />MCP Servers</>,
+  },
+  {
+    value: 'agents',
+    label: <><ResourceIcon type="agent" className="h-3.5 w-3.5" />Agents</>,
+  },
 ]
 
 export default function ExplorePage() {
@@ -128,23 +135,7 @@ export default function ExplorePage() {
 
         {/* Type tabs + sort */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 rounded-lg border p-1">
-            {TABS.map((tab) => (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setType(tab.value)}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  type === tab.value
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                }`}
-              >
-                {tab.iconType && <ResourceIcon type={tab.iconType} className="h-3.5 w-3.5" />}
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl label="Entry type" options={TYPE_OPTIONS} value={type} onChange={setType} />
 
           <select
             value={sort ?? ''}

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Server, Bot, Users, ArrowRight, FileText, CheckCircle, AlertTriangle, ClipboardCheck } from 'lucide-react'
+import { Plug, Bot, Users, ArrowRight, FileText, CheckCircle, AlertTriangle, ClipboardCheck, Flag } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge, StatusBadge } from '@/components/ui/badge'
@@ -10,6 +10,8 @@ import { formatDate } from '@/lib/utils'
 import { usePermissions } from '@/auth/useMe'
 import { usePublisher } from '@/auth/PublisherContext'
 import { PublisherOverview } from '@/components/admin/publisher-overview'
+import { AttentionTiles, type AttentionTile } from '@/components/admin/attention-tiles'
+import { formatQueueCount, useReviewQueueCount } from '@/hooks/use-review-queue-count'
 
 // AdminDashboard routes the /admin landing page by the selected scope: a
 // publisher member sees the scoped PublisherOverview; a Server Admin viewing
@@ -45,20 +47,8 @@ export default function AdminDashboard() {
 }
 
 function ReviewerLanding() {
-  const api = useAuthClient()
-  // Same key and shape as the sidebar badge query so the cache is shared.
-  const { data } = useQuery({
-    queryKey: ['admin-review-queue-count'],
-    queryFn: async () => {
-      const r = await api.GET('/api/v1/review-queue', {
-        params: { query: { limit: 99 } },
-      })
-      const items = r.data?.items ?? []
-      return { count: items.length, hasMore: !!r.data?.next_cursor }
-    },
-    enabled: true,
-  })
-  const display = data ? (data.hasMore ? '99+' : String(data.count)) : '…'
+  const data = useReviewQueueCount()
+  const display = data ? formatQueueCount(data) : '…'
 
   return (
     <div className="mx-auto max-w-md space-y-6 py-16">
@@ -112,11 +102,36 @@ function GlobalDashboard() {
     enabled: true,
   })
 
+  const reviewQueue = useReviewQueueCount()
+  const { data: pendingReports } = useQuery({
+    queryKey: ['admin-reports', 'pending'],
+    queryFn: () =>
+      api.GET('/api/v1/reports', { params: { query: { status: 'pending' } } }).then((r) => r.data),
+  })
+  const attention: AttentionTile[] = [
+    {
+      key: 'review',
+      count: reviewQueue?.count ?? 0,
+      label: 'awaiting your review',
+      to: '/admin/review',
+      icon: ClipboardCheck,
+      tone: 'attention',
+    },
+    {
+      key: 'reports',
+      count: pendingReports?.items?.length ?? 0,
+      label: pendingReports?.items?.length === 1 ? 'open report' : 'open reports',
+      to: '/admin/reports',
+      icon: Flag,
+      tone: 'danger',
+    },
+  ]
+
   const recentMcp = mcpData?.items ?? []
   const recentAgents = agentsData?.items ?? []
 
   const stats = [
-    { label: 'MCP Servers', value: statsData?.mcp_servers ?? '—', icon: Server, href: '/admin/mcp' },
+    { label: 'MCP Servers', value: statsData?.mcp_servers ?? '—', icon: Plug, href: '/admin/mcp' },
     { label: 'Agents',      value: statsData?.agents      ?? '—', icon: Bot,    href: '/admin/agents' },
     { label: 'Publishers',  value: statsData?.publishers  ?? '—', icon: Users,  href: '/admin/publishers' },
   ]
@@ -127,6 +142,8 @@ function GlobalDashboard() {
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground mt-1">Registry overview.</p>
       </div>
+
+      <AttentionTiles tiles={attention} />
 
       {statsError && (
         <div
@@ -184,7 +201,7 @@ function GlobalDashboard() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5">
-                    <CheckCircle className="h-3.5 w-3.5 text-green-600" /> Published
+                    <CheckCircle className="h-3.5 w-3.5 text-success" /> Published
                   </span>
                   <Link to={`${href}?status=published`}>
                     <Badge variant="outline" className="text-xs">{breakdown.published}</Badge>
@@ -192,7 +209,7 @@ function GlobalDashboard() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" /> Deprecated
+                    <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Deprecated
                   </span>
                   <Link to={`${href}?status=deprecated`}>
                     <Badge variant="outline" className="text-xs">{breakdown.deprecated}</Badge>

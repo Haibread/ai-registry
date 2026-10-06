@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useAuth } from '@/auth/AuthContext'
+import { LogoMark } from '@/components/layout/logo'
 
 export default function LoginPage() {
   const { login, loginLocal, oidcEnabled, localLoginEnabled, configLoading, isAuthenticated, authLoading } = useAuth()
@@ -49,8 +50,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-1">
           <Link to="/" className="inline-flex items-center gap-2 font-semibold">
-            <span className="flex h-7 w-7 items-center justify-center rounded bg-primary text-primary-foreground text-xs font-bold">AI</span>
-            <span>Registry</span>
+            <LogoMark className="h-7" />
+            <span>AI Registry</span>
           </Link>
           <h1 className="text-xl font-bold pt-2">Sign in</h1>
           {returnTo && (

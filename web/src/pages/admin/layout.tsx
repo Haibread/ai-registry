@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { AdminSidebar } from '@/components/layout/admin-sidebar'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
+import { LogoMark } from '@/components/layout/logo'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
 import { useMe } from '@/auth/useMe'
@@ -69,8 +70,8 @@ export default function AdminLayout() {
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
         <Link to="/" className="flex items-center gap-2 font-semibold text-sm min-w-0">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground text-xs font-bold">AI</div>
-          <span className="truncate">Registry</span>
+          <LogoMark className="h-5" />
+          <span className="truncate">AI Registry</span>
         </Link>
         <span className="text-muted-foreground text-sm hidden sm:inline">/</span>
         <span className="text-sm font-medium hidden sm:inline">Admin</span>

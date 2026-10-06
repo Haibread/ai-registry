@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Plus, ArrowRight, Server } from 'lucide-react'
+import { Plus, ArrowRight, Plug } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge, VisibilityBadge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -185,13 +185,13 @@ export default function AdminMCPList() {
       ) : servers.length === 0 ? (
         hasFilters ? (
           <EmptyState
-            icon={<Server className="h-10 w-10" aria-hidden="true" />}
+            icon={<Plug className="h-10 w-10" aria-hidden="true" />}
             title="No servers match your filters."
             description="Try clearing or adjusting the filters above."
           />
         ) : (
           <EmptyState
-            icon={<Server className="h-10 w-10" aria-hidden="true" />}
+            icon={<Plug className="h-10 w-10" aria-hidden="true" />}
             title="No MCP servers yet."
             description="Register your first MCP server to get started."
             action={

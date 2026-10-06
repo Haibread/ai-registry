@@ -208,7 +208,7 @@ export default function AdminMCPDetail() {
       {pendingChange && (
         <div
           role="status"
-          className="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+          className="flex flex-wrap items-center gap-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
         >
           <span>
             <span className="font-medium">

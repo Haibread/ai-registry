@@ -55,12 +55,12 @@ describe('HomePage', () => {
 
   it('renders the hero heading', () => {
     renderHome()
-    expect(screen.getByRole('heading', { name: /ai registry/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/mcp servers and ai agents/i)
   })
 
   it('renders the hero description', () => {
     renderHome()
-    expect(screen.getByText(/centralized catalog of mcp servers and ai agents/i)).toBeInTheDocument()
+    expect(screen.getByText(/one catalog for the tools and agents/i)).toBeInTheDocument()
   })
 
   it('exposes an MCP Servers entry point via the header nav', () => {
@@ -87,9 +87,10 @@ describe('HomePage', () => {
     expect(screen.getByPlaceholderText(/search mcp servers and agents/i)).toBeInTheDocument()
   })
 
-  it('renders the protocol explainer toggle', () => {
+  it('renders the protocol entry tiles', () => {
     renderHome()
-    expect(screen.getByRole('button', { name: /what are mcp and a2a/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'MCP servers' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'A2A agents' })).toBeInTheDocument()
   })
 
   it('shows stat placeholders before data loads', () => {
@@ -109,7 +110,7 @@ describe('HomePage', () => {
     // With items: [] returned, after featured check falls through to recent
     mockGET.mockResolvedValue({ data: { items: [] } })
     renderHome()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/ai registry/i)
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
   })
 })
 
@@ -194,7 +195,7 @@ describe('HomePage listings', () => {
     renderHome()
     await screen.findByText('Featured Server')
 
-    await user.click(screen.getByRole('button', { name: 'Recently Updated' }))
+    await user.click(screen.getByRole('button', { name: 'Recently updated' }))
 
     expect(await screen.findByText('Updated Server')).toBeInTheDocument()
     expect(await screen.findByText('Updated Bot')).toBeInTheDocument()
@@ -202,11 +203,11 @@ describe('HomePage listings', () => {
     expect(screen.getByRole('heading', { name: 'Recently Updated Agents' })).toBeInTheDocument()
     expect(screen.queryByText('Featured Server')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Featured / New' }))
+    await user.click(screen.getByRole('button', { name: 'Featured' }))
     expect(await screen.findByText('Featured Server')).toBeInTheDocument()
   })
 
-  it('renders the public stats with weekly growth, and hides zero growth', async () => {
+  it('renders the public stats with the total weekly growth', async () => {
     primeListings({
       mcp: {},
       agents: {},
@@ -224,8 +225,18 @@ describe('HomePage listings', () => {
     expect(await screen.findByText('12')).toBeInTheDocument()
     expect(screen.getByText('7')).toBeInTheDocument()
     expect(screen.getByText('4')).toBeInTheDocument()
-    expect(screen.getByText('+3 this week')).toBeInTheDocument()
-    expect(screen.getByText('+1 this week')).toBeInTheDocument()
-    expect(screen.getAllByText(/this week/)).toHaveLength(2)
+    expect(screen.getByText('+4 this week')).toBeInTheDocument()
+  })
+
+  it('hides weekly growth when nothing is new', async () => {
+    primeListings({
+      mcp: {},
+      agents: {},
+      stats: { mcp_servers: 12, agents: 7, publishers: 4, new_mcp_servers_this_week: 0 },
+    })
+    renderHome()
+
+    expect(await screen.findByText('12')).toBeInTheDocument()
+    expect(screen.queryByText(/this week/)).not.toBeInTheDocument()
   })
 })

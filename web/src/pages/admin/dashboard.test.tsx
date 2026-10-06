@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -134,6 +134,20 @@ describe('AdminDashboard', () => {
       .find((a) => a.getAttribute('href') === '/admin/agents/acme/example-agent')
     expect(mcpLink).toBeTruthy()
     expect(agentLink).toBeTruthy()
+  })
+
+  it('puts pending reviews and open reports first', async () => {
+    mockGET.mockImplementation((path: string) => {
+      if (path === '/api/v1/stats') return Promise.resolve({ data: sampleStats })
+      if (path === '/api/v1/review-queue') return Promise.resolve({ data: { items: [{}, {}] } })
+      if (path === '/api/v1/reports') return Promise.resolve({ data: { items: [{}] } })
+      return Promise.resolve({ data: { items: [] } })
+    })
+    renderPage()
+    const strip = await screen.findByRole('region', { name: 'Needs you' })
+    expect(within(strip).getByRole('link', { name: /2\s*awaiting your review/i })).toHaveAttribute('href', '/admin/review')
+    expect(within(strip).getByRole('link', { name: /1\s*open report/i })).toHaveAttribute('href', '/admin/reports')
+    expect(mockGET).toHaveBeenCalledWith('/api/v1/reports', { params: { query: { status: 'pending' } } })
   })
 
   it('shows an error alert when stats fail to load', async () => {

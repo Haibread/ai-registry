@@ -36,6 +36,11 @@
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
 
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+  --color-highlight: hsl(var(--highlight));
+  --color-highlight-foreground: hsl(var(--highlight-foreground));
+
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
@@ -83,51 +88,65 @@
 }
 
 @layer base {
+  /* Derived from the logo (#178BC9 blue, #F2861F orange, #F05333 red).
+     The logo blue measured 3.77:1 under white text, below WCAG AA, so
+     primary is a darker step of it; the logo red is kept out of the UI so a
+     destructive action never reads as brand. */
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 210 59% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 210 59% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    /* red-600 rather than red-500: white text on the lighter red measured
-       3.8:1, below WCAG AA (4.5:1). This shade clears it at ~4.6:1. */
-    --destructive: 0 72.2% 50.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --popover-foreground: 210 59% 11%;
+    --primary: 201 82% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 202 62% 95%;
+    --secondary-foreground: 203 82% 28%;
+    --muted: 210 33% 96%;
+    --muted-foreground: 209 18% 41%;
+    --accent: 204 42% 95%;
+    --accent-foreground: 210 59% 11%;
+    --destructive: 345 83% 41%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 206 30% 89%;
+    --input: 206 30% 89%;
+    --ring: 201 79% 44%;
     --radius: 0.5rem;
+    /* success and warning text sits on a 10% tint of itself in badges;
+       these shades keep that pair above 4.5:1. */
+    --success: 142 64% 24%;
+    --warning: 32 81% 29%;
+    --highlight: 29 89% 53%;
+    --highlight-foreground: 28 92% 31%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --background: 210 55% 8%;
+    --foreground: 208 43% 93%;
+    --card: 210 50% 11%;
+    --card-foreground: 208 43% 93%;
+    --popover: 210 50% 11%;
+    --popover-foreground: 208 43% 93%;
+    --primary: 201 79% 61%;
+    --primary-foreground: 207 77% 7%;
+    --secondary: 207 59% 18%;
+    --secondary-foreground: 201 78% 86%;
+    --muted: 209 46% 14%;
+    --muted-foreground: 208 21% 65%;
+    --accent: 209 46% 16%;
+    --accent-foreground: 208 43% 93%;
+    /* Light enough to read as text on the dark background, so it takes
+       dark text when used as a fill, like primary. */
+    --destructive: 350 89% 64%;
+    --destructive-foreground: 207 77% 7%;
+    --border: 209 39% 20%;
+    --input: 209 39% 20%;
+    --ring: 201 79% 61%;
+    --success: 142 69% 58%;
+    --warning: 48 96% 53%;
+    --highlight: 29 89% 53%;
+    --highlight-foreground: 28 89% 72%;
   }
 }
 

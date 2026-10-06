@@ -214,8 +214,8 @@ test.describe('Remote MCP server (URL-only) authoring', () => {
     expect(vis.ok(), `make public: ${await vis.text()}`).toBeTruthy()
 
     await page.goto(`/mcp/${pub.slug}/${slug}`)
-    await expect(page.getByText('Connection & Runtime')).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(endpoint).first()).toBeVisible()
+    const connect = page.getByRole('region', { name: 'Quick connect' })
+    await expect(connect.getByText(endpoint)).toBeVisible({ timeout: 10_000 })
 
     // Usage tab renders the endpoint and the host-config generator.
     await page.getByRole('tab', { name: 'Usage' }).click()
