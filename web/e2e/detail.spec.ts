@@ -6,7 +6,7 @@
  * The admin CRUD suite in admin.spec.ts creates entries but never navigates
  * into their *public* detail pages, and public.spec.ts only covers listings.
  * These tests close that gap by asserting the v0.2 Connection card, tab
- * navigation, and JSON view all render against a real backend.
+ * navigation, and raw JSON all render against a real backend.
  *
  * Strategy:
  *   - Seed a publisher, an MCP server (with a remote package so the Connection
@@ -191,43 +191,39 @@ test.describe('Public detail pages', () => {
 
   // ── MCP detail page ───────────────────────────────────────────────────
 
-  test('MCP detail page renders the name, identifier, and Connection card', async ({ page }) => {
+  test('MCP detail page renders the name and the Quick connect card', async ({ page }) => {
     await page.goto(`/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     await expect(page.getByRole('heading', { name: MCP_NAME })).toBeVisible({ timeout: 15_000 })
 
-    // The remote transport branch shows the "Connection & Runtime" header and
-    // an Endpoint URL hero row linking to the package's transport URL.
-    await expect(page.getByText('Connection & Runtime')).toBeVisible()
-    await expect(page.getByText('Endpoint URL')).toBeVisible()
-    await expect(
-      page.getByRole('link', { name: /mcp\.example\.test\/e2e-detail\/sse/ }),
-    ).toHaveAttribute('href', 'https://mcp.example.test/e2e-detail/sse')
+    // A remote server's endpoint URL is copyable from the side column.
+    const connect = page.getByRole('region', { name: 'Quick connect' })
+    await expect(connect.getByText('https://mcp.example.test/e2e-detail/sse')).toBeVisible()
+    await expect(connect.getByRole('button', { name: /copy endpoint url/i })).toBeVisible()
 
-    // Transport tile replaces Runtime for remote servers.
-    await expect(page.getByText('Transport')).toBeVisible()
+    // The runtime is labelled as the transport for remote servers.
+    await expect(page.getByRole('region', { name: 'Details' }).getByText('Transport')).toBeVisible()
   })
 
-  test('MCP detail page has Overview/Usage/Versions/JSON tabs', async ({ page }) => {
+  test('MCP detail page has Overview/Usage/Versions tabs and the raw JSON', async ({ page }) => {
     await page.goto(`/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     await expect(page.getByRole('heading', { name: MCP_NAME })).toBeVisible({ timeout: 15_000 })
 
     await expect(page.getByRole('tab', { name: /overview/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /usage/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /versions/i })).toBeVisible()
-    await expect(page.getByRole('tab', { name: /json/i })).toBeVisible()
 
-    // Usage tab shows the package identifier in the config generator.
-    await page.getByRole('tab', { name: /usage/i }).click()
-    await expect(page.getByText(/@e2e\/detail-mcp@1\.0\.0/).first()).toBeVisible({ timeout: 10_000 })
-
-    // JSON tab renders the raw server document inside a <pre> block. The
-    // slug appears in other places on the page (sticky header, dialogs), so
-    // scope the assertion to the active JSON panel's <pre> element.
-    await page.getByRole('tab', { name: /json/i }).click()
+    // The raw server document folds at the bottom of the Overview tab. The
+    // slug appears elsewhere on the page (sticky header, dialogs), so scope
+    // the assertion to the active panel's <pre> element.
+    await page.getByRole('button', { name: /raw api response/i }).click()
     const jsonPre = page.locator('[role="tabpanel"][data-state="active"] pre')
     await expect(jsonPre).toBeVisible({ timeout: 10_000 })
     await expect(jsonPre).toContainText(MCP_SLUG)
     await expect(jsonPre).toContainText('@e2e/detail-mcp')
+
+    // Usage tab shows the package identifier in the config generator.
+    await page.getByRole('tab', { name: /usage/i }).click()
+    await expect(page.getByText(/@e2e\/detail-mcp@1\.0\.0/).first()).toBeVisible({ timeout: 10_000 })
   })
 
   // ── Agent detail page ─────────────────────────────────────────────────
@@ -250,22 +246,18 @@ test.describe('Public detail pages', () => {
     await expect(page.getByText('Generated', { exact: true })).toBeVisible()
   })
 
-  test('Agent detail page renders the name, Connection card, and A2A card link', async ({ page }) => {
+  test('Agent detail page renders the name, Quick connect card, and A2A card link', async ({ page }) => {
     await page.goto(`/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
     await expect(page.getByRole('heading', { name: AGENT_NAME })).toBeVisible({ timeout: 15_000 })
 
-    // Connection card with the endpoint URL hero row.
-    await expect(page.getByText('Connection')).toBeVisible()
-    await expect(page.getByText('Endpoint URL')).toBeVisible()
-    await expect(
-      page.getByRole('link', { name: /agents\.example\.test\/e2e-detail/ }),
-    ).toHaveAttribute('href', AGENT_ENDPOINT)
+    // Endpoint URL and authentication scheme in the side column.
+    const connect = page.getByRole('region', { name: 'Quick connect' })
+    await expect(connect.getByText(AGENT_ENDPOINT)).toBeVisible()
+    await expect(connect.getByText('Bearer')).toBeVisible()
 
-    // A2A protocol tile and authentication scheme.
-    await expect(page.getByText('A2A Protocol')).toBeVisible()
-    await expect(page.getByText('0.3.0')).toBeVisible()
-    await expect(page.getByText('Authentication')).toBeVisible()
-    await expect(page.getByText('Bearer').first()).toBeVisible()
+    const details = page.getByRole('region', { name: 'Details' })
+    await expect(details.getByText('A2A protocol')).toBeVisible()
+    await expect(details.getByText('0.3.0')).toBeVisible()
 
     // A2A Agent Card link points at the well-known path for this agent.
     await expect(
@@ -276,15 +268,14 @@ test.describe('Public detail pages', () => {
     )
   })
 
-  test('Agent detail page exposes Skills/Connect/Versions/JSON tabs', async ({ page }) => {
+  test('Agent detail page exposes Skills/Usage/Versions tabs', async ({ page }) => {
     await page.goto(`/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
     await expect(page.getByRole('heading', { name: AGENT_NAME })).toBeVisible({ timeout: 15_000 })
 
     await expect(page.getByRole('tab', { name: /overview/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /skills \(1\)/i })).toBeVisible()
-    await expect(page.getByRole('tab', { name: /connect/i })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /usage/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /versions/i })).toBeVisible()
-    await expect(page.getByRole('tab', { name: /json/i })).toBeVisible()
 
     // Skills tab lists the seeded skill.
     await page.getByRole('tab', { name: /skills/i }).click()

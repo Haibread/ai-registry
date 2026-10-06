@@ -18,8 +18,8 @@ describe("statusVariant", () => {
     expect(statusVariant("published")).toBe("success")
   })
 
-  it("maps 'deprecated' to destructive (red)", () => {
-    expect(statusVariant("deprecated")).toBe("destructive")
+  it("maps 'deprecated' to warning (still usable, not an error)", () => {
+    expect(statusVariant("deprecated")).toBe("warning")
   })
 
   it("maps 'draft' to muted (grey)", () => {

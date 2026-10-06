@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Server, Bot, ClipboardCheck, FilePen, ArrowRight, Activity, Plus, ChevronDown } from 'lucide-react'
+import { Plug, Bot, ClipboardCheck, FilePen, Activity, Plus, ChevronDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,6 +12,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ActivityTimeline } from '@/components/admin/activity-timeline'
+import { AttentionTiles, type AttentionTile } from '@/components/admin/attention-tiles'
 import { useAuthClient } from '@/lib/api-client'
 import { usePermissions } from '@/auth/useMe'
 import type { PublisherOption } from '@/auth/PublisherContext'
@@ -26,9 +27,9 @@ type StatusBreakdown = components['schemas']['StatusBreakdown']
 // screen-reader-accessible meaning, so the bar itself stays decorative.
 function StatusBar({ b }: { b?: StatusBreakdown }) {
   const segments = [
-    { key: 'draft', count: b?.draft ?? 0, color: 'bg-amber-500' },
-    { key: 'published', count: b?.published ?? 0, color: 'bg-green-600' },
-    { key: 'deprecated', count: b?.deprecated ?? 0, color: 'bg-muted-foreground/50' },
+    { key: 'draft', count: b?.draft ?? 0, color: 'bg-muted-foreground/50' },
+    { key: 'published', count: b?.published ?? 0, color: 'bg-success' },
+    { key: 'deprecated', count: b?.deprecated ?? 0, color: 'bg-warning' },
   ].filter((s) => s.count > 0)
   if (segments.length === 0) return null
   return (
@@ -43,22 +44,6 @@ function StatusBar({ b }: { b?: StatusBreakdown }) {
       </p>
     </>
   )
-}
-
-interface AttentionTile {
-  key: string
-  show: boolean
-  count: number
-  label: string
-  to: string
-  icon: typeof ClipboardCheck
-  tone: 'info' | 'warning'
-}
-
-const TILE_TONE: Record<AttentionTile['tone'], string> = {
-  info: 'bg-blue-50 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/70',
-  warning:
-    'bg-amber-50 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/70',
 }
 
 // PublisherOverview is the scoped admin home: what needs the caller, the state
@@ -90,26 +75,23 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
   const noResources = !!stats && stats.mcp_servers === 0 && stats.agents === 0
 
   const tiles: AttentionTile[] = [
-    {
+    ...(canReview ? [{
       key: 'review',
-      show: canReview,
       count: stats?.pending_review ?? 0,
       label: 'awaiting your review',
       to: '/admin/review',
       icon: ClipboardCheck,
-      tone: 'info',
-    },
-    {
+      tone: 'attention' as const,
+    }] : []),
+    ...(canEdit ? [{
       key: 'drafts',
-      show: canEdit,
       count: draftCount,
       label: draftCount === 1 ? 'draft in progress' : 'drafts in progress',
       to: '/admin/mcp?status=draft',
       icon: FilePen,
-      tone: 'warning',
-    },
+      tone: 'neutral' as const,
+    }] : []),
   ]
-  const visibleTiles = tiles.filter((t) => t.show && t.count > 0)
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
@@ -138,7 +120,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
                   <Link to="/admin/mcp/new">
-                    <Server aria-hidden="true" /> New MCP server
+                    <Plug aria-hidden="true" /> New MCP server
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
@@ -152,27 +134,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
         </div>
       </div>
 
-      {/* Attention strip — only the items that actually need the caller. */}
-      {visibleTiles.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Needs you</p>
-          <div className="flex flex-wrap gap-3">
-            {visibleTiles.map(({ key, count, label, to, icon: Icon, tone }) => (
-              <Link
-                key={key}
-                to={to}
-                className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-colors min-w-[220px] ${TILE_TONE[tone]}`}
-              >
-                <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-                <span className="flex-1 text-sm">
-                  <span className="text-lg font-bold">{count}</span> {label}
-                </span>
-                <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+      <AttentionTiles tiles={tiles} />
 
       {/* Metric row */}
       {statsPending ? (
@@ -183,7 +145,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
         </div>
       ) : noResources ? (
         <EmptyState
-          icon={<Server className="h-10 w-10" />}
+          icon={<Plug className="h-10 w-10" />}
           title="No resources yet"
           description={
             canEdit
@@ -205,7 +167,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
           <div className="grid gap-4 sm:grid-cols-2">
             <Link to="/admin/mcp" className="rounded-lg bg-muted/50 p-4 transition-colors hover:bg-muted">
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Server className="h-3.5 w-3.5" aria-hidden="true" /> MCP servers
+                <Plug className="h-3.5 w-3.5" aria-hidden="true" /> MCP servers
               </p>
               <p className="mt-1 text-2xl font-bold">{stats.mcp_servers}</p>
               <StatusBar b={stats.mcp_status_breakdown} />

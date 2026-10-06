@@ -54,58 +54,65 @@ function renderWithRouter(ui: React.ReactNode) {
 }
 
 describe('ServerCard', () => {
-  it('renders name, namespace/slug, version and runtime', () => {
+  it('titles the card with a heading that links to the detail page', () => {
     renderWithRouter(<ServerCard server={makeServer()} />)
-    expect(screen.getByText('Files Server')).toBeInTheDocument()
-    expect(screen.getByText('acme')).toBeInTheDocument()
+    const heading = screen.getByRole('heading', { level: 3, name: 'Files Server' })
+    expect(heading.querySelector('a')).toHaveAttribute('href', '/mcp/acme/files')
+  })
+
+  it('renders name, namespace/slug and version', () => {
+    renderWithRouter(<ServerCard server={makeServer()} />)
+    expect(screen.getByRole('link', { name: 'Files Server' })).toHaveAttribute('href', '/mcp/acme/files')
+    expect(screen.getByRole('link', { name: 'acme' })).toHaveAttribute('href', '/mcp/acme')
     expect(screen.getByText('v2.0.0')).toBeInTheDocument()
-    expect(screen.getByText('http')).toBeInTheDocument()
   })
 
-  it('shows remote transport type and endpoint', () => {
+  it('labels a remote server with its transport', () => {
     renderWithRouter(<ServerCard server={makeServer()} />)
-    expect(screen.getByText('streamable_http')).toBeInTheDocument()
-    expect(screen.getByText('https://acme.dev/mcp')).toBeInTheDocument()
+    expect(screen.getByText('remote · streamable_http')).toBeInTheDocument()
   })
 
-  it('renders license, repo and docs links when present', () => {
-    renderWithRouter(<ServerCard server={makeServer()} />)
-    expect(screen.getByText('MIT')).toBeInTheDocument()
-    const repo = screen.getByRole('link', { name: /view repository/i })
-    expect(repo).toHaveAttribute('href', 'https://github.com/acme/files')
-    const docs = screen.getByRole('link', { name: /view documentation/i })
-    expect(docs).toHaveAttribute('href', 'https://acme.dev/files')
-  })
-
-  it('does not render transport block for stdio', () => {
+  it('labels a local server with its package ecosystem', () => {
     const server = makeServer({
       latest_version: {
         version: '1.0.0',
-        // 'http' runtime used here so the runtime badge doesn't match /stdio/
-        // in the assertion below — we're verifying the transport block is
-        // suppressed when the package's transport.type is stdio.
-        runtime: 'http',
+        runtime: 'stdio',
         protocol_versions: ['2025-03-26'],
         packages: [
-          {
-            registryType: 'pypi',
-            identifier: 'acme-files',
-            version: '1.0.0',
-            transport: { type: 'stdio' },
-          },
+          { registryType: 'pypi', identifier: 'acme-files', version: '1.0.0', transport: { type: 'stdio' } },
         ],
       },
     })
     renderWithRouter(<ServerCard server={server} />)
-    expect(screen.queryByText(/stdio/)).not.toBeInTheDocument()
-    expect(screen.queryByText('https://acme.dev/mcp')).not.toBeInTheDocument()
+    expect(screen.getByText('local · pip')).toBeInTheDocument()
   })
 
-  it('omits repo and docs when their urls are missing', () => {
-    const server = makeServer({ repo_url: undefined, homepage_url: undefined, license: undefined })
-    renderWithRouter(<ServerCard server={server} />)
-    expect(screen.queryByRole('link', { name: /view repository/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /view documentation/i })).not.toBeInTheDocument()
+  it('leaves endpoint and outbound links to the detail page', () => {
+    renderWithRouter(<ServerCard server={makeServer()} />)
+    expect(screen.queryByText('https://acme.dev/mcp')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /repository|documentation|json/i })).not.toBeInTheDocument()
+  })
+
+  it('marks verified and featured servers', () => {
+    renderWithRouter(<ServerCard server={makeServer({ featured: true })} />)
+    expect(screen.getByRole('img', { name: 'Verified' })).toBeInTheDocument()
+    expect(screen.getByText('Featured')).toBeInTheDocument()
+  })
+
+  it('shows the status only when it is not published', () => {
+    const { unmount } = renderWithRouter(<ServerCard server={makeServer()} />)
+    expect(screen.queryByText('published')).not.toBeInTheDocument()
+    unmount()
+    renderWithRouter(<ServerCard server={makeServer({ status: 'deprecated' })} />)
+    expect(screen.getByText('deprecated')).toBeInTheDocument()
+  })
+
+  it('shows two tags and counts the rest', () => {
+    renderWithRouter(<ServerCard server={makeServer({ tags: ['db', 'sql', 'cloud', 'ops'] })} />)
+    expect(screen.getByText('db')).toBeInTheDocument()
+    expect(screen.getByText('sql')).toBeInTheDocument()
+    expect(screen.queryByText('cloud')).not.toBeInTheDocument()
+    expect(screen.getByText('+2')).toBeInTheDocument()
   })
 
   // ── Tool count chip ──
@@ -135,41 +142,6 @@ describe('ServerCard', () => {
     })
     renderWithRouter(<ServerCard server={server} />)
     expect(screen.getByText(/3 tools/)).toBeInTheDocument()
-  })
-
-  it('renders up to 3 tool-name chips alongside the count (mirrors agent-card skills+tags row)', () => {
-    const server = makeServer({
-      latest_version: {
-        version: '2.0.0',
-        runtime: 'http',
-        protocol_versions: ['2025-03-26'],
-        packages: [
-          {
-            registryType: 'npm',
-            identifier: '@acme/files',
-            version: '2.0.0',
-            transport: { type: 'stdio' },
-          },
-        ],
-        tools: [
-          { name: 'read_file' },
-          { name: 'write_file' },
-          { name: 'list_directory' },
-          { name: 'delete_file' }, // should NOT render — only first 3
-          { name: 'watch_path' },
-        ],
-      },
-    })
-    renderWithRouter(<ServerCard server={server} />)
-    // Count chip still renders.
-    expect(screen.getByText(/5 tools/)).toBeInTheDocument()
-    // First 3 tool names render as their own chips.
-    expect(screen.getByText('read_file')).toBeInTheDocument()
-    expect(screen.getByText('write_file')).toBeInTheDocument()
-    expect(screen.getByText('list_directory')).toBeInTheDocument()
-    // 4th + 5th tool names do NOT render on the card — they'd bloat the row.
-    expect(screen.queryByText('delete_file')).not.toBeInTheDocument()
-    expect(screen.queryByText('watch_path')).not.toBeInTheDocument()
   })
 
   it('pluralises correctly for a single tool', () => {

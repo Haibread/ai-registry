@@ -244,7 +244,7 @@ function ToolCard({ tool, index, onChange, onRemove }: ToolCardProps) {
             {schemaError ? (
               <span className="text-destructive">invalid</span>
             ) : tool.input_schema ? (
-              <span className="text-green-600 dark:text-green-400">set</span>
+              <span className="text-success">set</span>
             ) : null}
           </button>
           {schemaOpen && (

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, Server, Bot, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, Plug, Bot, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
@@ -264,7 +264,7 @@ export default function AdminPublisherDetail() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Server className="h-4 w-4" aria-hidden="true" />
+            <Plug className="h-4 w-4" aria-hidden="true" />
             MCP Servers
             <span className="text-sm font-normal text-muted-foreground">({mcpServers.length})</span>
           </h2>

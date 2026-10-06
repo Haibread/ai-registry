@@ -103,7 +103,7 @@ export function UsageEditor({ server, canEdit, isServerAdmin, changePending, onS
     <div className="flex flex-wrap items-center gap-2">
       <h2 id="usage-heading" className="text-lg font-semibold flex-1">Usage</h2>
       {dirty ? (
-        <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-400">Unsaved changes</Badge>
+        <Badge variant="outline" className="border-warning/40 text-warning">Unsaved changes</Badge>
       ) : (
         <Badge variant="secondary">{current ? 'Custom' : 'Generated'}</Badge>
       )}

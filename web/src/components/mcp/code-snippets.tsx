@@ -9,6 +9,7 @@ import {
   type SnippetLanguage,
 } from '@/lib/mcp-code-snippets'
 import type { components } from '@/lib/schema'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 
 interface MCPCodeSnippetsProps {
   serverName: string
@@ -49,23 +50,7 @@ export function MCPCodeSnippets({ serverName, packages, remotes = [], tools }: M
         </select>
       )}
 
-      <div className="flex flex-wrap items-center gap-1 rounded-lg border p-1 w-fit" role="group" aria-label="Language">
-        {SNIPPET_LANGUAGES.map((l) => (
-          <button
-            key={l.value}
-            type="button"
-            aria-pressed={lang === l.value}
-            onClick={() => setLang(l.value)}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              lang === l.value
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-            }`}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl options={SNIPPET_LANGUAGES} value={lang} onChange={setLang} label="Language" size="sm" />
 
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">Install</p>

@@ -43,40 +43,47 @@ function renderWithRouter(ui: React.ReactNode) {
 }
 
 describe('AgentCard', () => {
+  it('titles the card with a heading that links to the detail page', () => {
+    renderWithRouter(<AgentCard agent={makeAgent()} />)
+    const heading = screen.getByRole('heading', { level: 3, name: 'Acme Bot' })
+    expect(heading.querySelector('a')).toHaveAttribute('href', '/agents/acme/bot')
+  })
+
   it('renders name, namespace/slug and version', () => {
     renderWithRouter(<AgentCard agent={makeAgent()} />)
-    expect(screen.getByText('Acme Bot')).toBeInTheDocument()
-    expect(screen.getByText('acme')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Acme Bot' })).toHaveAttribute('href', '/agents/acme/bot')
+    expect(screen.getByRole('link', { name: 'acme' })).toHaveAttribute('href', '/agents/acme')
     expect(screen.getByText(/\/bot/)).toBeInTheDocument()
     expect(screen.getByText('v1.2.3')).toBeInTheDocument()
   })
 
-  it('renders description and endpoint url when present', () => {
+  it('renders the description and skill count', () => {
     renderWithRouter(<AgentCard agent={makeAgent()} />)
     expect(screen.getByText('A helpful agent')).toBeInTheDocument()
-    expect(screen.getByText('https://agent.example.com/a2a')).toBeInTheDocument()
+    expect(screen.getByText('2 skills')).toBeInTheDocument()
   })
 
-  it('shows skill count and unique tags (up to 3)', () => {
+  it('leaves endpoint and outbound links to the detail page', () => {
     renderWithRouter(<AgentCard agent={makeAgent()} />)
-    expect(screen.getByText(/2 skills/)).toBeInTheDocument()
-    expect(screen.getByText('web')).toBeInTheDocument()
-    // 'nlp' deduped
-    expect(screen.getAllByText('nlp')).toHaveLength(1)
+    expect(screen.queryByText('https://agent.example.com/a2a')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /json|agent card/i })).not.toBeInTheDocument()
   })
 
-  it('links to the agent detail and JSON API', () => {
-    renderWithRouter(<AgentCard agent={makeAgent()} />)
-    const detail = screen.getByRole('link', { name: 'Acme Bot' })
-    expect(detail).toHaveAttribute('href', '/agents/acme/bot')
-    const json = screen.getByRole('link', { name: /view json api response/i })
-    expect(json).toHaveAttribute('href', '/api/v1/agents/acme/bot')
+  it('marks verified and featured agents', () => {
+    renderWithRouter(<AgentCard agent={makeAgent({ verified: true, featured: true })} />)
+    expect(screen.getByRole('img', { name: 'Verified' })).toBeInTheDocument()
+    expect(screen.getByText('Featured')).toBeInTheDocument()
   })
 
-  it('omits skill badge and endpoint block when absent', () => {
-    // `endpoint_url` is required as `string` in the schema, but the card
-    // treats falsy values as "no endpoint" — empty string triggers that path
-    // without violating the type.
+  it('shows the status only when it is not published', () => {
+    const { unmount } = renderWithRouter(<AgentCard agent={makeAgent()} />)
+    expect(screen.queryByText('published')).not.toBeInTheDocument()
+    unmount()
+    renderWithRouter(<AgentCard agent={makeAgent({ status: 'deprecated' })} />)
+    expect(screen.getByText('deprecated')).toBeInTheDocument()
+  })
+
+  it('omits the skills chip when the version declares none', () => {
     const agent = makeAgent({
       latest_version: { version: '0.1.0', skills: [], endpoint_url: '' },
       description: undefined,
@@ -87,9 +94,6 @@ describe('AgentCard', () => {
   })
 
   it('omits the skills chip when the skills field is entirely absent', () => {
-    // Distinct from the empty-array case above: the card does
-    // `lv?.skills && lv.skills.length > 0`, so both `undefined` and `[]`
-    // hide the chip. Guard the undefined branch explicitly.
     const agent = makeAgent({
       latest_version: { version: '0.1.0', endpoint_url: 'https://a.example/a2a' },
     })

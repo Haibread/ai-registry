@@ -7,9 +7,9 @@ type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
 
 const DOT: Record<Tone, string> = {
   neutral: 'bg-muted-foreground',
-  info: 'bg-blue-500',
-  success: 'bg-green-600',
-  warning: 'bg-amber-500',
+  info: 'bg-primary',
+  success: 'bg-success',
+  warning: 'bg-warning',
   danger: 'bg-destructive',
 }
 

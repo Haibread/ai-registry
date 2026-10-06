@@ -55,7 +55,7 @@ describe("CopyButton", () => {
     await waitFor(() => {
       const svg = container.querySelector("svg")
       expect(svg).toBeInTheDocument()
-      expect(svg?.classList.toString()).toContain("text-green-600")
+      expect(svg?.classList.toString()).toContain("text-success")
     })
   })
 })

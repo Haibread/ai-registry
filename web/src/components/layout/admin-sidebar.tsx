@@ -1,8 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Server, Bot, Flag, Activity, ScrollText, ClipboardCheck, Settings, Tags } from 'lucide-react'
+import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Plug, Bot, Flag, Activity, ScrollText, ClipboardCheck, Settings, Tags } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useAuthClient } from '@/lib/api-client'
+import { formatQueueCount, useReviewQueueCount } from '@/hooks/use-review-queue-count'
 import { usePermissions, type Permissions } from '@/auth/useMe'
 import { usePublisher } from '@/auth/PublisherContext'
 import { PublisherSwitcher } from '@/components/admin/publisher-switcher'
@@ -29,7 +28,7 @@ interface NavItem {
 // has selected. Resource lists are mine-scoped, so an author sees only theirs.
 const publisherNav: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, requires: 'always' },
-  { to: '/admin/mcp', label: 'MCP Servers', icon: Server, requires: 'always' },
+  { to: '/admin/mcp', label: 'MCP Servers', icon: Plug, requires: 'always' },
   { to: '/admin/agents', label: 'Agents', icon: Bot, requires: 'always' },
   { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review', requires: 'reviewer' },
   { to: '/admin/activity', label: 'Activity', icon: Activity, requires: 'publisherMember' },
@@ -76,40 +75,15 @@ interface AdminSidebarProps {
   onNavigate?: () => void
 }
 
-// useReviewQueueCount returns a small integer (capped at 99) representing
-// the number of pending items the reviewer has waiting. Returns null while
-// the request is in flight or the user is not authenticated. Refetches on
-// a 30-second interval so a reviewer who leaves the tab open notices new
-// submissions without a hard refresh.
-function useReviewQueueCount(): number | null {
-  const api = useAuthClient()
-  const { data } = useQuery({
-    queryKey: ['admin-review-queue-count'],
-    queryFn: async () => {
-      // Limit 99 + check next_cursor — if the queue overflows we display
-      // "99+". Larger limits would cost more bandwidth on every admin
-      // page load for no UX gain.
-      const r = await api.GET('/api/v1/review-queue', {
-        params: { query: { limit: 99 } },
-      })
-      const items = r.data?.items ?? []
-      return { count: items.length, hasMore: !!r.data?.next_cursor }
-    },
-    enabled: true,
-    refetchInterval: 30_000,
-  })
-  if (!data) return null
-  return data.hasMore ? 100 : data.count
-}
-
 function ReviewQueueBadge() {
-  const count = useReviewQueueCount()
-  if (count === null || count === 0) return null
-  const display = count >= 100 ? '99+' : String(count)
+  const queue = useReviewQueueCount()
+  if (!queue || queue.count === 0) return null
+  const count = queue.count
+  const display = formatQueueCount(queue)
   return (
     <span
       aria-label={`${display} item${count === 1 ? '' : 's'} pending review`}
-      className="ml-auto inline-flex items-center justify-center rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground tabular-nums"
+      className="ml-auto inline-flex items-center justify-center rounded-full bg-highlight/15 px-2 py-0.5 text-[11px] font-semibold text-highlight-foreground tabular-nums"
     >
       {display}
     </span>

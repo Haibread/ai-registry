@@ -46,7 +46,7 @@ describe('PublisherSidebar', () => {
 
   it('renders link to publisher page', async () => {
     renderSidebar()
-    const link = await screen.findByText('View all entries →')
+    const link = await screen.findByRole('link', { name: 'Acme Corp' })
     expect(link).toHaveAttribute('href', '/publishers/acme')
   })
 

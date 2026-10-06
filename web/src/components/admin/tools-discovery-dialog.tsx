@@ -182,7 +182,7 @@ function DiscoveryReview({ discovery, currentTools, onApply, onClose }: ReviewPr
               <span className="min-w-0 flex-1 truncate">
                 {a.url} · {a.transport}
               </span>
-              <span className={cn("shrink-0 font-semibold", a.error ? "text-muted-foreground" : "text-green-700 dark:text-green-400")}>
+              <span className={cn("shrink-0 font-semibold", a.error ? "text-muted-foreground" : "text-success")}>
                 {a.error ?? "ok"}
               </span>
             </li>

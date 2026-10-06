@@ -8,8 +8,8 @@ import { FileText, CheckCircle, AlertTriangle, XCircle } from 'lucide-react'
 
 const stages = [
   { key: 'draft',      label: 'Draft',      icon: FileText,      color: 'text-muted-foreground' },
-  { key: 'published',  label: 'Published',  icon: CheckCircle,   color: 'text-green-600' },
-  { key: 'deprecated', label: 'Deprecated', icon: AlertTriangle,  color: 'text-yellow-600' },
+  { key: 'published',  label: 'Published',  icon: CheckCircle,   color: 'text-success' },
+  { key: 'deprecated', label: 'Deprecated', icon: AlertTriangle,  color: 'text-warning' },
   { key: 'deleted',    label: 'Deleted',    icon: XCircle,       color: 'text-destructive' },
 ] as const
 

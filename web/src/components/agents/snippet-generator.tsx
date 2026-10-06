@@ -7,6 +7,7 @@
 
 import { useState } from 'react'
 import { CodeBlock } from '@/components/ui/code-block'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 
 interface AgentSnippetGeneratorProps {
   endpointUrl: string
@@ -138,22 +139,7 @@ export function AgentSnippetGenerator({ endpointUrl, authSchemes }: AgentSnippet
       </p>
 
       {/* Language tabs */}
-      <div className="flex items-center gap-1 rounded-lg border p-1 w-fit">
-        {LANGUAGES.map((l) => (
-          <button
-            key={l.value}
-            type="button"
-            onClick={() => setLang(l.value)}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              lang === l.value
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-            }`}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl options={LANGUAGES} value={lang} onChange={setLang} label="Language" size="sm" />
 
       {/* Generated snippet */}
       <CodeBlock value={snippet} copyLabel="Copy snippet" />

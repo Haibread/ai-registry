@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -76,11 +76,11 @@ const AGENT = {
   },
 }
 
-function renderDetail(ns = 'anthropic', slug = 'code-review') {
+function renderDetail(ns = 'anthropic', slug = 'code-review', hash = '') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[`/agents/${ns}/${slug}`]}>
+      <MemoryRouter initialEntries={[`/agents/${ns}/${slug}${hash}`]}>
         <Routes>
           <Route path="/agents/:ns/:slug" element={<AgentDetailPage />} />
         </Routes>
@@ -118,10 +118,12 @@ describe('AgentDetailPage', () => {
     expect(screen.getByText(/^\/code-review$/)).toBeInTheDocument()
   })
 
-  it('renders the verified badge and status', async () => {
+  it('marks a verified, featured agent and hides the published status', async () => {
     renderDetail()
-    expect(await screen.findByText(/verified/i)).toBeInTheDocument()
-    expect(screen.getAllByText(/published/i).length).toBeGreaterThan(0)
+    await screen.findByRole('heading', { name: /code review agent/i })
+    expect(screen.getAllByText('Verified').length).toBeGreaterThan(0)
+    expect(screen.getByText('Featured')).toBeInTheDocument()
+    expect(screen.queryByText('published')).not.toBeInTheDocument()
   })
 
   it('links to the A2A agent card', async () => {
@@ -133,41 +135,46 @@ describe('AgentDetailPage', () => {
     )
   })
 
-  it('renders the Connection card with the endpoint URL as a hero row', async () => {
+  it('shows the endpoint URL and auth scheme in the Quick connect card', async () => {
     renderDetail()
-    expect(await screen.findByText('Connection')).toBeInTheDocument()
-    expect(screen.getByText('Endpoint URL')).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: /agents\.anthropic\.com\/code-review/ })
-    expect(link).toHaveAttribute('href', 'https://agents.anthropic.com/code-review')
+    const connect = await screen.findByRole('region', { name: 'Quick connect' })
+    expect(within(connect).getByText('https://agents.anthropic.com/code-review')).toBeInTheDocument()
+    expect(within(connect).getByRole('button', { name: /copy endpoint url/i })).toBeInTheDocument()
+    expect(within(connect).getByText('Bearer')).toBeInTheDocument()
   })
 
-  it('renders the A2A protocol version tile', async () => {
+  it('lists protocol version and IO modes in the Details card', async () => {
     renderDetail()
-    expect(await screen.findByText('A2A Protocol')).toBeInTheDocument()
-    expect(screen.getByText('0.3.0')).toBeInTheDocument()
+    const details = await screen.findByRole('region', { name: 'Details' })
+    expect(within(details).getByText('A2A protocol')).toBeInTheDocument()
+    expect(within(details).getByText('0.3.0')).toBeInTheDocument()
+    expect(within(details).getByText('Input')).toBeInTheDocument()
+    expect(within(details).getByText('Output')).toBeInTheDocument()
+    expect(within(details).getByText('10 views · 3 installs')).toBeInTheDocument()
   })
 
-  it('renders input and output mode tiles', async () => {
-    renderDetail()
-    expect(await screen.findByText('Input modes')).toBeInTheDocument()
-    expect(screen.getByText('Output modes')).toBeInTheDocument()
-  })
-
-  it('renders the Authentication tile with the declared scheme', async () => {
-    renderDetail()
-    expect(await screen.findByText('Authentication')).toBeInTheDocument()
-    expect(screen.getByText('Bearer')).toBeInTheDocument()
-  })
-
-  it('renders the tab navigation: Overview, Skills (N), Connect, Versions, JSON', async () => {
+  it('renders the tab navigation: Overview, Skills (N), Usage, Versions', async () => {
     renderDetail()
     await screen.findByRole('heading', { name: /code review agent/i })
     expect(screen.getByRole('tab', { name: /overview/i })).toBeInTheDocument()
-    // Skill tab shows the count in parentheses.
     expect(screen.getByRole('tab', { name: /skills \(2\)/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /connect/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /usage/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /versions/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /json/i })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /json/i })).not.toBeInTheDocument()
+  })
+
+  it('opens the Usage tab from a legacy #connect link', async () => {
+    renderDetail('anthropic', 'code-review', '#connect')
+    await screen.findByRole('heading', { name: /code review agent/i })
+    expect(screen.getByRole('tab', { name: /usage/i })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('opens the Usage tab from the Quick connect card', async () => {
+    const user = userEvent.setup()
+    renderDetail()
+    await screen.findByRole('heading', { name: /code review agent/i })
+    await user.click(screen.getByRole('button', { name: /set up a client/i }))
+    expect(screen.getByRole('tab', { name: /usage/i })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('lists skills on the Skills tab', async () => {
@@ -180,15 +187,14 @@ describe('AgentDetailPage', () => {
     expect(screen.getByText('Suggest Fix')).toBeInTheDocument()
   })
 
-  it('shows Public when authentication list is empty', async () => {
+  it('says when the agent needs no authentication', async () => {
     primeGET({
       ...AGENT,
       latest_version: { ...AGENT.latest_version, authentication: [] },
     })
     renderDetail()
-    // Wait for Connection card, then look inside the Auth tile.
-    await screen.findByText('Authentication')
-    expect(screen.getByText('Public')).toBeInTheDocument()
+    const connect = await screen.findByRole('region', { name: 'Quick connect' })
+    expect(within(connect).getByText('No authentication')).toBeInTheDocument()
   })
 
   it('renders the "Agent not found" empty state when the API returns no body', async () => {
@@ -208,7 +214,7 @@ describe('AgentDetailPage', () => {
     // Overview is the default active tab.
     expect(activePanelClass()).toMatch(/\bmt-6\b/)
 
-    for (const name of [/skills/i, /connect/i, /versions/i, /json/i]) {
+    for (const name of [/skills/i, /usage/i, /versions/i]) {
       await user.click(screen.getByRole('tab', { name }))
       expect(activePanelClass()).toMatch(/\bmt-6\b/)
     }

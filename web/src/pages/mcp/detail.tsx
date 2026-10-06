@@ -1,20 +1,10 @@
 import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
-import {
-  ExternalLink,
-  Package2,
-  Cpu,
-  Code2,
-  CalendarClock,
-  Scale,
-  Link2,
-  Shield,
-  EyeOff,
-} from 'lucide-react'
+import { Code2, Cpu, ExternalLink, EyeOff, GitFork, Shield } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
-import { Badge, StatusBadge, VisibilityBadge, VerifiedBadge } from '@/components/ui/badge'
+import { Badge, FeaturedBadge, StatusBadge, VisibilityBadge, VerifiedBadge } from '@/components/ui/badge'
 import { TagBadge } from '@/components/ui/tag-badge'
 import { indexInstanceTags, useInstanceTags } from '@/lib/use-instance-tags'
 import { Button } from '@/components/ui/button'
@@ -33,9 +23,8 @@ import { ToolsExplorer } from '@/components/mcp/tools-explorer'
 import { UsageTab } from '@/components/mcp/usage-tab'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { PublisherSidebar } from '@/components/shared/publisher-sidebar'
-import { StatTile } from '@/components/shared/stat-tile'
 import { SectionHeader } from '@/components/shared/section-header'
-import { EngagementStrip } from '@/components/shared/engagement-strip'
+import { DetailFacts, type DetailFact } from '@/components/shared/detail-facts'
 import { ActivityFeed } from '@/components/shared/activity-feed'
 import { RelatedEntries } from '@/components/shared/related-entries'
 import { VersionHistory } from '@/components/shared/version-history'
@@ -43,7 +32,7 @@ import { StickyDetailHeader } from '@/components/shared/sticky-detail-header'
 import { ReportDialog } from '@/components/shared/report-dialog'
 import { useRecordView, useRecordCopy } from '@/hooks/use-record-event'
 import { useCatalogClient } from '@/lib/api-client'
-import { formatDate, isRemoteTransport } from '@/lib/utils'
+import { formatDate, getInstallCommand, isRemoteTransport } from '@/lib/utils'
 import { getFieldExplanation } from '@/lib/field-explanations'
 import { ProtocolVersionBadges } from '@/components/mcp/protocol-version-badges'
 
@@ -73,7 +62,7 @@ export default function MCPDetailPage() {
   // Tab state synced to URL hash
   const hashTab = location.hash?.replace('#', '')
   // Shared links still carry #installation, the Usage tab's former name.
-  const defaultTab = (hashTab === 'installation' ? 'usage' : hashTab) || 'overview'
+  const activeTab = (hashTab === 'installation' ? 'usage' : hashTab) || 'overview'
   const handleTabChange = (value: string) => {
     navigate(`${location.pathname}#${value}`, { replace: true })
   }
@@ -116,20 +105,56 @@ export default function MCPDetailPage() {
   const lv = data.latest_version ?? unpublishedVersion ?? undefined
   const isPreview = data.visibility === 'private' || !data.latest_version
   const capabilities = (lv as Record<string, unknown> | undefined)?.capabilities as Record<string, unknown> | undefined
-  // Packages that connect to a remote URL rather than running locally.
-  // For these, the endpoint URL is the primary thing a caller needs — we
-  // surface it in the Overview so users don't have to jump to the Usage
-  // tab to see how to connect.
-  const remotePackages = (lv?.packages ?? []).filter(
-    (p) => isRemoteTransport(p.transport.type) && !!p.transport.url,
-  )
   // Connection targets for hosted servers: first-class remote endpoints
   // (lv.remotes) plus any remote-transport package that carries a URL.
   const remoteEndpoints = [
     ...(lv?.remotes ?? []).map((r) => ({ type: r.type, url: r.url })),
-    ...remotePackages.map((p) => ({ type: p.transport.type, url: p.transport.url! })),
+    ...(lv?.packages ?? [])
+      .filter((p) => isRemoteTransport(p.transport.type) && !!p.transport.url)
+      .map((p) => ({ type: p.transport.type, url: p.transport.url! })),
   ]
-  const hasRemote = remoteEndpoints.length > 0
+  const localPackage = remoteEndpoints.length === 0 ? lv?.packages?.[0] : undefined
+  const tags = data.tags ?? []
+
+  const facts: DetailFact[] = [
+    {
+      label: 'Version',
+      value: lv ? (
+        <span className="flex flex-wrap items-center gap-x-2">
+          <span className="font-mono">v{lv.version}</span>
+          <span className="text-muted-foreground">
+            {lv.published_at ? formatDate(lv.published_at) : 'Draft'}
+          </span>
+        </span>
+      ) : '—',
+    },
+    ...(lv ? [
+      {
+        label: remoteEndpoints.length > 0 ? 'Transport' : 'Runtime',
+        tooltip: getFieldExplanation(lv.runtime) ?? getFieldExplanation('runtime'),
+        value: <Badge variant="secondary" className="rounded-md">{lv.runtime}</Badge>,
+      },
+      {
+        label: 'Protocol',
+        tooltip: getFieldExplanation('protocol_versions'),
+        value: <ProtocolVersionBadges versions={lv.protocol_versions} />,
+      },
+    ] : []),
+    { label: 'License', value: data.license || <span className="text-muted-foreground">—</span> },
+    ...(tags.length > 0 ? [{
+      label: 'Tags',
+      value: (
+        <span className="flex flex-wrap gap-1">
+          {tags.map((t) => <TagBadge key={t} slug={t} tag={tagIndex.get(t)} />)}
+        </span>
+      ),
+    }] : []),
+    {
+      label: 'Usage',
+      value: `${(data.view_count ?? 0).toLocaleString()} views · ${(data.copy_count ?? 0).toLocaleString()} installs`,
+    },
+    { label: 'Updated', value: <FreshnessIndicator updatedAt={data.updated_at} className="text-sm" /> },
+  ]
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -154,7 +179,7 @@ export default function MCPDetailPage() {
         {isPreview && (
           <div
             role="status"
-            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
           >
             <EyeOff className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="flex-1 min-w-0">
@@ -171,272 +196,154 @@ export default function MCPDetailPage() {
           </div>
         )}
 
-        {/* Title row */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 ref={titleRef} className="text-2xl sm:text-3xl font-bold min-w-0 break-words">{data.name}</h1>
-            <div className="flex items-center gap-2 flex-wrap">
-              {lv && <Badge variant="outline" className="font-mono">v{lv.version}</Badge>}
-              {data.verified && <VerifiedBadge />}
-              <StatusBadge status={data.status} />
-              <VisibilityBadge visibility={data.visibility} />
-              {(data.tags ?? []).map((tagSlug) => (
-                <TagBadge key={tagSlug} slug={tagSlug} tag={tagIndex.get(tagSlug)} />
-              ))}
-            </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <div
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground"
+            aria-hidden="true"
+          >
+            <ResourceIcon type="mcp-server" className="h-7 w-7" />
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm text-muted-foreground font-mono">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 ref={titleRef} className="min-w-0 break-words text-2xl font-bold tracking-tight sm:text-3xl">{data.name}</h1>
+              {data.verified && <VerifiedBadge />}
+              {data.featured && <FeaturedBadge />}
+              {data.status !== 'published' && <StatusBadge status={data.status} />}
+              {data.visibility === 'private' && <VisibilityBadge visibility={data.visibility} />}
+            </div>
+            <div className="flex items-center gap-1 font-mono text-sm text-muted-foreground">
               <Link to={`/mcp/${data.namespace}`} className="hover:text-foreground transition-colors">
                 {data.namespace}
               </Link>
               /{data.slug}
-            </p>
-            <CopyButton value={`${data.namespace}/${data.slug}`} label="Copy identifier" />
-            {(data.repo_url || data.homepage_url) && (
-              <span className="h-4 w-px bg-border mx-1" aria-hidden="true" />
-            )}
-            {data.repo_url && (
-              <Button variant="outline" size="sm" asChild>
-                <a href={data.repo_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
-                  <ExternalLink className="h-4 w-4" /> Repository
-                </a>
-              </Button>
-            )}
-            {data.homepage_url && (
-              <Button variant="outline" size="sm" asChild>
-                <a href={data.homepage_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
-                  <ExternalLink className="h-4 w-4" /> Homepage
-                </a>
-              </Button>
-            )}
-            <ReportDialog
-              resourceType="mcp_server"
-              resourceId={data.id}
-              resourceLabel={`${data.namespace}/${data.slug}`}
-            />
+              <CopyButton value={`${data.namespace}/${data.slug}`} label="Copy identifier" />
+            </div>
+            {data.description && <p className="max-w-prose pt-1 text-muted-foreground">{data.description}</p>}
           </div>
+          {data.repo_url && (
+            <Button variant="outline" size="sm" asChild className="self-start">
+              <a href={data.repo_url} target="_blank" rel="noopener noreferrer">
+                <GitFork className="h-4 w-4" aria-hidden="true" /> Repository
+              </a>
+            </Button>
+          )}
         </div>
 
-        {data.description && <p className="text-muted-foreground max-w-prose">{data.description}</p>}
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          {/* The side column comes first in the DOM so a phone shows how to
+              connect before the README; on large screens it moves right. */}
+          <aside className="space-y-4 lg:order-2" aria-label="Server facts">
+            <section className="space-y-3 rounded-xl border bg-card p-4 shadow-xs" aria-label="Quick connect">
+              <h2 className="text-sm font-semibold">Quick connect</h2>
+              {remoteEndpoints.map((ep) => (
+                <div key={ep.url} className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="secondary" className="rounded-md">{ep.type}</Badge>
+                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                      <Shield className="h-3 w-3" aria-hidden="true" /> Auth per MCP spec (OAuth 2.1)
+                      {getFieldExplanation('mcp_authentication') && (
+                        <TooltipInfo content={getFieldExplanation('mcp_authentication')!} />
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 rounded-md border bg-muted/50 py-1 pl-3 pr-1">
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs" title={ep.url}>{ep.url}</span>
+                    <CopyButton value={ep.url} label="Copy endpoint URL" onCopy={recordCopy} />
+                  </div>
+                </div>
+              ))}
+              {localPackage && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Runs locally over {lv?.runtime}</p>
+                  <div className="flex items-center gap-1 rounded-md border bg-muted/50 py-1 pl-3 pr-1">
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs">{getInstallCommand(localPackage)}</span>
+                    <CopyButton value={getInstallCommand(localPackage)} label="Copy run command" onCopy={recordCopy} />
+                  </div>
+                </div>
+              )}
+              <Button className="w-full" onClick={() => handleTabChange('usage')}>
+                Set up in your client
+              </Button>
+            </section>
 
-        {/* README — the publisher's narrative description. Rendered near
-            the top of the page (above the tabs) so it's always visible,
-            regardless of which tab the reader has open. Fills the page
-            container width — MarkdownRenderer already sets max-w-none. */}
-        {data.readme && <MarkdownRenderer content={data.readme} />}
-
-        <Separator />
-
-        {/* Tabbed content */}
-        <Tabs defaultValue={defaultTab} onValueChange={handleTabChange}>
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="usage">Usage</TabsTrigger>
-            <TabsTrigger value="tools">
-              Tools{lv?.tools && lv.tools.length > 0 ? ` (${lv.tools.length})` : ''}
-            </TabsTrigger>
-            <TabsTrigger value="versions">Versions</TabsTrigger>
-            <TabsTrigger value="json">JSON</TabsTrigger>
-          </TabsList>
-
-          {/* ── Overview Tab ── */}
-          {/* mt-6 overrides the TabsContent default mt-2 so the gap from the
-              tabs to the first child matches the `space-y-6` rhythm below. */}
-          <TabsContent value="overview" className="mt-6 space-y-8">
-            {/* Publisher banner */}
+            <DetailFacts facts={facts} />
             <PublisherSidebar namespace={data.namespace} />
 
-            {/* ─── Connection & Runtime ───
-                Primary "what is this server and how do I talk to it" card.
-                For remote servers (http / sse / streamable_http) the endpoint
-                URL is rendered as a hero row at the top so users don't have
-                to dig into the Usage tab to find it. Runtime, protocol
-                version, and capabilities round out the technical surface. */}
-            <section className="space-y-3">
-              <SectionHeader
-                icon={hasRemote ? <Link2 /> : <Cpu />}
-                title={hasRemote ? 'Connection & Runtime' : 'Runtime & Capabilities'}
+            <nav aria-label="Server links" className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-sm">
+              {data.homepage_url && (
+                <a href={data.homepage_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> Homepage
+                </a>
+              )}
+              <ReportDialog
+                resourceType="mcp_server"
+                resourceId={data.id}
+                resourceLabel={`${data.namespace}/${data.slug}`}
               />
-              <div className="rounded-xl border bg-card overflow-hidden shadow-xs">
-                {/* Endpoint URL hero rows — one per connection target.
-                    Most servers have a single endpoint; when multiple exist
-                    we stack them so every connection target is visible. */}
-                {remoteEndpoints.map((ep, i) => (
-                  <div
-                    key={`endpoint-${i}`}
-                    className={i < remoteEndpoints.length - 1 ? 'border-b' : ''}
-                  >
-                    <StatTile
-                      className="px-5 py-4"
-                      label={remoteEndpoints.length > 1 ? `Endpoint URL (${ep.type})` : 'Endpoint URL'}
-                      icon={<Link2 />}
-                      tooltip={getFieldExplanation('endpoint_url') ?? undefined}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <a
-                          href={ep.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-mono text-xs hover:underline truncate"
-                        >
-                          {ep.url}
-                        </a>
-                        <CopyButton
-                          value={ep.url}
-                          label="Copy endpoint URL"
-                          onCopy={recordCopy}
-                        />
-                      </div>
-                    </StatTile>
-                  </div>
-                ))}
-                <div
-                  className={`flex flex-col sm:flex-row sm:divide-x divide-y sm:divide-y-0${
-                    hasRemote ? ' border-t' : ''
-                  }`}
-                >
-                  {lv && (
-                    <StatTile
-                      className="flex-1 px-5 py-4"
-                      label={hasRemote ? 'Transport' : 'Runtime'}
-                      icon={<Cpu />}
-                      tooltip={getFieldExplanation('runtime') ?? undefined}
-                    >
-                      <div className="flex items-center gap-1">
-                        <Badge variant="secondary">{lv.runtime}</Badge>
-                        {getFieldExplanation(lv.runtime) && (
-                          <TooltipInfo content={getFieldExplanation(lv.runtime)!} />
-                        )}
-                      </div>
-                    </StatTile>
-                  )}
-                  {lv && (
-                    <StatTile
-                      className="flex-1 px-5 py-4"
-                      label={lv.protocol_versions.length > 1 ? 'Protocol versions' : 'Protocol version'}
-                      icon={<Code2 />}
-                      tooltip={getFieldExplanation('protocol_versions') ?? undefined}
-                    >
-                      <ProtocolVersionBadges versions={lv.protocol_versions} />
-                    </StatTile>
-                  )}
-                  {hasRemote && (
-                    <StatTile
-                      className="flex-1 px-5 py-4"
-                      label="Authentication"
-                      icon={<Shield />}
-                      tooltip={getFieldExplanation('mcp_authentication') ?? undefined}
-                    >
-                      <span className="text-muted-foreground text-xs">
-                        Per MCP spec (OAuth 2.1)
-                      </span>
-                    </StatTile>
-                  )}
-                </div>
-                {capabilities && Object.keys(capabilities).length > 0 && (
-                  <div className="border-t px-5 py-4 space-y-2">
-                    <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">
-                      Capabilities
-                    </div>
-                    <CapabilitiesSection capabilities={capabilities} hideTitle />
-                  </div>
+            </nav>
+          </aside>
+
+          <div className="min-w-0">
+            <Tabs value={activeTab} onValueChange={handleTabChange}>
+              <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="usage">Usage</TabsTrigger>
+                <TabsTrigger value="tools">
+                  Tools{lv?.tools && lv.tools.length > 0 ? ` (${lv.tools.length})` : ''}
+                </TabsTrigger>
+                <TabsTrigger value="versions">Versions</TabsTrigger>
+              </TabsList>
+
+              {/* mt-6 overrides the TabsContent default mt-2 so every tab
+                  starts at the same distance from the tab bar. */}
+              <TabsContent value="overview" className="mt-6 space-y-8">
+                {data.readme ? (
+                  <MarkdownRenderer content={data.readme} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">The publisher has not written a README for this server.</p>
                 )}
-              </div>
-            </section>
 
-            {/* ─── Release ───
-                Version-level facts that are static across a single release. */}
-            <section className="space-y-3">
-              <SectionHeader icon={<Package2 />} title="Release" />
-              <div className="rounded-xl border bg-card overflow-hidden shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:divide-x divide-y sm:divide-y-0">
-                  <StatTile
-                    className="flex-1 px-5 py-4"
-                    label="Published"
-                    icon={<CalendarClock />}
-                  >
-                    {lv?.published_at ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span>{formatDate(lv.published_at)}</span>
-                        <FreshnessIndicator updatedAt={lv.published_at} />
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">Draft</span>
-                    )}
-                  </StatTile>
-                  <StatTile
-                    className="flex-1 px-5 py-4"
-                    label="License"
-                    icon={<Scale />}
-                  >
-                    {data.license || <span className="text-muted-foreground">—</span>}
-                  </StatTile>
-                </div>
-              </div>
-            </section>
+                {capabilities && Object.keys(capabilities).length > 0 && (
+                  <section className="space-y-3">
+                    <SectionHeader icon={<Code2 />} title="Capabilities" />
+                    <CapabilitiesSection capabilities={capabilities} hideTitle />
+                  </section>
+                )}
 
-            {/* ─── Engagement ───
-                Low-priority engagement numbers + timestamps rendered as a
-                compact inline strip. No card, no emphasis — these are here
-                for reference, not as the page's headline. */}
-            <EngagementStrip
-              viewCount={data.view_count ?? 0}
-              copyCount={data.copy_count ?? 0}
-              createdAt={data.created_at}
-              updatedAt={data.updated_at}
-            />
+                <ActivityFeed resourceType="mcp" namespace={ns} slug={slug} />
 
-            {/* ─── Activity ───
-                Privacy-scrubbed lifecycle feed: creation, publishes,
-                deprecations, visibility changes. Backed by the public
-                per-resource /activity endpoint so it stays in sync with
-                the audit log without exposing actor identity. */}
-            <ActivityFeed
-              resourceType="mcp"
-              namespace={ns}
-              slug={slug}
-            />
-          </TabsContent>
+                <RawJsonViewer data={data} title="Raw API response" />
+              </TabsContent>
 
-          <TabsContent value="usage" className="mt-6 space-y-6 max-w-3xl mx-auto">
-            <UsageTab server={data} version={lv} onCopy={recordCopy} />
-          </TabsContent>
+              <TabsContent value="usage" className="mt-6 space-y-6">
+                <UsageTab server={data} version={lv} onCopy={recordCopy} />
+              </TabsContent>
 
-          {/* ── Tools Tab ──
-              Renders the first-class `tools[]` array from the latest version.
-              This is NOT the `capabilities.tools` flag (which is the MCP spec's
-              capability-negotiation object `{listChanged:bool}`). The array is
-              publisher-declared via the admin API; the MCP spec's `tools/list`
-              method would return these at runtime for clients that don't have
-              access to the registry metadata. */}
-          <TabsContent value="tools" className="mt-6 space-y-4">
-            {lv?.tools && lv.tools.length > 0 ? (
-              <ToolsExplorer tools={lv.tools} />
-            ) : (
-              <EmptyState
-                icon={<Cpu className="h-8 w-8 text-muted-foreground" />}
-                title="No tools declared"
-                description="This server has not declared any tools. MCP clients can still query the server's runtime tools/list method if the server advertises the tools capability."
-              />
-            )}
-          </TabsContent>
+              {/* The publisher-declared `tools[]` array, not the
+                  `capabilities.tools` negotiation flag ({listChanged}). */}
+              <TabsContent value="tools" className="mt-6 space-y-4">
+                {lv?.tools && lv.tools.length > 0 ? (
+                  <ToolsExplorer tools={lv.tools} />
+                ) : (
+                  <EmptyState
+                    icon={<Cpu className="h-8 w-8 text-muted-foreground" />}
+                    title="No tools declared"
+                    description="This server has not declared any tools. MCP clients can still query the server's runtime tools/list method if the server advertises the tools capability."
+                  />
+                )}
+              </TabsContent>
 
-          {/* ── Versions Tab ── */}
-          <TabsContent value="versions" className="mt-6 space-y-4">
-            <VersionHistory
-              type="mcp"
-              namespace={data.namespace}
-              slug={data.slug}
-              latestVersion={lv?.version}
-            />
-          </TabsContent>
-
-          {/* ── JSON Tab ── */}
-          <TabsContent value="json" className="mt-6">
-            <RawJsonViewer data={data} title="Raw API response" defaultOpen />
-          </TabsContent>
-        </Tabs>
+              <TabsContent value="versions" className="mt-6 space-y-4">
+                <VersionHistory
+                  type="mcp"
+                  namespace={data.namespace}
+                  slug={data.slug}
+                  latestVersion={lv?.version}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
 
         <Separator />
         <RelatedEntries type="mcp" namespace={data.namespace} currentSlug={data.slug} />

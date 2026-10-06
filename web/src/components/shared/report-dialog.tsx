@@ -127,7 +127,7 @@ export function ReportDialog({ resourceType, resourceId, resourceLabel }: Report
           </div>
 
           {success ? (
-            <div className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm">
+            <div className="rounded border border-success/40 bg-success/10 px-3 py-2 text-sm">
               Thanks — your report has been submitted for review.
             </div>
           ) : (

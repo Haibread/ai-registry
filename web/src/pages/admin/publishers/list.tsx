@@ -75,7 +75,7 @@ export default function AdminPublisherList() {
                 <TableCell className="text-muted-foreground hidden md:table-cell">{p.contact ?? '—'}</TableCell>
                 <TableCell>
                   {p.verified ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" aria-label="Verified" />
+                    <CheckCircle2 className="h-4 w-4 text-success" aria-label="Verified" />
                   ) : (
                     <Circle className="h-4 w-4 text-muted-foreground" aria-label="Unverified" />
                   )}

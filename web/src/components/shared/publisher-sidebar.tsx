@@ -1,17 +1,12 @@
 /**
- * PublisherSidebar — horizontal publisher banner shown on detail pages.
- *
- * A compact row-style card that identifies who published the entry, shows
- * their verified state, how many MCP servers and agents they maintain, and
- * links to their full profile. Designed to be placed full-width at the top
- * of the Overview tab so it reads as page-level context rather than a
- * sidebar competing with the main metadata.
+ * PublisherSidebar — the publisher card in a detail page's side column:
+ * who published the entry, whether they are verified, how many entries they
+ * maintain, and a link to their profile.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { CheckCircle } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { ArrowRight, BadgeCheck } from 'lucide-react'
 import { ResourceIcon } from '@/components/ui/resource-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getPublicClient } from '@/lib/api-client'
@@ -56,55 +51,47 @@ export function PublisherSidebar({ namespace }: PublisherSidebarProps) {
 
   if (!publisher) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border bg-card/40 px-4 py-3">
-        <Skeleton className="h-5 w-5 rounded" />
-        <Skeleton className="h-4 w-32 rounded" />
-        <Skeleton className="h-3 w-40 rounded" />
+      <div className="flex items-center gap-3 rounded-xl border bg-card p-4">
+        <Skeleton className="h-10 w-10 rounded-lg" />
+        <div className="space-y-1.5">
+          <Skeleton className="h-4 w-28 rounded" />
+          <Skeleton className="h-3 w-36 rounded" />
+        </div>
       </div>
     )
   }
 
+  const counts = [
+    mcpCount != null && `${mcpCount} MCP server${mcpCount !== 1 ? 's' : ''}`,
+    agentCount != null && `${agentCount} agent${agentCount !== 1 ? 's' : ''}`,
+  ].filter(Boolean)
+
   return (
-    <div className="flex items-center gap-x-4 gap-y-2 rounded-lg border bg-card/40 px-4 py-3 flex-wrap">
-      <div className="flex items-center gap-2 min-w-0">
-        <ResourceIcon type="publisher" className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="text-xs text-muted-foreground">Published by</span>
-        <Link
-          to={`/publishers/${namespace}`}
-          className="text-sm font-semibold hover:underline truncate"
-        >
-          {publisher.name}
-        </Link>
-        {publisher.verified && (
-          <Badge variant="default" className="text-[10px] px-1.5 py-0 flex items-center gap-0.5">
-            <CheckCircle className="h-2.5 w-2.5" /> Verified
-          </Badge>
-        )}
-      </div>
-
-      <span className="hidden sm:inline h-4 w-px bg-border" aria-hidden="true" />
-
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        {mcpCount != null && (
-          <span>
-            <span className="font-semibold text-foreground tabular-nums">{mcpCount}</span>{' '}
-            MCP server{mcpCount !== 1 ? 's' : ''}
-          </span>
-        )}
-        {agentCount != null && (
-          <span>
-            <span className="font-semibold text-foreground tabular-nums">{agentCount}</span>{' '}
-            agent{agentCount !== 1 ? 's' : ''}
-          </span>
-        )}
-      </div>
-
-      <Link
-        to={`/publishers/${namespace}`}
-        className="ml-auto text-xs text-primary hover:underline"
+    <div className="relative flex items-center gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40">
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground"
+        aria-hidden="true"
       >
-        View all entries →
-      </Link>
+        <ResourceIcon type="publisher" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted-foreground">Published by</p>
+        <div className="flex items-center gap-1.5">
+          <Link
+            to={`/publishers/${namespace}`}
+            className="truncate font-semibold hover:text-primary after:absolute after:inset-0 after:content-['']"
+          >
+            {publisher.name}
+          </Link>
+          {publisher.verified && (
+            <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary">
+              <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" /> Verified
+            </span>
+          )}
+        </div>
+        {counts.length > 0 && <p className="text-xs text-muted-foreground">{counts.join(' · ')}</p>}
+      </div>
+      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
     </div>
   )
 }

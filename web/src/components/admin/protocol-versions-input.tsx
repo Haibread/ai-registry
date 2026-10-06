@@ -207,7 +207,7 @@ export function ProtocolVersionsInput({
                   className="flex h-9 w-full items-center justify-between rounded px-2.5 text-left hover:bg-muted"
                 >
                   <span className="font-mono text-[13px]">{v}</span>
-                  <span className="text-xs text-green-700 dark:text-green-400">supported by the server</span>
+                  <span className="text-xs text-success">supported by the server</span>
                 </button>
               </li>
             ))}
@@ -244,7 +244,7 @@ export function ProtocolVersionsInput({
                 {detected.map((v) => (
                   <span
                     key={v}
-                    className="flex h-6 items-center gap-1 rounded-full bg-green-100 pl-1.5 pr-2 font-mono text-xs text-green-800 dark:bg-green-950 dark:text-green-300"
+                    className="flex h-6 items-center gap-1 rounded-full bg-success/10 pl-1.5 pr-2 font-mono text-xs text-success"
                   >
                     <Check className="h-3 w-3" aria-hidden="true" />
                     {v}
@@ -300,7 +300,7 @@ function DetectionError({ problem }: { problem: Problem }) {
   return (
     <div
       role="alert"
-      className="flex gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+      className="flex gap-2.5 rounded-lg border border-warning/30 bg-warning/10 p-3 text-[13px]"
     >
       <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       <div className="min-w-0 space-y-0.5 break-words">

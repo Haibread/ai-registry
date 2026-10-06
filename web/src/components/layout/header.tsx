@@ -3,6 +3,7 @@ import { AlertCircle, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NavLink } from '@/components/layout/nav-link'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
+import { LogoMark } from '@/components/layout/logo'
 import { ResourceIcon } from '@/components/ui/resource-icon'
 import { SearchBar } from '@/components/ui/search-bar'
 import { useAuth } from '@/auth/AuthContext'
@@ -24,11 +25,9 @@ export function Header() {
         </div>
       )}
       <div className="container flex h-14 items-center gap-6">
-        <Link to="/" className="flex items-center gap-2 font-semibold shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-primary text-primary-foreground text-xs font-bold">
-            AI
-          </div>
-          <span>Registry</span>
+        <Link to="/" className="flex items-center gap-2.5 font-bold tracking-tight shrink-0">
+          <LogoMark />
+          <span>AI Registry</span>
         </Link>
 
         <nav className="flex items-center gap-1">

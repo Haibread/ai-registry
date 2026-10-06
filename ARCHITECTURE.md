@@ -365,6 +365,26 @@ review-queue badge polls every 30 s and is invalidated by every change-approval
 mutation. Accessibility is a requirement, not a tier: WCAG AA contrast, visible
 focus rings, landmarks, ARIA labels on icon-only buttons.
 
+**The palette is derived from the logo, adjusted for contrast.** The logo's
+blue (`#178BC9`) carries the interface, but white text on it measures 3.8:1,
+below AA, so the primary color is a darker step of the same hue in light mode
+and a lighter one in dark mode; the raw blue stays for the logo and the focus
+ring, where 3:1 is enough. The orange is the one accent, kept for what asks
+for attention (featured entries, the review queue), and never sits under white
+text (2.6:1). The logo's red stays out of the UI: an error or a destructive
+button must not read as brand, so `destructive` is a crimson apart from it in
+both hue and lightness. Neutrals are tinted toward the blue hue. Semantic
+states (`success`, `warning`, `highlight`) are tokens rather than Tailwind
+colors so both themes stay in step; only instance-tag colors, which a Server
+Admin picks, keep the stock palette.
+
+**Detail pages lead with how to connect.** An MCP server or agent page puts
+the endpoint (or run command) in a side column that is always in view, above
+the README on a phone, and keeps the README in the Overview tab so a long one
+never pushes Usage, Tools or Skills off screen. Cards in a listing carry one
+link target and one row of facts; status shows only when it is not
+`published`, since everything in the public catalog is.
+
 ## Invariants and constraints
 
 - **Every capability is in the API.** The UI has no feature the API lacks.

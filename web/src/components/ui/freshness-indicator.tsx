@@ -38,9 +38,9 @@ function getRelativeTime(dateStr: string): { label: string; color: 'green' | 'ye
 }
 
 const DOT_COLORS = {
-  green: 'bg-green-500',
-  yellow: 'bg-yellow-500',
-  red: 'bg-red-500',
+  green: 'bg-success',
+  yellow: 'bg-warning',
+  red: 'bg-destructive',
 }
 
 export function FreshnessIndicator({ updatedAt, className }: FreshnessIndicatorProps) {
@@ -54,7 +54,7 @@ export function FreshnessIndicator({ updatedAt, className }: FreshnessIndicatorP
       />
       {label}
       {color === 'red' && (
-        <span className="text-red-600 dark:text-red-400 font-medium">
+        <span className="text-warning font-medium">
           (stale)
         </span>
       )}

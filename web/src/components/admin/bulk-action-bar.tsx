@@ -77,7 +77,7 @@ export function BulkActionBar({
             size="sm"
             onClick={onDeprecate}
             disabled={isBusy}
-            className="gap-1.5 text-yellow-700 dark:text-yellow-500"
+            className="gap-1.5 text-warning"
           >
             <AlertTriangle className="h-3.5 w-3.5" /> Deprecate
           </Button>

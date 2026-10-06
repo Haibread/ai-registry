@@ -142,40 +142,53 @@ describe('MCPDetailPage', () => {
     expect(screen.getByText(/^\/filesystem$/)).toBeInTheDocument()
   })
 
-  it('renders verified + status badges from the payload', async () => {
+  it('marks a verified, featured server and hides the published status', async () => {
     renderDetail()
-    expect(await screen.findByText(/verified/i)).toBeInTheDocument()
-    // "Published" appears in multiple places (StatusBadge, StatTile label,
-    // formatted date cell). Assert that at least one is present — we just
-    // care that the status surfaced somewhere on the page.
-    const publishedHits = screen.getAllByText(/published/i)
-    expect(publishedHits.length).toBeGreaterThan(0)
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+    expect(screen.getAllByText('Verified').length).toBeGreaterThan(0)
+    expect(screen.getByText('Featured')).toBeInTheDocument()
+    expect(screen.queryByText('published')).not.toBeInTheDocument()
   })
 
-  it('renders the Overview section header as "Runtime & Capabilities" for stdio servers', async () => {
+  it('shows the run command of a local server in the Quick connect card', async () => {
     renderDetail()
-    expect(await screen.findByText('Runtime & Capabilities')).toBeInTheDocument()
-    // stdio servers do NOT get a Connection header or endpoint URL tile
-    expect(screen.queryByText('Connection & Runtime')).not.toBeInTheDocument()
-    expect(screen.queryByText('Endpoint URL')).not.toBeInTheDocument()
+    const connect = await screen.findByRole('region', { name: 'Quick connect' })
+    expect(within(connect).getByText('npx -y @anthropic/mcp-filesystem')).toBeInTheDocument()
+    expect(within(connect).getByText(/runs locally over stdio/i)).toBeInTheDocument()
   })
 
-  it('renders runtime and protocol version tiles', async () => {
+  it('lists runtime, protocol versions and license in the Details card', async () => {
     renderDetail()
-    expect(await screen.findByText('Runtime')).toBeInTheDocument()
-    expect(screen.getByText('stdio')).toBeInTheDocument()
-    expect(screen.getByText('Protocol version')).toBeInTheDocument()
-    expect(screen.getByText('2025-03-26')).toBeInTheDocument()
+    const details = await screen.findByRole('region', { name: 'Details' })
+    expect(within(details).getByText('Runtime')).toBeInTheDocument()
+    expect(within(details).getByText('stdio')).toBeInTheDocument()
+    expect(within(details).getByText('2025-03-26')).toBeInTheDocument()
+    expect(within(details).getByText('MIT')).toBeInTheDocument()
+    expect(within(details).getByText('42 views · 7 installs')).toBeInTheDocument()
   })
 
-  it('renders the tab navigation: Overview, Usage, Tools, Versions, JSON', async () => {
+  it('renders the tab navigation: Overview, Usage, Tools, Versions', async () => {
     renderDetail()
     await screen.findByRole('heading', { name: /filesystem mcp server/i })
     expect(screen.getByRole('tab', { name: /overview/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /usage/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^tools/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /versions/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /json/i })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /json/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the raw API response one click away on the Overview', async () => {
+    renderDetail()
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+    expect(screen.getByText('Raw API response')).toBeInTheDocument()
+  })
+
+  it('opens the Usage tab from the Quick connect card', async () => {
+    const user = userEvent.setup()
+    renderDetail()
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+    await user.click(screen.getByRole('button', { name: /set up in your client/i }))
+    expect(screen.getByRole('tab', { name: /usage/i })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('switches to the Usage tab and shows the package identifier', async () => {
@@ -214,37 +227,23 @@ describe('MCPDetailPage — remote transport', () => {
     primeGET(REMOTE_SERVER)
   })
 
-  it('renders the "Connection & Runtime" header for remote transports', async () => {
+  it('shows the endpoint URL with its transport in the Quick connect card', async () => {
     renderDetail('anthropic', 'computer-use')
-    expect(await screen.findByText('Connection & Runtime')).toBeInTheDocument()
-    expect(screen.queryByText('Runtime & Capabilities')).not.toBeInTheDocument()
+    const connect = await screen.findByRole('region', { name: 'Quick connect' })
+    expect(within(connect).getByText('https://mcp.anthropic.com/computer-use/sse')).toBeInTheDocument()
+    expect(within(connect).getByText('sse')).toBeInTheDocument()
+    expect(within(connect).getByRole('button', { name: /copy endpoint url/i })).toBeInTheDocument()
+    expect(within(connect).getByText(/auth per mcp spec \(oauth 2\.1\)/i)).toBeInTheDocument()
   })
 
-  it('surfaces the endpoint URL as a hero row in the Overview', async () => {
+  it('labels the runtime as the transport for remote servers', async () => {
     renderDetail('anthropic', 'computer-use')
-    expect(await screen.findByText('Endpoint URL')).toBeInTheDocument()
-    const link = screen.getByRole('link', {
-      name: /mcp\.anthropic\.com\/computer-use\/sse/,
-    })
-    expect(link).toHaveAttribute('href', 'https://mcp.anthropic.com/computer-use/sse')
+    const details = await screen.findByRole('region', { name: 'Details' })
+    expect(within(details).getByText('Transport')).toBeInTheDocument()
+    expect(within(details).queryByText('Runtime')).not.toBeInTheDocument()
   })
 
-  it('replaces the Runtime tile with a Transport tile for remote servers', async () => {
-    renderDetail('anthropic', 'computer-use')
-    expect(await screen.findByText('Transport')).toBeInTheDocument()
-    // The literal word "Runtime" (the stdio tile label) should be gone.
-    // Note: "Runtime & Capabilities" header is also gone because we're remote.
-    const runtimeLabels = screen.queryAllByText('Runtime')
-    expect(runtimeLabels.length).toBe(0)
-  })
-
-  it('shows an MCP-spec authentication tile for remote servers', async () => {
-    renderDetail('anthropic', 'computer-use')
-    expect(await screen.findByText('Authentication')).toBeInTheDocument()
-    expect(screen.getByText(/per mcp spec \(oauth 2\.1\)/i)).toBeInTheDocument()
-  })
-
-  it('stacks multiple endpoint rows when the server ships multiple remote packages', async () => {
+  it('lists every endpoint when the server ships multiple remote packages', async () => {
     const multi = {
       ...REMOTE_SERVER,
       latest_version: {
@@ -268,12 +267,10 @@ describe('MCPDetailPage — remote transport', () => {
     primeGET(multi)
     renderDetail('anthropic', 'computer-use')
 
-    // Both URL tile labels should appear, tagged with their transport type.
-    expect(await screen.findByText(/endpoint url \(sse\)/i)).toBeInTheDocument()
-    expect(screen.getByText(/endpoint url \(http\)/i)).toBeInTheDocument()
-    // And both URLs should be reachable links.
-    expect(screen.getByRole('link', { name: /a\.example\.com\/sse/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /b\.example\.com/ })).toBeInTheDocument()
+    const connect = await screen.findByRole('region', { name: 'Quick connect' })
+    expect(within(connect).getByText('https://a.example.com/sse')).toBeInTheDocument()
+    expect(within(connect).getByText('https://b.example.com')).toBeInTheDocument()
+    expect(within(connect).getAllByRole('button', { name: /copy endpoint url/i })).toHaveLength(2)
   })
 })
 
@@ -382,7 +379,7 @@ describe('MCPDetailPage — tab spacing', () => {
     // Overview is the default active tab.
     expect(activePanelClass()).toMatch(/\bmt-6\b/)
 
-    for (const name of [/usage/i, /^tools/i, /versions/i, /json/i]) {
+    for (const name of [/usage/i, /^tools/i, /versions/i]) {
       await user.click(screen.getByRole('tab', { name }))
       expect(activePanelClass()).toMatch(/\bmt-6\b/)
     }

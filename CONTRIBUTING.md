@@ -184,6 +184,19 @@ New behaviour comes with tests at the right layer: unit tests for logic, an
 integration test for a new handler or query, a Playwright spec for a new admin
 flow. A bug fix comes with the test that would have caught it.
 
+### Theme and logo
+
+The SPA's colors are the tokens in
+[web/src/app/globals.css](web/src/app/globals.css), light and dark; components
+use them (`bg-primary`, `text-success`, `bg-highlight/15`…) rather than raw
+Tailwind colors, except instance-tag colors. A new color is a token in both
+themes, checked at 4.5:1 for text. The root [logo.svg](logo.svg) is the
+source of the logo; [web/public/favicon.svg](web/public/favicon.svg) and
+[docs/public/favicon.svg](docs/public/favicon.svg) are copies of it, and
+[web/src/components/layout/logo.tsx](web/src/components/layout/logo.tsx) is an
+inline version with heavier strokes for header sizes. Change all four
+together.
+
 ### Changing the API
 
 1. Edit [server/api/openapi.yaml](server/api/openapi.yaml).

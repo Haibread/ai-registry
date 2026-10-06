@@ -45,7 +45,7 @@ export function CopyButton({
       aria-label={label}
     >
       {copied ? (
-        <Check className={cn(iconSize, "text-green-600")} />
+        <Check className={cn(iconSize, "text-success")} />
       ) : (
         <Copy className={iconSize} />
       )}

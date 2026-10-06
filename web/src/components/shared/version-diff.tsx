@@ -90,7 +90,7 @@ export function VersionDiff({ a, b }: VersionDiffProps) {
                 <pre className="rounded bg-destructive/10 border border-destructive/20 p-2 overflow-x-auto text-xs whitespace-pre-wrap break-words">
                   {stringify(a[field])}
                 </pre>
-                <pre className="rounded bg-green-500/10 border border-green-500/20 p-2 overflow-x-auto text-xs whitespace-pre-wrap break-words">
+                <pre className="rounded bg-success/10 border border-success/20 p-2 overflow-x-auto text-xs whitespace-pre-wrap break-words">
                   {stringify(b[field])}
                 </pre>
               </div>

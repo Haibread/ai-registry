@@ -94,7 +94,7 @@ export function SearchBar({ variant = 'hero' }: SearchBarProps = {}) {
   const isCompact = variant === 'compact'
   const containerCls = isCompact
     ? 'relative w-full max-w-sm'
-    : 'relative w-full max-w-lg mx-auto'
+    : 'relative w-full max-w-xl'
   const iconCls = isCompact
     ? 'absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none'
     : 'absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none'

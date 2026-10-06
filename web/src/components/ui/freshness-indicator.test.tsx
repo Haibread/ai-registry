@@ -28,19 +28,19 @@ describe('FreshnessIndicator', () => {
 
   it('shows green dot for dates < 3 months old', () => {
     const { container } = render(<FreshnessIndicator updatedAt="2026-03-01T12:00:00Z" />)
-    const dot = container.querySelector('.bg-green-500')
+    const dot = container.querySelector('.bg-success')
     expect(dot).toBeInTheDocument()
   })
 
   it('shows yellow dot for dates 3-12 months old', () => {
     const { container } = render(<FreshnessIndicator updatedAt="2025-10-01T12:00:00Z" />)
-    const dot = container.querySelector('.bg-yellow-500')
+    const dot = container.querySelector('.bg-warning')
     expect(dot).toBeInTheDocument()
   })
 
   it('shows red dot and stale label for dates > 12 months old', () => {
     const { container } = render(<FreshnessIndicator updatedAt="2024-01-01T12:00:00Z" />)
-    const dot = container.querySelector('.bg-red-500')
+    const dot = container.querySelector('.bg-destructive')
     expect(dot).toBeInTheDocument()
     expect(screen.getByText('(stale)')).toBeInTheDocument()
   })
