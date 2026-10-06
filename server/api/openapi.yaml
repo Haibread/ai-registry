@@ -1564,6 +1564,12 @@ paths:
                   description: Absolute http(s) URL; other schemes are rejected.
                 license:
                   type: string
+                usage_markdown:
+                  type: string
+                  maxLength: 20000
+                  description: >
+                    Markdown replacing the generated usage instructions; an
+                    empty string restores them. See `MCPServer.usage_markdown`.
       responses:
         "200":
           description: Updated MCP server immediately (Server Admin escape hatch)
@@ -4814,6 +4820,16 @@ components:
         readme:
           type: string
           description: Long-form README content (Markdown)
+        usage_markdown:
+          type: string
+          description: >
+            Publisher-written Markdown shown on the Usage tab in place of the
+            generated usage instructions; empty means none. At most 20000
+            characters. Clients substitute these placeholders when rendering:
+            `{{name}}`, `{{namespace}}`, `{{slug}}`, `{{version}}` (latest
+            published version), `{{run_command}}` (run command of the first
+            local package) and `{{endpoint_url}}` (URL of the first remote
+            endpoint). Unknown placeholders are left as written.
         view_count:
           type: integer
           description: Number of times this server has been viewed

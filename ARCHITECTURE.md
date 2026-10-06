@@ -347,6 +347,17 @@ vet the proxy's address instead of the server's. Each call is bounded by a
 timeout, a tool count, a response size and its own per-IP rate limit, and
 requires Editor on the publisher it is made for.
 
+**Usage instructions are an entry field, not a version field.** The Usage tab
+of an MCP server shows instructions generated from its latest version's
+packages and remotes, unless the publisher wrote `usage_markdown`, which then
+takes their place and folds the generated ones below it. It lives on the entry
+so it stays editable (through the same reviewed metadata edit as the
+description) instead of being frozen into each immutable version; to keep it
+from going stale at the next release, it holds `{{version}}`-style placeholders
+that clients fill from the latest version when rendering, so the API returns
+the template as written. An edit payload without the field leaves it
+untouched on approval.
+
 **UI choices.** No bundled webfont (system stacks keep first paint fast); plain
 `FormData` parsing rather than a form library, because the admin forms are
 simple; destructive actions use quiet styling plus a confirmation gate; the

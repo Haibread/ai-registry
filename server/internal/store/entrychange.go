@@ -57,9 +57,10 @@ func applyMCPUndeprecation(ctx context.Context, q querier, serverID string) (int
 func applyMCPMetadata(ctx context.Context, q querier, serverID string, p UpdateMCPServerParams) (int64, error) {
 	tag, err := q.Exec(ctx, `
 		UPDATE mcp_servers
-		SET name=$1, description=$2, homepage_url=$3, repo_url=$4, license=$5, updated_at=now()
-		WHERE id=$6 AND status != 'deleted'`,
-		p.Name, p.Description, p.HomepageURL, p.RepoURL, p.License, serverID)
+		SET name=$1, description=$2, homepage_url=$3, repo_url=$4, license=$5,
+		    usage_markdown=coalesce($6, usage_markdown), updated_at=now()
+		WHERE id=$7 AND status != 'deleted'`,
+		p.Name, p.Description, p.HomepageURL, p.RepoURL, p.License, p.UsageMarkdown, serverID)
 	return tag.RowsAffected(), err
 }
 

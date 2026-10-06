@@ -3,6 +3,7 @@ package domain_test
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -372,6 +373,25 @@ func TestValidateProtocolVersions(t *testing.T) {
 			}
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateUsageMarkdown(t *testing.T) {
+	tests := []struct {
+		name    string
+		md      string
+		wantErr bool
+	}{
+		{"empty", "", false},
+		{"at limit counted in characters", strings.Repeat("é", domain.MaxUsageMarkdownLength), false},
+		{"over limit", strings.Repeat("a", domain.MaxUsageMarkdownLength+1), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := domain.ValidateUsageMarkdown(tt.md); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateUsageMarkdown() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

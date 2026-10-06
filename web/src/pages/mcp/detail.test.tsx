@@ -97,11 +97,11 @@ const REMOTE_SERVER = {
   },
 }
 
-function renderDetail(ns = 'anthropic', slug = 'filesystem') {
+function renderDetail(ns = 'anthropic', slug = 'filesystem', hash = '') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[`/mcp/${ns}/${slug}`]}>
+      <MemoryRouter initialEntries={[`/mcp/${ns}/${slug}${hash}`]}>
         <Routes>
           <Route path="/mcp/:ns/:slug" element={<MCPDetailPage />} />
         </Routes>
@@ -168,28 +168,34 @@ describe('MCPDetailPage', () => {
     expect(screen.getByText('2025-03-26')).toBeInTheDocument()
   })
 
-  it('renders the tab navigation: Overview, Installation, Tools, Versions, JSON', async () => {
+  it('renders the tab navigation: Overview, Usage, Tools, Versions, JSON', async () => {
     renderDetail()
     await screen.findByRole('heading', { name: /filesystem mcp server/i })
     expect(screen.getByRole('tab', { name: /overview/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /installation/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /usage/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^tools/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /versions/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /json/i })).toBeInTheDocument()
   })
 
-  it('switches to the Installation tab and shows the package identifier', async () => {
+  it('switches to the Usage tab and shows the package identifier', async () => {
     const user = userEvent.setup()
     renderDetail()
     await screen.findByRole('heading', { name: /filesystem mcp server/i })
 
-    await user.click(screen.getByRole('tab', { name: /installation/i }))
+    await user.click(screen.getByRole('tab', { name: /usage/i }))
 
     // The install panel renders the package identifier + version. The
     // MCPConfigGenerator below it also shows the same identifier in the
     // generated config — at least one match means the tab is mounted.
     const hits = await screen.findAllByText(/@anthropic\/mcp-filesystem@1\.0\.0/)
     expect(hits.length).toBeGreaterThan(0)
+  })
+
+  it('opens the Usage tab from a legacy #installation link', async () => {
+    renderDetail('anthropic', 'filesystem', '#installation')
+    await screen.findByRole('heading', { name: /filesystem mcp server/i })
+    expect(screen.getByRole('tab', { name: /usage/i })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('renders the "Not Found" empty state when the API returns no body', async () => {
@@ -376,7 +382,7 @@ describe('MCPDetailPage — tab spacing', () => {
     // Overview is the default active tab.
     expect(activePanelClass()).toMatch(/\bmt-6\b/)
 
-    for (const name of [/installation/i, /^tools/i, /versions/i, /json/i]) {
+    for (const name of [/usage/i, /^tools/i, /versions/i, /json/i]) {
       await user.click(screen.getByRole('tab', { name }))
       expect(activePanelClass()).toMatch(/\bmt-6\b/)
     }

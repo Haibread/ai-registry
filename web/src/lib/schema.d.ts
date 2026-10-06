@@ -2201,6 +2201,8 @@ export interface components {
             tags?: string[];
             /** @description Long-form README content (Markdown) */
             readme?: string;
+            /** @description Publisher-written Markdown shown on the Usage tab in place of the generated usage instructions; empty means none. At most 20000 characters. Clients substitute these placeholders when rendering: `{{name}}`, `{{namespace}}`, `{{slug}}`, `{{version}}` (latest published version), `{{run_command}}` (run command of the first local package) and `{{endpoint_url}}` (URL of the first remote endpoint). Unknown placeholders are left as written. */
+            usage_markdown?: string;
             /** @description Number of times this server has been viewed */
             view_count?: number;
             /** @description Number of times this server's config has been copied */
@@ -4194,6 +4196,8 @@ export interface operations {
                      */
                     repo_url?: string;
                     license?: string;
+                    /** @description Markdown replacing the generated usage instructions; an empty string restores them. See `MCPServer.usage_markdown`. */
+                    usage_markdown?: string;
                 };
             };
         };

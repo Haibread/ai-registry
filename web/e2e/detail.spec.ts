@@ -22,7 +22,7 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { apiCleanup, apiPost } from './helpers'
+import { apiCleanup, apiPost, confirmDialog } from './helpers'
 
 // Unique suffix to avoid collisions across runs.
 const RUN_ID = Date.now().toString(36)
@@ -207,17 +207,17 @@ test.describe('Public detail pages', () => {
     await expect(page.getByText('Transport')).toBeVisible()
   })
 
-  test('MCP detail page has Overview/Installation/Versions/JSON tabs', async ({ page }) => {
+  test('MCP detail page has Overview/Usage/Versions/JSON tabs', async ({ page }) => {
     await page.goto(`/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     await expect(page.getByRole('heading', { name: MCP_NAME })).toBeVisible({ timeout: 15_000 })
 
     await expect(page.getByRole('tab', { name: /overview/i })).toBeVisible()
-    await expect(page.getByRole('tab', { name: /installation/i })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /usage/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /versions/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /json/i })).toBeVisible()
 
-    // Installation tab shows the package identifier in the config generator.
-    await page.getByRole('tab', { name: /installation/i }).click()
+    // Usage tab shows the package identifier in the config generator.
+    await page.getByRole('tab', { name: /usage/i }).click()
     await expect(page.getByText(/@e2e\/detail-mcp@1\.0\.0/).first()).toBeVisible({ timeout: 10_000 })
 
     // JSON tab renders the raw server document inside a <pre> block. The
@@ -231,6 +231,24 @@ test.describe('Public detail pages', () => {
   })
 
   // ── Agent detail page ─────────────────────────────────────────────────
+
+  test('publisher Markdown replaces the generated Usage tab, then resets', async ({ page }) => {
+    await page.goto(`/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
+    await page.getByRole('button', { name: 'Customize' }).click()
+    await page.getByRole('textbox', { name: 'Usage Markdown' }).fill('## Before you start\n\nRequires v{{version}}.')
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByText('Custom', { exact: true })).toBeVisible()
+
+    await page.goto(`/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}#usage`)
+    await expect(page.getByRole('heading', { name: 'Before you start' })).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('Requires v1.0.0.')).toBeVisible()
+    await expect(page.getByText('Generated configuration')).toBeVisible()
+
+    await page.goto(`/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
+    await page.getByRole('button', { name: 'Reset to generated' }).click()
+    await confirmDialog(page, 'Reset')
+    await expect(page.getByText('Generated', { exact: true })).toBeVisible()
+  })
 
   test('Agent detail page renders the name, Connection card, and A2A card link', async ({ page }) => {
     await page.goto(`/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Visibility controls whether a registry entry is publicly listed.
@@ -54,11 +55,13 @@ type MCPServer struct {
 	Featured    bool
 	Verified    bool
 	Readme      string
-	ViewCount   int
-	CopyCount   int
-	Tags        []string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// UsageMarkdown replaces the generated usage instructions when non-empty.
+	UsageMarkdown string
+	ViewCount     int
+	CopyCount     int
+	Tags          []string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // VersionStatus is the lifecycle status of a published version.
@@ -202,6 +205,18 @@ func ValidatePackages(raw json.RawMessage) error {
 		if !validTransports[e.Transport.Type] {
 			return fmt.Errorf("packages[%d].transport.type %q is not valid (must be stdio, http, sse, or streamable-http)", i, e.Transport.Type)
 		}
+	}
+	return nil
+}
+
+// MaxUsageMarkdownLength caps the publisher-written usage instructions, in
+// characters.
+const MaxUsageMarkdownLength = 20000
+
+// ValidateUsageMarkdown checks the length of the usage instructions.
+func ValidateUsageMarkdown(md string) error {
+	if n := utf8.RuneCountInString(md); n > MaxUsageMarkdownLength {
+		return fmt.Errorf("usage_markdown is %d characters; the maximum is %d", n, MaxUsageMarkdownLength)
 	}
 	return nil
 }

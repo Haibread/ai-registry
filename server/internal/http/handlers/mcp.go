@@ -602,11 +602,12 @@ func (h *MCPHandlers) PatchServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
-		HomepageURL *string `json:"homepage_url"`
-		RepoURL     *string `json:"repo_url"`
-		License     *string `json:"license"`
+		Name          *string `json:"name"`
+		Description   *string `json:"description"`
+		HomepageURL   *string `json:"homepage_url"`
+		RepoURL       *string `json:"repo_url"`
+		License       *string `json:"license"`
+		UsageMarkdown *string `json:"usage_markdown"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -614,11 +615,12 @@ func (h *MCPHandlers) PatchServer(w http.ResponseWriter, r *http.Request) {
 
 	// Merge non-nil provided fields over current values.
 	p := store.UpdateMCPServerParams{
-		Name:        srv.Name,
-		Description: srv.Description,
-		HomepageURL: srv.HomepageURL,
-		RepoURL:     srv.RepoURL,
-		License:     srv.License,
+		Name:          srv.Name,
+		Description:   srv.Description,
+		HomepageURL:   srv.HomepageURL,
+		RepoURL:       srv.RepoURL,
+		License:       srv.License,
+		UsageMarkdown: &srv.UsageMarkdown,
 	}
 	if body.Name != nil {
 		p.Name = *body.Name
@@ -635,10 +637,17 @@ func (h *MCPHandlers) PatchServer(w http.ResponseWriter, r *http.Request) {
 	if body.License != nil {
 		p.License = *body.License
 	}
+	if body.UsageMarkdown != nil {
+		p.UsageMarkdown = body.UsageMarkdown
+	}
 
 	if p.Name == "" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
 			"name is required", r.URL.Path)
+		return
+	}
+	if err := domain.ValidateUsageMarkdown(*p.UsageMarkdown); err != nil {
+		problem.Write(w, http.StatusUnprocessableEntity, "validation-error", err.Error(), r.URL.Path)
 		return
 	}
 	if err := validateMCPMetadataURLs(p, srv); err != nil {
@@ -766,24 +775,25 @@ func (h *MCPHandlers) RecordCopy(w http.ResponseWriter, r *http.Request) {
 
 func serverToResponse(srv *store.MCPServerRow) map[string]any {
 	m := map[string]any{
-		"id":           srv.ID,
-		"namespace":    srv.Namespace,
-		"slug":         srv.Slug,
-		"name":         srv.Name,
-		"description":  srv.Description,
-		"homepage_url": srv.HomepageURL,
-		"repo_url":     srv.RepoURL,
-		"license":      srv.License,
-		"visibility":   string(srv.Visibility),
-		"status":       string(srv.Status),
-		"featured":     srv.Featured,
-		"verified":     srv.Verified,
-		"tags":         srv.Tags,
-		"readme":       srv.Readme,
-		"view_count":   srv.ViewCount,
-		"copy_count":   srv.CopyCount,
-		"created_at":   srv.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		"updated_at":   srv.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"id":             srv.ID,
+		"namespace":      srv.Namespace,
+		"slug":           srv.Slug,
+		"name":           srv.Name,
+		"description":    srv.Description,
+		"homepage_url":   srv.HomepageURL,
+		"repo_url":       srv.RepoURL,
+		"license":        srv.License,
+		"visibility":     string(srv.Visibility),
+		"status":         string(srv.Status),
+		"featured":       srv.Featured,
+		"verified":       srv.Verified,
+		"tags":           srv.Tags,
+		"readme":         srv.Readme,
+		"usage_markdown": srv.UsageMarkdown,
+		"view_count":     srv.ViewCount,
+		"copy_count":     srv.CopyCount,
+		"created_at":     srv.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"updated_at":     srv.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if lv := srv.LatestVersion; lv != nil {
 		// `tools` is always an array at the DB layer (NOT NULL DEFAULT '[]'),

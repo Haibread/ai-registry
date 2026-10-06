@@ -1,7 +1,7 @@
 /**
  * MCPConfigGenerator — generates host-specific config snippets for an MCP server.
  *
- * Shown in the Installation tab of the MCP detail page. User selects a host
+ * Shown in the Usage tab of the MCP detail page. User selects a host
  * (Claude Desktop, Cursor, etc.) and a package, and the component generates
  * the exact JSON config block they need.
  */
