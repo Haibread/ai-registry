@@ -5,10 +5,8 @@
  * releases, and several SDKs broke their client API between majors.
  */
 
-import type { components } from '@/lib/schema'
 import type { MCPConfigParams } from '@/lib/mcp-host-configs'
-
-type MCPTool = components['schemas']['MCPTool']
+import { toolCall, type ArgValue, type MCPTool, type ToolCall } from '@/lib/mcp-tools'
 
 export type SnippetLanguage = 'python' | 'typescript' | 'go' | 'java' | 'rust'
 
@@ -24,13 +22,6 @@ export type SnippetConnection =
   | { kind: 'stdio'; command: string; args: string[] }
   | { kind: 'streamable_http' | 'sse'; url: string }
 
-export interface ToolCall {
-  name: string
-  args: [string, ArgValue][]
-}
-
-type ArgValue = string | number | boolean | [] | Record<string, never>
-
 export interface CodeSnippet {
   install: string
   /** Null when the SDK has no client for the connection's transport. */
@@ -44,39 +35,6 @@ export function toSnippetConnection(params: MCPConfigParams): SnippetConnection 
   return { kind: params.transport === 'sse' ? 'sse' : 'streamable_http', url: params.url ?? '' }
 }
 
-interface JsonSchemaProperty {
-  type?: unknown
-  enum?: unknown
-  default?: unknown
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-function isArgValue(v: unknown): v is string | number | boolean {
-  return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
-}
-
-function exampleValue(prop: JsonSchemaProperty): ArgValue {
-  if (isArgValue(prop.default)) return prop.default
-  if (Array.isArray(prop.enum) && isArgValue(prop.enum[0])) return prop.enum[0]
-  const type = Array.isArray(prop.type) ? prop.type.find((t) => t !== 'null') : prop.type
-  switch (type) {
-    case 'integer':
-    case 'number':
-      return 1
-    case 'boolean':
-      return true
-    case 'array':
-      return []
-    case 'object':
-      return {}
-    default:
-      return '...'
-  }
-}
-
 /**
  * The call a snippet demonstrates: the version's first declared tool, with
  * an example value for each required argument. Null when no tool is known,
@@ -84,19 +42,7 @@ function exampleValue(prop: JsonSchemaProperty): ArgValue {
  */
 export function exampleToolCall(tools: MCPTool[] | undefined): ToolCall | null {
   const tool = tools?.[0]
-  if (!tool) return null
-  const schema = tool.input_schema ?? {}
-  const properties = isRecord(schema.properties) ? schema.properties : {}
-  const required = Array.isArray(schema.required)
-    ? schema.required.filter((r): r is string => typeof r === 'string')
-    : []
-  return {
-    name: tool.name,
-    args: required.map((key) => {
-      const prop = properties[key]
-      return [key, exampleValue(isRecord(prop) ? prop : {})]
-    }),
-  }
+  return tool ? toolCall(tool) : null
 }
 
 const str = (s: string) => JSON.stringify(s)

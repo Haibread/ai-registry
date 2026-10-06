@@ -19,7 +19,6 @@ import { Badge, StatusBadge, VisibilityBadge, VerifiedBadge } from '@/components
 import { TagBadge } from '@/components/ui/tag-badge'
 import { indexInstanceTags, useInstanceTags } from '@/lib/use-instance-tags'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
@@ -32,6 +31,7 @@ import { CopyButton } from '@/components/ui/copy-button'
 import { ResourceIcon } from '@/components/ui/resource-icon'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
 import { CapabilitiesSection } from '@/components/mcp/capabilities-section'
+import { ToolsExplorer } from '@/components/mcp/tools-explorer'
 import { MCPConfigGenerator } from '@/components/mcp/config-generator'
 import { MCPCodeSnippets } from '@/components/mcp/code-snippets'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
@@ -485,42 +485,7 @@ export default function MCPDetailPage() {
               access to the registry metadata. */}
           <TabsContent value="tools" className="mt-6 space-y-4">
             {lv?.tools && lv.tools.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {lv.tools.map((tool) => (
-                  <Card key={tool.name} className="bg-muted/30">
-                    <CardHeader className="pb-2 pt-4 px-4">
-                      <CardTitle className="text-sm flex items-center gap-2 font-mono">
-                        <Cpu className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        {tool.name}
-                      </CardTitle>
-                      {tool.description && (
-                        <CardDescription className="text-xs">{tool.description}</CardDescription>
-                      )}
-                    </CardHeader>
-                    {(tool.input_schema || tool.annotations) && (
-                      <CardContent className="pb-3 px-4 space-y-2">
-                        {tool.annotations && Object.keys(tool.annotations).length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {Object.entries(tool.annotations).map(([k, v]) =>
-                              typeof v === 'boolean' && v ? (
-                                <Badge key={k} variant="secondary" className="text-[10px] px-1.5 py-0">
-                                  {k}
-                                </Badge>
-                              ) : null,
-                            )}
-                          </div>
-                        )}
-                        {tool.input_schema && (
-                          <RawJsonViewer
-                            data={tool.input_schema}
-                            title="Input schema"
-                          />
-                        )}
-                      </CardContent>
-                    )}
-                  </Card>
-                ))}
-              </div>
+              <ToolsExplorer tools={lv.tools} />
             ) : (
               <EmptyState
                 icon={<Cpu className="h-8 w-8 text-muted-foreground" />}
