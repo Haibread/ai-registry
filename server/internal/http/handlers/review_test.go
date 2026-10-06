@@ -35,15 +35,6 @@ func newReviewRouter() *chi.Mux {
 		r.Post("/deletion-request/approve", h.ApproveMCPDeletion)
 		r.Post("/deletion-request/reject", h.RejectMCPDeletion)
 	})
-	r.Route("/api/v1/agents/{namespace}/{slug}", func(r chi.Router) {
-		r.Post("/versions/{version}/submit", h.SubmitAgentVersion)
-		r.Post("/versions/{version}/withdraw", h.WithdrawAgentVersion)
-		r.Post("/versions/{version}/approve", h.ApproveAgentVersion)
-		r.Post("/versions/{version}/reject", h.RejectAgentVersion)
-		r.Post("/deletion-request", h.RequestAgentDeletion)
-		r.Post("/deletion-request/approve", h.ApproveAgentDeletion)
-		r.Post("/deletion-request/reject", h.RejectAgentDeletion)
-	})
 	return r
 }
 
@@ -84,28 +75,6 @@ func seedDraftMCPServerVersion(t *testing.T, ns, slug, ver string) {
 		ProtocolVersions: []string{"2024-11-05"},
 	}); err != nil {
 		t.Fatalf("CreateMCPServerVersion: %v", err)
-	}
-}
-
-func seedDraftAgentForHandler(t *testing.T, ns, slug, ver string) {
-	t.Helper()
-	pubID := seedPublisher(t, ns, ns)
-	ag, err := testDB.CreateAgent(context.Background(), store.CreateAgentParams{
-		PublisherID: pubID, Slug: slug, Name: slug,
-	})
-	if err != nil {
-		t.Fatalf("CreateAgent: %v", err)
-	}
-	if _, err := testDB.CreateAgentVersion(context.Background(), store.CreateAgentVersionParams{
-		AgentID:            ag.ID,
-		Version:            ver,
-		EndpointURL:        "https://agent.example/api",
-		Skills:             json.RawMessage(`[{"id":"s1","name":"s","description":"d","tags":["x"]}]`),
-		DefaultInputModes:  []string{"text/plain"},
-		DefaultOutputModes: []string{"text/plain"},
-		ProtocolVersion:    "0.3.0",
-	}); err != nil {
-		t.Fatalf("CreateAgentVersion: %v", err)
 	}
 }
 
@@ -325,126 +294,6 @@ func TestReviewHandler_MCPDeletion_RejectMissingReason(t *testing.T) {
 	}
 }
 
-// ── Agent handlers (smoke coverage; same shape as MCP) ──────────────────
-
-func TestReviewHandler_SubmitApproveAgent(t *testing.T) {
-	resetTables(t)
-	seedDraftAgentForHandler(t, "acme", "planner", "0.1.0")
-	r := newReviewRouter()
-
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/acme/planner/versions/0.1.0/submit", nil))
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("submit: %d, body: %s", rec.Code, rec.Body.String())
-	}
-
-	rec = httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/acme/planner/versions/0.1.0/approve",
-		[]byte(`{"revision":1}`)))
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("approve: %d, body: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestReviewHandler_AgentVersionRejectAndWithdraw(t *testing.T) {
-	resetTables(t)
-	seedDraftAgentForHandler(t, "acme", "planner", "0.1.0")
-	r := newReviewRouter()
-
-	r.ServeHTTP(httptest.NewRecorder(), authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/acme/planner/versions/0.1.0/submit", nil))
-
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/acme/planner/versions/0.1.0/reject",
-		[]byte(`{"revision":1,"reason":"nope"}`)))
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("reject: %d", rec.Code)
-	}
-
-	// Re-submit → withdraw.
-	r.ServeHTTP(httptest.NewRecorder(), authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/acme/planner/versions/0.1.0/submit", nil))
-	rec = httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/acme/planner/versions/0.1.0/withdraw", nil))
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("withdraw: %d", rec.Code)
-	}
-}
-
-func TestReviewHandler_AgentDeletionFlow(t *testing.T) {
-	resetTables(t)
-	seedDraftAgentForHandler(t, "acme", "planner", "0.1.0")
-	r := newReviewRouter()
-
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost, "/api/v1/agents/acme/planner/deletion-request", nil))
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("request: %d", rec.Code)
-	}
-	rec = httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost, "/api/v1/agents/acme/planner/deletion-request/approve", nil))
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("approve: %d, body: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestReviewHandler_AgentDeletion_RejectFlow(t *testing.T) {
-	resetTables(t)
-	seedDraftAgentForHandler(t, "acme", "planner", "0.1.0")
-	r := newReviewRouter()
-
-	// Request deletion, then reject with reason → 204.
-	r.ServeHTTP(httptest.NewRecorder(), authedRequest(
-		http.MethodPost, "/api/v1/agents/acme/planner/deletion-request", nil))
-
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/acme/planner/deletion-request/reject",
-		[]byte(`{"reason":"not yet"}`)))
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("reject: %d, body: %s", rec.Code, rec.Body.String())
-	}
-
-	// Reject without reason → 422.
-	rec = httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/acme/planner/deletion-request/reject",
-		[]byte(`{}`)))
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("missing reason: %d, want 422", rec.Code)
-	}
-}
-
-func TestReviewHandler_AgentDeletion_NotFound(t *testing.T) {
-	resetTables(t)
-	r := newReviewRouter()
-
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, authedRequest(
-		http.MethodPost,
-		"/api/v1/agents/missing/missing/deletion-request", nil))
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want 404", rec.Code)
-	}
-}
-
-// Exercise the writeReviewProblem branches that the happy-path tests
-// don't reach: state-mismatch (approve a Draft) and already-pending
-// (request deletion when one is already pending).
 func TestReviewHandler_DiscriminatedConflicts_StateAndConflict(t *testing.T) {
 	resetTables(t)
 	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
@@ -526,7 +375,7 @@ func TestReviewHandler_ApproveMCP_AlreadyPublished(t *testing.T) {
 func TestReviewHandler_ListReviewQueue(t *testing.T) {
 	resetTables(t)
 	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
-	seedDraftAgentForHandler(t, "globex", "planner", "0.1.0")
+	seedDraftMCPServerVersion(t, "globex", "planner", "1.0.0")
 
 	// Submit both so the queue has two items.
 	r := newReviewRouter()
@@ -535,7 +384,7 @@ func TestReviewHandler_ListReviewQueue(t *testing.T) {
 		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit", nil))
 	r.ServeHTTP(httptest.NewRecorder(), authedRequest(
 		http.MethodPost,
-		"/api/v1/agents/globex/planner/versions/0.1.0/submit", nil))
+		"/api/v1/mcp/servers/globex/planner/versions/1.0.0/submit", nil))
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/review-queue", nil))
@@ -557,9 +406,12 @@ func TestReviewHandler_ListReviewQueue(t *testing.T) {
 	if len(body.Items) != 2 {
 		t.Errorf("len = %d, want 2", len(body.Items))
 	}
-	kinds := map[string]bool{}
+	publishers := map[string]bool{}
 	for _, it := range body.Items {
-		kinds[it.Kind] = true
+		publishers[it.PublisherSlug] = true
+		if it.Kind != "mcp_version" {
+			t.Errorf("queue item kind = %q, want mcp_version", it.Kind)
+		}
 		if it.Version == "" {
 			t.Errorf("queue item %s/%s missing version", it.PublisherSlug, it.EntrySlug)
 		}
@@ -567,8 +419,8 @@ func TestReviewHandler_ListReviewQueue(t *testing.T) {
 			t.Errorf("queue item revision = %d, want 1", it.Revision)
 		}
 	}
-	if !kinds["mcp_version"] || !kinds["agent_version"] {
-		t.Errorf("expected both mcp_version and agent_version, got %+v", kinds)
+	if !publishers["acme"] || !publishers["globex"] {
+		t.Errorf("expected items from acme and globex, got %+v", publishers)
 	}
 }
 
@@ -618,14 +470,14 @@ func TestReviewHandler_ListReviewQueue_ScopedToReviewerPublishers(t *testing.T) 
 	resetTables(t)
 	ctx := context.Background()
 	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
-	seedDraftAgentForHandler(t, "globex", "planner", "0.1.0")
+	seedDraftMCPServerVersion(t, "globex", "planner", "1.0.0")
 
 	r := newReviewRouter()
 	// Submit both (as admin) so the queue has one item per publisher.
 	r.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost,
 		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit", nil))
 	r.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost,
-		"/api/v1/agents/globex/planner/versions/0.1.0/submit", nil))
+		"/api/v1/mcp/servers/globex/planner/versions/1.0.0/submit", nil))
 
 	// A Reviewer on acme only.
 	acmeID, err := testDB.GetPublisherBySlug(ctx, "acme")
@@ -673,13 +525,13 @@ func TestReviewHandler_ListReviewQueue_GlobalReviewerSeesAll(t *testing.T) {
 	resetTables(t)
 	ctx := context.Background()
 	seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0")
-	seedDraftAgentForHandler(t, "globex", "planner", "0.1.0")
+	seedDraftMCPServerVersion(t, "globex", "planner", "1.0.0")
 
 	r := newReviewRouter()
 	r.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost,
 		"/api/v1/mcp/servers/acme/weather/versions/1.0.0/submit", nil))
 	r.ServeHTTP(httptest.NewRecorder(), authedRequest(http.MethodPost,
-		"/api/v1/agents/globex/planner/versions/0.1.0/submit", nil))
+		"/api/v1/mcp/servers/globex/planner/versions/1.0.0/submit", nil))
 
 	user, err := testDB.CreateUser(ctx, store.CreateUserParams{Email: "global-rev@x.test"})
 	if err != nil {
@@ -840,23 +692,10 @@ func TestReviewHandler_SelfApprovalForbidden(t *testing.T) {
 			body:    `{"revision":1}`,
 		},
 		{
-			name:    "agent version",
-			seed:    func(t *testing.T) { seedDraftAgentForHandler(t, "acme", "planner", "0.1.0") },
-			submit:  "/api/v1/agents/acme/planner/versions/0.1.0/submit",
-			approve: "/api/v1/agents/acme/planner/versions/0.1.0/approve",
-			body:    `{"revision":1}`,
-		},
-		{
 			name:    "mcp deletion",
 			seed:    func(t *testing.T) { seedDraftMCPServerVersion(t, "acme", "weather", "1.0.0") },
 			submit:  "/api/v1/mcp/servers/acme/weather/deletion-request",
 			approve: "/api/v1/mcp/servers/acme/weather/deletion-request/approve",
-		},
-		{
-			name:    "agent deletion",
-			seed:    func(t *testing.T) { seedDraftAgentForHandler(t, "acme", "planner", "0.1.0") },
-			submit:  "/api/v1/agents/acme/planner/deletion-request",
-			approve: "/api/v1/agents/acme/planner/deletion-request/approve",
 		},
 	}
 	for _, tc := range cases {

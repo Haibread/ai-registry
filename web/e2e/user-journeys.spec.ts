@@ -12,10 +12,9 @@
  *   3. The create form pre-selecting the switcher's current publisher.
  *   4. "Load more" pagination appending rows instead of replacing them.
  *   5. The filtered empty state.
- *   6. Agent version rich fields (provider / docs / icon / skill examples).
- *   7. Settings rendered read-only for an editor-not-admin member.
- *   8. Bulk deprecate gated behind a confirmation dialog.
- *   9. Review workflow separation of duties: an Editor submits but cannot
+ *   6. Settings rendered read-only for an editor-not-admin member.
+ *   7. Bulk deprecate gated behind a confirmation dialog.
+ *   8. Review workflow separation of duties: an Editor submits but cannot
  *      approve (UI + API 403); a distinct Reviewer approves from the queue.
  *
  * Identity is switched per-test via browser.newContext({ storageState }) like
@@ -390,51 +389,7 @@ test.describe('Filtered empty state', () => {
   })
 })
 
-// ── 5. Agent version rich fields through the UI ────────────────────────────────
-
-test.describe('Agent version rich fields persist', () => {
-  test('creates an agent version with provider / docs / icon / skill examples', async ({ browser }) => {
-    const page = await pageAs(browser, 'admin')
-    const pub = await seedPublisher(page, 'agent-rich')
-    const slug = `assistant-${RUN}`
-
-    const res = await apiPost(page, '/api/v1/agents', {
-      namespace: pub.slug,
-      slug,
-      name: `Assistant ${RUN}`,
-    })
-    expect(res.status(), `create agent: ${await res.text()}`).toBe(201)
-
-    await page.goto(`/admin/agents/${pub.slug}/${slug}`)
-    await page.getByRole('button', { name: 'New version' }).click()
-
-    await page.fill('input[name="version"]', '1.0.0')
-    await page.fill('input[name="endpoint_url"]', 'https://assistant.example.com/a2a')
-    await page.fill('input[name="skill_id"]', 'summarize')
-    await page.fill('input[name="skill_name"]', 'Summarize')
-    await page.fill('input[name="skill_description"]', 'Summarizes text')
-    await page.fill('input[name="skill_tags"]', 'text, nlp')
-    await page.fill('textarea[name="skill_examples"]', 'Summarize this\nTLDR please')
-    await page.fill('input[name="provider_organization"]', 'Acme Inc.')
-    await page.fill('input[name="provider_url"]', 'https://acme.example.com')
-    await page.fill('input[name="documentation_url"]', 'https://docs.example.com')
-    await page.fill('input[name="icon_url"]', 'https://acme.example.com/icon.png')
-    await page.fill('textarea[name="capabilities"]', '{"streaming":true}')
-    await page.getByRole('button', { name: 'Create version' }).click()
-    await expect(page.getByRole('cell', { name: /v1\.0\.0/ })).toBeVisible({ timeout: 10_000 })
-
-    const vres = await apiGet(page, `/api/v1/agents/${pub.slug}/${slug}/versions/1.0.0`)
-    expect(vres.status()).toBe(200)
-    const v = await vres.json()
-    expect(v.documentation_url).toBe('https://docs.example.com')
-    expect(v.icon_url).toBe('https://acme.example.com/icon.png')
-    expect(v.provider).toMatchObject({ organization: 'Acme Inc.' })
-    expect(v.skills?.[0]?.examples).toContain('Summarize this')
-    expect(v.capabilities).toMatchObject({ streaming: true })
-  })
-})
-
-// ── 6. Settings read-only for an editor-not-admin member ───────────────────────
+// ── 5. Settings read-only for an editor-not-admin member ───────────────────────
 
 test.describe('Publisher Settings is read-only for a non-admin member', () => {
   test('an editor sees the settings but no Save, while an admin can edit', async ({ browser }) => {
@@ -469,7 +424,7 @@ test.describe('Publisher Settings is read-only for a non-admin member', () => {
   })
 })
 
-// ── 7. Bulk deprecate is gated behind a confirmation dialog ────────────────────
+// ── 6. Bulk deprecate is gated behind a confirmation dialog ────────────────────
 
 test.describe('Bulk deprecate asks for confirmation', () => {
   test('declining keeps servers published; accepting deprecates them', async ({ browser }) => {
@@ -531,7 +486,7 @@ test.describe('Bulk deprecate asks for confirmation', () => {
   })
 })
 
-// ── 9. Review workflow separation of duties (Editor submits, Reviewer approves) ─
+// ── 8. Review workflow separation of duties (Editor submits, Reviewer approves) ─
 
 test.describe('Review workflow honors separation of duties', () => {
   test('an editor submits but cannot approve; a reviewer approves from the queue', async ({ browser }) => {
@@ -584,7 +539,7 @@ test.describe('Review workflow honors separation of duties', () => {
   })
 })
 
-// ── 10. Review workflow — editor withdraw / conflict, reviewer reject ───────────
+// ── 9. Review workflow — editor withdraw / conflict, reviewer reject ───────────
 
 test.describe('Review workflow — withdraw, conflict, and cross-role reject', () => {
   test('an editor can withdraw a pending version back to draft', async ({ browser }) => {

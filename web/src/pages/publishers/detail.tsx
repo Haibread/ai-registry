@@ -1,7 +1,7 @@
 /**
  * PublisherDetailPage — public profile page for a publisher.
  *
- * Shows publisher info + grids of their MCP servers and agents.
+ * Shows publisher info + a grid of their MCP servers.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -17,7 +17,6 @@ import { DetailPageSkeleton } from '@/components/ui/detail-page-skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ResourceIcon } from '@/components/ui/resource-icon'
 import { ServerCard } from '@/components/mcp/server-card'
-import { AgentCard } from '@/components/agents/agent-card'
 import { getPublicClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 
@@ -41,17 +40,6 @@ export default function PublisherDetailPage() {
     queryFn: () =>
       api
         .GET('/api/v1/mcp/servers', {
-          params: { query: { namespace: slug!, limit: 20 } },
-        })
-        .then((r) => r.data),
-    enabled: !!slug,
-  })
-
-  const { data: agentData } = useQuery({
-    queryKey: ['publisher-agents', slug],
-    queryFn: () =>
-      api
-        .GET('/api/v1/agents', {
           params: { query: { namespace: slug!, limit: 20 } },
         })
         .then((r) => r.data),
@@ -90,7 +78,6 @@ export default function PublisherDetailPage() {
     )
 
   const mcpServers = mcpData?.items ?? []
-  const agents = agentData?.items ?? []
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -157,39 +144,6 @@ export default function PublisherDetailPage() {
           ) : (
             <p className="text-sm text-muted-foreground py-4">
               No MCP servers published yet.
-            </p>
-          )}
-        </section>
-
-        {/* Agents section */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <ResourceIcon type="agent" className="h-4 w-4" />
-              Agents
-              {agentData?.total_count != null && (
-                <span className="text-sm font-normal text-muted-foreground">
-                  ({agentData.total_count})
-                </span>
-              )}
-            </h2>
-            {agents.length > 0 && (
-              <Button variant="ghost" size="sm" asChild>
-                <Link to={`/agents/${slug}`}>View all →</Link>
-              </Button>
-            )}
-          </div>
-          {agentData === undefined ? (
-            <CardGridSkeleton count={3} />
-          ) : agents.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {agents.map((a) => (
-                <AgentCard key={a.id} agent={a} />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4">
-              No agents published yet.
             </p>
           )}
         </section>

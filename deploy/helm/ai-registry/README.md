@@ -2,7 +2,7 @@
 
 ![Version: 0.4.0-rc13](https://img.shields.io/badge/Version-0.4.0--rc13-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0-rc13](https://img.shields.io/badge/AppVersion-0.4.0--rc13-informational?style=flat-square)
 
-A centralized registry for AI ecosystem artifacts (MCP servers and AI agents)
+A centralized registry for MCP servers
 
 **Homepage:** <https://github.com/haibread/ai-registry>
 
@@ -67,7 +67,7 @@ A centralized registry for AI ecosystem artifacts (MCP servers and AI agents)
 | api.oidcRolesClaim | string | `nil` | OIDC id_token claim path the broker reads realm/global roles from at login. Unset → server default (`realm_access.roles`). |
 | api.oidcScopes | list | `[]` | OAuth scopes requested at the authorize endpoint. Empty → server default (openid, profile, email). |
 | api.otlpEndpoint | string | `nil` | OTLP gRPC endpoint for traces/metrics export, e.g. "http://otel-collector:4317". Unset → export disabled. |
-| api.publicBaseURL | string | `nil` | [REQUIRED] Public-facing base URL of the deployment (what clients use), e.g. "https://registry.example.com". Used by the A2A global agent card, as the access-token issuer and to derive the OIDC redirects. |
+| api.publicBaseURL | string | `nil` | [REQUIRED] Public-facing base URL of the deployment (what clients use), e.g. "https://registry.example.com". Used as the access-token issuer and to derive the OIDC redirects. |
 | api.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/readyz","port":"http"},"initialDelaySeconds":5,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe (full probe object — override any field). |
 | api.readinessProbe.failureThreshold | int | `3` | Consecutive failures before the pod is marked unready. |
 | api.readinessProbe.httpGet.path | string | `"/readyz"` | Path polled for readiness. |

@@ -62,11 +62,11 @@ const mcpVersionItem = {
   submitted_by_email: 'submitter@example.com',
 }
 
-const agentDeletionItem = {
-  kind: 'agent_deletion',
+const mcpDeletionItem = {
+  kind: 'mcp_deletion',
   publisher_slug: 'globex',
   entry_slug: 'planner',
-  entry_id: '01HAG',
+  entry_id: '01HPL',
   submitted_at: '2026-04-10T11:00:00Z',
   submitted_by: 'submitter-uuid',
   submitted_by_email: 'pub@example.com',
@@ -75,7 +75,7 @@ const agentDeletionItem = {
 describe('AdminReviewQueue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGET.mockResolvedValue({ data: { items: [mcpVersionItem, agentDeletionItem] } })
+    mockGET.mockResolvedValue({ data: { items: [mcpVersionItem, mcpDeletionItem] } })
     mockPOST.mockResolvedValue({})
   })
 
@@ -99,7 +99,7 @@ describe('AdminReviewQueue', () => {
     expect(screen.getByText('rev 1')).toBeInTheDocument()
     // Both kind labels appear.
     expect(screen.getByText('MCP version')).toBeInTheDocument()
-    expect(screen.getByText('Agent deletion')).toBeInTheDocument()
+    expect(screen.getByText('MCP deletion')).toBeInTheDocument()
   })
 
   it('flags a version that will go public on approval, in the row and the confirm', async () => {
@@ -142,14 +142,14 @@ describe('AdminReviewQueue', () => {
   it('approves a deletion item via the deletion-request approve endpoint, after a destructive confirm', async () => {
     renderPage()
     const approveButtons = await screen.findAllByRole('button', { name: /^approve$/i })
-    // Second row is the agent deletion.
+    // Second row is the deletion.
     fireEvent.click(approveButtons[1])
     expect(mockPOST).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: /approve deletion of globex\/planner\?/i })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^approve deletion$/i }))
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
-        '/api/v1/agents/{namespace}/{slug}/deletion-request/approve',
+        '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request/approve',
         { params: { path: { namespace: 'globex', slug: 'planner' } } },
       )
     })
@@ -166,7 +166,7 @@ describe('AdminReviewQueue', () => {
   it('lazily loads and shows a version item\'s submitted content on expand', async () => {
     mockGET.mockImplementation((path: string) =>
       path === '/api/v1/review-queue'
-        ? Promise.resolve({ data: { items: [mcpVersionItem, agentDeletionItem] } })
+        ? Promise.resolve({ data: { items: [mcpVersionItem, mcpDeletionItem] } })
         : Promise.resolve({
             data: {
               version: '1.0.0',

@@ -34,12 +34,11 @@ func getStats(t *testing.T) map[string]int {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("stats: status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
-	// The response has flat int totals (mcp_servers/agents/publishers) alongside
+	// The response has flat int totals (mcp_servers/publishers) alongside
 	// nested *_status_breakdown objects. Decode the top-level fields we care
 	// about explicitly so the nested objects don't break the int unmarshal.
 	var shape struct {
 		MCPServers int `json:"mcp_servers"`
-		Agents     int `json:"agents"`
 		Publishers int `json:"publishers"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&shape); err != nil {
@@ -47,7 +46,6 @@ func getStats(t *testing.T) map[string]int {
 	}
 	return map[string]int{
 		"mcp_servers": shape.MCPServers,
-		"agents":      shape.Agents,
 		"publishers":  shape.Publishers,
 	}
 }
@@ -56,7 +54,7 @@ func TestStatsHandler_ZeroOnEmptyDB(t *testing.T) {
 	resetTables(t)
 	counts := getStats(t)
 
-	for _, key := range []string{"mcp_servers", "agents", "publishers"} {
+	for _, key := range []string{"mcp_servers", "publishers"} {
 		if counts[key] != 0 {
 			t.Errorf("%s = %d, want 0", key, counts[key])
 		}
@@ -69,7 +67,7 @@ func TestStatsHandler_CountsMatchInserts(t *testing.T) {
 
 	pubID := seedPublisher(t, "stats-pub", "Stats Pub")
 
-	// Insert 2 MCP servers and 1 agent.
+	// Insert 2 MCP servers.
 	for _, slug := range []string{"srv-1", "srv-2"} {
 		_, err := testDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
 			PublisherID: pubID, Slug: slug, Name: slug,
@@ -77,12 +75,6 @@ func TestStatsHandler_CountsMatchInserts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateMCPServer(%q): %v", slug, err)
 		}
-	}
-	_, err := testDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pubID, Slug: "ag-1", Name: "Ag 1",
-	})
-	if err != nil {
-		t.Fatalf("CreateAgent: %v", err)
 	}
 
 	counts := getStats(t)
@@ -92,9 +84,6 @@ func TestStatsHandler_CountsMatchInserts(t *testing.T) {
 	}
 	if counts["mcp_servers"] != 2 {
 		t.Errorf("mcp_servers = %d, want 2", counts["mcp_servers"])
-	}
-	if counts["agents"] != 1 {
-		t.Errorf("agents = %d, want 1", counts["agents"])
 	}
 }
 
@@ -129,7 +118,7 @@ func TestStatsHandler_ResponseShape(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&raw); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	for _, key := range []string{"mcp_servers", "agents", "publishers"} {
+	for _, key := range []string{"mcp_servers", "publishers"} {
 		if _, ok := raw[key]; !ok {
 			t.Errorf("response missing key %q", key)
 		}

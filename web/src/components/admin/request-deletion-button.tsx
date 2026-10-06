@@ -7,7 +7,6 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useAuthClient } from '@/lib/api-client'
 
 interface RequestDeletionButtonProps {
-  kind: 'mcp' | 'agent'
   namespace: string
   slug: string
   entityName: string
@@ -21,7 +20,6 @@ interface RequestDeletionButtonProps {
 // adding deletion_requested_at to the entry GET response, so the
 // button always tries the POST and maps 409 / 4xx to friendly messages.
 export function RequestDeletionButton({
-  kind,
   namespace,
   slug,
   entityName,
@@ -36,16 +34,10 @@ export function RequestDeletionButton({
     mutationFn: async () => {
       setError(null)
       setSuccess(false)
-      const result =
-        kind === 'mcp'
-          ? await api.POST(
-              '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request',
-              { params: { path: { namespace, slug } } },
-            )
-          : await api.POST(
-              '/api/v1/agents/{namespace}/{slug}/deletion-request',
-              { params: { path: { namespace, slug } } },
-            )
+      const result = await api.POST(
+        '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request',
+        { params: { path: { namespace, slug } } },
+      )
       if (result.error) {
         const e = result.error as { status?: number; type?: string; detail?: string }
         if (e?.status === 409 || e?.type?.includes('review-already-pending') || e?.type?.includes('conflict')) {

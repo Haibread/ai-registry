@@ -1,14 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Plug, Bot, ClipboardCheck, FilePen, Activity, Plus, ChevronDown } from 'lucide-react'
+import { Plug, ClipboardCheck, FilePen, Activity, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ActivityTimeline } from '@/components/admin/activity-timeline'
@@ -71,8 +65,8 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
   const canEdit = perms.canEdit(slug)
   const canReview = perms.canReview(slug)
   const events = activity?.items ?? []
-  const draftCount = (stats?.mcp_status_breakdown?.draft ?? 0) + (stats?.agent_status_breakdown?.draft ?? 0)
-  const noResources = !!stats && stats.mcp_servers === 0 && stats.agents === 0
+  const draftCount = stats?.mcp_status_breakdown?.draft ?? 0
+  const noResources = !!stats && stats.mcp_servers === 0
 
   const tiles: AttentionTile[] = [
     ...(canReview ? [{
@@ -110,26 +104,11 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canEdit && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" className="flex items-center gap-1.5">
-                  <Plus className="h-4 w-4" aria-hidden="true" /> New
-                  <ChevronDown className="h-4 w-4 opacity-70" aria-hidden="true" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link to="/admin/mcp/new">
-                    <Plug aria-hidden="true" /> New MCP server
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to="/admin/agents/new">
-                    <Bot aria-hidden="true" /> New agent
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button asChild size="sm">
+              <Link to="/admin/mcp/new" className="flex items-center gap-1.5">
+                <Plus className="h-4 w-4" aria-hidden="true" /> New MCP server
+              </Link>
+            </Button>
           )}
         </div>
       </div>
@@ -139,9 +118,7 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
       {/* Metric row */}
       {statsPending ? (
         <div className="grid gap-4 sm:grid-cols-2">
-          {[0, 1].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-lg" />
-          ))}
+          <Skeleton className="h-24 rounded-lg" />
         </div>
       ) : noResources ? (
         <EmptyState
@@ -149,8 +126,8 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
           title="No resources yet"
           description={
             canEdit
-              ? 'Publish your first MCP server or agent to this publisher.'
-              : 'This publisher has no MCP servers or agents yet.'
+              ? 'Publish your first MCP server to this publisher.'
+              : 'This publisher has no MCP servers yet.'
           }
           action={
             canEdit ? (
@@ -171,13 +148,6 @@ export function PublisherOverview({ slug, option }: { slug: string; option: Publ
               </p>
               <p className="mt-1 text-2xl font-bold">{stats.mcp_servers}</p>
               <StatusBar b={stats.mcp_status_breakdown} />
-            </Link>
-            <Link to="/admin/agents" className="rounded-lg bg-muted/50 p-4 transition-colors hover:bg-muted">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Bot className="h-3.5 w-3.5" aria-hidden="true" /> Agents
-              </p>
-              <p className="mt-1 text-2xl font-bold">{stats.agents}</p>
-              <StatusBar b={stats.agent_status_breakdown} />
             </Link>
           </div>
         )

@@ -49,7 +49,7 @@ FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55
 # static labels are the fallback for local builds that don't go through CI.
 # https://github.com/opencontainers/image-spec/blob/main/annotations.md
 LABEL org.opencontainers.image.title="ai-registry-server" \
-      org.opencontainers.image.description="AI Registry HTTP API (MCP + A2A agent cards)" \
+      org.opencontainers.image.description="AI Registry HTTP API (MCP servers)" \
       org.opencontainers.image.source="https://github.com/haibread/ai-registry" \
       org.opencontainers.image.url="https://github.com/haibread/ai-registry" \
       org.opencontainers.image.documentation="https://github.com/haibread/ai-registry/blob/main/README.md" \

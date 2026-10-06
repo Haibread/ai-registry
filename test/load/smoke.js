@@ -71,12 +71,5 @@ export default function () {
     }));
   });
 
-  group('global agent card', () => {
-    const res = http.get(`${BASE_URL}/.well-known/agent-card.json`);
-    failures.add(!check(res, {
-      'agent card 200': (r) => r.status === 200,
-    }));
-  });
-
   sleep(1);
 }

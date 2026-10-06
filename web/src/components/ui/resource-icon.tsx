@@ -1,11 +1,10 @@
-import { Plug, Bot, Building2, Zap, MessageSquare } from "lucide-react"
+import { Plug, Building2, Zap, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export type ResourceType = "mcp-server" | "agent" | "publisher" | "skill" | "prompt"
+export type ResourceType = "mcp-server" | "publisher" | "skill" | "prompt"
 
 const iconMap = {
   "mcp-server": Plug,
-  agent: Bot,
   publisher: Building2,
   skill: Zap,
   prompt: MessageSquare,

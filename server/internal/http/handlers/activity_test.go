@@ -15,15 +15,13 @@ import (
 	"github.com/haibread/ai-registry/internal/store"
 )
 
-// newActivityRouter builds a chi router wired for the public activity
-// endpoints on both MCP and agents. Tests exercise the full handler
+// newActivityRouter builds a chi router wired for the public MCP server
+// activity endpoint. Tests exercise the full handler
 // behaviour (404 on missing resource, whitelist, scrub, pagination).
 func newActivityRouter() *chi.Mux {
 	mcpH := handlers.NewMCPHandlers(testDB, testDB, nil)
-	agH := handlers.NewAgentHandlers(testDB, testDB, nil)
 	r := chi.NewRouter()
 	r.Get("/api/v1/mcp/servers/{namespace}/{slug}/activity", mcpH.ListMCPServerActivity)
-	r.Get("/api/v1/agents/{namespace}/{slug}/activity", agH.ListAgentActivity)
 	return r
 }
 
@@ -59,16 +57,6 @@ func resolveMCPServerID(t *testing.T, ns, slug string) string {
 		t.Fatalf("GetMCPServer: %v", err)
 	}
 	return srv.ID
-}
-
-// resolveAgentID looks up the ULID of a seeded agent.
-func resolveAgentID(t *testing.T, ns, slug string) string {
-	t.Helper()
-	ag, err := testDB.GetAgent(context.Background(), ns, slug, false)
-	if err != nil {
-		t.Fatalf("GetAgent: %v", err)
-	}
-	return ag.ID
 }
 
 // ─── MCP activity ───────────────────────────────────────────────────────────
@@ -313,81 +301,6 @@ func TestActivity_MCP_ScopedToResource(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
 	if len(body.Items) != 1 {
 		t.Errorf("got %d items for srv-a, want 1 (srv-b's events must not bleed in)", len(body.Items))
-	}
-}
-
-// ─── Agent activity ─────────────────────────────────────────────────────────
-
-func TestActivity_Agent_404_WhenAgentDoesNotExist(t *testing.T) {
-	resetTables(t)
-
-	req := httptest.NewRequest(http.MethodGet,
-		"/api/v1/agents/nope/missing/activity", nil)
-	rec := httptest.NewRecorder()
-	newActivityRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", rec.Code)
-	}
-}
-
-func TestActivity_Agent_ReturnsWhitelistedActions(t *testing.T) {
-	resetTables(t)
-	seedAgentPublic(t, "pub-ag", "ag-feed")
-	agID := resolveAgentID(t, "pub-ag", "ag-feed")
-
-	logEventFor(t, "agent", agID, domain.ActionAgentCreated, nil)
-	logEventFor(t, "agent", agID, domain.ActionAgentVersionPublished,
-		map[string]any{"version": "0.1.0"})
-	// Not whitelisted
-	logEventFor(t, "agent", agID, domain.ActionAgentVersionCreated, nil)
-
-	req := httptest.NewRequest(http.MethodGet,
-		"/api/v1/agents/pub-ag/ag-feed/activity", nil)
-	rec := httptest.NewRecorder()
-	newActivityRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	var body struct {
-		Items []struct {
-			Action    string `json:"action"`
-			ActorRole string `json:"actor_role"`
-			Version   string `json:"version"`
-		} `json:"items"`
-	}
-	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
-	if len(body.Items) != 2 {
-		t.Fatalf("got %d whitelisted items, want 2", len(body.Items))
-	}
-	for _, it := range body.Items {
-		if it.ActorRole != "admin" && it.ActorRole != "publisher" {
-			t.Errorf("actor_role = %q, want 'admin' or 'publisher'", it.ActorRole)
-		}
-	}
-}
-
-func TestActivity_Agent_PrivacyScrub(t *testing.T) {
-	resetTables(t)
-	seedAgentPublic(t, "pub-agsc", "ag-sc")
-	agID := resolveAgentID(t, "pub-agsc", "ag-sc")
-
-	logEventFor(t, "agent", agID, domain.ActionAgentCreated, nil)
-
-	req := httptest.NewRequest(http.MethodGet,
-		"/api/v1/agents/pub-agsc/ag-sc/activity", nil)
-	rec := httptest.NewRecorder()
-	newActivityRouter().ServeHTTP(rec, req)
-
-	raw := rec.Body.String()
-	for _, needle := range []string{
-		"privileged@internal.example", "kc-subject-XYZ",
-		"actor_email", "actor_subject",
-	} {
-		if strings.Contains(raw, needle) {
-			t.Errorf("response leaked %q", needle)
-		}
 	}
 }
 

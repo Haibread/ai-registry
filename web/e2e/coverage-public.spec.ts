@@ -3,7 +3,7 @@
  *
  * Closes v0.2.0 coverage gaps on the public (unauthenticated) UI:
  *
- *  - Public MCP / agent search (q + namespace)
+ *  - Public MCP search (q + namespace)
  *  - Public publisher detail page at /publishers/{slug}
  *  - Theme toggle (light/dark) with localStorage persistence
  *  - Public 404 / not-found for a private or missing entry
@@ -23,8 +23,6 @@ const PUB_SLUG = `e2e-public-pub-${RUN_ID}`
 const PUB_NAME = `E2E Public Pub ${RUN_ID}`
 const MCP_SLUG = `e2e-public-mcp-${RUN_ID}`
 const MCP_NAME = `E2E Public MCP ${RUN_ID}`
-const AGENT_SLUG = `e2e-public-agent-${RUN_ID}`
-const AGENT_NAME = `E2E Public Agent ${RUN_ID}`
 const PRIVATE_SLUG = `e2e-public-priv-${RUN_ID}`
 
 test.describe.configure({ mode: 'serial' })
@@ -64,34 +62,6 @@ test.describe('Public coverage', () => {
       { visibility: 'public' },
     )).ok()).toBeTruthy()
 
-    // Public agent with a published version.
-    expect((await apiPost(page, '/api/v1/agents', {
-      namespace: PUB_SLUG, slug: AGENT_SLUG, name: AGENT_NAME, description: 'Public-agent test',
-    })).ok()).toBeTruthy()
-    expect((await apiPost(
-      page,
-      `/api/v1/agents/${PUB_SLUG}/${AGENT_SLUG}/versions`,
-      {
-        version: '1.0.0',
-        endpoint_url: 'https://agents.example.test/public',
-        protocol_version: '0.3.0',
-        default_input_modes: ['text/plain'],
-        default_output_modes: ['text/plain'],
-        skills: [{ id: 's', name: 'Skill', description: 'A skill', tags: ['e2e'] }],
-        authentication: [{ scheme: 'Bearer' }],
-      },
-    )).ok()).toBeTruthy()
-    expect((await apiPost(
-      page,
-      `/api/v1/agents/${PUB_SLUG}/${AGENT_SLUG}/versions/1.0.0/publish`,
-      {},
-    )).ok()).toBeTruthy()
-    expect((await apiPost(
-      page,
-      `/api/v1/agents/${PUB_SLUG}/${AGENT_SLUG}/visibility`,
-      { visibility: 'public' },
-    )).ok()).toBeTruthy()
-
     // Private MCP used for the 404 test.
     expect((await apiPost(page, '/api/v1/mcp/servers', {
       namespace: PUB_SLUG, slug: PRIVATE_SLUG, name: 'Private MCP',
@@ -107,7 +77,6 @@ test.describe('Public coverage', () => {
     await expect(page.locator('h1')).toBeVisible({ timeout: 15_000 })
     await apiCleanup(page, `/api/v1/mcp/servers/${PUB_SLUG}/${MCP_SLUG}`)
     await apiCleanup(page, `/api/v1/mcp/servers/${PUB_SLUG}/${PRIVATE_SLUG}`)
-    await apiCleanup(page, `/api/v1/agents/${PUB_SLUG}/${AGENT_SLUG}`)
     await apiCleanup(page, `/api/v1/publishers/${PUB_SLUG}`)
     await ctx.close()
   })
@@ -125,24 +94,16 @@ test.describe('Public coverage', () => {
     await expect(page.getByText(MCP_NAME)).not.toBeVisible({ timeout: 5_000 })
   })
 
-  test('public agent listing shows the seeded public agent', async ({ page }) => {
-    await page.goto(`/agents?namespace=${PUB_SLUG}`)
-    await expect(page.getByText(AGENT_NAME)).toBeVisible({ timeout: 15_000 })
-  })
-
   // ── W3e: Publisher detail page ─────────────────────────────────────────
 
-  test('public publisher detail page renders name, MCP and agent sections', async ({ page }) => {
+  test('public publisher detail page renders name and MCP section', async ({ page }) => {
     await page.goto(`/publishers/${PUB_SLUG}`)
     await expect(page.getByRole('heading', { name: PUB_NAME })).toBeVisible({ timeout: 15_000 })
 
-    // Section headings.
     await expect(page.getByRole('heading', { name: /MCP Servers/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /^Agents/ })).toBeVisible()
 
-    // Cards for the seeded entries. Private MCP must not appear.
+    // Card for the seeded entry. Private MCP must not appear.
     await expect(page.getByText(MCP_NAME)).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(AGENT_NAME)).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText('Private MCP')).not.toBeVisible()
   })
 
@@ -152,11 +113,11 @@ test.describe('Public coverage', () => {
   })
 
   // ── v0.3.0 Task 3: Namespace landing pages ─────────────────────────────
-  // The landing pages at /mcp/:namespace and /agents/:namespace are the
-  // first-class anchor for "everything published by {ns}". They must render
-  // the seeded public entries, hide private ones, expose a working link to
-  // the detail page, and distinguish a missing namespace (404) from an
-  // existing namespace with zero entries of the requested kind.
+  // The landing page at /mcp/:namespace is the first-class anchor for
+  // "everything published by {ns}". It must render the seeded public entries,
+  // hide private ones, expose a working link to the detail page, and
+  // distinguish a missing namespace (404) from an existing namespace with
+  // zero entries.
 
   test('MCP namespace landing shows seeded public server and hides private ones', async ({ page }) => {
     await page.goto(`/mcp/${PUB_SLUG}`)
@@ -181,12 +142,6 @@ test.describe('Public coverage', () => {
     await page.getByRole('link', { name: MCP_NAME }).click()
     await expect(page).toHaveURL(new RegExp(`/mcp/${PUB_SLUG}/${MCP_SLUG}$`), { timeout: 10_000 })
     await expect(page.getByRole('heading', { name: MCP_NAME })).toBeVisible({ timeout: 10_000 })
-  })
-
-  test('agent namespace landing shows the seeded public agent', async ({ page }) => {
-    await page.goto(`/agents/${PUB_SLUG}`)
-    await expect(page.getByRole('heading', { name: PUB_NAME })).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText(AGENT_NAME)).toBeVisible({ timeout: 10_000 })
   })
 
   test('unknown namespace on /mcp/:namespace renders the not-found state', async ({ page }) => {

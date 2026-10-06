@@ -24,7 +24,7 @@ const STEPS: Step[] = [
   {
     number: 1,
     icon: Search,
-    title: 'Find a Server or Agent',
+    title: 'Find a Server',
     description: 'Browse and search the full catalog.',
     body: (
       <div className="space-y-2">
@@ -33,7 +33,6 @@ const STEPS: Step[] = [
           to browse and search the full catalog. You can filter by:
         </p>
         <ul className="list-disc pl-5 space-y-1">
-          <li><strong>Type</strong> — MCP servers or AI agents</li>
           <li><strong>Transport</strong> — stdio, SSE, or streamable HTTP</li>
           <li><strong>Tags</strong> — categories like <code>database</code>, <code>code</code>, <code>search</code></li>
           <li><strong>Publisher</strong> — the organization that maintains the entry</li>
@@ -59,40 +58,30 @@ const STEPS: Step[] = [
     number: 3,
     icon: Download,
     title: 'Install or Connect',
-    description: 'Install an MCP server or connect to an A2A agent.',
+    description: 'Install a local MCP server or connect to a remote one.',
     body: (
-      <div className="space-y-4">
-        <div>
-          <p className="font-medium text-foreground mb-2">MCP Servers</p>
-          <p className="mb-2">
-            Go to the <strong>Usage</strong> tab on the detail page to find the run command,
-            client code for the official Python, TypeScript, Go, Java, and Rust SDKs, and a
-            ready-to-paste config snippet for your host. Supported hosts:
-          </p>
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full text-xs">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">Host</th>
-                  <th className="px-3 py-2 text-left font-medium">Config file</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                <tr><td className="px-3 py-1.5">Claude Desktop</td><td className="px-3 py-1.5 font-mono">claude_desktop_config.json</td></tr>
-                <tr><td className="px-3 py-1.5">Claude Code</td><td className="px-3 py-1.5 font-mono">.claude/settings.json</td></tr>
-                <tr><td className="px-3 py-1.5">Cursor</td><td className="px-3 py-1.5 font-mono">.cursor/mcp.json</td></tr>
-                <tr><td className="px-3 py-1.5">Windsurf</td><td className="px-3 py-1.5 font-mono">~/.windsurf/mcp_config.json</td></tr>
-                <tr><td className="px-3 py-1.5">VS Code</td><td className="px-3 py-1.5 font-mono">.vscode/mcp.json</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div>
-          <p className="font-medium text-foreground mb-2">AI Agents (A2A)</p>
-          <p>
-            Go to the <strong>Connect</strong> tab to find the endpoint URL, auth requirements, and
-            ready-to-use code snippets in curl, Python, TypeScript, and Go.
-          </p>
+      <div className="space-y-2">
+        <p>
+          Go to the <strong>Usage</strong> tab on the detail page to find the run command,
+          client code for the official Python, TypeScript, Go, Java, and Rust SDKs, and a
+          ready-to-paste config snippet for your host. Supported hosts:
+        </p>
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Host</th>
+                <th className="px-3 py-2 text-left font-medium">Config file</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              <tr><td className="px-3 py-1.5">Claude Desktop</td><td className="px-3 py-1.5 font-mono">claude_desktop_config.json</td></tr>
+              <tr><td className="px-3 py-1.5">Claude Code</td><td className="px-3 py-1.5 font-mono">.claude/settings.json</td></tr>
+              <tr><td className="px-3 py-1.5">Cursor</td><td className="px-3 py-1.5 font-mono">.cursor/mcp.json</td></tr>
+              <tr><td className="px-3 py-1.5">Windsurf</td><td className="px-3 py-1.5 font-mono">~/.windsurf/mcp_config.json</td></tr>
+              <tr><td className="px-3 py-1.5">VS Code</td><td className="px-3 py-1.5 font-mono">.vscode/mcp.json</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     ),
@@ -103,16 +92,10 @@ const STEPS: Step[] = [
     title: 'Verify It Works',
     description: 'Confirm your installation is live.',
     body: (
-      <ul className="list-disc pl-5 space-y-1">
-        <li>
-          <strong>MCP servers</strong>: after adding the config, your host should list the
-          server's tools and resources. Try invoking one.
-        </li>
-        <li>
-          <strong>AI agents</strong>: send a <code>tasks/send</code> JSON-RPC request to the
-          endpoint — you should get back a task object.
-        </li>
-      </ul>
+      <p>
+        After adding the config, your host should list the server's tools and resources. Try
+        invoking one.
+      </p>
     ),
   },
   {
@@ -148,8 +131,8 @@ export default function GettingStartedPage() {
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Getting Started with the AI Registry</h1>
           <p className="text-muted-foreground">
-            This guide walks you through discovering, configuring, and using MCP servers and AI
-            agents from the registry.
+            This guide walks you through discovering, configuring, and using MCP servers from the
+            registry.
           </p>
         </div>
 
@@ -176,25 +159,15 @@ export default function GettingStartedPage() {
 
         <Card>
           <CardContent className="py-4 text-sm text-muted-foreground flex flex-wrap items-center justify-between gap-3">
-            <span>Need help with the underlying protocols?</span>
-            <div className="flex gap-3">
-              <a
-                href="https://modelcontextprotocol.io/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-primary hover:underline"
-              >
-                MCP spec <ExternalLink className="h-3 w-3" />
-              </a>
-              <a
-                href="https://a2a-protocol.org/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-primary hover:underline"
-              >
-                A2A protocol <ExternalLink className="h-3 w-3" />
-              </a>
-            </div>
+            <span>Need help with the underlying protocol?</span>
+            <a
+              href="https://modelcontextprotocol.io/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-primary hover:underline"
+            >
+              MCP spec <ExternalLink className="h-3 w-3" />
+            </a>
           </CardContent>
         </Card>
       </main>

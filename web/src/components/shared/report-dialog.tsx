@@ -3,7 +3,6 @@ import { Flag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getPublicClient } from '@/lib/api-client'
 
-export type ReportableResourceType = 'mcp_server' | 'agent'
 export type ReportIssueType =
   | 'broken'
   | 'misleading'
@@ -26,7 +25,6 @@ const ISSUE_TYPES: { value: ReportIssueType; label: string }[] = [
 ]
 
 interface ReportDialogProps {
-  resourceType: ReportableResourceType
   resourceId: string
   /** Display name shown in the dialog header, e.g. "acme/my-server". */
   resourceLabel?: string
@@ -36,7 +34,7 @@ interface ReportDialogProps {
  * "Report an issue" button + native-dialog modal. Any user (authenticated or
  * not) may submit a report; submissions are triaged in the admin queue.
  */
-export function ReportDialog({ resourceType, resourceId, resourceLabel }: ReportDialogProps) {
+export function ReportDialog({ resourceId, resourceLabel }: ReportDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [issueType, setIssueType] = useState<ReportIssueType>('broken')
   const [description, setDescription] = useState('')
@@ -82,7 +80,7 @@ export function ReportDialog({ resourceType, resourceId, resourceLabel }: Report
       const api = getPublicClient()
       const { error: apiError } = await api.POST('/api/v1/reports', {
         body: {
-          resource_type: resourceType,
+          resource_type: 'mcp_server',
           resource_id: resourceId,
           issue_type: issueType,
           description: description.trim(),

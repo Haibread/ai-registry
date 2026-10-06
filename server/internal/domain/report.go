@@ -14,7 +14,7 @@ const (
 // Report is a community-submitted issue report against a registry entry.
 type Report struct {
 	ID           string
-	ResourceType string // "mcp_server" | "agent"
+	ResourceType string // "mcp_server"
 	ResourceID   string
 	// ResourceNS / ResourceSlug / ResourceName identify the reported entry in
 	// human terms. Populated on admin list reads (joined from the entry

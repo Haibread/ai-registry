@@ -23,14 +23,6 @@ describe("getFieldExplanation", () => {
     expect(getFieldExplanation("public")).toBe(fieldExplanations.public)
   })
 
-  it("returns the explanation for a MIME type key", () => {
-    expect(getFieldExplanation("text/plain")).toBe(fieldExplanations["text/plain"])
-  })
-
-  it("returns the explanation for an auth scheme key", () => {
-    expect(getFieldExplanation("Bearer")).toBe(fieldExplanations.Bearer)
-  })
-
   it("returns the explanation for protocol_versions", () => {
     expect(getFieldExplanation("protocol_versions")).toBe(
       fieldExplanations.protocol_versions,

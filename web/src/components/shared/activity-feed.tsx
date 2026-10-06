@@ -31,7 +31,6 @@ type PublicActivityEvent = components['schemas']['PublicActivityEvent']
 type PublicActivityEventList = components['schemas']['PublicActivityEventList']
 
 interface ActivityFeedProps {
-  resourceType: 'mcp' | 'agent'
   namespace?: string
   slug?: string
   /** Page size. Defaults to 10 to keep the initial render compact. */
@@ -50,20 +49,13 @@ function labelFor(
   switch (action) {
     case 'mcp_server.created':
       return { label: 'Server created', Icon: Sparkles }
-    case 'agent.created':
-      return { label: 'Agent created', Icon: Sparkles }
     case 'mcp_server_version.published':
       return { label: 'Version published', Icon: Upload }
-    case 'agent_version.published':
-      return { label: 'Version published', Icon: Upload }
     case 'mcp_server.deprecated':
-    case 'agent.deprecated':
       return { label: 'Deprecated', Icon: Ban }
     case 'mcp_server.visibility_changed':
-    case 'agent.visibility_changed':
       return { label: 'Visibility changed', Icon: EyeOff }
     case 'mcp_server.updated':
-    case 'agent.updated':
       return { label: 'Metadata updated', Icon: Pencil }
     default:
       return { label: action, Icon: CircleDot }
@@ -110,7 +102,6 @@ function metadataSummary(md: Record<string, unknown> | undefined): string {
 }
 
 export function ActivityFeed({
-  resourceType,
   namespace,
   slug,
   pageSize = 10,
@@ -127,7 +118,7 @@ export function ActivityFeed({
     isFetchingNextPage,
     hasNextPage,
   } = useInfiniteQuery<PublicActivityEventList | null>({
-    queryKey: ['activity', resourceType, namespace, slug, pageSize],
+    queryKey: ['activity', namespace, slug, pageSize],
     enabled,
     initialPageParam: undefined as string | undefined,
     // The API returns next_cursor: '' (not null) when there's no next page,
@@ -135,19 +126,7 @@ export function ActivityFeed({
     // return value as "has another page".
     getNextPageParam: (lastPage) => lastPage?.next_cursor || undefined,
     queryFn: async ({ pageParam }) => {
-      if (resourceType === 'mcp') {
-        const r = await api.GET(
-          '/api/v1/mcp/servers/{namespace}/{slug}/activity',
-          {
-            params: {
-              path: { namespace: namespace!, slug: slug! },
-              query: { limit: pageSize, cursor: pageParam as string | undefined },
-            },
-          },
-        )
-        return r.data ?? null
-      }
-      const r = await api.GET('/api/v1/agents/{namespace}/{slug}/activity', {
+      const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/activity', {
         params: {
           path: { namespace: namespace!, slug: slug! },
           query: { limit: pageSize, cursor: pageParam as string | undefined },

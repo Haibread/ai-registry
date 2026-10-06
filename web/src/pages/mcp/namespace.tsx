@@ -3,9 +3,8 @@
  *
  * Route: /mcp/:namespace
  *
- * Distinct from /publishers/:slug (which shows both MCP + agent grids): this
- * page is MCP-only and acts as a scoped entry point for the publisher's MCP
- * catalogue. Under the hood it calls the existing `namespace=X` server-side
+ * Distinct from /publishers/:slug (which shows the publisher profile): this
+ * page acts as a scoped entry point for the publisher's MCP catalogue. Under the hood it calls the existing `namespace=X` server-side
  * filter on `GET /api/v1/mcp/servers` — no new endpoint needed.
  *
  * Loading / empty / 404 are three distinct states:

@@ -12,8 +12,8 @@ export function Header() {
   const { isAuthenticated, logout, loginError } = useAuth()
   const location = useLocation()
   // The home hero already hosts a big SearchBar — don't duplicate it in the
-  // header on `/`, but surface it on every other page so cross-type search is
-  // one click away from anywhere.
+  // header on `/`, but surface it on every other page so search is one click
+  // away from anywhere.
   const showHeaderSearch = location.pathname !== '/'
 
   return (
@@ -34,10 +34,6 @@ export function Header() {
           <NavLink to="/mcp">
             <ResourceIcon type="mcp-server" />
             MCP Servers
-          </NavLink>
-          <NavLink to="/agents">
-            <ResourceIcon type="agent" />
-            Agents
           </NavLink>
           <NavLink to="/getting-started">
             <BookOpen className="h-4 w-4" />

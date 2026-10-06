@@ -14,15 +14,6 @@ export default defineConfig({
         target: process.env.API_URL ?? 'http://localhost:8081',
         changeOrigin: true,
       },
-      // Only proxy the A2A Agent Card well-known path under /agents/{ns}/{slug}.
-      // Everything else under /agents/* is a React Router client-side route
-      // (the /agents list page and /agents/{ns}/{slug} detail page) and must
-      // be served by the SPA. Using a regex here (key starting with ^) makes
-      // Vite's proxy treat it as a RegExp instead of a prefix match.
-      '^/agents/[^/]+/[^/]+/\\.well-known/.*': {
-        target: process.env.API_URL ?? 'http://localhost:8081',
-        changeOrigin: true,
-      },
       '/healthz': {
         target: process.env.API_URL ?? 'http://localhost:8081',
         changeOrigin: true,

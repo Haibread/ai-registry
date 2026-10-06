@@ -372,118 +372,6 @@ func diagnoseMCPDeletionMiss(ctx context.Context, db *DB, serverID string) error
 	return ErrConflict
 }
 
-// RequestAgentDeletion is the agent equivalent of RequestMCPDeletion.
-func (db *DB) RequestAgentDeletion(ctx context.Context, agentID string, a Actor) error {
-	ctx, span := startSpan(ctx, "RequestAgentDeletion")
-	defer span.End()
-
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE agents
-		SET deletion_requested_at       = NOW(),
-		    deletion_requested_by       = $2,
-		    deletion_requested_by_email = $3,
-		    updated_at                  = NOW()
-		WHERE id = $1
-		  AND deletion_requested_at IS NULL
-		  AND deleted_at             IS NULL`,
-		agentID, a.Subject, a.Email)
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("requesting agent deletion: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return diagnoseAgentDeletionMiss(ctx, db, agentID)
-	}
-	return nil
-}
-
-// ApproveAgentDeletion is the agent equivalent of ApproveMCPDeletion.
-// Sets both deleted_at and status='deleted' so existing read filters
-// keep working without any change.
-func (db *DB) ApproveAgentDeletion(ctx context.Context, agentID string, a Actor) error {
-	ctx, span := startSpan(ctx, "ApproveAgentDeletion")
-	defer span.End()
-
-	tx, err := db.Pool.Begin(ctx)
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	var requestedBy string
-	err = tx.QueryRow(ctx, `
-		UPDATE agents
-		SET deleted_at = NOW(),
-		    status     = 'deleted',
-		    updated_at = NOW()
-		WHERE id = $1
-		  AND deletion_requested_at IS NOT NULL
-		  AND deleted_at             IS NULL
-		RETURNING coalesce(deletion_requested_by, '')`, agentID).Scan(&requestedBy)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return diagnoseAgentDeletionMiss(ctx, db, agentID)
-	}
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("approving agent deletion: %w", err)
-	}
-	if err := refuseSelfApproval(requestedBy, a); err != nil {
-		recordErr(span, err)
-		return err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("commit tx: %w", err)
-	}
-	return nil
-}
-
-// RejectAgentDeletion is the agent equivalent of RejectMCPDeletion.
-func (db *DB) RejectAgentDeletion(ctx context.Context, agentID string, _ Actor) error {
-	ctx, span := startSpan(ctx, "RejectAgentDeletion")
-	defer span.End()
-
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE agents
-		SET deletion_requested_at       = NULL,
-		    deletion_requested_by       = NULL,
-		    deletion_requested_by_email = NULL,
-		    updated_at                  = NOW()
-		WHERE id = $1
-		  AND deletion_requested_at IS NOT NULL
-		  AND deleted_at             IS NULL`, agentID)
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("rejecting agent deletion: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return diagnoseAgentDeletionMiss(ctx, db, agentID)
-	}
-	return nil
-}
-
-func diagnoseAgentDeletionMiss(ctx context.Context, db *DB, agentID string) error {
-	var (
-		requestedAt *time.Time //nolint:wastedassign // scanned for symmetry; not consulted
-		deletedAt   *time.Time
-	)
-	_ = requestedAt
-	err := db.Pool.QueryRow(ctx,
-		`SELECT deletion_requested_at, deleted_at FROM agents WHERE id=$1`,
-		agentID).Scan(&requestedAt, &deletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("diagnosing deletion miss: %w", err)
-	}
-	if deletedAt != nil {
-		return ErrNotFound
-	}
-	return ErrConflict
-}
-
 // ── Review queue ─────────────────────────────────────────────────────────
 
 // ReviewQueueItemKind discriminates the kinds of items that show up in
@@ -491,12 +379,9 @@ func diagnoseAgentDeletionMiss(ctx context.Context, db *DB, agentID string) erro
 type ReviewQueueItemKind string
 
 const (
-	ReviewQueueItemMCPVersion    ReviewQueueItemKind = "mcp_version"
-	ReviewQueueItemAgentVersion  ReviewQueueItemKind = "agent_version"
-	ReviewQueueItemMCPDeletion   ReviewQueueItemKind = "mcp_deletion"
-	ReviewQueueItemAgentDeletion ReviewQueueItemKind = "agent_deletion"
-	ReviewQueueItemMCPChange     ReviewQueueItemKind = "mcp_change"
-	ReviewQueueItemAgentChange   ReviewQueueItemKind = "agent_change"
+	ReviewQueueItemMCPVersion  ReviewQueueItemKind = "mcp_version"
+	ReviewQueueItemMCPDeletion ReviewQueueItemKind = "mcp_deletion"
+	ReviewQueueItemMCPChange   ReviewQueueItemKind = "mcp_change"
 )
 
 // ReviewQueueItem is a flattened entry in the reviewer's queue. Version
@@ -538,11 +423,11 @@ type ListReviewQueueParams struct {
 	PublisherIDs []string
 }
 
-// ListReviewQueue returns pending_review versions and pending deletions,
-// newest first. The query unions the four sources (MCP version, agent version,
-// MCP deletion, agent deletion) and sorts by the submission / request
-// timestamp. When p.PublisherIDs is non-empty the result is restricted to those
-// owning publishers (reviewer scoping); empty means no filter.
+// ListReviewQueue returns pending_review versions, pending deletions and
+// pending entry changes, newest first. The query unions the three sources and
+// sorts by the submission / request timestamp. When p.PublisherIDs is
+// non-empty the result is restricted to those owning publishers (reviewer
+// scoping); empty means no filter.
 //
 // Reviewers and admins are the only legitimate callers; the handler resolves
 // the caller's reviewer scope (Server Admin / global Reviewer → all publishers;
@@ -600,17 +485,6 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		      AND s.status != 'deleted'
 
 		    UNION ALL
-		    SELECT 'agent_version'::text, p.id, p.slug, a.slug, a.id,
-		           av.version, av.revision, av.submitted_at,
-		           coalesce(av.submitted_by, ''), coalesce(av.submitted_by_email, ''),
-		           av.request_public, '', '', NULL::jsonb
-		    FROM agent_versions av
-		    JOIN agents     a ON a.id = av.agent_id
-		    JOIN publishers p ON p.id = a.publisher_id
-		    WHERE av.review_state = 'pending_review' AND av.submitted_at IS NOT NULL
-		      AND a.status != 'deleted'
-
-		    UNION ALL
 		    SELECT 'mcp_deletion'::text, p.id, p.slug, s.slug, s.id,
 		           '', 0, s.deletion_requested_at,
 		           coalesce(s.deletion_requested_by, ''), coalesce(s.deletion_requested_by_email, ''),
@@ -619,16 +493,6 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    JOIN publishers p ON p.id = s.publisher_id
 		    WHERE s.deletion_requested_at IS NOT NULL AND s.deleted_at IS NULL
 		      AND s.status != 'deleted'
-
-		    UNION ALL
-		    SELECT 'agent_deletion'::text, p.id, p.slug, a.slug, a.id,
-		           '', 0, a.deletion_requested_at,
-		           coalesce(a.deletion_requested_by, ''), coalesce(a.deletion_requested_by_email, ''),
-		           false, '', '', NULL::jsonb
-		    FROM agents a
-		    JOIN publishers p ON p.id = a.publisher_id
-		    WHERE a.deletion_requested_at IS NOT NULL AND a.deleted_at IS NULL
-		      AND a.status != 'deleted'
 
 		    UNION ALL
 		    SELECT 'mcp_change'::text, p.id, p.slug, s.slug, s.id,
@@ -640,17 +504,6 @@ func (db *DB) ListReviewQueue(ctx context.Context, p ListReviewQueueParams) ([]R
 		    JOIN publishers p ON p.id = s.publisher_id
 		    WHERE ecr.resource_type = 'mcp_server' AND ecr.state = 'pending_review'
 		      AND s.status != 'deleted'
-
-		    UNION ALL
-		    SELECT 'agent_change'::text, p.id, p.slug, a.slug, a.id,
-		           '', ecr.revision, ecr.submitted_at,
-		           coalesce(ecr.submitted_by, ''), coalesce(ecr.submitted_by_email, ''),
-		           false, ecr.id, ecr.action, ecr.payload
-		    FROM entry_change_requests ecr
-		    JOIN agents a ON a.id = ecr.entry_id
-		    JOIN publishers p ON p.id = a.publisher_id
-		    WHERE ecr.resource_type = 'agent' AND ecr.state = 'pending_review'
-		      AND a.status != 'deleted'
 		)
 		SELECT kind, publisher_slug, entry_slug, entry_id, version, revision,
 		       submitted_at, submitted_by, submitted_by_email, request_public,
@@ -746,245 +599,6 @@ func diagnoseMCPApproveMiss(ctx context.Context, db *DB, serverID, version strin
 	}
 	// The conditional UPDATE matched zero rows but no condition disagrees:
 	// shouldn't happen but be explicit.
-	return ErrReviewStateMismatch
-}
-
-// ── Agent versions: workflow ─────────────────────────────────────────────
-
-// SubmitAgentVersion is the agent equivalent of SubmitMCPVersion.
-func (db *DB) SubmitAgentVersion(ctx context.Context, agentID, version string, requestPublic bool, a Actor) error {
-	ctx, span := startSpan(ctx, "SubmitAgentVersion")
-	defer span.End()
-
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE agent_versions
-		SET review_state       = 'pending_review',
-		    submitted_at       = NOW(),
-		    submitted_by       = $3,
-		    submitted_by_email = $4,
-		    rejection_reason   = NULL,
-		    request_public     = $5,
-		    updated_at         = NOW()
-		WHERE agent_id = $1
-		  AND version  = $2
-		  AND review_state IN ('none', 'rejected')
-		  AND published_at IS NULL`,
-		agentID, version, a.Subject, a.Email, requestPublic)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			recordErr(span, ErrConflict)
-			return ErrConflict
-		}
-		recordErr(span, err)
-		return fmt.Errorf("submitting agent version: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return diagnoseAgentReviewMiss(ctx, db, agentID, version)
-	}
-	return nil
-}
-
-// WithdrawAgentVersion is the agent equivalent of WithdrawMCPVersion.
-func (db *DB) WithdrawAgentVersion(ctx context.Context, agentID, version string, _ Actor) error {
-	ctx, span := startSpan(ctx, "WithdrawAgentVersion")
-	defer span.End()
-
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE agent_versions
-		SET review_state       = 'none',
-		    submitted_at       = NULL,
-		    submitted_by       = NULL,
-		    submitted_by_email = NULL,
-		    request_public     = false,
-		    updated_at         = NOW()
-		WHERE agent_id = $1
-		  AND version  = $2
-		  AND review_state = 'pending_review'`,
-		agentID, version)
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("withdrawing agent version: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return diagnoseAgentReviewMiss(ctx, db, agentID, version)
-	}
-	return nil
-}
-
-// ApproveAgentVersion is the agent equivalent of ApproveMCPVersion,
-// including the request_public handling — see that function's commentary.
-func (db *DB) ApproveAgentVersion(ctx context.Context, agentID, version string, expectedRevision int, a Actor) (madePublic bool, err error) {
-	ctx, span := startSpan(ctx, "ApproveAgentVersion")
-	defer span.End()
-
-	tx, err := db.Pool.Begin(ctx)
-	if err != nil {
-		recordErr(span, err)
-		return false, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	var (
-		requestPublic bool
-		submittedBy   string
-	)
-	err = tx.QueryRow(ctx, `
-		UPDATE agent_versions
-		SET review_state      = 'none',
-		    reviewed_at       = NOW(),
-		    reviewed_by       = $3,
-		    reviewed_by_email = $4,
-		    review_decision   = 'approved',
-		    published_at      = COALESCE(published_at, NOW()),
-		    updated_at        = NOW()
-		WHERE agent_id     = $1
-		  AND version      = $2
-		  AND review_state = 'pending_review'
-		  AND revision     = $5
-		RETURNING request_public, coalesce(submitted_by, '')`,
-		agentID, version, a.Subject, a.Email, expectedRevision).Scan(&requestPublic, &submittedBy)
-	if errors.Is(err, pgx.ErrNoRows) {
-		if err := diagnoseAgentApproveMissTx(ctx, tx, agentID, version, expectedRevision); err != nil {
-			recordErr(span, err)
-			return false, err
-		}
-		return false, ErrReviewStateMismatch
-	}
-	if err != nil {
-		recordErr(span, err)
-		return false, fmt.Errorf("approving agent version: %w", err)
-	}
-	if err := refuseSelfApproval(submittedBy, a); err != nil {
-		recordErr(span, err)
-		return false, err
-	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE agents SET status='published', updated_at=NOW() WHERE id=$1 AND status='draft'`,
-		agentID); err != nil {
-		recordErr(span, err)
-		return false, fmt.Errorf("promoting agent status: %w", err)
-	}
-	if requestPublic {
-		tag, err := tx.Exec(ctx,
-			`UPDATE agents SET visibility='public', updated_at=NOW() WHERE id=$1 AND visibility='private'`,
-			agentID)
-		if err != nil {
-			recordErr(span, err)
-			return false, fmt.Errorf("applying requested public visibility: %w", err)
-		}
-		madePublic = tag.RowsAffected() > 0
-	}
-	if err := tx.Commit(ctx); err != nil {
-		recordErr(span, err)
-		return false, fmt.Errorf("commit tx: %w", err)
-	}
-	return madePublic, nil
-}
-
-// RejectAgentVersion is the agent equivalent of RejectMCPVersion.
-func (db *DB) RejectAgentVersion(ctx context.Context, agentID, version string, expectedRevision int, reason string, a Actor) error {
-	ctx, span := startSpan(ctx, "RejectAgentVersion")
-	defer span.End()
-
-	tag, err := db.Pool.Exec(ctx, `
-		UPDATE agent_versions
-		SET review_state      = 'rejected',
-		    reviewed_at       = NOW(),
-		    reviewed_by       = $3,
-		    reviewed_by_email = $4,
-		    review_decision   = 'rejected',
-		    rejection_reason  = $5,
-		    updated_at        = NOW()
-		WHERE agent_id     = $1
-		  AND version      = $2
-		  AND review_state = 'pending_review'
-		  AND revision     = $6`,
-		agentID, version, a.Subject, a.Email, reason, expectedRevision)
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("rejecting agent version: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return diagnoseAgentApproveMiss(ctx, db, agentID, version, expectedRevision)
-	}
-	return nil
-}
-
-func diagnoseAgentReviewMiss(ctx context.Context, db *DB, agentID, version string) error {
-	var (
-		state       string
-		publishedAt *time.Time
-	)
-	err := db.Pool.QueryRow(ctx,
-		`SELECT review_state, published_at FROM agent_versions
-		 WHERE agent_id = $1 AND version = $2`,
-		agentID, version).Scan(&state, &publishedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("diagnosing agent review miss: %w", err)
-	}
-	if publishedAt != nil {
-		return ErrAlreadyPublished
-	}
-	return ErrReviewStateMismatch
-}
-
-func diagnoseAgentApproveMiss(ctx context.Context, db *DB, agentID, version string, expectedRevision int) error {
-	var (
-		state       string
-		revision    int
-		publishedAt *time.Time
-	)
-	err := db.Pool.QueryRow(ctx,
-		`SELECT review_state, revision, published_at FROM agent_versions
-		 WHERE agent_id = $1 AND version = $2`,
-		agentID, version).Scan(&state, &revision, &publishedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("diagnosing agent approve miss: %w", err)
-	}
-	if publishedAt != nil {
-		return ErrAlreadyPublished
-	}
-	if state != string(domain.ReviewStatePendingReview) {
-		return ErrReviewStateMismatch
-	}
-	if revision != expectedRevision {
-		return ErrReviewRevisionMismatch
-	}
-	return ErrReviewStateMismatch
-}
-
-func diagnoseAgentApproveMissTx(ctx context.Context, tx pgx.Tx, agentID, version string, expectedRevision int) error {
-	var (
-		state       string
-		revision    int
-		publishedAt *time.Time
-	)
-	err := tx.QueryRow(ctx,
-		`SELECT review_state, revision, published_at FROM agent_versions
-		 WHERE agent_id = $1 AND version = $2`,
-		agentID, version).Scan(&state, &revision, &publishedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("diagnosing agent approve miss: %w", err)
-	}
-	if publishedAt != nil {
-		return ErrAlreadyPublished
-	}
-	if state != string(domain.ReviewStatePendingReview) {
-		return ErrReviewStateMismatch
-	}
-	if revision != expectedRevision {
-		return ErrReviewRevisionMismatch
-	}
 	return ErrReviewStateMismatch
 }
 

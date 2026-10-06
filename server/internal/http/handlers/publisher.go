@@ -124,7 +124,7 @@ type PublisherActivityEvent struct {
 // GetPublisherActivity returns the publisher-scoped audit feed (newest first,
 // paginated). Gated to a publisher member (Viewer and up) or Server Admin in
 // the router. Filtered by resource_ns = the publisher's slug, so it covers the
-// lifecycle of every MCP server and agent under the publisher. Metadata is run
+// lifecycle of every MCP server under the publisher. Metadata is run
 // through the same scrub as the public feed; the actor's email is retained
 // because the audience is the publisher's own members.
 func (h *PublisherHandlers) GetPublisherActivity(w http.ResponseWriter, r *http.Request) {
@@ -297,7 +297,7 @@ func (h *PublisherHandlers) DeletePublisher(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Deleting a publisher cascades to all of its MCP servers, agents, their
+	// Deleting a publisher cascades to all of its MCP servers, their
 	// versions, and any reports filed against them (see store.DeletePublisher);
 	// owned resources never block the delete, so there is no 409 path here.
 	if err := h.db.DeletePublisher(r.Context(), pub.ID); errors.Is(err, store.ErrNotFound) {

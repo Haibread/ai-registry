@@ -21,7 +21,6 @@ import {
   ChevronRight,
   RotateCcw,
   Server,
-  Bot,
   Users,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -54,15 +53,6 @@ const ACTIONS_BY_TYPE: Record<string, string[]> = {
     'mcp_server_version.created',
     'mcp_server_version.published',
   ],
-  agent: [
-    'agent.created',
-    'agent.updated',
-    'agent.deleted',
-    'agent.deprecated',
-    'agent.visibility_changed',
-    'agent_version.created',
-    'agent_version.published',
-  ],
   publisher: [
     'publisher.created',
     'publisher.updated',
@@ -77,7 +67,6 @@ const ACTIONS_BY_TYPE: Record<string, string[]> = {
  */
 function resourceTypeIcon(t: string) {
   if (t === 'mcp_server') return Server
-  if (t === 'agent') return Bot
   if (t === 'publisher') return Users
   return Activity
 }
@@ -103,9 +92,6 @@ function drillDownHref(e: AuditEvent): string | null {
   if (!e.resource_ns && !e.resource_slug) return null
   if (e.resource_type === 'mcp_server' && e.resource_ns && e.resource_slug) {
     return `/admin/mcp/${e.resource_ns}/${e.resource_slug}`
-  }
-  if (e.resource_type === 'agent' && e.resource_ns && e.resource_slug) {
-    return `/admin/agents/${e.resource_ns}/${e.resource_slug}`
   }
   if (e.resource_type === 'publisher' && e.resource_slug) {
     return `/admin/publishers/${e.resource_slug}`
@@ -266,7 +252,6 @@ export default function AdminAuditPage() {
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
                 <SelectItem value="mcp_server">MCP servers</SelectItem>
-                <SelectItem value="agent">Agents</SelectItem>
                 <SelectItem value="publisher">Publishers</SelectItem>
               </SelectContent>
             </Select>

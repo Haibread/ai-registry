@@ -43,7 +43,7 @@ describe('SearchBar', () => {
 
   it('has placeholder text', () => {
     renderSearchBar()
-    expect(screen.getByPlaceholderText(/search mcp servers and agents/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/search mcp servers/i)).toBeInTheDocument()
   })
 
   it('navigates to /mcp?q=... on Enter', async () => {

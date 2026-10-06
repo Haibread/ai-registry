@@ -54,12 +54,11 @@ const events = [
     id: '01HX_DEP',
     actor_subject: 'kc-uuid-b',
     actor_email: 'bob@example.com',
-    action: 'agent.deprecated',
-    resource_type: 'agent',
-    resource_id: 'ag-01',
-    resource_ns: 'acme',
-    resource_slug: 'planner',
-    metadata: { reason: 'obsolete' },
+    action: 'publisher.updated',
+    resource_type: 'publisher',
+    resource_id: 'pub-01',
+    resource_slug: 'globex',
+    metadata: { field: 'display_name' },
     created_at: '2026-04-15T12:45:00Z',
   },
 ]
@@ -93,7 +92,7 @@ describe('AdminAudit page', () => {
     renderPage()
     await screen.findByText('mcp_server.created')
     expect(screen.getByText('mcp_server_version.published')).toBeInTheDocument()
-    expect(screen.getByText('agent.deprecated')).toBeInTheDocument()
+    expect(screen.getByText('publisher.updated')).toBeInTheDocument()
   })
 
   it('shows the actor email on every row and the subject only when expanded', async () => {
@@ -112,8 +111,8 @@ describe('AdminAudit page', () => {
     await screen.findByText('mcp_server.created')
     const mcpLinks = screen.getAllByRole('link', { name: /acme\/cool-server/i })
     expect(mcpLinks[0]).toHaveAttribute('href', '/admin/mcp/acme/cool-server')
-    const agentLink = screen.getByRole('link', { name: /acme\/planner/i })
-    expect(agentLink).toHaveAttribute('href', '/admin/agents/acme/planner')
+    const publisherLink = screen.getByRole('link', { name: 'globex' })
+    expect(publisherLink).toHaveAttribute('href', '/admin/publishers/globex')
   })
 
   it('filters by resource_type when the select is changed', async () => {
@@ -123,11 +122,11 @@ describe('AdminAudit page', () => {
     // Radix Select uses role="combobox"; click the trigger then the option.
     const typeTrigger = screen.getByLabelText('Resource type')
     fireEvent.click(typeTrigger)
-    const agentOption = await screen.findByRole('option', { name: /agents/i })
-    fireEvent.click(agentOption)
+    const publisherOption = await screen.findByRole('option', { name: /publishers/i })
+    fireEvent.click(publisherOption)
     await waitFor(() => {
       const call = mockGET.mock.calls.find(
-        (c) => c[1]?.params?.query?.resource_type === 'agent',
+        (c) => c[1]?.params?.query?.resource_type === 'publisher',
       )
       expect(call).toBeDefined()
     })
@@ -165,14 +164,14 @@ describe('AdminAudit page', () => {
     await screen.findByText('mcp_server.created')
     const actionTrigger = screen.getByLabelText('Action')
     fireEvent.click(actionTrigger)
-    const opt = await screen.findByRole('option', { name: 'agent.deprecated' })
+    const opt = await screen.findByRole('option', { name: 'publisher.updated' })
     fireEvent.click(opt)
-    // Only the agent.deprecated row should remain visible — scope the
+    // Only the publisher.updated row should remain visible — scope the
     // assertion to the rows list so the select trigger (which now also
-    // displays "agent.deprecated") doesn't muddy the match.
+    // displays "publisher.updated") doesn't muddy the match.
     const rows = await screen.findByTestId('audit-rows')
     expect(within(rows).queryByText('mcp_server.created')).not.toBeInTheDocument()
-    expect(within(rows).getByText('agent.deprecated')).toBeInTheDocument()
+    expect(within(rows).getByText('publisher.updated')).toBeInTheDocument()
   })
 
   it('shows empty state when API returns zero events', async () => {

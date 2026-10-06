@@ -20,29 +20,21 @@ describe('useRecordView', () => {
     vi.clearAllMocks()
   })
 
-  it('fires a POST on mount for mcp type', () => {
-    renderHook(() => useRecordView('mcp', 'acme', 'test-server'), { wrapper: wrapper() })
+  it('fires a POST on mount', () => {
+    renderHook(() => useRecordView('acme', 'test-server'), { wrapper: wrapper() })
     expect(mockPOST).toHaveBeenCalledWith(
       '/api/v1/mcp/servers/{namespace}/{slug}/view',
       { params: { path: { namespace: 'acme', slug: 'test-server' } } },
     )
   })
 
-  it('fires a POST on mount for agent type', () => {
-    renderHook(() => useRecordView('agent', 'acme', 'bot'), { wrapper: wrapper() })
-    expect(mockPOST).toHaveBeenCalledWith(
-      '/api/v1/agents/{namespace}/{slug}/view',
-      { params: { path: { namespace: 'acme', slug: 'bot' } } },
-    )
-  })
-
   it('does not fire when namespace is missing', () => {
-    renderHook(() => useRecordView('mcp', undefined, 'test'), { wrapper: wrapper() })
+    renderHook(() => useRecordView(undefined, 'test'), { wrapper: wrapper() })
     expect(mockPOST).not.toHaveBeenCalled()
   })
 
   it('does not fire when slug is missing', () => {
-    renderHook(() => useRecordView('mcp', 'acme', undefined), { wrapper: wrapper() })
+    renderHook(() => useRecordView('acme', undefined), { wrapper: wrapper() })
     expect(mockPOST).not.toHaveBeenCalled()
   })
 })
@@ -52,8 +44,8 @@ describe('useRecordCopy', () => {
     vi.clearAllMocks()
   })
 
-  it('returns a function that fires a POST for mcp type', () => {
-    const { result } = renderHook(() => useRecordCopy('mcp', 'acme', 'srv'), { wrapper: wrapper() })
+  it('returns a function that fires a POST', () => {
+    const { result } = renderHook(() => useRecordCopy('acme', 'srv'), { wrapper: wrapper() })
     result.current()
     expect(mockPOST).toHaveBeenCalledWith(
       '/api/v1/mcp/servers/{namespace}/{slug}/copy',
@@ -61,17 +53,8 @@ describe('useRecordCopy', () => {
     )
   })
 
-  it('returns a function that fires a POST for agent type', () => {
-    const { result } = renderHook(() => useRecordCopy('agent', 'acme', 'bot'), { wrapper: wrapper() })
-    result.current()
-    expect(mockPOST).toHaveBeenCalledWith(
-      '/api/v1/agents/{namespace}/{slug}/copy',
-      { params: { path: { namespace: 'acme', slug: 'bot' } } },
-    )
-  })
-
   it('does nothing when namespace is missing', () => {
-    const { result } = renderHook(() => useRecordCopy('mcp', undefined, 'srv'), { wrapper: wrapper() })
+    const { result } = renderHook(() => useRecordCopy(undefined, 'srv'), { wrapper: wrapper() })
     result.current()
     expect(mockPOST).not.toHaveBeenCalled()
   })

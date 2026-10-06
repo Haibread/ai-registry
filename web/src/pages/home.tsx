@@ -5,10 +5,9 @@ import { ArrowRight, TrendingUp } from 'lucide-react'
 import { CardGridSkeleton } from '@/components/ui/card-grid-skeleton'
 import { SearchBar } from '@/components/ui/search-bar'
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
-import { ProtocolTiles } from '@/components/home/protocol-tiles'
+import { ProtocolTile } from '@/components/home/protocol-tile'
 import { LogoMark } from '@/components/layout/logo'
 import { ServerCard } from '@/components/mcp/server-card'
-import { AgentCard } from '@/components/agents/agent-card'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { getPublicClient } from '@/lib/api-client'
@@ -33,17 +32,8 @@ export default function HomePage() {
     enabled: listingView === 'featured',
   })
 
-  const { data: featuredAgents } = useQuery({
-    queryKey: ['agents', 'featured'],
-    queryFn: () => api.GET('/api/v1/agents', {
-      params: { query: { featured: true, limit: 6 } },
-    }).then(r => r.data),
-    enabled: listingView === 'featured',
-  })
-
   // Recent fallback — only fetch if no featured entries
   const hasFeaturedMcp = (featuredMcp?.items?.length ?? 0) > 0
-  const hasFeaturedAgents = (featuredAgents?.items?.length ?? 0) > 0
 
   const { data: recentMcp } = useQuery({
     queryKey: ['mcp-servers', 'recent'],
@@ -53,26 +43,10 @@ export default function HomePage() {
     enabled: listingView === 'featured' && !hasFeaturedMcp && featuredMcp !== undefined,
   })
 
-  const { data: recentAgents } = useQuery({
-    queryKey: ['agents', 'recent'],
-    queryFn: () => api.GET('/api/v1/agents', {
-      params: { query: { limit: 6 } },
-    }).then(r => r.data),
-    enabled: listingView === 'featured' && !hasFeaturedAgents && featuredAgents !== undefined,
-  })
-
   // ── Recently updated view queries ──────────────────────────────────
   const { data: updatedMcp } = useQuery({
     queryKey: ['mcp-servers', 'updated'],
     queryFn: () => api.GET('/api/v1/mcp/servers', {
-      params: { query: { sort: 'updated_at_desc', limit: 6 } },
-    }).then(r => r.data),
-    enabled: listingView === 'updated',
-  })
-
-  const { data: updatedAgents } = useQuery({
-    queryKey: ['agents', 'updated'],
-    queryFn: () => api.GET('/api/v1/agents', {
       params: { query: { sort: 'updated_at_desc', limit: 6 } },
     }).then(r => r.data),
     enabled: listingView === 'updated',
@@ -88,29 +62,18 @@ export default function HomePage() {
   const mcpServers = listingView === 'updated'
     ? (updatedMcp?.items ?? [])
     : hasFeaturedMcp ? featuredMcp!.items! : (recentMcp?.items ?? [])
-  const agents = listingView === 'updated'
-    ? (updatedAgents?.items ?? [])
-    : hasFeaturedAgents ? featuredAgents!.items! : (recentAgents?.items ?? [])
   const mcpLabel = listingView === 'updated'
     ? 'Recently Updated MCP Servers'
     : hasFeaturedMcp ? 'Featured MCP Servers' : 'Recent MCP Servers'
-  const agentLabel = listingView === 'updated'
-    ? 'Recently Updated Agents'
-    : hasFeaturedAgents ? 'Featured Agents' : 'Recent Agents'
   const isLoadingMcp = listingView === 'updated'
     ? updatedMcp === undefined
     : featuredMcp === undefined
-  const isLoadingAgents = listingView === 'updated'
-    ? updatedAgents === undefined
-    : featuredAgents === undefined
 
   const newThisWeek =
     (stats?.new_mcp_servers_this_week ?? 0) +
-    (stats?.new_agents_this_week ?? 0) +
     (stats?.new_publishers_this_week ?? 0)
   const statItems = [
     { label: 'MCP servers', value: stats?.mcp_servers },
-    { label: 'agents', value: stats?.agents },
     { label: 'publishers', value: stats?.publishers },
   ]
 
@@ -122,11 +85,11 @@ export default function HomePage() {
           <div className="container grid items-center gap-10 py-12 md:py-16 lg:grid-cols-[minmax(0,1fr)_auto]">
             <div className="space-y-6">
               <h1 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl lg:leading-[1.1]">
-                Discover, publish and integrate MCP servers and AI agents.
+                Discover, publish and integrate MCP servers.
               </h1>
               <p className="max-w-xl text-lg text-muted-foreground">
-                One catalog for the tools and agents your models can call, with versions,
-                publishers and ready-to-paste client config.
+                One catalog for the tools your models can call, with versions, publishers
+                and ready-to-paste client config.
               </p>
               <SearchBar />
               <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm text-muted-foreground">
@@ -151,7 +114,7 @@ export default function HomePage() {
         </section>
 
         <section className="container pt-10">
-          <ProtocolTiles mcpCount={stats?.mcp_servers} agentCount={stats?.agents} />
+          <ProtocolTile mcpCount={stats?.mcp_servers} />
         </section>
 
         <section className="container space-y-10 py-10">
@@ -182,24 +145,6 @@ export default function HomePage() {
               </div>
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">No MCP servers published yet.</p>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-baseline justify-between gap-4">
-              <h3 className="font-semibold text-muted-foreground">{agentLabel}</h3>
-              <Link to="/agents" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-                View all <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            </div>
-            {isLoadingAgents ? (
-              <CardGridSkeleton count={3} />
-            ) : agents.length > 0 ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {agents.map((a) => <AgentCard key={a.id} agent={a} />)}
-              </div>
-            ) : (
-              <p className="py-8 text-center text-sm text-muted-foreground">No agents published yet.</p>
             )}
           </div>
         </section>

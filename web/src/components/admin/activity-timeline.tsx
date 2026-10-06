@@ -14,8 +14,7 @@ const DOT: Record<Tone, string> = {
 }
 
 // describeActivity maps an audit action key (e.g. "mcp_server_version.published")
-// to a tone + human verb. Keyed on the verb (the segment after the last dot) so
-// the MCP and agent variants share one mapping.
+// to a tone + human verb, keyed on the verb (the segment after the last dot).
 function describeActivity(action: string): { tone: Tone; verb: string } {
   const verb = action.split('.').pop() ?? action
   switch (verb) {

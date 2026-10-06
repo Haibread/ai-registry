@@ -16,7 +16,7 @@ import (
 
 func TestWrite_HappyPath(t *testing.T) {
 	rec := httptest.NewRecorder()
-	problem.Write(rec, http.StatusNotFound, "not-found", "agent does not exist", "/api/v1/agents/x/y")
+	problem.Write(rec, http.StatusNotFound, "not-found", "MCP server does not exist", "/api/v1/mcp/servers/x/y")
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
@@ -38,10 +38,10 @@ func TestWrite_HappyPath(t *testing.T) {
 	if got.Status != http.StatusNotFound {
 		t.Errorf("Status = %d, want 404", got.Status)
 	}
-	if got.Detail != "agent does not exist" {
+	if got.Detail != "MCP server does not exist" {
 		t.Errorf("Detail = %q", got.Detail)
 	}
-	if got.Instance != "/api/v1/agents/x/y" {
+	if got.Instance != "/api/v1/mcp/servers/x/y" {
 		t.Errorf("Instance = %q", got.Instance)
 	}
 	if got.Errors != nil {

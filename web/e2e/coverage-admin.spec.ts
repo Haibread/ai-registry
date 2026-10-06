@@ -265,11 +265,4 @@ test.describe('Admin: error states', () => {
       page.getByText(/not found|does not exist|no such|404|error/i).first(),
     ).toBeVisible({ timeout: 15_000 })
   })
-
-  test('admin detail page for a missing agent shows a not-found state', async ({ page }) => {
-    await goTo(page, '/admin/agents/ghost-ns/ghost-slug')
-    await expect(
-      page.getByText(/not found|does not exist|no such|404|error/i).first(),
-    ).toBeVisible({ timeout: 15_000 })
-  })
 })

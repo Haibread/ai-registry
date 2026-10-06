@@ -2,7 +2,7 @@
  * resource-icon.test.tsx
  *
  * Tests for the ResourceIcon component that renders a consistent icon
- * for each resource type (mcp-server, agent, publisher, skill, prompt).
+ * for each resource type (mcp-server, publisher, skill, prompt).
  */
 
 import { describe, it, expect } from "vitest"
@@ -12,7 +12,6 @@ import type { ResourceType } from "./resource-icon"
 
 const resourceTypes: ResourceType[] = [
   "mcp-server",
-  "agent",
   "publisher",
   "skill",
   "prompt",
@@ -28,7 +27,7 @@ describe("ResourceIcon", () => {
   }
 
   it("applies aria-hidden to the icon", () => {
-    const { container } = render(<ResourceIcon type="agent" />)
+    const { container } = render(<ResourceIcon type="publisher" />)
     const svg = container.querySelector("svg")
     expect(svg).toHaveAttribute("aria-hidden", "true")
   })
@@ -44,7 +43,7 @@ describe("ResourceIcon", () => {
 
   it("renders different icons for different resource types", () => {
     const { container: c1 } = render(<ResourceIcon type="mcp-server" />)
-    const { container: c2 } = render(<ResourceIcon type="agent" />)
+    const { container: c2 } = render(<ResourceIcon type="publisher" />)
 
     const svg1 = c1.querySelector("svg")?.innerHTML
     const svg2 = c2.querySelector("svg")?.innerHTML

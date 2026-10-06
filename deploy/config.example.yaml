@@ -26,10 +26,8 @@ http:
   # Per-IP request budget for unauthenticated reads on /api/v1, in
   # requests per minute.
   public_rate_limit_rpm: 1000
-  # Externally reachable URL of this deployment. Surfaced in the global A2A
-  # agent card, used as the access-token issuer and to derive the OIDC
-  # redirects. Empty makes the agent card return HTTP 500 rather than
-  # advertise localhost to external consumers. Example: "https://registry.example.com".
+  # Externally reachable URL of this deployment. Used as the access-token
+  # issuer and to derive the OIDC redirects. Example: "https://registry.example.com".
   public_base_url: ""
   # On SIGTERM/SIGINT, /readyz answers 503 for this long while requests are
   # still served, so load balancers stop routing here before the listener
@@ -70,7 +68,7 @@ tool_discovery:
   rate_limit_rpm: 30
 
 # Optional bootstrap data file. Path to a YAML/JSON document of publishers,
-# MCP servers and agents that the server upserts on startup
+# and MCP servers that the server upserts on startup
 # before accepting traffic. The `--bootstrap-file` CLI flag overrides
 # this YAML key and the BOOTSTRAP_FILE env var.
 bootstrap_file: ""

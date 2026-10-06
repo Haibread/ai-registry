@@ -8,8 +8,8 @@ How the AI Registry is put together and why. Commands to run it live in
 
 The registry is one Go HTTP service backed by PostgreSQL, plus a static React
 SPA that is purely a client of the service's versioned API. The service owns
-every piece of state and every rule: catalog entries (MCP servers, A2A agents),
-their immutable versions, the review workflow, publisher-scoped RBAC, and token
+every piece of state and every rule: catalog entries (MCP servers), their
+immutable versions, the review workflow, publisher-scoped RBAC, and token
 issuance. An external OIDC provider is optional and only authenticates people;
 it never decides what they may do.
 
@@ -44,11 +44,10 @@ docker-compose, nginx (or the Vite dev server) proxies `/api` as well.
 
 ### `server/` — the registry service
 
-The single source of truth. It serves the API under `/api/v1`, the discovery
-documents (`/.well-known/jwks.json`, `/.well-known/agent-card.json`, per-agent
-cards under `/agents/{namespace}/{slug}/.well-known/agent-card.json`), the
-OpenAPI document at `/openapi.yaml`, `/config.json` for the SPA, the
-`/healthz` / `/readyz` probes and Prometheus `/metrics`.
+The single source of truth. It serves the API under `/api/v1`, the JWKS at
+`/.well-known/jwks.json`, the OpenAPI document at `/openapi.yaml`,
+`/config.json` for the SPA, the `/healthz` / `/readyz` probes and Prometheus
+`/metrics`.
 
 On start-up, in order: load configuration, set up OpenTelemetry, run the
 database migrations, seed the bootstrap Server Admin, reconcile the
@@ -65,9 +64,8 @@ flush. See [server/cmd/server/main.go](server/cmd/server/main.go).
 | [`internal/auth`](server/internal/auth/) | Token authority, refresh tokens, OIDC broker, password hashing, bearer authentication, RBAC guards. |
 | [`internal/domain`](server/internal/domain/) | Entity types, the role lattice, validation, lifecycle rules. No I/O. |
 | [`internal/store`](server/internal/store/) | Hand-written SQL over `pgx`, migrations runner, seeding. Every query is traced. |
-| [`internal/agents`](server/internal/agents/) | Builds A2A Agent Cards from stored agent versions. |
 | [`internal/tooldiscovery`](server/internal/tooldiscovery/) | MCP client behind "Fetch from server" and "Detect from server": connects to a remote server's declared URL and transport, runs `tools/list`, probes the protocol revisions it accepts, refuses internal addresses. Stores nothing. |
-| [`internal/bootstrap`](server/internal/bootstrap/) | Declarative YAML/JSON loader that upserts publishers, servers and agents. |
+| [`internal/bootstrap`](server/internal/bootstrap/) | Declarative YAML/JSON loader that upserts publishers and servers. |
 | [`internal/config`](server/internal/config/) | Resolves every setting from env, YAML file, then default. |
 | [`internal/observability`](server/internal/observability/) | The one OTel SDK setup (tracer, meter, logger providers) and the metric definitions. |
 | [`internal/problem`](server/internal/problem/) | RFC 7807 `application/problem+json` responses. |
@@ -164,9 +162,7 @@ forward-only migrations in [server/migrations/](server/migrations/).
 ```mermaid
 erDiagram
     publishers ||--o{ mcp_servers : owns
-    publishers ||--o{ agents : owns
     mcp_servers ||--o{ mcp_server_versions : has
-    agents ||--o{ agent_versions : has
     publishers ||--o{ role_grants : "scopes (null = global)"
     users ||--o{ role_grants : "granted to"
     groups ||--o{ role_grants : "granted to"
@@ -174,15 +170,13 @@ erDiagram
     users ||--o{ group_members : "member of"
     users ||--o{ refresh_tokens : holds
     mcp_servers ||--o{ entry_change_requests : "pending changes"
-    agents ||--o{ entry_change_requests : "pending changes"
 ```
 
-- **Publishers own everything.** Every MCP server and agent belongs to exactly
+- **Publishers own everything.** Every MCP server belongs to exactly
   one publisher, and its `{namespace}` path segment *is* that publisher's slug.
   Slugs are unique per publisher, not globally.
 - **Versions are immutable once published.** A version row is never edited
-  after `published_at` is set, because consumers cache server metadata and agent
-  cards.
+  after `published_at` is set, because consumers cache server metadata.
 - **`audit_log` and `reports` are polymorphic** (`resource_type` +
   `resource_id`, `target_type` + `target_id`); the bootstrap loader writes
   synthetic audit events too.
@@ -231,8 +225,7 @@ carries the proposed mutation as a JSONB `payload`, and approval dispatches on
 `(resource_type, action)` to apply it in the same transaction
 ([server/internal/store/entrychange.go](server/internal/store/entrychange.go)).
 A partial unique index allows one pending entry-change per entry, independently
-of the pending version and pending deletion an entry may also have. Agents
-mirror MCP servers exactly.
+of the pending version and pending deletion an entry may also have.
 
 ## Design decisions
 
@@ -310,10 +303,7 @@ span ([server/internal/http/](server/internal/http/)).
 `(created_at, id)`, so inserts do not shift pages under a paging client. The
 SPA mirrors this with "Load more" rather than page numbers.
 
-**The MCP wire format follows the upstream `server.json` shapes** and agent
-cards follow the A2A Agent Card schema, pinned in
-[server/api/a2a-agent-card.schema.json](server/api/a2a-agent-card.schema.json)
-and checked by conformance tests. `tools[]` on an MCP version is the
+**The MCP wire format follows the upstream `server.json` shapes.** `tools[]` on an MCP version is the
 publisher-declared tool list, distinct from the spec's `capabilities.tools`
 negotiation flag.
 
@@ -378,10 +368,10 @@ states (`success`, `warning`, `highlight`) are tokens rather than Tailwind
 colors so both themes stay in step; only instance-tag colors, which a Server
 Admin picks, keep the stock palette.
 
-**Detail pages lead with how to connect.** An MCP server or agent page puts
+**Detail pages lead with how to connect.** An MCP server page puts
 the endpoint (or run command) in a side column that is always in view, above
 the README on a phone, and keeps the README in the Overview tab so a long one
-never pushes Usage, Tools or Skills off screen. Cards in a listing carry one
+never pushes Usage or Tools off screen. Cards in a listing carry one
 link target and one row of facts; status shows only when it is not
 `published`, since everything in the public catalog is.
 
@@ -434,7 +424,7 @@ link target and one row of facts; status shows only when it is not
   direct `publish` endpoint without a second pair of eyes.
 - There are no registry-native API keys: machine access requires an OIDC
   provider issuing tokens with the configured audience.
-- The catalog covers MCP servers and A2A agents only.
+- The catalog covers MCP servers only.
 - "Fetch from server" and "Detect from server" reach only remote servers
   that accept anonymous connections. A stdio server runs on the consumer's
   machine and a server behind authentication rejects the registry, so their

@@ -471,7 +471,7 @@ describe('MCPDetailPage — unpublished entry seen by a member', () => {
     primeDraft()
     renderDetail()
     await screen.findByRole('heading', { name: /filesystem mcp server/i })
-    expect(useRecordView).not.toHaveBeenCalledWith('mcp', 'anthropic', 'filesystem')
+    expect(useRecordView).not.toHaveBeenCalledWith('anthropic', 'filesystem')
   })
 
   it('shows no banner on a published public entry', async () => {

@@ -10,9 +10,6 @@ import PublisherDetailPage from '@/pages/publishers/detail'
 import MCPListPage from '@/pages/mcp/list'
 import MCPNamespacePage from '@/pages/mcp/namespace'
 import MCPDetailPage from '@/pages/mcp/detail'
-import AgentListPage from '@/pages/agents/list'
-import AgentNamespacePage from '@/pages/agents/namespace'
-import AgentDetailPage from '@/pages/agents/detail'
 import LoginPage from '@/pages/login'
 import NotFoundPage from '@/pages/not-found'
 
@@ -24,9 +21,6 @@ const AdminDashboard = lazy(() => import('@/pages/admin/dashboard'))
 const AdminMCPList = lazy(() => import('@/pages/admin/mcp/list'))
 const AdminMCPDetail = lazy(() => import('@/pages/admin/mcp/detail'))
 const AdminMCPNew = lazy(() => import('@/pages/admin/mcp/new'))
-const AdminAgentList = lazy(() => import('@/pages/admin/agents/list'))
-const AdminAgentDetail = lazy(() => import('@/pages/admin/agents/detail'))
-const AdminAgentNew = lazy(() => import('@/pages/admin/agents/new'))
 const AdminPublisherList = lazy(() => import('@/pages/admin/publishers/list'))
 const AdminPublisherDetail = lazy(() => import('@/pages/admin/publishers/detail'))
 const AdminPublisherNew = lazy(() => import('@/pages/admin/publishers/new'))
@@ -68,9 +62,6 @@ export function AppRoutes() {
       <Route path="/mcp" element={<MCPListPage />} />
       <Route path="/mcp/:namespace" element={<MCPNamespacePage />} />
       <Route path="/mcp/:ns/:slug" element={<MCPDetailPage />} />
-      <Route path="/agents" element={<AgentListPage />} />
-      <Route path="/agents/:namespace" element={<AgentNamespacePage />} />
-      <Route path="/agents/:ns/:slug" element={<AgentDetailPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/admin"
@@ -86,9 +77,6 @@ export function AppRoutes() {
         <Route path="mcp" element={<AdminMCPList />} />
         <Route path="mcp/new" element={<AdminMCPNew />} />
         <Route path="mcp/:ns/:slug" element={<AdminMCPDetail />} />
-        <Route path="agents" element={<AdminAgentList />} />
-        <Route path="agents/new" element={<AdminAgentNew />} />
-        <Route path="agents/:ns/:slug" element={<AdminAgentDetail />} />
         <Route path="members" element={<AdminMembers />} />
         <Route path="help/roles" element={<AdminHelpRoles />} />
         <Route path="activity" element={<AdminActivity />} />

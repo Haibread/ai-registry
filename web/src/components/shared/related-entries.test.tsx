@@ -36,19 +36,6 @@ const mcpBase = {
   },
 }
 
-const agentBase = {
-  id: 'aid1',
-  namespace: 'acme',
-  slug: 'other-bot',
-  name: 'Other Bot',
-  status: 'published',
-  verified: false,
-  view_count: 0,
-  updated_at: '2025-01-01T00:00:00Z',
-  created_at: '2025-01-01T00:00:00Z',
-  latest_version: { version: '1.0.0', endpoint_url: '', skills: [] },
-}
-
 describe('RelatedEntries', () => {
   beforeEach(() => {
     mockGET.mockReset()
@@ -57,14 +44,14 @@ describe('RelatedEntries', () => {
   it('renders nothing when there are no related items', async () => {
     mockGET.mockResolvedValue({ data: { items: [] } })
     const { container } = render(
-      wrap(<RelatedEntries type="mcp" namespace="acme" currentSlug="me" />),
+      wrap(<RelatedEntries namespace="acme" currentSlug="me" />),
     )
     await waitFor(() => {
       expect(container.innerHTML).toBe('')
     })
   })
 
-  it('filters out the current slug for mcp', async () => {
+  it('filters out the current slug', async () => {
     mockGET.mockResolvedValue({
       data: {
         items: [
@@ -73,20 +60,10 @@ describe('RelatedEntries', () => {
         ],
       },
     })
-    render(wrap(<RelatedEntries type="mcp" namespace="acme" currentSlug="me" />))
+    render(wrap(<RelatedEntries namespace="acme" currentSlug="me" />))
     expect(await screen.findByText(/More from acme/)).toBeInTheDocument()
     expect(screen.getByText('Other Server')).toBeInTheDocument()
     expect(screen.queryByText('Me Server')).not.toBeInTheDocument()
-  })
-
-  it('renders AgentCards for type=agent', async () => {
-    mockGET.mockResolvedValue({
-      data: {
-        items: [{ ...agentBase, id: 'a1', slug: 'other-bot', name: 'Other Bot' }],
-      },
-    })
-    render(wrap(<RelatedEntries type="agent" namespace="acme" currentSlug="mine" />))
-    expect(await screen.findByText('Other Bot')).toBeInTheDocument()
   })
 
   it('limits results to 3', async () => {
@@ -100,7 +77,7 @@ describe('RelatedEntries', () => {
         ],
       },
     })
-    render(wrap(<RelatedEntries type="mcp" namespace="acme" currentSlug="me" />))
+    render(wrap(<RelatedEntries namespace="acme" currentSlug="me" />))
     expect(await screen.findByText('S1')).toBeInTheDocument()
     expect(screen.getByText('S2')).toBeInTheDocument()
     expect(screen.getByText('S3')).toBeInTheDocument()

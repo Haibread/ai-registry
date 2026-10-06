@@ -50,12 +50,12 @@ vi.mock('@/auth/useMe', () => ({
 
 import { VersionsSection } from './versions-section'
 
-function renderSection(kind: 'mcp' | 'agent' = 'mcp', entryVisibility: 'public' | 'private' = 'private') {
+function renderSection(entryVisibility: 'public' | 'private' = 'private') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <VersionsSection kind={kind} namespace="acme" slug="weather" entryVisibility={entryVisibility} />
+        <VersionsSection namespace="acme" slug="weather" entryVisibility={entryVisibility} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -145,7 +145,7 @@ describe('VersionsSection', () => {
   })
 
   it('Submit on a draft confirms first, then posts to the typed mcp submit endpoint', async () => {
-    renderSection('mcp')
+    renderSection()
     const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
     fireEvent.click(submitButtons[0])
     // One click must not submit — the dialog names the entry + version.
@@ -161,7 +161,7 @@ describe('VersionsSection', () => {
   })
 
   it('the submit dialog carries the public-release request on a private entry', async () => {
-    renderSection('mcp', 'private')
+    renderSection('private')
     const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
     fireEvent.click(submitButtons[0])
     const checkbox = screen.getByLabelText(/also request making this entry public/i)
@@ -179,7 +179,7 @@ describe('VersionsSection', () => {
   })
 
   it('offers no public-release request on an already-public entry', async () => {
-    renderSection('mcp', 'public')
+    renderSection('public')
     const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
     fireEvent.click(submitButtons[0])
     expect(screen.getByRole('heading', { name: /submit acme\/weather v1\.0\.0 for review\?/i })).toBeInTheDocument()
@@ -190,12 +190,12 @@ describe('VersionsSection', () => {
     mockGET.mockResolvedValue({
       data: { items: [{ ...pendingV2, request_public: true }] },
     })
-    renderSection('mcp')
+    renderSection()
     expect(await screen.findByText(/public on approval/i)).toBeInTheDocument()
   })
 
   it('Resubmit on a rejected version posts to submit (clears reason on the server)', async () => {
-    renderSection('mcp')
+    renderSection()
     const resubmitButton = await screen.findByRole('button', { name: /^resubmit$/i })
     fireEvent.click(resubmitButton)
     confirmSubmitDialog()
@@ -208,7 +208,7 @@ describe('VersionsSection', () => {
   })
 
   it('Withdraw on a pending version posts to the withdraw endpoint', async () => {
-    renderSection('mcp')
+    renderSection()
     const withdrawButton = await screen.findByRole('button', { name: /^withdraw$/i })
     fireEvent.click(withdrawButton)
     await waitFor(() => {
@@ -219,21 +219,8 @@ describe('VersionsSection', () => {
     })
   })
 
-  it('Submit on the agent kind targets the agent endpoint family', async () => {
-    renderSection('agent')
-    const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
-    fireEvent.click(submitButtons[0])
-    confirmSubmitDialog()
-    await waitFor(() => {
-      expect(mockPOST).toHaveBeenCalledWith(
-        '/api/v1/agents/{namespace}/{slug}/versions/{version}/submit',
-        { params: { path: { namespace: 'acme', slug: 'weather', version: '1.0.0' } }, body: undefined },
-      )
-    })
-  })
-
   it('Publish on a draft posts to the publish endpoint after the confirm dialog', async () => {
-    renderSection('mcp')
+    renderSection()
     // publishedV0 (0.9.0) is already published, so the first Publish button
     // belongs to the first unpublished row (draftV1, 1.0.0).
     const publishButtons = await screen.findAllByRole('button', { name: /^publish$/i })
@@ -252,7 +239,7 @@ describe('VersionsSection', () => {
   })
 
   it('uses the queue\'s "Approve & publish" verb on a pending-review row', async () => {
-    renderSection('mcp')
+    renderSection()
     // pendingV2 (1.1.0) is the only pending_review row.
     const approveBtn = await screen.findByRole('button', { name: /^approve & publish$/i })
     fireEvent.click(approveBtn)
@@ -268,7 +255,7 @@ describe('VersionsSection', () => {
   })
 
   it('does not show Publish on an already-published version', async () => {
-    renderSection('mcp')
+    renderSection()
     await screen.findByText('v0.9.0')
     // Three unpublished rows: draft + rejected say "Publish", the pending row
     // says "Approve & publish" — the published row offers neither.
@@ -280,7 +267,7 @@ describe('VersionsSection', () => {
     mockPOST.mockResolvedValue({
       error: { type: 'https://registry/errors/review-revision-mismatch' },
     })
-    renderSection('mcp')
+    renderSection()
     const submitButtons = await screen.findAllByRole('button', { name: /^submit$/i })
     fireEvent.click(submitButtons[0])
     confirmSubmitDialog()

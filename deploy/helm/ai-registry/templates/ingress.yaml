@@ -3,13 +3,12 @@
 Two routes only:
   * /api → server, so the bulk API traffic reaches the backend directly.
   * /    → web, where nginx serves the SPA AND proxies the remaining backend
-           paths (/.well-known/, the A2A agent card, /docs, /openapi.yaml,
-           /config.json, /healthz, /readyz). It answers /metrics with a 404: that
-           endpoint is scraped on the api Service only. Keeping that long tail in
-           nginx.conf avoids a second, drift-prone copy of the routing table here
-           — and avoids routing SPA routes such as /agents/{ns}/{slug} to the
-           backend. The nginx-ingress controller matches the longest prefix, so
-           /api wins over / for /api/* regardless of rule order.
+           paths (/.well-known/, /docs, /openapi.yaml, /config.json, /healthz,
+           /readyz). It answers /metrics with a 404: that endpoint is scraped
+           on the api Service only. Keeping that long tail in nginx.conf avoids
+           a second, drift-prone copy of the routing table here. The
+           nginx-ingress controller matches the longest prefix, so /api wins
+           over / for /api/* regardless of rule order.
 */}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress

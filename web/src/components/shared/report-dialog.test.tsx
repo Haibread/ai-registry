@@ -25,19 +25,19 @@ beforeEach(() => {
 
 describe('ReportDialog', () => {
   it('renders the trigger button', () => {
-    render(<ReportDialog resourceType="mcp_server" resourceId="01H" resourceLabel="acme/srv" />)
+    render(<ReportDialog resourceId="01H" resourceLabel="acme/srv" />)
     expect(screen.getByRole('button', { name: /report an issue/i })).toBeInTheDocument()
   })
 
   it('opens the dialog when the trigger is clicked', () => {
-    render(<ReportDialog resourceType="mcp_server" resourceId="01H" resourceLabel="acme/srv" />)
+    render(<ReportDialog resourceId="01H" resourceLabel="acme/srv" />)
     fireEvent.click(screen.getByRole('button', { name: /report an issue/i }))
     expect(screen.getByRole('heading', { name: /report an issue/i })).toBeInTheDocument()
     expect(screen.getByText('acme/srv')).toBeInTheDocument()
   })
 
   it('rejects too-short descriptions', async () => {
-    render(<ReportDialog resourceType="agent" resourceId="01H" />)
+    render(<ReportDialog resourceId="01H" />)
     fireEvent.click(screen.getByRole('button', { name: /report an issue/i }))
     const textarea = screen.getByLabelText(/description/i)
     fireEvent.change(textarea, { target: { value: 'hi' } })
@@ -49,7 +49,7 @@ describe('ReportDialog', () => {
   })
 
   it('submits a valid report and shows success state', async () => {
-    render(<ReportDialog resourceType="mcp_server" resourceId="01HMCP" />)
+    render(<ReportDialog resourceId="01HMCP" />)
     fireEvent.click(screen.getByRole('button', { name: /report an issue/i }))
     fireEvent.change(screen.getByLabelText(/issue type/i), { target: { value: 'spam' } })
     fireEvent.change(screen.getByLabelText(/description/i), {
@@ -73,7 +73,7 @@ describe('ReportDialog', () => {
 
   it('shows API error messages when submission fails', async () => {
     mockPOST.mockResolvedValueOnce({ error: { detail: 'rate limited' } })
-    render(<ReportDialog resourceType="agent" resourceId="01HAG" />)
+    render(<ReportDialog resourceId="01HMCP" />)
     fireEvent.click(screen.getByRole('button', { name: /report an issue/i }))
     fireEvent.change(screen.getByLabelText(/description/i), {
       target: { value: 'a proper description here' },

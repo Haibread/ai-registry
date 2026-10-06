@@ -48,7 +48,7 @@ export default function AdminPublisherList() {
         <EmptyState
           icon={<Building2 className="h-10 w-10" aria-hidden="true" />}
           title="No publishers yet."
-          description="Publishers own MCP servers and agents and define their namespace."
+          description="Publishers own MCP servers and define their namespace."
           action={
             <Button asChild size="sm">
               <Link to="/admin/publishers/new">Create your first publisher</Link>

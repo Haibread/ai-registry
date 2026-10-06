@@ -294,8 +294,8 @@ api:
   # client IP is the rightmost X-Forwarded-For hop outside this range.
   trustedProxyCIDR: ~
   # -- (string) [REQUIRED] Public-facing base URL of the deployment (what
-  # clients use), e.g. "https://registry.example.com". Used by the A2A global
-  # agent card, as the access-token issuer and to derive the OIDC redirects.
+  # clients use), e.g. "https://registry.example.com". Used as the
+  # access-token issuer and to derive the OIDC redirects.
   publicBaseURL: ~
 
   # ── Shutdown ─────────────────────────────────────────────────────────────
@@ -319,7 +319,7 @@ api:
 
   # ── Bootstrap ────────────────────────────────────────────────────────────
   # When enabled, the server loads a bootstrap file on startup and idempotently
-  # upserts all publishers, MCP servers, and agents.
+  # upserts all publishers and MCP servers.
   bootstrap:
     # -- Load a bootstrap file on startup.
     enabled: false

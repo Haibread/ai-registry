@@ -37,11 +37,6 @@ func TestGetPublisherStats(t *testing.T) {
 		t.Fatalf("CreateMCPServer other: %v", err)
 	}
 
-	// One draft agent under stats-pub.
-	if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{PublisherID: pubID, Slug: "ag", Name: "Ag"}); err != nil {
-		t.Fatalf("CreateAgent: %v", err)
-	}
-
 	// u1 dual-hats Editor + Reviewer; u2 is a Viewer. Distinct members = 2.
 	u1, err := sharedDB.CreateUser(ctx, store.CreateUserParams{Email: "u1@stats.test"})
 	if err != nil {
@@ -85,9 +80,6 @@ func TestGetPublisherStats(t *testing.T) {
 	}
 	if s.MCPStatusBreakdown.Draft != 1 || s.MCPStatusBreakdown.Published != 1 {
 		t.Errorf("mcp breakdown = %+v, want draft 1 / published 1", *s.MCPStatusBreakdown)
-	}
-	if s.Agents != 1 || s.AgentStatusBreakdown.Draft != 1 {
-		t.Errorf("agents = %d breakdown = %+v, want 1 draft", s.Agents, *s.AgentStatusBreakdown)
 	}
 	if s.Members != 2 {
 		t.Errorf("Members = %d, want 2 distinct principals", s.Members)

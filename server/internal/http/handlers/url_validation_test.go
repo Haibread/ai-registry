@@ -56,26 +56,6 @@ func TestMCPHandler_CreateServer_RejectsNonHTTPURLs(t *testing.T) {
 	}
 }
 
-func TestAgentHandler_CreateVersion_RejectsNonHTTPURLs(t *testing.T) {
-	resetTables(t)
-	seedAgent(t, "ag-url", "ag-url")
-	r := newAgentRouter()
-
-	tests := []struct {
-		name, payload, field string
-	}{
-		{"javascript endpoint", `{"version":"1.0.0","endpoint_url":"javascript:alert(1)"}`, "endpoint_url"},
-		{"data documentation", `{"version":"1.0.0","endpoint_url":"https://a.example","documentation_url":"data:text/html,x"}`, "documentation_url"},
-		{"ftp icon", `{"version":"1.0.0","endpoint_url":"https://a.example","icon_url":"ftp://a.example/i.png"}`, "icon_url"},
-		{"javascript provider url", `{"version":"1.0.0","endpoint_url":"https://a.example","provider":{"organization":"Acme","url":"javascript:alert(1)"}}`, "provider.url"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assertURLProblem(t, fire(r, adminAgentCtx(), http.MethodPost, "/api/v1/agents/ag-url/ag-url/versions", tt.payload), tt.field)
-		})
-	}
-}
-
 func TestEntryChangeHandler_MetadataEditRejectsNonHTTPURLs(t *testing.T) {
 	resetTables(t)
 	srvID := seedPublishedMCPForHandler(t, "acme", "weather")

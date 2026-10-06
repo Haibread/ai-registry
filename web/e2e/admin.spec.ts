@@ -5,7 +5,6 @@
  *
  *  1. Publisher CRUD — create, edit, then delete a publisher.
  *  2. MCP Server CRUD — create, edit, visibility toggle, deprecate, delete.
- *  3. Agent CRUD — create, edit, visibility toggle, delete.
  *
  * These tests run sequentially (workers: 1) because they share mutable DB
  * state. The setup project must run first to populate e2e/.auth/admin.json.
@@ -20,8 +19,6 @@ const PUBLISHER_SLUG = `e2e-pub-${RUN_ID}`
 const PUBLISHER_NAME = `E2E Publisher ${RUN_ID}`
 const MCP_SLUG = `e2e-mcp-${RUN_ID}`
 const MCP_NAME = `E2E MCP ${RUN_ID}`
-const AGENT_SLUG = `e2e-agent-${RUN_ID}`
-const AGENT_NAME = `E2E Agent ${RUN_ID}`
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -211,90 +208,8 @@ test.describe('Admin: MCP Server CRUD', () => {
   })
 })
 
-// ── Agent ─────────────────────────────────────────────────────────────────────
-
-test.describe('Admin: Agent CRUD', () => {
-  test('create an agent', async ({ page }) => {
-    await goTo(page, '/admin/agents/new')
-
-    // Namespace is a Radix <Select> — publishers load from the API after auth.
-    await expect(page.locator('#namespace-select')).toBeVisible({ timeout: 10_000 })
-    await selectOption(page, 'namespace-select', new RegExp(PUBLISHER_SLUG))
-
-    await page.fill('input[name="slug"]', AGENT_SLUG)
-    await page.fill('input[name="name"]', AGENT_NAME)
-    await page.fill('input[name="description"]', 'An E2E test agent.')
-    await page.click('button[type="submit"]')
-
-    await page.waitForURL(new RegExp(`/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`))
-    await expect(page.getByText(AGENT_NAME)).toBeVisible()
-  })
-
-  test('agent detail page shows draft status', async ({ page }) => {
-    await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
-    await expect(page.getByText('draft').first()).toBeVisible()
-    await expect(page.getByText('private').first()).toBeVisible()
-  })
-
-  test('edit agent metadata', async ({ page }) => {
-    await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
-
-    await page.click('button:has-text("Edit")')
-    await page.fill('input[name="name"]', `${AGENT_NAME} edited`)
-    await page.click('button:has-text("Save changes")')
-
-    await expect(page.getByText(`${AGENT_NAME} edited`)).toBeVisible({ timeout: 10_000 })
-  })
-
-  test('create a new draft version via the UI form', async ({ page }) => {
-    await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
-
-    await page.getByRole('button', { name: 'New version' }).click()
-    await page.fill('input[name="version"]', '0.0.1')
-    await page.fill('input[name="endpoint_url"]', 'https://example.com/agent-ui')
-    // Skill + auth + modes carry sensible defaults; leave them as-is.
-    await page.getByRole('button', { name: 'Create version' }).click()
-
-    await expect(page.getByRole('cell', { name: /v0\.0\.1/ })).toBeVisible({ timeout: 10_000 })
-  })
-
-  test('toggle agent visibility to public', async ({ page }) => {
-    await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
-
-    // Public requires an approved (published) version; publish one first.
-    expect((await apiPost(page, `/api/v1/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}/versions`, {
-      version: '0.1.0',
-      endpoint_url: 'https://example.com/agent',
-      protocol_version: '0.3.0',
-      default_input_modes: ['text/plain'],
-      default_output_modes: ['text/plain'],
-      skills: [{ id: 'vis-skill', name: 'Vis Skill', description: 'Skill for the visibility e2e.', tags: ['e2e'] }],
-      authentication: [{ scheme: 'Bearer' }],
-    })).ok()).toBeTruthy()
-    expect((await apiPost(page, `/api/v1/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}/versions/0.1.0/publish`, {})).ok()).toBeTruthy()
-
-    await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
-    await expect(page.getByText('published').first()).toBeVisible({ timeout: 10_000 })
-
-    await page.click('button:has-text("Make public")')
-    await expect(page.getByText('public').first()).toBeVisible()
-  })
-
-  test('delete an agent', async ({ page }) => {
-    await goTo(page, `/admin/agents/${PUBLISHER_SLUG}/${AGENT_SLUG}`)
-
-    // Same strict-mode rationale as the MCP delete test — the "Deleted"
-    // lifecycle chip partial-matches "Delete"; confirm through the dialog.
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
-    await confirmDialog(page, 'Delete')
-
-    await page.waitForURL(/\/admin\/agents$/)
-    await expect(page.getByText(`${AGENT_NAME} edited`, { exact: true })).not.toBeVisible({ timeout: 10_000 })
-  })
-})
-
-// ── Publisher delete (runs last; its MCP server and agent were deleted above,
-// so the cascade has nothing left to remove here) ──
+// ── Publisher delete (runs last; its MCP server was deleted above, so the
+// cascade has nothing left to remove here) ──
 
 test.describe('Admin: Publisher delete', () => {
   test('delete a publisher via the type-to-confirm panel', async ({ page }) => {

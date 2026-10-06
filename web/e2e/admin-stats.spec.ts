@@ -12,7 +12,7 @@
  * These tests verify that:
  *  a) The stats panel shows numeric values (never "—") after login.
  *  b) No error banner is rendered.
- *  c) All three keys (mcp_servers, agents, publishers) are present in the API
+ *  c) Both keys (mcp_servers, publishers) are present in the API
  *     response when called with the Bearer access token.
  */
 
@@ -34,7 +34,7 @@ test.describe('Admin Dashboard: stats panel (regression)', () => {
     // The large bold numbers are rendered in a <p className="text-3xl font-bold">.
     const statValues = page.locator('.text-3xl.font-bold')
     const count = await statValues.count()
-    expect(count).toBeGreaterThanOrEqual(3)
+    expect(count).toBeGreaterThanOrEqual(2)
 
     for (let i = 0; i < count; i++) {
       const text = await statValues.nth(i).textContent()
@@ -52,7 +52,6 @@ test.describe('Admin Dashboard: stats panel (regression)', () => {
 
     const body = await res.json()
     expect(typeof body.mcp_servers).toBe('number')
-    expect(typeof body.agents).toBe('number')
     expect(typeof body.publishers).toBe('number')
   })
 
@@ -63,7 +62,7 @@ test.describe('Admin Dashboard: stats panel (regression)', () => {
     // Read baseline counts.
     const beforeRes = await apiGet(page, '/api/v1/stats')
     expect(beforeRes.ok()).toBeTruthy()
-    const before = await beforeRes.json() as { publishers: number; mcp_servers: number; agents: number }
+    const before = await beforeRes.json() as { publishers: number; mcp_servers: number }
 
     const RUN_ID = Date.now().toString(36)
     const pubSlug = `stat-pub-${RUN_ID}`
@@ -87,7 +86,7 @@ test.describe('Admin Dashboard: stats panel (regression)', () => {
     // Fetch stats again and verify counts went up.
     const afterRes = await apiGet(page, '/api/v1/stats')
     expect(afterRes.ok()).toBeTruthy()
-    const after = await afterRes.json() as { publishers: number; mcp_servers: number; agents: number }
+    const after = await afterRes.json() as { publishers: number; mcp_servers: number }
 
     expect(after.publishers).toBeGreaterThan(before.publishers)
     expect(after.mcp_servers).toBeGreaterThan(before.mcp_servers)

@@ -36,9 +36,8 @@ type RouterDeps struct {
 	// reads on /api/v1, in requests per minute. Zero falls back to 1000.
 	PublicRateLimitRPM int
 	// PublicBaseURL is the externally reachable URL of this deployment.
-	// Threaded into the global agent card and the OIDC post-login/logout
-	// redirects. Empty makes the agent-card handler return HTTP 500 rather
-	// than silently advertise localhost.
+	// Threaded into the OIDC post-login/logout redirects; empty falls back to
+	// "/".
 	PublicBaseURL string
 	// Tokens mints / verifies registry access tokens (Ed25519 JWTs). Nil only in
 	// route-walk tests, which makes Authenticate a pass-through.
@@ -104,12 +103,10 @@ func buildMux(deps RouterDeps) *chi.Mux {
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	mcpH := handlers.NewMCPHandlers(deps.DB, deps.DB, deps.Metrics)
-	agentH := handlers.NewAgentHandlers(deps.DB, deps.DB, deps.Metrics)
 	pubH := handlers.NewPublisherHandlers(deps.DB, deps.DB)
 	revH := handlers.NewReviewHandlers(deps.DB, deps.DB)
 	auditH := handlers.NewAuditHandlers(deps.DB)
 	statsH := handlers.NewStatsHandlers(deps.DB)
-	cardH := handlers.NewAgentCardHandlers(deps.DB, deps.Logger, deps.PublicBaseURL)
 	reportH := handlers.NewReportHandlers(deps.DB, deps.TrustedProxy)
 	changelogH := handlers.NewChangelogHandlers(deps.DB)
 	authH := handlers.NewAuthHandlers(deps.Tokens, deps.Refresh, deps.DB, deps.LocalLoginEnabled)
@@ -160,7 +157,6 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		return pub.ID, nil
 	}
 	requireMCPServerNS := auth.RequirePublisherRole(deps.DB, domain.RoleEditor, resolvePublisherByNamespace)
-	requireAgentNS := auth.RequirePublisherRole(deps.DB, domain.RoleEditor, resolvePublisherByNamespace)
 	requireReviewerNS := auth.RequirePublisherRole(deps.DB, domain.RoleReviewer, resolvePublisherByNamespace)
 
 	r := chi.NewRouter()
@@ -204,11 +200,6 @@ func buildMux(deps RouterDeps) *chi.Mux {
 	// ── Well-known endpoints ──────────────────────────────────────────────────
 	// Registry JWKS: the Ed25519 public keys that verify registry access tokens.
 	r.Get("/.well-known/jwks.json", handlers.JWKS(deps.Tokens))
-	// Global registry agent card (makes the registry a first-class A2A citizen)
-	r.Get("/.well-known/agent-card.json", cardH.GlobalAgentCard)
-
-	// ── Per-agent A2A card (public, outside /api/v1 per A2A spec path) ────────
-	r.Get("/agents/{namespace}/{slug}/.well-known/agent-card.json", cardH.PerAgentCard)
 
 	// ── API v1 ────────────────────────────────────────────────────────────────
 	publicRLMax := deps.PublicRateLimitRPM
@@ -378,50 +369,6 @@ func buildMux(deps RouterDeps) *chi.Mux {
 		}
 		discoveryRL := middleware.RateLimit(discoveryRLMax, time.Minute, deps.Metrics, deps.TrustedProxy)
 		r.With(discoveryRL).Post("/mcp/tool-discoveries", discoveryH.Discover)
-
-		// Agents
-		r.Route("/agents", func(r chi.Router) {
-			r.With(publicRL).Get("/", agentH.ListAgents)
-			// Create is publisher-scoped; see the MCP create note.
-			r.Post("/", agentH.CreateAgent)
-
-			r.Route("/{namespace}/{slug}", func(r chi.Router) {
-				r.With(publicRL).Get("/", agentH.GetAgent)
-				r.With(requireAgentNS).Patch("/", agentH.PatchAgent)
-				// Same reasoning as MCP servers: bypass-the-workflow path
-				// stays admin-only.
-				r.With(auth.RequireAdmin).Delete("/", agentH.DeleteAgent)
-				r.With(requireAgentNS).Post("/deprecate", agentH.DeprecateAgent)
-				r.With(requireAgentNS).Post("/undeprecate", agentH.UndeprecateAgent)
-				// Editor/Admin; public requires an approved version (see MCP note).
-				r.With(requireAgentNS).Post("/visibility", agentH.SetVisibility)
-				r.With(publicRL).Post("/view", agentH.RecordView)
-				r.With(publicRL).Post("/copy", agentH.RecordCopy)
-				r.With(publicRL).Get("/activity", agentH.ListAgentActivity)
-
-				r.Route("/versions", func(r chi.Router) {
-					r.With(publicRL).Get("/", agentH.ListVersions)
-					r.With(requireAgentNS).Post("/", agentH.CreateVersion)
-					r.With(publicRL).Get("/{version}", agentH.GetVersion)
-					// Approver action (see the MCP publish note): Reviewer / Server Admin.
-					r.With(requireReviewerNS).Post("/{version}/publish", agentH.PublishVersion)
-					r.With(requireAgentNS).Patch("/{version}/status", agentH.PatchVersionStatus)
-					// Change-approval workflow.
-					r.With(requireAgentNS).Post("/{version}/submit", revH.SubmitAgentVersion)
-					r.With(requireAgentNS).Post("/{version}/withdraw", revH.WithdrawAgentVersion)
-					r.With(requireReviewerNS).Post("/{version}/approve", revH.ApproveAgentVersion)
-					r.With(requireReviewerNS).Post("/{version}/reject", revH.RejectAgentVersion)
-				})
-				// Pending-deletion review flow.
-				r.With(requireAgentNS).Post("/deletion-request", revH.RequestAgentDeletion)
-				r.With(requireReviewerNS).Post("/deletion-request/approve", revH.ApproveAgentDeletion)
-				r.With(requireReviewerNS).Post("/deletion-request/reject", revH.RejectAgentDeletion)
-				// Entry-change review flow (visibility / deprecate / metadata edit).
-				r.With(requireAgentNS).Post("/change-request/withdraw", revH.WithdrawAgentChange)
-				r.With(requireReviewerNS).Post("/change-request/approve", revH.ApproveAgentChange)
-				r.With(requireReviewerNS).Post("/change-request/reject", revH.RejectAgentChange)
-			})
-		})
 
 		// Public stats (published + public only, no auth required)
 		r.With(publicRL).Get("/public-stats", statsH.GetPublicStats)

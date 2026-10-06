@@ -70,10 +70,10 @@ func TestReportHandler_Create_ValidationErrors(t *testing.T) {
 		body map[string]any
 	}{
 		{"bad resource_type", map[string]any{"resource_type": "widget", "resource_id": "1", "issue_type": "broken", "description": "bad thing happening"}},
-		{"missing resource_id", map[string]any{"resource_type": "agent", "resource_id": "", "issue_type": "broken", "description": "bad thing happening"}},
-		{"bad issue_type", map[string]any{"resource_type": "agent", "resource_id": "1", "issue_type": "flippity", "description": "bad thing happening"}},
-		{"short description", map[string]any{"resource_type": "agent", "resource_id": "1", "issue_type": "broken", "description": "hi"}},
-		{"long description", map[string]any{"resource_type": "agent", "resource_id": "1", "issue_type": "broken", "description": strings.Repeat("x", 4001)}},
+		{"missing resource_id", map[string]any{"resource_type": "mcp_server", "resource_id": "", "issue_type": "broken", "description": "bad thing happening"}},
+		{"bad issue_type", map[string]any{"resource_type": "mcp_server", "resource_id": "1", "issue_type": "flippity", "description": "bad thing happening"}},
+		{"short description", map[string]any{"resource_type": "mcp_server", "resource_id": "1", "issue_type": "broken", "description": "hi"}},
+		{"long description", map[string]any{"resource_type": "mcp_server", "resource_id": "1", "issue_type": "broken", "description": strings.Repeat("x", 4001)}},
 	}
 
 	for _, c := range cases {
@@ -197,8 +197,8 @@ func TestReportHandler_Create_XFFTrustedFromProxy(t *testing.T) {
 	router := newReportsRouterWithProxy(proxyCIDR)
 
 	buf, _ := json.Marshal(map[string]any{
-		"resource_type": "agent",
-		"resource_id":   "01HAG",
+		"resource_type": "mcp_server",
+		"resource_id":   "01HMCP",
 		"issue_type":    "spam",
 		"description":   "report posted through the reverse proxy",
 	})
@@ -245,8 +245,8 @@ func TestReportHandler_Patch_Valid(t *testing.T) {
 
 	// Seed a pending report
 	seed := postReport(t, map[string]any{
-		"resource_type": "agent",
-		"resource_id":   "01HAG",
+		"resource_type": "mcp_server",
+		"resource_id":   "01HMCP",
 		"issue_type":    "misleading",
 		"description":   "the description says X but it does Y",
 	})

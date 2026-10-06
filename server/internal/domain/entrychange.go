@@ -9,7 +9,6 @@ type EntryResourceType string
 
 const (
 	EntryResourceMCPServer EntryResourceType = "mcp_server"
-	EntryResourceAgent     EntryResourceType = "agent"
 )
 
 // EntryChangeAction names the entry-level mutation a change request will apply

@@ -116,7 +116,7 @@ describe('MCPNamespacePage', () => {
 
   it('renders the empty-state copy when the publisher exists but has zero MCP servers', async () => {
     // Namespace resolves, but the server list comes back empty — a real
-    // scenario when a publisher has only agents, or hasn't shipped yet.
+    // scenario when a publisher hasn't shipped yet.
     mockGET.mockImplementation((path: string) => {
       if (path.includes('/publishers/')) {
         return Promise.resolve({ data: publisherPayload })
