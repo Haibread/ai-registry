@@ -86,7 +86,7 @@ jobs:
       - name: Install hadolint
         run: |
           set -euo pipefail
-          version=2.12.0
+          version=2.15.1
           curl -sSfL "https://github.com/hadolint/hadolint/releases/download/v${version}/hadolint-Linux-x86_64" -o /tmp/hadolint
           sudo install -m 0755 /tmp/hadolint /usr/local/bin/hadolint
 
