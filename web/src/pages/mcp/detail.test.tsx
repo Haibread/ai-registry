@@ -460,7 +460,7 @@ describe('MCPDetailPage — unpublished entry seen by a member', () => {
     renderDetail()
     await screen.findByText(/showing unpublished version/i)
     await user.click(screen.getByRole('tab', { name: /tools \(1\)/i }))
-    expect(screen.getByText('draft_tool')).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Tools' })).getByText('draft_tool')).toBeInTheDocument()
   })
 
   it('does not count the visit as a catalog view', async () => {
