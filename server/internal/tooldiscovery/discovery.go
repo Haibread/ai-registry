@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -310,6 +311,8 @@ func classify(ctx context.Context, rec *recorder, status int, sdkErr error) (str
 		return transportCause(rec.transportErr()), ErrNoServer
 	case status >= 300:
 		return fmt.Sprintf("HTTP %d", status), ErrNoServer
+	case rec.badContentType() != "":
+		return fmt.Sprintf("unsupported content type %q", rec.badContentType()), ErrNoServer
 	case sdkErr != nil:
 		return shorten(sdkErr.Error()), ErrNoServer
 	case status == 0:
@@ -434,6 +437,7 @@ type recorder struct {
 	okStatus int
 	dialErr  error
 	rtErr    error
+	badType  string
 }
 
 func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -460,6 +464,13 @@ func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 	if r.okStatus == 0 && resp.StatusCode < 300 {
 		r.okStatus = resp.StatusCode
 	}
+	// The SDK rejects such a reply too, but may report its own teardown
+	// ("client is closing: EOF") instead, depending on goroutine scheduling.
+	if r.badType == "" && req.Method == http.MethodPost && resp.StatusCode == http.StatusOK {
+		if mt, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mt != "application/json" && mt != "text/event-stream" {
+			r.badType = mt
+		}
+	}
 	left := r.limit
 	if left <= 0 {
 		left = math.MaxInt64
@@ -478,6 +489,14 @@ func (r *recorder) firstOKStatus() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.okStatus
+}
+
+// badContentType is the media type of the first POST reply that was neither
+// JSON nor an event stream, if any.
+func (r *recorder) badContentType() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.badType
 }
 
 // transportErr is the first round trip that failed below HTTP, if any.
