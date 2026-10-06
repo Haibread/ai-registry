@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -293,7 +293,7 @@ describe('MCPDetailPage — tools tab', () => {
     expect(screen.getByRole('tab', { name: /tools \(2\)/i })).toBeInTheDocument()
   })
 
-  it('renders a card per tool with name and description', async () => {
+  it('lists every tool and opens the first one', async () => {
     const user = userEvent.setup()
     primeGET({
       ...STDIO_SERVER,
@@ -310,10 +310,10 @@ describe('MCPDetailPage — tools tab', () => {
 
     await user.click(screen.getByRole('tab', { name: /^tools/i }))
 
-    expect(screen.getByText('read_file')).toBeInTheDocument()
-    expect(screen.getByText('write_file')).toBeInTheDocument()
-    expect(screen.getByText(/read a file from disk/i)).toBeInTheDocument()
-    expect(screen.getByText(/write a file to disk/i)).toBeInTheDocument()
+    const list = screen.getByRole('list', { name: 'Tools' })
+    expect(within(list).getByText('read_file')).toBeInTheDocument()
+    expect(within(list).getByText('write_file')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'read_file' })).toBeInTheDocument()
   })
 
   it('renders the empty state when tools is absent or empty', async () => {
@@ -328,7 +328,7 @@ describe('MCPDetailPage — tools tab', () => {
     expect(screen.getByText(/no tools declared/i)).toBeInTheDocument()
   })
 
-  it('renders annotation badges for truthy boolean annotations', async () => {
+  it('explains the MCP behaviour hints of the selected tool', async () => {
     const user = userEvent.setup()
     primeGET({
       ...STDIO_SERVER,
@@ -338,7 +338,7 @@ describe('MCPDetailPage — tools tab', () => {
           {
             name: 'delete_file',
             description: 'Delete a file',
-            annotations: { destructive: true, idempotent: false },
+            annotations: { destructiveHint: true, idempotentHint: false },
           },
         ],
       },
@@ -348,9 +348,8 @@ describe('MCPDetailPage — tools tab', () => {
 
     await user.click(screen.getByRole('tab', { name: /^tools/i }))
 
-    // Truthy annotation surfaces as a badge; falsy one is hidden.
-    expect(screen.getByText('destructive')).toBeInTheDocument()
-    expect(screen.queryByText('idempotent')).not.toBeInTheDocument()
+    expect(screen.getByText('May delete or overwrite data.')).toBeInTheDocument()
+    expect(screen.getByText('Repeating a call may have further effect.')).toBeInTheDocument()
   })
 })
 
