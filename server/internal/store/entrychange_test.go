@@ -89,6 +89,41 @@ func TestEntryChange_ApproveMetadataApplies(t *testing.T) {
 	}
 }
 
+func TestEntryChange_ApproveMetadataUsageMarkdown(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{"set", `{"name":"weather","usage_markdown":"## Run it"}`, "## Run it"},
+		{"cleared", `{"name":"weather","usage_markdown":""}`, ""},
+		{"absent keeps current", `{"name":"weather"}`, "existing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetDB(t)
+			ctx := context.Background()
+			srvID := seedPublishedMCPServer(t, ctx, "acme", "weather")
+			if _, err := sharedDB.Pool.Exec(ctx,
+				`UPDATE mcp_servers SET usage_markdown='existing' WHERE id=$1`, srvID); err != nil {
+				t.Fatalf("seed usage: %v", err)
+			}
+
+			id := createChange(t, ctx, srvID, domain.EntryChangeMetadataEdit, tt.payload)
+			if _, err := sharedDB.ApproveEntryChangeRequest(ctx, id, 1, reviewer()); err != nil {
+				t.Fatalf("approve: %v", err)
+			}
+			srv, err := sharedDB.GetMCPServerByID(ctx, srvID)
+			if err != nil {
+				t.Fatalf("GetMCPServerByID: %v", err)
+			}
+			if srv.UsageMarkdown != tt.want {
+				t.Errorf("usage_markdown = %q, want %q", srv.UsageMarkdown, tt.want)
+			}
+		})
+	}
+}
+
 func TestEntryChange_RejectLeavesEntryUnchanged(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()

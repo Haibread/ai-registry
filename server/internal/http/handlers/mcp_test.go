@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -1181,6 +1182,47 @@ func TestMCPHandler_PatchServer_NameRequired(t *testing.T) {
 	newMCPRouter().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestMCPHandler_PatchServer_UsageMarkdown(t *testing.T) {
+	resetTables(t)
+	seedMCPServer(t, "usage-ns", "usage-srv")
+
+	patch := func(payload string) (int, string) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/mcp/servers/usage-ns/usage-srv",
+			bytes.NewBufferString(payload))
+		req = req.WithContext(adminCtx())
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		newMCPRouter().ServeHTTP(rec, req)
+		var srv struct {
+			UsageMarkdown string `json:"usage_markdown"`
+		}
+		_ = json.NewDecoder(rec.Body).Decode(&srv)
+		return rec.Code, srv.UsageMarkdown
+	}
+
+	steps := []struct {
+		name      string
+		payload   string
+		wantCode  int
+		wantUsage string
+	}{
+		{"set", `{"usage_markdown":"## Run\n\n{{run_command}}"}`, http.StatusOK, "## Run\n\n{{run_command}}"},
+		{"other field keeps it", `{"license":"MIT"}`, http.StatusOK, "## Run\n\n{{run_command}}"},
+		{"too long", `{"usage_markdown":"` + strings.Repeat("a", domain.MaxUsageMarkdownLength+1) + `"}`, http.StatusUnprocessableEntity, ""},
+		{"reset", `{"usage_markdown":""}`, http.StatusOK, ""},
+	}
+	for _, s := range steps {
+		code, usage := patch(s.payload)
+		if code != s.wantCode {
+			t.Fatalf("%s: status = %d, want %d", s.name, code, s.wantCode)
+		}
+		if code == http.StatusOK && usage != s.wantUsage {
+			t.Errorf("%s: usage_markdown = %q, want %q", s.name, usage, s.wantUsage)
+		}
 	}
 }
 

@@ -217,9 +217,9 @@ test.describe('Remote MCP server (URL-only) authoring', () => {
     await expect(page.getByText('Connection & Runtime')).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText(endpoint).first()).toBeVisible()
 
-    // Installation tab renders the endpoint and the host-config generator.
-    await page.getByRole('tab', { name: 'Installation' }).click()
-    await expect(page.getByRole('heading', { name: 'Connection' })).toBeVisible()
+    // Usage tab renders the endpoint and the host-config generator.
+    await page.getByRole('tab', { name: 'Usage' }).click()
+    await expect(page.getByRole('heading', { name: 'Connect' })).toBeVisible()
     await expect(page.getByText('Host Configuration')).toBeVisible()
   })
 })

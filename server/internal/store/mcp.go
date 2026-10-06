@@ -298,7 +298,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified,
 		       coalesce(lv.tags, '{}'),
-		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
+		       coalesce(s.readme,''), s.usage_markdown, s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_versions, lv.packages, lv.remotes, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
@@ -337,7 +337,7 @@ func (db *DB) ListMCPServers(ctx context.Context, p ListMCPServersParams) ([]MCP
 			&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 			&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 			&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
-			&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
+			&r.Readme, &r.UsageMarkdown, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 			&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvRemotes, &lvCapabilities, &lvTools, &lvPublishedAt,
 		); err != nil {
 			recordErr(span, err)
@@ -398,7 +398,7 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified,
 		       coalesce(lv.tags, '{}'),
-		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
+		       coalesce(s.readme,''), s.usage_markdown, s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_versions, lv.packages, lv.remotes, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
@@ -430,7 +430,7 @@ func (db *DB) GetMCPServer(ctx context.Context, namespace, slug string, publicOn
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 		&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
-		&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
+		&r.Readme, &r.UsageMarkdown, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvRemotes, &lvCapabilities, &lvTools, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -467,7 +467,7 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 		       coalesce(s.description,''), coalesce(s.homepage_url,''), coalesce(s.repo_url,''),
 		       coalesce(s.license,''), s.visibility, s.status, s.featured, s.verified,
 		       coalesce(lv.tags, '{}'),
-		       coalesce(s.readme,''), s.view_count, s.copy_count, s.created_at, s.updated_at,
+		       coalesce(s.readme,''), s.usage_markdown, s.view_count, s.copy_count, s.created_at, s.updated_at,
 		       lv.version, lv.runtime, lv.protocol_versions, lv.packages, lv.remotes, lv.capabilities, lv.tools, lv.published_at
 		FROM mcp_servers s
 		JOIN publishers pub ON pub.id = s.publisher_id
@@ -495,7 +495,7 @@ func (db *DB) GetMCPServerByID(ctx context.Context, id string) (*MCPServerRow, e
 		&r.ID, &r.Namespace, &r.PublisherID, &r.Slug, &r.Name,
 		&r.Description, &r.HomepageURL, &r.RepoURL, &r.License,
 		&r.Visibility, &r.Status, &r.Featured, &r.Verified, &r.Tags,
-		&r.Readme, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
+		&r.Readme, &r.UsageMarkdown, &r.ViewCount, &r.CopyCount, &r.CreatedAt, &r.UpdatedAt,
 		&lvVersion, &lvRuntime, &lvProto, &lvPackages, &lvRemotes, &lvCapabilities, &lvTools, &lvPublishedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -1003,6 +1003,9 @@ type UpdateMCPServerParams struct {
 	HomepageURL string `json:"homepage_url"`
 	RepoURL     string `json:"repo_url"`
 	License     string `json:"license"`
+	// UsageMarkdown is a pointer so an approved edit payload without the
+	// field leaves the column untouched.
+	UsageMarkdown *string `json:"usage_markdown,omitempty"`
 }
 
 // UpdateMCPServer updates the mutable metadata fields of an MCP server.

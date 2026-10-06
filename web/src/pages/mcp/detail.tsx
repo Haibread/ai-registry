@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import {
   ExternalLink,
-  Package,
   Package2,
   Cpu,
   Code2,
@@ -22,7 +21,6 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { RawJsonViewer } from '@/components/ui/raw-json-viewer'
-import { InstallCommand } from '@/components/ui/install-command'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { DetailPageSkeleton } from '@/components/ui/detail-page-skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -32,8 +30,7 @@ import { ResourceIcon } from '@/components/ui/resource-icon'
 import { FreshnessIndicator } from '@/components/ui/freshness-indicator'
 import { CapabilitiesSection } from '@/components/mcp/capabilities-section'
 import { ToolsExplorer } from '@/components/mcp/tools-explorer'
-import { MCPConfigGenerator } from '@/components/mcp/config-generator'
-import { MCPCodeSnippets } from '@/components/mcp/code-snippets'
+import { UsageTab } from '@/components/mcp/usage-tab'
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { PublisherSidebar } from '@/components/shared/publisher-sidebar'
 import { StatTile } from '@/components/shared/stat-tile'
@@ -46,7 +43,7 @@ import { StickyDetailHeader } from '@/components/shared/sticky-detail-header'
 import { ReportDialog } from '@/components/shared/report-dialog'
 import { useRecordView, useRecordCopy } from '@/hooks/use-record-event'
 import { useCatalogClient } from '@/lib/api-client'
-import { formatDate, getInstallCommand, ecosystemLabel, isRemoteTransport } from '@/lib/utils'
+import { formatDate, isRemoteTransport } from '@/lib/utils'
 import { getFieldExplanation } from '@/lib/field-explanations'
 import { ProtocolVersionBadges } from '@/components/mcp/protocol-version-badges'
 
@@ -74,7 +71,9 @@ export default function MCPDetailPage() {
   })
 
   // Tab state synced to URL hash
-  const defaultTab = location.hash?.replace('#', '') || 'overview'
+  const hashTab = location.hash?.replace('#', '')
+  // Shared links still carry #installation, the Usage tab's former name.
+  const defaultTab = (hashTab === 'installation' ? 'usage' : hashTab) || 'overview'
   const handleTabChange = (value: string) => {
     navigate(`${location.pathname}#${value}`, { replace: true })
   }
@@ -119,7 +118,7 @@ export default function MCPDetailPage() {
   const capabilities = (lv as Record<string, unknown> | undefined)?.capabilities as Record<string, unknown> | undefined
   // Packages that connect to a remote URL rather than running locally.
   // For these, the endpoint URL is the primary thing a caller needs — we
-  // surface it in the Overview so users don't have to jump to the Installation
+  // surface it in the Overview so users don't have to jump to the Usage
   // tab to see how to connect.
   const remotePackages = (lv?.packages ?? []).filter(
     (p) => isRemoteTransport(p.transport.type) && !!p.transport.url,
@@ -233,7 +232,7 @@ export default function MCPDetailPage() {
         <Tabs defaultValue={defaultTab} onValueChange={handleTabChange}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="installation">Installation</TabsTrigger>
+            <TabsTrigger value="usage">Usage</TabsTrigger>
             <TabsTrigger value="tools">
               Tools{lv?.tools && lv.tools.length > 0 ? ` (${lv.tools.length})` : ''}
             </TabsTrigger>
@@ -252,7 +251,7 @@ export default function MCPDetailPage() {
                 Primary "what is this server and how do I talk to it" card.
                 For remote servers (http / sse / streamable_http) the endpoint
                 URL is rendered as a hero row at the top so users don't have
-                to dig into the Installation tab to find it. Runtime, protocol
+                to dig into the Usage tab to find it. Runtime, protocol
                 version, and capabilities round out the technical surface. */}
             <section className="space-y-3">
               <SectionHeader
@@ -400,80 +399,8 @@ export default function MCPDetailPage() {
             />
           </TabsContent>
 
-          {/* ── Installation Tab ── */}
-          <TabsContent value="installation" className="mt-6 space-y-6 max-w-3xl mx-auto">
-            {(lv?.packages?.length ?? 0) > 0 || (lv?.remotes?.length ?? 0) > 0 ? (
-              <>
-                <div className="space-y-3">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <Package className="h-4 w-4" aria-hidden="true" />
-                    {(lv?.packages ?? []).every(p => isRemoteTransport(p.transport.type)) ? 'Connection' : 'Installation'}
-                  </h2>
-                  <div className="space-y-4">
-                    {(lv?.remotes ?? []).map((remote, i) => (
-                      <div key={`remote-${i}`} className="space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="secondary" className="text-xs">remote</Badge>
-                          <Badge variant="outline" className="text-xs">{remote.type}</Badge>
-                          {getFieldExplanation(remote.type) && (
-                            <TooltipInfo content={getFieldExplanation(remote.type)!} />
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground">Endpoint URL</p>
-                          <InstallCommand command={remote.url} onCopy={recordCopy} />
-                        </div>
-                      </div>
-                    ))}
-                    {(lv?.packages ?? []).map((pkg, i) => {
-                      const remote = isRemoteTransport(pkg.transport.type)
-                      return (
-                        <div key={i} className="space-y-1.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="secondary" className="text-xs">{ecosystemLabel(pkg.registryType)}</Badge>
-                            <span className="text-xs text-muted-foreground font-mono truncate">{pkg.identifier}@{pkg.version}</span>
-                            <Badge variant="outline" className="text-xs">{pkg.transport.type}</Badge>
-                            {getFieldExplanation(pkg.transport.type) && (
-                              <TooltipInfo content={getFieldExplanation(pkg.transport.type)!} />
-                            )}
-                          </div>
-                          {remote && pkg.transport.url ? (
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Endpoint URL</p>
-                              <InstallCommand command={pkg.transport.url} onCopy={recordCopy} />
-                            </div>
-                          ) : (
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Run command</p>
-                              <InstallCommand command={getInstallCommand(pkg)} onCopy={recordCopy} />
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-                <Separator />
-                <MCPConfigGenerator
-                  serverName={data.slug}
-                  packages={lv?.packages ?? []}
-                  remotes={lv?.remotes ?? []}
-                />
-                <Separator />
-                <MCPCodeSnippets
-                  serverName={data.slug}
-                  packages={lv?.packages ?? []}
-                  remotes={lv?.remotes ?? []}
-                  tools={lv?.tools}
-                />
-              </>
-            ) : (
-              <EmptyState
-                icon={<Package className="h-8 w-8 text-muted-foreground" />}
-                title="No packages available"
-                description="This server has no published packages or remote endpoints yet."
-              />
-            )}
+          <TabsContent value="usage" className="mt-6 space-y-6 max-w-3xl mx-auto">
+            <UsageTab server={data} version={lv} onCopy={recordCopy} />
           </TabsContent>
 
           {/* ── Tools Tab ──

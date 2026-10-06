@@ -10,6 +10,7 @@ import { DeprecateButton } from '@/components/admin/deprecate-button'
 import { DeleteButton } from '@/components/admin/delete-button'
 import { RequestDeletionButton } from '@/components/admin/request-deletion-button'
 import { VersionsSection } from '@/components/admin/versions-section'
+import { UsageEditor } from '@/components/admin/usage-editor'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -322,6 +323,16 @@ export default function AdminMCPDetail() {
           </div>
         </div>
       )}
+
+      <Separator />
+
+      <UsageEditor
+        server={data}
+        canEdit={perms.canEdit(ns)}
+        isServerAdmin={perms.isServerAdmin}
+        changePending={changePending}
+        onSaved={invalidate}
+      />
 
       <Separator />
 

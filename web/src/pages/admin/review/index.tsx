@@ -135,7 +135,16 @@ function ChangeDetails({ it }: { it: Item }) {
       {entries.map(([k, v]) => (
         <div key={k} className="contents">
           <dt className="font-mono">{k}</dt>
-          <dd className="font-mono truncate">{String(v)}</dd>
+          {k === 'usage_markdown' ? (
+            <dd>
+              <details>
+                <summary className="cursor-pointer">Show proposed Markdown</summary>
+                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono">{String(v)}</pre>
+              </details>
+            </dd>
+          ) : (
+            <dd className="font-mono truncate">{String(v)}</dd>
+          )}
         </div>
       ))}
     </dl>
