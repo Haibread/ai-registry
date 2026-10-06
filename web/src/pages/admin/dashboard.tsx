@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Plug, Bot, Users, ArrowRight, FileText, CheckCircle, AlertTriangle, ClipboardCheck, Flag } from 'lucide-react'
+import { Plug, Users, ArrowRight, FileText, CheckCircle, AlertTriangle, ClipboardCheck, Flag } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge, StatusBadge } from '@/components/ui/badge'
@@ -96,12 +96,6 @@ function GlobalDashboard() {
     enabled: true,
   })
 
-  const { data: agentsData } = useQuery({
-    queryKey: ['admin-agents-recent'],
-    queryFn: () => api.GET('/api/v1/agents', { params: { query: { limit: 5 } } }).then(r => r.data),
-    enabled: true,
-  })
-
   const reviewQueue = useReviewQueueCount()
   const { data: pendingReports } = useQuery({
     queryKey: ['admin-reports', 'pending'],
@@ -128,11 +122,9 @@ function GlobalDashboard() {
   ]
 
   const recentMcp = mcpData?.items ?? []
-  const recentAgents = agentsData?.items ?? []
 
   const stats = [
     { label: 'MCP Servers', value: statsData?.mcp_servers ?? '—', icon: Plug, href: '/admin/mcp' },
-    { label: 'Agents',      value: statsData?.agents      ?? '—', icon: Bot,    href: '/admin/agents' },
     { label: 'Publishers',  value: statsData?.publishers  ?? '—', icon: Users,  href: '/admin/publishers' },
   ]
 
@@ -156,7 +148,7 @@ function GlobalDashboard() {
       )}
 
       {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         {stats.map(({ label, value, icon: Icon, href }) => (
           <Card key={label}>
             <CardHeader className="pb-2">
@@ -180,44 +172,39 @@ function GlobalDashboard() {
       </div>
 
       {/* Status breakdown */}
-      {statsData?.mcp_status_breakdown && statsData?.agent_status_breakdown && (
+      {statsData?.mcp_status_breakdown && (
         <div className="grid gap-4 sm:grid-cols-2">
-          {[
-            { label: 'MCP Servers', breakdown: statsData.mcp_status_breakdown, href: '/admin/mcp' },
-            { label: 'Agents', breakdown: statsData.agent_status_breakdown, href: '/admin/agents' },
-          ].map(({ label, breakdown, href }) => (
-            <Card key={label}>
-              <CardHeader className="pb-2">
-                <div className="text-sm font-medium text-muted-foreground">{label} by Status</div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-1.5">
-                    <FileText className="h-3.5 w-3.5 text-muted-foreground" /> Draft
-                  </span>
-                  <Link to={`${href}?status=draft`}>
-                    <Badge variant="outline" className="text-xs">{breakdown.draft}</Badge>
-                  </Link>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-1.5">
-                    <CheckCircle className="h-3.5 w-3.5 text-success" /> Published
-                  </span>
-                  <Link to={`${href}?status=published`}>
-                    <Badge variant="outline" className="text-xs">{breakdown.published}</Badge>
-                  </Link>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Deprecated
-                  </span>
-                  <Link to={`${href}?status=deprecated`}>
-                    <Badge variant="outline" className="text-xs">{breakdown.deprecated}</Badge>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="text-sm font-medium text-muted-foreground">MCP Servers by Status</div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 text-muted-foreground" /> Draft
+                </span>
+                <Link to="/admin/mcp?status=draft">
+                  <Badge variant="outline" className="text-xs">{statsData.mcp_status_breakdown.draft}</Badge>
+                </Link>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle className="h-3.5 w-3.5 text-success" /> Published
+                </span>
+                <Link to="/admin/mcp?status=published">
+                  <Badge variant="outline" className="text-xs">{statsData.mcp_status_breakdown.published}</Badge>
+                </Link>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Deprecated
+                </span>
+                <Link to="/admin/mcp?status=deprecated">
+                  <Badge variant="outline" className="text-xs">{statsData.mcp_status_breakdown.deprecated}</Badge>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -225,75 +212,38 @@ function GlobalDashboard() {
           on the list pages the stat cards already link to. */}
       <Separator />
 
-      {/* Recent entries */}
-      <div className="grid gap-6 sm:grid-cols-2">
-        {/* Recent MCP servers */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Recent MCP Servers</h2>
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/admin/mcp" className="flex items-center gap-1 text-xs">
-                View all <ArrowRight className="h-3 w-3" />
-              </Link>
-            </Button>
-          </div>
-          {recentMcp.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">No MCP servers yet.</p>
-          ) : (
-            <div className="space-y-1">
-              {recentMcp.map((s) => (
-                <Link
-                  key={s.id}
-                  to={`/admin/mcp/${s.namespace}/${s.slug}`}
-                  className="flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{s.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">{s.namespace}/{s.slug}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <StatusBadge status={s.status} className="text-[10px]" />
-                    <span className="text-xs text-muted-foreground hidden sm:block">{formatDate(s.updated_at)}</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
+      {/* Recent MCP servers */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Recent MCP Servers</h2>
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/admin/mcp" className="flex items-center gap-1 text-xs">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </Button>
         </div>
-
-        {/* Recent agents */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Recent Agents</h2>
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/admin/agents" className="flex items-center gap-1 text-xs">
-                View all <ArrowRight className="h-3 w-3" />
+        {recentMcp.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4">No MCP servers yet.</p>
+        ) : (
+          <div className="space-y-1">
+            {recentMcp.map((s) => (
+              <Link
+                key={s.id}
+                to={`/admin/mcp/${s.namespace}/${s.slug}`}
+                className="flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{s.name}</p>
+                  <p className="text-xs text-muted-foreground font-mono truncate">{s.namespace}/{s.slug}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <StatusBadge status={s.status} className="text-[10px]" />
+                  <span className="text-xs text-muted-foreground hidden sm:block">{formatDate(s.updated_at)}</span>
+                </div>
               </Link>
-            </Button>
+            ))}
           </div>
-          {recentAgents.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">No agents yet.</p>
-          ) : (
-            <div className="space-y-1">
-              {recentAgents.map((a) => (
-                <Link
-                  key={a.id}
-                  to={`/admin/agents/${a.namespace}/${a.slug}`}
-                  className="flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{a.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">{a.namespace}/{a.slug}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <StatusBadge status={a.status} className="text-[10px]" />
-                    <span className="text-xs text-muted-foreground hidden sm:block">{formatDate(a.updated_at)}</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   )

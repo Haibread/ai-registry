@@ -85,7 +85,7 @@ export default function AdminPublisherNew() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Publisher Details</CardTitle>
-            <CardDescription>Publishers are namespaces for MCP servers and agents.</CardDescription>
+            <CardDescription>Publishers are namespaces for MCP servers.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <SlugField placeholder="my-org" />

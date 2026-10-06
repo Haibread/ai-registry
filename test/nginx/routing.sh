@@ -83,7 +83,7 @@ expect_header / X-Frame-Options SAMEORIGIN
 expect_header /metrics X-Content-Type-Options nosniff
 
 # Proxied responses keep the backend's own headers, without the SPA's stacked on.
-for path in /docs /api/v1/mcp/servers /agents/acme/bot/.well-known/agent-card.json; do
+for path in /docs /api/v1/mcp/servers /.well-known/jwks.json; do
 	expect_header "${path}" Content-Security-Policy "${backend_csp}"
 	expect_header "${path}" X-Frame-Options DENY
 done

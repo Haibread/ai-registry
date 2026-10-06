@@ -455,7 +455,6 @@ export default function AdminMCPDetail() {
 
             {perms.canEdit(ns) && (
               <RequestDeletionButton
-                kind="mcp"
                 namespace={data.namespace}
                 slug={data.slug}
                 entityName={data.name}
@@ -475,7 +474,7 @@ export default function AdminMCPDetail() {
       <Separator />
 
       <div id="versions-section">
-        <VersionsSection kind="mcp" namespace={data.namespace} slug={data.slug} entryStatus={data.status} entryVisibility={data.visibility} />
+        <VersionsSection namespace={data.namespace} slug={data.slug} entryStatus={data.status} entryVisibility={data.visibility} />
       </div>
 
       <Separator />

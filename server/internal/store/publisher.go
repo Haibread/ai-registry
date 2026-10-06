@@ -196,7 +196,7 @@ func (db *DB) UpdatePublisher(ctx context.Context, publisherID string, p UpdateP
 }
 
 // DeletePublisher hard-deletes a publisher and cascades the deletion to every
-// resource it owns: all MCP servers and agents (whatever their status), their
+// resource it owns: all MCP servers (whatever their status), their
 // version rows, and any community reports filed against them. Role grants
 // scoped to the publisher are removed automatically by their ON DELETE CASCADE
 // foreign key.
@@ -204,7 +204,7 @@ func (db *DB) UpdatePublisher(ctx context.Context, publisherID string, p UpdateP
 // The whole cascade runs in one transaction, so the publisher and all of its
 // dependents disappear together or not at all. The entry and version tables use
 // ON DELETE RESTRICT, so children are deleted bottom-up — versions before their
-// parent mcp_server/agent rows, and those before the publisher itself — rather
+// parent mcp_server rows, and those before the publisher itself — rather
 // than relying on the database to cascade. A delete on a publisher with no
 // resources is just the final DELETE with nothing to sweep.
 func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
@@ -224,17 +224,15 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 	// no dangling reports behind.
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM reports
-		  WHERE (resource_type='mcp_server'
-		         AND resource_id IN (SELECT id FROM mcp_servers WHERE publisher_id=$1))
-		     OR (resource_type='agent'
-		         AND resource_id IN (SELECT id FROM agents      WHERE publisher_id=$1))`,
+		  WHERE resource_type='mcp_server'
+		    AND resource_id IN (SELECT id FROM mcp_servers WHERE publisher_id=$1)`,
 		publisherID); err != nil {
 		recordErr(span, err)
 		return fmt.Errorf("deleting resource reports: %w", err)
 	}
 
 	// Version tables use ON DELETE RESTRICT, so delete version rows before the
-	// parent mcp_server/agent rows.
+	// parent mcp_server rows.
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM mcp_server_versions
 		  WHERE server_id IN (SELECT id FROM mcp_servers WHERE publisher_id=$1)`,
@@ -248,20 +246,6 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 		recordErr(span, err)
 		return fmt.Errorf("deleting mcp servers: %w", err)
 	}
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM agent_versions
-		  WHERE agent_id IN (SELECT id FROM agents WHERE publisher_id=$1)`,
-		publisherID); err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("deleting agent versions: %w", err)
-	}
-	agentTag, err := tx.Exec(ctx,
-		`DELETE FROM agents WHERE publisher_id=$1`, publisherID)
-	if err != nil {
-		recordErr(span, err)
-		return fmt.Errorf("deleting agents: %w", err)
-	}
-
 	tag, err := tx.Exec(ctx, `DELETE FROM publishers WHERE id=$1`, publisherID)
 	if err != nil {
 		recordErr(span, err)
@@ -272,10 +256,7 @@ func (db *DB) DeletePublisher(ctx context.Context, publisherID string) error {
 		return ErrNotFound
 	}
 
-	span.SetAttributes(
-		attribute.Int64("registry.cascade.mcp_servers_deleted", mcpTag.RowsAffected()),
-		attribute.Int64("registry.cascade.agents_deleted", agentTag.RowsAffected()),
-	)
+	span.SetAttributes(attribute.Int64("registry.cascade.mcp_servers_deleted", mcpTag.RowsAffected()))
 
 	if err := tx.Commit(ctx); err != nil {
 		recordErr(span, err)

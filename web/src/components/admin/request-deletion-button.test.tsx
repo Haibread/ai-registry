@@ -26,11 +26,11 @@ beforeEach(() => {
   }
 })
 
-function renderButton(kind: 'mcp' | 'agent' = 'mcp') {
+function renderButton() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <RequestDeletionButton kind={kind} namespace="acme" slug="weather" entityName="Weather" />
+      <RequestDeletionButton namespace="acme" slug="weather" entityName="Weather" />
     </QueryClientProvider>,
   )
 }
@@ -50,23 +50,12 @@ describe('RequestDeletionButton', () => {
     mockPOST.mockResolvedValue({})
   })
 
-  it('posts to the mcp deletion-request endpoint when kind=mcp', async () => {
-    renderButton('mcp')
+  it('posts to the deletion-request endpoint', async () => {
+    renderButton()
     clickThroughConfirm()
     await waitFor(() => {
       expect(mockPOST).toHaveBeenCalledWith(
         '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request',
-        { params: { path: { namespace: 'acme', slug: 'weather' } } },
-      )
-    })
-  })
-
-  it('posts to the agent endpoint when kind=agent', async () => {
-    renderButton('agent')
-    clickThroughConfirm()
-    await waitFor(() => {
-      expect(mockPOST).toHaveBeenCalledWith(
-        '/api/v1/agents/{namespace}/{slug}/deletion-request',
         { params: { path: { namespace: 'acme', slug: 'weather' } } },
       )
     })

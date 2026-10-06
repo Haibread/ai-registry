@@ -37,7 +37,7 @@ describe('GettingStartedPage', () => {
 
   it('renders the find a server section', () => {
     renderPage()
-    expect(screen.getByText(/find a server or agent/i)).toBeInTheDocument()
+    expect(screen.getByText(/find a server/i)).toBeInTheDocument()
   })
 
   it('renders the install section', () => {

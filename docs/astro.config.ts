@@ -34,7 +34,7 @@ export default defineConfig({
 		starlight({
 			title: "AI Registry",
 			description:
-				"A self-hostable registry for MCP servers and A2A agents, with a versioned HTTP API, a public catalog and an admin console.",
+				"A self-hostable registry for MCP servers, with a versioned HTTP API, a public catalog and an admin console.",
 			logo: { src: "../logo.svg" },
 			favicon: "/favicon.svg",
 			social: [{ icon: "github", label: "GitHub", href: REPOSITORY }],

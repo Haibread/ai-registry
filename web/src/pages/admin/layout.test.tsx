@@ -82,7 +82,6 @@ describe('AdminLayout', () => {
     expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /publishers/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /mcp servers/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /agents/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument()
   })
 

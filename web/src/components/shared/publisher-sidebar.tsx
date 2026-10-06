@@ -39,16 +39,6 @@ export function PublisherSidebar({ namespace }: PublisherSidebarProps) {
         .then((r) => r.data?.total_count ?? 0),
   })
 
-  const { data: agentCount } = useQuery({
-    queryKey: ['publisher-agent-count', namespace],
-    queryFn: () =>
-      api
-        .GET('/api/v1/agents', {
-          params: { query: { namespace, limit: 1 } },
-        })
-        .then((r) => r.data?.total_count ?? 0),
-  })
-
   if (!publisher) {
     return (
       <div className="flex items-center gap-3 rounded-xl border bg-card p-4">
@@ -60,11 +50,6 @@ export function PublisherSidebar({ namespace }: PublisherSidebarProps) {
       </div>
     )
   }
-
-  const counts = [
-    mcpCount != null && `${mcpCount} MCP server${mcpCount !== 1 ? 's' : ''}`,
-    agentCount != null && `${agentCount} agent${agentCount !== 1 ? 's' : ''}`,
-  ].filter(Boolean)
 
   return (
     <div className="relative flex items-center gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40">
@@ -89,7 +74,11 @@ export function PublisherSidebar({ namespace }: PublisherSidebarProps) {
             </span>
           )}
         </div>
-        {counts.length > 0 && <p className="text-xs text-muted-foreground">{counts.join(' · ')}</p>}
+        {mcpCount != null && (
+          <p className="text-xs text-muted-foreground">
+            {mcpCount} MCP server{mcpCount !== 1 ? 's' : ''}
+          </p>
+        )}
       </div>
       <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
     </div>

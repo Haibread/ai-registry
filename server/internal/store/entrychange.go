@@ -64,36 +64,6 @@ func applyMCPMetadata(ctx context.Context, q querier, serverID string, p UpdateM
 	return tag.RowsAffected(), err
 }
 
-func applyAgentVisibility(ctx context.Context, q querier, agentID string, vis domain.Visibility) (int64, error) {
-	tag, err := q.Exec(ctx,
-		`UPDATE agents SET visibility=$1, updated_at=now() WHERE id=$2`,
-		vis, agentID)
-	return tag.RowsAffected(), err
-}
-
-func applyAgentDeprecation(ctx context.Context, q querier, agentID string) (int64, error) {
-	tag, err := q.Exec(ctx,
-		`UPDATE agents SET status='deprecated', updated_at=now() WHERE id=$1 AND status='published'`,
-		agentID)
-	return tag.RowsAffected(), err
-}
-
-func applyAgentUndeprecation(ctx context.Context, q querier, agentID string) (int64, error) {
-	tag, err := q.Exec(ctx,
-		`UPDATE agents SET status='published', updated_at=now() WHERE id=$1 AND status='deprecated'`,
-		agentID)
-	return tag.RowsAffected(), err
-}
-
-func applyAgentMetadata(ctx context.Context, q querier, agentID string, p UpdateAgentParams) (int64, error) {
-	tag, err := q.Exec(ctx, `
-		UPDATE agents
-		SET name=$1, description=$2, updated_at=now()
-		WHERE id=$3 AND status != 'deleted'`,
-		p.Name, p.Description, agentID)
-	return tag.RowsAffected(), err
-}
-
 // ── Change-request CRUD ──────────────────────────────────────────────────────
 
 // entryChangeSelectCols is the column list shared by the single-row reads.
@@ -300,31 +270,6 @@ func applyEntryChange(ctx context.Context, tx querier, cr domain.EntryChangeRequ
 				return fmt.Errorf("decoding metadata payload: %w", err)
 			}
 			rows, err := applyMCPMetadata(ctx, tx, cr.EntryID, p)
-			return applyResult(rows, err)
-		}
-	case domain.EntryResourceAgent:
-		switch cr.Action {
-		case domain.EntryChangeVisibility:
-			var p struct {
-				Visibility string `json:"visibility"`
-			}
-			if err := json.Unmarshal(cr.Payload, &p); err != nil {
-				return fmt.Errorf("decoding visibility payload: %w", err)
-			}
-			rows, err := applyAgentVisibility(ctx, tx, cr.EntryID, domain.Visibility(p.Visibility))
-			return applyResult(rows, err)
-		case domain.EntryChangeDeprecation:
-			rows, err := applyAgentDeprecation(ctx, tx, cr.EntryID)
-			return applyResult(rows, err)
-		case domain.EntryChangeUndeprecation:
-			rows, err := applyAgentUndeprecation(ctx, tx, cr.EntryID)
-			return applyResult(rows, err)
-		case domain.EntryChangeMetadataEdit:
-			var p UpdateAgentParams
-			if err := json.Unmarshal(cr.Payload, &p); err != nil {
-				return fmt.Errorf("decoding metadata payload: %w", err)
-			}
-			rows, err := applyAgentMetadata(ctx, tx, cr.EntryID, p)
 			return applyResult(rows, err)
 		}
 	}

@@ -61,8 +61,6 @@ func TestMigrate_AppliesAllMigrationsToFreshDatabase(t *testing.T) {
 		"publishers",
 		"mcp_servers",
 		"mcp_server_versions",
-		"agents",
-		"agent_versions",
 		"audit_log",
 		"reports",
 		"instance_tags",
@@ -80,6 +78,18 @@ func TestMigrate_AppliesAllMigrationsToFreshDatabase(t *testing.T) {
 		}
 		if !exists {
 			t.Errorf("table %q not created by migrations", table)
+		}
+	}
+
+	// 000026 dropped the agent tables.
+	for _, table := range []string{"agents", "agent_versions"} {
+		var exists bool
+		if err := db.Pool.QueryRow(ctx,
+			`SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&exists); err != nil {
+			t.Fatalf("checking table %q: %v", table, err)
+		}
+		if exists {
+			t.Errorf("table %q should have been dropped by 000026", table)
 		}
 	}
 
@@ -135,14 +145,8 @@ func TestMigrate_AppliesAllMigrationsToFreshDatabase(t *testing.T) {
 	if columnExists("mcp_servers", "tags") {
 		t.Error("column mcp_servers.tags should have been dropped by 000022")
 	}
-	if columnExists("agents", "tags") {
-		t.Error("column agents.tags should have been dropped by 000022")
-	}
 	if !columnExists("mcp_server_versions", "tags") {
 		t.Error("column mcp_server_versions.tags not created by 000022")
-	}
-	if !columnExists("agent_versions", "tags") {
-		t.Error("column agent_versions.tags not created by 000022")
 	}
 	if !columnExists("instance_tags", "managed") {
 		t.Error("column instance_tags.managed not created by 000023")

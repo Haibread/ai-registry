@@ -30,8 +30,8 @@ func TestReports_CreateAndList(t *testing.T) {
 	}
 
 	if _, err := sharedDB.CreateReport(ctx, store.CreateReportParams{
-		ResourceType: "agent",
-		ResourceID:   "01HAGENT",
+		ResourceType: "mcp_server",
+		ResourceID:   "01HMCP2",
 		IssueType:    "spam",
 		Description:  "this is advertising",
 		ReporterIP:   "2.2.2.2",
@@ -47,9 +47,9 @@ func TestReports_CreateAndList(t *testing.T) {
 	if len(all) != 2 {
 		t.Fatalf("expected 2 reports, got %d", len(all))
 	}
-	// Newest first — the agent one was inserted second.
-	if all[0].ResourceType != "agent" {
-		t.Errorf("newest first: [0].resource_type = %q, want agent", all[0].ResourceType)
+	// Newest first — the spam one was inserted second.
+	if all[0].ResourceID != "01HMCP2" {
+		t.Errorf("newest first: [0].resource_id = %q, want 01HMCP2", all[0].ResourceID)
 	}
 
 	// ListReports — status filter
@@ -95,7 +95,7 @@ func TestReports_ListJoinsReportedResourceHandle(t *testing.T) {
 	// A report whose target never existed — the join must degrade to empty
 	// strings, not drop the row.
 	if _, err := sharedDB.CreateReport(ctx, store.CreateReportParams{
-		ResourceType: "agent",
+		ResourceType: "mcp_server",
 		ResourceID:   "01HNOSUCH",
 		IssueType:    "spam",
 		Description:  "this is advertising",
@@ -110,7 +110,7 @@ func TestReports_ListJoinsReportedResourceHandle(t *testing.T) {
 	if len(all) != 2 {
 		t.Fatalf("expected 2 reports, got %d", len(all))
 	}
-	// Newest first: [0] is the orphan agent report, [1] the MCP one.
+	// Newest first: [0] is the orphan report, [1] the joined one.
 	if all[0].ResourceNS != "" || all[0].ResourceSlug != "" || all[0].ResourceName != "" {
 		t.Errorf("orphan report should have empty handle, got %q/%q (%q)",
 			all[0].ResourceNS, all[0].ResourceSlug, all[0].ResourceName)
@@ -182,7 +182,7 @@ func TestReports_UpdateStatus_Invalid(t *testing.T) {
 	ctx := context.Background()
 
 	r, _ := sharedDB.CreateReport(ctx, store.CreateReportParams{
-		ResourceType: "agent", ResourceID: "01H", IssueType: "other", Description: "x",
+		ResourceType: "mcp_server", ResourceID: "01H", IssueType: "other", Description: "x",
 	})
 	if err := sharedDB.UpdateReportStatus(ctx, r.ID, "bogus", "admin"); err == nil {
 		t.Error("expected error for invalid status")

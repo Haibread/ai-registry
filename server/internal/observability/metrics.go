@@ -17,7 +17,6 @@ type Metrics struct {
 
 	// Registry counters
 	MCPServersTotal metric.Int64UpDownCounter
-	AgentsTotal     metric.Int64UpDownCounter
 
 	// Auth
 	AuthFailures metric.Int64Counter
@@ -60,14 +59,6 @@ func InitMetrics() (*Metrics, error) {
 		return nil, fmt.Errorf("creating registry.mcp.servers.total: %w", err)
 	}
 
-	agentsTotal, err := m.Int64UpDownCounter(
-		"registry.agents.total",
-		metric.WithDescription("Live count of agent entries"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating registry.agents.total: %w", err)
-	}
-
 	authFailures, err := m.Int64Counter(
 		"registry.auth.failures",
 		metric.WithDescription("Authentication and authorisation failures"),
@@ -96,7 +87,6 @@ func InitMetrics() (*Metrics, error) {
 		HTTPRequestsTotal:   reqTotal,
 		HTTPRequestDuration: reqDuration,
 		MCPServersTotal:     mcpServersTotal,
-		AgentsTotal:         agentsTotal,
 		AuthFailures:        authFailures,
 		RateLimitHits:       rateLimitHits,
 		ToolDiscoveries:     toolDiscoveries,

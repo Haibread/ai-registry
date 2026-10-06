@@ -27,7 +27,6 @@ docker compose --profile prod --profile observability up -d --build
 | http://localhost:3000/admin | Admin console (sign in through Keycloak) |
 | http://localhost:8081/openapi.yaml | OpenAPI 3.1 document |
 | http://localhost:8081/api/v1/mcp/servers | JSON API |
-| http://localhost:8081/.well-known/agent-card.json | The registry's own A2A Agent Card |
 | http://localhost:8080 | Keycloak, realm `ai-registry` |
 | http://localhost:16686 | Jaeger, with the `observability` profile |
 

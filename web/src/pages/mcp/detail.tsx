@@ -73,8 +73,8 @@ export default function MCPDetailPage() {
   const titleRef = useRef<HTMLHeadingElement>(null)
   // Only the public catalog counts views; a member previewing a private entry
   // is not an audience.
-  useRecordView('mcp', data?.visibility === 'public' ? data.namespace : undefined, data?.slug)
-  const recordCopy = useRecordCopy('mcp', data?.namespace, data?.slug)
+  useRecordView(data?.visibility === 'public' ? data.namespace : undefined, data?.slug)
+  const recordCopy = useRecordCopy(data?.namespace, data?.slug)
   const { data: tagData } = useInstanceTags()
   const tagIndex = indexInstanceTags(tagData?.items)
 
@@ -160,7 +160,6 @@ export default function MCPDetailPage() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <StickyDetailHeader
-        type="mcp-server"
         name={data.name}
         version={lv?.version}
         identifier={`${data.namespace}/${data.slug}`}
@@ -276,7 +275,6 @@ export default function MCPDetailPage() {
                 </a>
               )}
               <ReportDialog
-                resourceType="mcp_server"
                 resourceId={data.id}
                 resourceLabel={`${data.namespace}/${data.slug}`}
               />
@@ -310,7 +308,7 @@ export default function MCPDetailPage() {
                   </section>
                 )}
 
-                <ActivityFeed resourceType="mcp" namespace={ns} slug={slug} />
+                <ActivityFeed namespace={ns} slug={slug} />
 
                 <RawJsonViewer data={data} title="Raw API response" />
               </TabsContent>
@@ -335,7 +333,6 @@ export default function MCPDetailPage() {
 
               <TabsContent value="versions" className="mt-6 space-y-4">
                 <VersionHistory
-                  type="mcp"
                   namespace={data.namespace}
                   slug={data.slug}
                   latestVersion={lv?.version}
@@ -346,7 +343,7 @@ export default function MCPDetailPage() {
         </div>
 
         <Separator />
-        <RelatedEntries type="mcp" namespace={data.namespace} currentSlug={data.slug} />
+        <RelatedEntries namespace={data.namespace} currentSlug={data.slug} />
       </main>
       <Footer />
     </div>

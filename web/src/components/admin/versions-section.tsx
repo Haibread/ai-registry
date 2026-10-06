@@ -17,13 +17,8 @@ import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 
 type MCPVersion = components['schemas']['MCPServerVersion']
-type AgentVersion = components['schemas']['AgentVersion']
-type AnyVersion = MCPVersion | AgentVersion
-
-type Kind = 'mcp' | 'agent'
 
 interface VersionsSectionProps {
-  kind: Kind
   namespace: string
   slug: string
   /** Lifecycle status of the owning entry. A deprecated entry keeps its
@@ -49,7 +44,7 @@ function reviewStateBadge(state: string | undefined) {
   }
 }
 
-function publishStatus(v: AnyVersion) {
+function publishStatus(v: MCPVersion) {
   if (v.published_at) return { variant: 'secondary' as const, label: 'published' }
   return { variant: 'outline' as const, label: 'draft' }
 }
@@ -69,7 +64,7 @@ function friendlyProblem(error: unknown, fallback: string): string {
   return e.detail ?? fallback
 }
 
-export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisibility }: VersionsSectionProps) {
+export function VersionsSection({ namespace, slug, entryStatus, entryVisibility }: VersionsSectionProps) {
   const perms = usePermissions()
   // Submit/withdraw are publisher Editor actions. Approve/reject of a submitted
   // version live on the review queue; the direct Publish below is the Reviewer's
@@ -88,29 +83,20 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
   const [submitTarget, setSubmitTarget] = useState<string | null>(null)
   const [requestPublic, setRequestPublic] = useState(false)
 
-  const queryKey = ['admin-versions', kind, namespace, slug]
-  // The resource detail page caches the entry (incl. latest_version); refresh
-  // it too so a freshly created version is reflected there immediately.
-  const detailKey = kind === 'mcp' ? 'admin-mcp-detail' : 'admin-agent-detail'
+  const queryKey = ['admin-versions', namespace, slug]
 
-  const { data, isPending, isError } = useQuery<{ items?: AnyVersion[] }>({
+  const { data, isPending, isError } = useQuery<{ items?: MCPVersion[] }>({
     queryKey,
     queryFn: async () => {
-      if (kind === 'mcp') {
-        const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions', {
-          params: { path: { namespace, slug } },
-        })
-        return (r.data ?? { items: [] }) as { items?: AnyVersion[] }
-      }
-      const r = await api.GET('/api/v1/agents/{namespace}/{slug}/versions', {
+      const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions', {
         params: { path: { namespace, slug } },
       })
-      return (r.data ?? { items: [] }) as { items?: AnyVersion[] }
+      return (r.data ?? { items: [] }) as { items?: MCPVersion[] }
     },
     enabled: true,
   })
 
-  const items: AnyVersion[] = data?.items ?? []
+  const items: MCPVersion[] = data?.items ?? []
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey })
 
@@ -119,20 +105,12 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
   const submitMutation = useMutation({
     mutationFn: async ({ version, makePublic }: { version: string; makePublic: boolean }) => {
       setActionError(null)
-      // openapi-fetch's POST is string-literal-typed per path; the two
-      // branches are structurally identical (same params, same optional
-      // body carrying the author's release intent).
+      // The optional body carries the author's release intent.
       const body = makePublic ? { request_public: true } : undefined
-      const result =
-        kind === 'mcp'
-          ? await api.POST(
-              '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/submit',
-              { params: { path: { namespace, slug, version } }, body },
-            )
-          : await api.POST(
-              '/api/v1/agents/{namespace}/{slug}/versions/{version}/submit',
-              { params: { path: { namespace, slug, version } }, body },
-            )
+      const result = await api.POST(
+        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/submit',
+        { params: { path: { namespace, slug, version } }, body },
+      )
       if (result.error) throw new Error(friendlyProblem(result.error, 'Submit failed.'))
       return { version, makePublic }
     },
@@ -151,16 +129,10 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
   const withdrawMutation = useMutation({
     mutationFn: async (version: string) => {
       setActionError(null)
-      const result =
-        kind === 'mcp'
-          ? await api.POST(
-              '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/withdraw',
-              { params: { path: { namespace, slug, version } } },
-            )
-          : await api.POST(
-              '/api/v1/agents/{namespace}/{slug}/versions/{version}/withdraw',
-              { params: { path: { namespace, slug, version } } },
-            )
+      const result = await api.POST(
+        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/withdraw',
+        { params: { path: { namespace, slug, version } } },
+      )
       if (result.error) throw new Error(friendlyProblem(result.error, 'Withdraw failed.'))
       return version
     },
@@ -178,23 +150,17 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
   const publishMutation = useMutation({
     mutationFn: async (version: string) => {
       setActionError(null)
-      const result =
-        kind === 'mcp'
-          ? await api.POST(
-              '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish',
-              { params: { path: { namespace, slug, version } } },
-            )
-          : await api.POST(
-              '/api/v1/agents/{namespace}/{slug}/versions/{version}/publish',
-              { params: { path: { namespace, slug, version } } },
-            )
+      const result = await api.POST(
+        '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/publish',
+        { params: { path: { namespace, slug, version } } },
+      )
       if (result.error) throw new Error(friendlyProblem(result.error, 'Publish failed.'))
       return version
     },
     onSuccess: (version) => {
       toast.success(`v${version} published`)
       invalidate()
-      queryClient.invalidateQueries({ queryKey: [detailKey, namespace, slug] })
+      queryClient.invalidateQueries({ queryKey: ['admin-mcp-detail', namespace, slug] })
       queryClient.invalidateQueries({ queryKey: ['admin-review-queue-count'] })
     },
     onError: (err: Error) => setActionError(err.message),
@@ -243,7 +209,6 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
 
       {canEdit && creating && (
         <NewVersionForm
-          kind={kind}
           namespace={namespace}
           slug={slug}
           // Versions come back newest-first (created_at DESC), so [0] is the
@@ -252,7 +217,9 @@ export function VersionsSection({ kind, namespace, slug, entryStatus, entryVisib
           onCreated={() => {
             setCreating(false)
             invalidate()
-            queryClient.invalidateQueries({ queryKey: [detailKey, namespace, slug] })
+            // The detail page caches the entry (incl. latest_version); refresh
+            // it too so a freshly created version is reflected there immediately.
+            queryClient.invalidateQueries({ queryKey: ['admin-mcp-detail', namespace, slug] })
           }}
           onCancel={() => setCreating(false)}
         />

@@ -12,7 +12,6 @@ import { ResourceIcon } from '@/components/ui/resource-icon'
 import { cn } from '@/lib/utils'
 
 interface StickyDetailHeaderProps {
-  type: 'mcp-server' | 'agent'
   name: string
   version?: string
   identifier: string
@@ -21,7 +20,6 @@ interface StickyDetailHeaderProps {
 }
 
 export function StickyDetailHeader({
-  type,
   name,
   version,
   identifier,
@@ -54,7 +52,7 @@ export function StickyDetailHeader({
       )}
     >
       <div className="container flex items-center gap-3 h-10 max-w-3xl">
-        <ResourceIcon type={type} className="h-4 w-4 text-muted-foreground shrink-0" />
+        <ResourceIcon type="mcp-server" className="h-4 w-4 text-muted-foreground shrink-0" />
         <span className="text-sm font-semibold truncate">{name}</span>
         {version && (
           <Badge variant="outline" className="text-[10px] font-mono shrink-0">

@@ -61,13 +61,11 @@ export default function AdminReports() {
     onError: (err: Error) => setActionError(err.message || 'Action failed'),
   })
 
-  function linkFor(r: { resource_type: string; resource_ns?: string; resource_slug?: string }): string | null {
+  function linkFor(r: { resource_ns?: string; resource_slug?: string }): string | null {
     // The admin list response joins ns/slug for us; both are empty when the
     // reported entry has since been deleted — no link then.
     if (!r.resource_ns || !r.resource_slug) return null
-    if (r.resource_type === 'mcp_server') return `/admin/mcp/${r.resource_ns}/${r.resource_slug}`
-    if (r.resource_type === 'agent') return `/admin/agents/${r.resource_ns}/${r.resource_slug}`
-    return null
+    return `/admin/mcp/${r.resource_ns}/${r.resource_slug}`
   }
 
   return (
@@ -130,9 +128,6 @@ export default function AdminReports() {
               <div className="flex items-start gap-3 flex-wrap">
                 <Badge variant="outline" className="font-mono text-xs">
                   {r.issue_type}
-                </Badge>
-                <Badge variant="outline" className="text-xs">
-                  {r.resource_type === 'mcp_server' ? 'MCP server' : 'Agent'}
                 </Badge>
                 <Badge variant={statusVariant(r.status)} className="text-xs">
                   {r.status}

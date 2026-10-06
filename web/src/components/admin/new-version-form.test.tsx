@@ -27,7 +27,6 @@ function renderForm(props: Partial<ComponentProps<typeof NewVersionForm>> = {}) 
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <NewVersionForm
-          kind="mcp"
           namespace="acme"
           slug="weather"
           onCreated={() => {}}
@@ -61,35 +60,7 @@ const mcpPrefill = {
   updated_at: '2026-04-01T00:00:00Z',
 }
 
-const agentPrefill = {
-  id: '01HV2',
-  version: '2.0.0',
-  endpoint_url: 'https://agent.example.com',
-  protocol_version: '0.2.1',
-  skills: [
-    {
-      id: 'summarize',
-      name: 'Summarize text',
-      description: 'TL;DR anything',
-      tags: ['text', 'nlp'],
-      examples: ['Summarize this article', 'Give me a TL;DR'],
-    },
-  ],
-  // The OpenAPI spec types authentication items as free-form objects (no
-  // declared keys), so the generated type is Record<string, never> — go
-  // through unknown to hand it a realistic {scheme} payload.
-  authentication: [{ scheme: 'Bearer' }] as unknown as Record<string, never>[],
-  default_input_modes: ['text/plain', 'application/json'],
-  default_output_modes: ['application/json'],
-  provider: { organization: 'Acme Inc.', url: 'https://acme.example.com' },
-  documentation_url: 'https://docs.example.com',
-  icon_url: 'https://acme.example.com/icon.png',
-  status: 'active' as const,
-  created_at: '2026-04-01T00:00:00Z',
-  updated_at: '2026-04-01T00:00:00Z',
-}
-
-describe('NewVersionForm prefill (mcp)', () => {
+describe('NewVersionForm prefill', () => {
   it('starts blank without a prefill', () => {
     renderForm()
     expect(screen.getByLabelText(/^version/i)).toHaveValue('')
@@ -131,39 +102,7 @@ describe('NewVersionForm prefill (mcp)', () => {
   })
 })
 
-describe('NewVersionForm prefill (agent)', () => {
-  it('seeds endpoint, skill, auth, modes, and provider metadata', () => {
-    renderForm({ kind: 'agent', prefill: agentPrefill })
-
-    expect(screen.getByLabelText(/^version/i)).toHaveValue('2.0.1')
-    expect(screen.getByLabelText(/endpoint url/i)).toHaveValue('https://agent.example.com')
-
-    expect(screen.getByLabelText(/skill id/i)).toHaveValue('summarize')
-    expect(screen.getByLabelText(/skill name/i)).toHaveValue('Summarize text')
-    expect(screen.getByLabelText(/skill description/i)).toHaveValue('TL;DR anything')
-    expect(screen.getByLabelText(/skill tags/i)).toHaveValue('text, nlp')
-    expect(screen.getByLabelText(/skill examples/i)).toHaveValue(
-      'Summarize this article\nGive me a TL;DR',
-    )
-
-    expect(screen.getByRole('combobox', { name: /authentication/i })).toHaveTextContent('Bearer')
-
-    // Mode checkboxes mirror the previous version's arrays, not the defaults.
-    const inputModes = screen.getByRole('group', { name: /input modes/i })
-    expect(inputModes).toBeInTheDocument()
-    const json = document.querySelector('input[name="input_mode_application/json"]') as HTMLInputElement
-    expect(json.checked).toBe(true)
-    const outPlain = document.querySelector('input[name="output_mode_text/plain"]') as HTMLInputElement
-    expect(outPlain.checked).toBe(false)
-
-    expect(screen.getByLabelText(/provider organization/i)).toHaveValue('Acme Inc.')
-    expect(screen.getByLabelText(/provider url/i)).toHaveValue('https://acme.example.com')
-    expect(screen.getByLabelText(/documentation url/i)).toHaveValue('https://docs.example.com')
-    expect(screen.getByLabelText(/icon url/i)).toHaveValue('https://acme.example.com/icon.png')
-  })
-})
-
-describe('NewVersionForm submit (mcp)', () => {
+describe('NewVersionForm submit', () => {
   it('sends the protocol revision tokens as a list', async () => {
     vi.mocked(authFetch).mockResolvedValue(new Response('{}', { status: 201 }))
     renderForm()

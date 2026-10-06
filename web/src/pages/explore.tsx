@@ -1,45 +1,24 @@
 /**
- * ExplorePage — unified search + browse across MCP servers and agents.
- *
- * Type filter tabs: All / MCP Servers / Agents.
- * Reuses FilterBar with type-specific filters.
- * Fires parallel queries, merges and renders results.
+ * ExplorePage — search + browse across MCP servers.
  */
 
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Footer } from '@/components/layout/footer'
 import { ServerCard } from '@/components/mcp/server-card'
-import { AgentCard } from '@/components/agents/agent-card'
 import { CardGridSkeleton } from '@/components/ui/card-grid-skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ResourceIcon } from '@/components/ui/resource-icon'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
 import { getPublicClient } from '@/lib/api-client'
-
-type TypeTab = 'all' | 'mcp' | 'agents'
-
-const TYPE_OPTIONS: SegmentedOption<TypeTab>[] = [
-  { value: 'all', label: 'All' },
-  {
-    value: 'mcp',
-    label: <><ResourceIcon type="mcp-server" className="h-3.5 w-3.5" />MCP Servers</>,
-  },
-  {
-    value: 'agents',
-    label: <><ResourceIcon type="agent" className="h-3.5 w-3.5" />Agents</>,
-  },
-]
 
 export default function ExplorePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const q = searchParams.get('q') ?? ''
-  const type = (searchParams.get('type') ?? 'all') as TypeTab
   const sort = searchParams.get('sort') ?? undefined
 
   const [inputValue, setInputValue] = useState(q)
@@ -62,21 +41,9 @@ export default function ExplorePage() {
     setParam('q', inputValue.trim() || undefined)
   }
 
-  const setType = (t: TypeTab) => {
-    const p = new URLSearchParams(searchParams)
-    if (t === 'all') p.delete('type')
-    else p.set('type', t)
-    p.delete('cursor')
-    setSearchParams(p, { replace: true })
-  }
-
-  // Parallel queries — enabled based on type tab
-  const showMcp = type === 'all' || type === 'mcp'
-  const showAgents = type === 'all' || type === 'agents'
-
   const listQuery = {
     q: q || undefined,
-    limit: type === 'all' ? 6 : 20,
+    limit: 20,
     sort: sort as 'created_at_desc' | 'updated_at_desc' | 'published_at_desc' | 'name_asc' | 'name_desc' | undefined,
   }
 
@@ -84,20 +51,9 @@ export default function ExplorePage() {
     queryKey: ['explore-mcp', listQuery],
     queryFn: () =>
       api.GET('/api/v1/mcp/servers', { params: { query: listQuery } }).then((r) => r.data),
-    enabled: showMcp,
-  })
-
-  const { data: agentData, isLoading: agentLoading } = useQuery({
-    queryKey: ['explore-agents', listQuery],
-    queryFn: () =>
-      api.GET('/api/v1/agents', { params: { query: listQuery } }).then((r) => r.data),
-    enabled: showAgents,
   })
 
   const mcpServers = mcpData?.items ?? []
-  const agents = agentData?.items ?? []
-  const isLoading = (showMcp && mcpLoading) || (showAgents && agentLoading)
-  const hasResults = mcpServers.length > 0 || agents.length > 0
 
   const sortOptions = [
     { value: 'created_at_desc', label: 'Newest first' },
@@ -114,7 +70,7 @@ export default function ExplorePage() {
         <div>
           <h1 className="text-2xl font-bold">Explore</h1>
           <p className="text-muted-foreground mt-1">
-            Search and browse across MCP servers and AI agents.
+            Search and browse across MCP servers.
           </p>
         </div>
 
@@ -125,7 +81,7 @@ export default function ExplorePage() {
             <Input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Search everything..."
+              placeholder="Search MCP servers..."
               className="pl-10"
               aria-label="Search explore"
             />
@@ -133,10 +89,7 @@ export default function ExplorePage() {
           <Button type="submit">Search</Button>
         </form>
 
-        {/* Type tabs + sort */}
         <div className="flex flex-wrap items-center gap-3">
-          <SegmentedControl label="Entry type" options={TYPE_OPTIONS} value={type} onChange={setType} />
-
           <select
             value={sort ?? ''}
             onChange={(e) => setParam('sort', e.target.value || undefined)}
@@ -157,7 +110,7 @@ export default function ExplorePage() {
               size="sm"
               onClick={() => {
                 setInputValue('')
-                setSearchParams(type !== 'all' ? { type } : {}, { replace: true })
+                setSearchParams({}, { replace: true })
               }}
             >
               Clear filters
@@ -166,9 +119,9 @@ export default function ExplorePage() {
         </div>
 
         {/* Results */}
-        {isLoading ? (
+        {mcpLoading ? (
           <CardGridSkeleton count={6} />
-        ) : !hasResults ? (
+        ) : mcpServers.length === 0 ? (
           <EmptyState
             icon={<Search className="h-10 w-10" />}
             title={q ? 'No results found' : 'Nothing here yet'}
@@ -179,65 +132,22 @@ export default function ExplorePage() {
             }
           />
         ) : (
-          <div className="space-y-8">
-            {/* MCP Servers section */}
-            {showMcp && mcpServers.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <ResourceIcon type="mcp-server" className="h-4 w-4" />
-                    MCP Servers
-                    {mcpData?.total_count != null && (
-                      <span className="text-sm font-normal text-muted-foreground">
-                        ({mcpData.total_count})
-                      </span>
-                    )}
-                  </h2>
-                  {type === 'all' && mcpServers.length >= 6 && (
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link to={`/mcp${q ? `?q=${encodeURIComponent(q)}` : ''}`}>
-                        View all →
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {mcpServers.map((s) => (
-                    <ServerCard key={s.id} server={s} />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Agents section */}
-            {showAgents && agents.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <ResourceIcon type="agent" className="h-4 w-4" />
-                    Agents
-                    {agentData?.total_count != null && (
-                      <span className="text-sm font-normal text-muted-foreground">
-                        ({agentData.total_count})
-                      </span>
-                    )}
-                  </h2>
-                  {type === 'all' && agents.length >= 6 && (
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link to={`/agents${q ? `?q=${encodeURIComponent(q)}` : ''}`}>
-                        View all →
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {agents.map((a) => (
-                    <AgentCard key={a.id} agent={a} />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
+          <section>
+            <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+              <ResourceIcon type="mcp-server" className="h-4 w-4" />
+              MCP Servers
+              {mcpData?.total_count != null && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({mcpData.total_count})
+                </span>
+              )}
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {mcpServers.map((s) => (
+                <ServerCard key={s.id} server={s} />
+              ))}
+            </div>
+          </section>
         )}
       </main>
       <Footer />

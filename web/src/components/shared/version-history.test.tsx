@@ -23,7 +23,7 @@ describe('VersionHistory', () => {
   it('shows loading skeletons initially', () => {
     mockGET.mockReturnValue(new Promise(() => {})) // never resolves
     const { container } = render(
-      <VersionHistory type="mcp" namespace="acme" slug="test" />,
+      <VersionHistory namespace="acme" slug="test" />,
       { wrapper },
     )
     // Skeletons have rounded class
@@ -34,7 +34,7 @@ describe('VersionHistory', () => {
   it('shows empty message when no versions', async () => {
     mockGET.mockResolvedValue({ data: { items: [] } })
     render(
-      <VersionHistory type="mcp" namespace="acme" slug="test" />,
+      <VersionHistory namespace="acme" slug="test" />,
       { wrapper },
     )
     expect(await screen.findByText(/no versions published/i)).toBeInTheDocument()
@@ -50,7 +50,7 @@ describe('VersionHistory', () => {
       },
     })
     render(
-      <VersionHistory type="mcp" namespace="acme" slug="test" latestVersion="1.0.0" />,
+      <VersionHistory namespace="acme" slug="test" latestVersion="1.0.0" />,
       { wrapper },
     )
     expect(await screen.findByText('v1.0.0')).toBeInTheDocument()
@@ -66,7 +66,7 @@ describe('VersionHistory', () => {
       },
     })
     render(
-      <VersionHistory type="mcp" namespace="acme" slug="test" latestVersion="2.0.0" />,
+      <VersionHistory namespace="acme" slug="test" latestVersion="2.0.0" />,
       { wrapper },
     )
     expect(await screen.findByText('Latest')).toBeInTheDocument()
@@ -81,29 +81,16 @@ describe('VersionHistory', () => {
       },
     })
     render(
-      <VersionHistory type="mcp" namespace="acme" slug="test" />,
+      <VersionHistory namespace="acme" slug="test" />,
       { wrapper },
     )
     expect(await screen.findByText('Draft')).toBeInTheDocument()
   })
 
-  it('calls agent versions endpoint for type=agent', async () => {
+  it('calls the versions endpoint', async () => {
     mockGET.mockResolvedValue({ data: { items: [] } })
     render(
-      <VersionHistory type="agent" namespace="acme" slug="bot" />,
-      { wrapper },
-    )
-    await screen.findByText(/no versions published/i)
-    expect(mockGET).toHaveBeenCalledWith(
-      '/api/v1/agents/{namespace}/{slug}/versions',
-      expect.objectContaining({ params: { path: { namespace: 'acme', slug: 'bot' } } }),
-    )
-  })
-
-  it('calls mcp versions endpoint for type=mcp', async () => {
-    mockGET.mockResolvedValue({ data: { items: [] } })
-    render(
-      <VersionHistory type="mcp" namespace="acme" slug="srv" />,
+      <VersionHistory namespace="acme" slug="srv" />,
       { wrapper },
     )
     await screen.findByText(/no versions published/i)

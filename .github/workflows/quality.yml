@@ -1,7 +1,7 @@
 name: Quality
 
 # All correctness gates: Go build + unit/integration tests, the OpenAPI↔router
-# and A2A contract suites, web build + unit tests, Helm render validation, and
+# contract suites, web build + unit tests, Helm render validation, and
 # the Playwright + k6 end-to-end suite. Static analysis (gofmt/vet/eslint/tsc/
 # helm lint/...) lives in the separate Lint workflow via pre-commit.
 on:
@@ -46,17 +46,13 @@ jobs:
 
       # Explicit conformance + contract suite run. Everything under this step
       # already ran as part of `go test ./...` above — the repeat is deliberate
-      # so the CI log surfaces these tests by name. If the A2A Agent Card schema,
-      # OpenAPI↔router contract, or the admin-guard router contract are ever
-      # deleted or renamed without updating this step, CI fails loudly instead
-      # of silently passing.
+      # so the CI log surfaces these tests by name. If the OpenAPI↔router or the
+      # admin-guard router contract is ever deleted or renamed without updating
+      # this step, CI fails loudly instead of silently passing.
       - name: Contract & conformance suites (named)
         working-directory: server
         run: |
           set -euo pipefail
-          go test -count=1 -v \
-            -run '^(TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
-            ./internal/http/handlers/...
           go test -count=1 -v \
             -run '^(TestOpenAPIContract_MatchesRouter$|TestAllWriteRoutesRequireAdmin$|TestPublicWriteRoutesBypassAdmin$)' \
             ./internal/http/
@@ -79,12 +75,12 @@ jobs:
           }
 
   # ── OpenAPI ↔ router contract ────────────────────────────────────────────────
-  # Dedicated, fast job that only runs the OpenAPI↔router and A2A Agent Card
-  # conformance suites. Duplicates what the server job covers, but surfaces the
+  # Dedicated, fast job that only runs the OpenAPI↔router contract suites.
+  # Duplicates what the server job covers, but surfaces the
   # result as its own required check so a spec drift is obvious in the PR UI
   # without digging into a long log.
   contract:
-    name: API contract (OpenAPI + A2A)
+    name: API contract (OpenAPI)
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -105,9 +101,6 @@ jobs:
           go test -count=1 -v \
             -run '^(TestOpenAPIContract_MatchesRouter$|TestAllWriteRoutesRequireAdmin$|TestPublicWriteRoutesBypassAdmin$)' \
             ./internal/http/
-          go test -count=1 -v \
-            -run '^(TestAgentCardHandler_PerAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_A2AConformance$|TestAgentCardHandler_GlobalAgentCard_MisconfiguredReturns500$|TestRegistryCard_A2AConformance$)' \
-            ./internal/http/handlers/...
 
   # ── Web: build/typecheck, OpenAPI sync, unit tests ───────────────────────────
   web:
@@ -383,8 +376,8 @@ jobs:
           echo "Server ready."
 
       # ── Web (native Vite server) ──────────────────────────────────────────
-      # The Vite server binds :3000 and proxies /api, /config.json, and the A2A
-      # agent-card paths to the server on :8081 (see web/vite.config.ts), the
+      # The Vite server binds :3000 and proxies /api, /config.json, and
+      # /.well-known to the server on :8081 (see web/vite.config.ts), the
       # same surface nginx serves in production.
       #
       # `--host 0.0.0.0` forces the dev server onto IPv4. Vite's default host is

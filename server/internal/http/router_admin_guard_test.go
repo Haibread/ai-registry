@@ -68,8 +68,6 @@ func TestAllWriteRoutesRequireAdmin(t *testing.T) {
 		// not require authentication.
 		"POST /api/v1/mcp/servers/{namespace}/{slug}/view": "public view counter",
 		"POST /api/v1/mcp/servers/{namespace}/{slug}/copy": "public copy counter",
-		"POST /api/v1/agents/{namespace}/{slug}/view":      "public view counter",
-		"POST /api/v1/agents/{namespace}/{slug}/copy":      "public copy counter",
 
 		// Community-submitted issue reports — unauthenticated users can file
 		// reports. List and Patch on /reports remain admin-only.
@@ -190,8 +188,6 @@ func TestPublicWriteRoutesBypassAdmin(t *testing.T) {
 	publicWriteKeys := []string{
 		"POST /api/v1/mcp/servers/{namespace}/{slug}/view",
 		"POST /api/v1/mcp/servers/{namespace}/{slug}/copy",
-		"POST /api/v1/agents/{namespace}/{slug}/view",
-		"POST /api/v1/agents/{namespace}/{slug}/copy",
 		"POST /api/v1/reports",
 		"POST /api/v1/auth/login",
 		"POST /api/v1/auth/refresh",

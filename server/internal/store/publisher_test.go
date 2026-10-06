@@ -187,7 +187,7 @@ func TestSetPublisherVerified_NotFound(t *testing.T) {
 	}
 }
 
-// TestGetPublisherBySlug exercises the existing helper used by server/agent creation.
+// TestGetPublisherBySlug exercises the existing helper used by server creation.
 func TestGetPublisherBySlug(t *testing.T) {
 	resetDB(t)
 	ctx := context.Background()
@@ -281,7 +281,7 @@ func TestDeletePublisher_NotFound(t *testing.T) {
 func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 	// Regression: earlier DeletePublisher only COUNT-checked non-deleted
 	// children. The ON DELETE RESTRICT FK then blocked the hard delete
-	// whenever soft-deleted (status='deleted') mcp_servers or agents still
+	// whenever soft-deleted (status='deleted') mcp_servers still
 	// referenced the publisher — and version rows under them blocked the
 	// child delete in turn. The fixed version purges tombstoned descendants
 	// (version rows first, then parent rows) in the same transaction.
@@ -317,28 +317,6 @@ func TestDeletePublisher_PurgesTombstonedChildren(t *testing.T) {
 		t.Fatalf("DeleteMCPServer: %v", err)
 	}
 
-	// Create an agent + version, then soft-delete the agent.
-	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pub.ID,
-		Slug:        "tombstone-agent",
-		Name:        "Tombstone Agent",
-	})
-	if err != nil {
-		t.Fatalf("CreateAgent: %v", err)
-	}
-	if _, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
-		AgentID:         ag.ID,
-		Version:         "1.0.0",
-		EndpointURL:     "https://agents.example/tombstone",
-		Skills:          []byte(`[]`),
-		ProtocolVersion: "0.3.0",
-	}); err != nil {
-		t.Fatalf("CreateAgentVersion: %v", err)
-	}
-	if err := sharedDB.DeleteAgent(ctx, ag.ID); err != nil {
-		t.Fatalf("DeleteAgent: %v", err)
-	}
-
 	// All active entries are gone; only tombstones remain. DeletePublisher
 	// must succeed and purge those tombstones transactionally.
 	if err := sharedDB.DeletePublisher(ctx, pub.ID); err != nil {
@@ -363,27 +341,18 @@ func TestDeletePublisher_SweepsTombstonedChildren(t *testing.T) {
 		t.Fatalf("CreatePublisher: %v", err)
 	}
 
-	// A tombstoned MCP server and a tombstoned agent under the publisher.
+	// A tombstoned MCP server under the publisher.
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
 		PublisherID: pub.ID, Slug: "weather", Name: "Weather",
 	})
 	if err != nil {
 		t.Fatalf("create server: %v", err)
 	}
-	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pub.ID, Slug: "planner", Name: "Planner",
-	})
-	if err != nil {
-		t.Fatalf("create agent: %v", err)
-	}
 	if err := sharedDB.DeleteMCPServer(ctx, srv.ID); err != nil {
 		t.Fatalf("soft-delete server: %v", err)
 	}
-	if err := sharedDB.DeleteAgent(ctx, ag.ID); err != nil {
-		t.Fatalf("soft-delete agent: %v", err)
-	}
 
-	// DeletePublisher must sweep tombstoned children of both kinds.
+	// DeletePublisher must sweep tombstoned children.
 	if err := sharedDB.DeletePublisher(ctx, pub.ID); err != nil {
 		t.Fatalf("DeletePublisher: %v", err)
 	}
@@ -393,7 +362,7 @@ func TestDeletePublisher_SweepsTombstonedChildren(t *testing.T) {
 }
 
 // TestDeletePublisher_CascadesActiveResources verifies that deleting a
-// publisher cascades to its active MCP servers and agents (and their versions),
+// publisher cascades to its active MCP servers (and their versions),
 // plus any reports filed against them — rather than failing with ErrConflict.
 func TestDeletePublisher_CascadesActiveResources(t *testing.T) {
 	resetDB(t)
@@ -426,21 +395,6 @@ func TestDeletePublisher_CascadesActiveResources(t *testing.T) {
 		t.Fatalf("CreateReport: %v", err)
 	}
 
-	// An active agent with a version.
-	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pub.ID, Slug: "active-agent", Name: "Active Agent",
-	})
-	if err != nil {
-		t.Fatalf("CreateAgent: %v", err)
-	}
-	if _, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
-		AgentID: ag.ID, Version: "1.0.0",
-		EndpointURL: "https://agents.example/active", Skills: []byte(`[]`),
-		ProtocolVersion: "0.3.0",
-	}); err != nil {
-		t.Fatalf("CreateAgentVersion: %v", err)
-	}
-
 	// The delete must succeed (no ErrConflict) and cascade everything away.
 	if err := sharedDB.DeletePublisher(ctx, pub.ID); err != nil {
 		t.Fatalf("DeletePublisher: %v", err)
@@ -455,9 +409,7 @@ func TestDeletePublisher_CascadesActiveResources(t *testing.T) {
 		arg   string
 	}{
 		{"mcp_servers", `SELECT COUNT(*) FROM mcp_servers WHERE publisher_id=$1`, pub.ID},
-		{"agents", `SELECT COUNT(*) FROM agents WHERE publisher_id=$1`, pub.ID},
 		{"mcp_server_versions", `SELECT COUNT(*) FROM mcp_server_versions WHERE server_id=$1`, srv.ID},
-		{"agent_versions", `SELECT COUNT(*) FROM agent_versions WHERE agent_id=$1`, ag.ID},
 		{"reports", `SELECT COUNT(*) FROM reports WHERE resource_id=$1`, srv.ID},
 	} {
 		var n int

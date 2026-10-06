@@ -127,23 +127,11 @@ func Run(ctx context.Context, db *store.DB, spec *Spec, logger *slog.Logger) err
 		}
 	}
 
-	// ── Agents ────────────────────────────────────────────────────────────────
-	for _, a := range spec.Agents {
-		pubID, ok := pubIDs[a.Publisher]
-		if !ok {
-			return fmt.Errorf("bootstrap: agent %q references unknown publisher %q", a.Slug, a.Publisher)
-		}
-		if err := upsertAgent(ctx, db, pubID, a.Publisher, a, logger); err != nil {
-			return fmt.Errorf("bootstrap: agent %q: %w", a.Slug, err)
-		}
-	}
-
 	logger.Info("bootstrap: complete",
 		slog.Int("publishers", len(spec.Publishers)),
 		slog.Int("groups", len(spec.Groups)),
 		slog.Int("grants", len(spec.Grants)),
 		slog.Int("mcp_servers", len(spec.MCPServers)),
-		slog.Int("agents", len(spec.Agents)),
 	)
 	return nil
 }
@@ -164,9 +152,6 @@ func ensureInstanceTags(ctx context.Context, db *store.DB, spec *Spec, logger *s
 	}
 	for _, s := range spec.MCPServers {
 		collect(s.Tags)
-	}
-	for _, a := range spec.Agents {
-		collect(a.Tags)
 	}
 
 	for _, slug := range slugs {
@@ -558,195 +543,6 @@ func upsertMCPVersion(ctx context.Context, db *store.DB, serverID, publisherSlug
 	return nil
 }
 
-// ── agents ────────────────────────────────────────────────────────────────────
-
-func upsertAgent(ctx context.Context, db *store.DB, publisherID, publisherSlug string, a AgentSpec, logger *slog.Logger) error {
-	var agentID string
-	created := false
-	err := db.Pool.QueryRow(ctx,
-		`SELECT id FROM agents WHERE publisher_id = $1 AND slug = $2`,
-		publisherID, a.Slug,
-	).Scan(&agentID)
-
-	if err != nil {
-		// Row not found — create it.
-		ag, createErr := db.CreateAgent(ctx, store.CreateAgentParams{
-			PublisherID: publisherID,
-			Slug:        a.Slug,
-			Name:        a.Name,
-			Description: a.Description,
-		})
-		if createErr != nil {
-			return fmt.Errorf("creating agent: %w", createErr)
-		}
-		agentID = ag.ID
-		created = true
-
-		logBootstrapAudit(ctx, db, domain.AuditEvent{
-			Action:       domain.ActionAgentCreated,
-			ResourceType: "agent",
-			ResourceID:   agentID,
-			ResourceNS:   publisherSlug,
-			ResourceSlug: a.Slug,
-			Metadata: map[string]any{
-				"name": a.Name,
-			},
-		})
-
-		vis := domain.VisibilityPrivate
-		if a.Public {
-			vis = domain.VisibilityPublic
-		}
-		if err := db.SetAgentVisibility(ctx, agentID, vis); err != nil {
-			return fmt.Errorf("setting visibility: %w", err)
-		}
-		if a.Public {
-			logBootstrapAudit(ctx, db, domain.AuditEvent{
-				Action:       domain.ActionAgentVisibility,
-				ResourceType: "agent",
-				ResourceID:   agentID,
-				ResourceNS:   publisherSlug,
-				ResourceSlug: a.Slug,
-				Metadata: map[string]any{
-					"from": string(domain.VisibilityPrivate),
-					"to":   string(domain.VisibilityPublic),
-				},
-			})
-		}
-		// CreateAgent does not take featured / verified / readme, so they are
-		// set with direct SQL. Tags live on version rows and are applied
-		// per version below.
-		if a.Featured || a.Verified || a.Readme != "" {
-			if _, err := db.Pool.Exec(ctx,
-				`UPDATE agents
-				 SET featured=$1, verified=$2, readme=$3, updated_at=now()
-				 WHERE id=$4`,
-				a.Featured, a.Verified, a.Readme, agentID,
-			); err != nil {
-				return fmt.Errorf("setting agent metadata: %w", err)
-			}
-		}
-		logger.Info("bootstrap: created agent", slog.String("slug", a.Slug))
-	} else {
-		logger.Info("bootstrap: agent already exists, skipping", slog.String("slug", a.Slug))
-	}
-
-	// Apply versions (idempotent per-version check inside). The entry-level
-	// spec tags ride along — tags live on version rows.
-	for _, v := range a.Versions {
-		if err := upsertAgentVersion(ctx, db, agentID, publisherSlug, a.Slug, v, a.Tags, logger); err != nil {
-			return fmt.Errorf("version %q: %w", v.Version, err)
-		}
-	}
-
-	// Only apply agent-level status mutations for newly created agents.
-	// Existing agents keep whatever status they already have.
-	if created && a.Status == "deprecated" {
-		if err := db.DeprecateAgent(ctx, agentID); err != nil {
-			return fmt.Errorf("deprecating agent: %w", err)
-		}
-		logBootstrapAudit(ctx, db, domain.AuditEvent{
-			Action:       domain.ActionAgentDeprecated,
-			ResourceType: "agent",
-			ResourceID:   agentID,
-			ResourceNS:   publisherSlug,
-			ResourceSlug: a.Slug,
-		})
-	}
-
-	return nil
-}
-
-func upsertAgentVersion(ctx context.Context, db *store.DB, agentID, publisherSlug, agentSlug string, v AgentVersionSpec, entryTags []string, logger *slog.Logger) error {
-	var exists bool
-	_ = db.Pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM agent_versions WHERE agent_id = $1 AND version = $2)`,
-		agentID, v.Version,
-	).Scan(&exists)
-	if exists {
-		logger.Info("bootstrap: agent version already exists, skipping",
-			slog.String("agent", agentID), slog.String("version", v.Version))
-		return nil
-	}
-
-	skills, err := json.Marshal(v.Skills)
-	if err != nil {
-		return fmt.Errorf("marshalling skills: %w", err)
-	}
-	auth, err := json.Marshal(v.Authentication)
-	if err != nil {
-		return fmt.Errorf("marshalling authentication: %w", err)
-	}
-
-	protocolVersion := v.ProtocolVersion
-	if protocolVersion == "" {
-		protocolVersion = domain.A2AProtocolVersion
-	}
-
-	ver, err := db.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
-		AgentID:            agentID,
-		Version:            v.Version,
-		EndpointURL:        v.EndpointURL,
-		Skills:             skills,
-		Authentication:     auth,
-		DefaultInputModes:  v.DefaultInputModes,
-		DefaultOutputModes: v.DefaultOutputModes,
-		DocumentationURL:   v.DocumentationURL,
-		IconURL:            v.IconURL,
-		Tags:               domain.NormalizeVersionTags(entryTags),
-		ProtocolVersion:    protocolVersion,
-	})
-	if err != nil {
-		return fmt.Errorf("creating version: %w", err)
-	}
-
-	logBootstrapAudit(ctx, db, domain.AuditEvent{
-		Action:       domain.ActionAgentVersionCreated,
-		ResourceType: "agent",
-		ResourceID:   agentID,
-		ResourceNS:   publisherSlug,
-		ResourceSlug: agentSlug,
-		Metadata: map[string]any{
-			"version": ver.Version,
-		},
-	})
-
-	status := strings.ToLower(v.Status)
-	switch status {
-	case "published", "deprecated":
-		if err := db.PublishAgentVersion(ctx, agentID, ver.Version); err != nil {
-			return fmt.Errorf("publishing version: %w", err)
-		}
-		logBootstrapAudit(ctx, db, domain.AuditEvent{
-			Action:       domain.ActionAgentVersionPublished,
-			ResourceType: "agent",
-			ResourceID:   agentID,
-			ResourceNS:   publisherSlug,
-			ResourceSlug: agentSlug,
-			Metadata: map[string]any{
-				"version": ver.Version,
-			},
-		})
-		if status == "deprecated" {
-			if err := db.SetAgentVersionStatus(ctx, agentID, ver.Version,
-				domain.VersionStatusDeprecated, v.StatusMessage); err != nil {
-				return fmt.Errorf("deprecating version: %w", err)
-			}
-		}
-	case "draft", "":
-		// nothing
-	default:
-		return fmt.Errorf("unknown version status %q (want draft|published|deprecated)", v.Status)
-	}
-
-	logger.Info("bootstrap: created agent version",
-		slog.String("agent", agentID),
-		slog.String("version", v.Version),
-		slog.String("status", status),
-	)
-	return nil
-}
-
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // isEmptyJSONArray returns true if raw is JSON-equivalent to an empty array.
@@ -868,32 +664,6 @@ func validateSpec(s *Spec) error {
 				if _, err := domain.ValidateProtocolVersions(v.ProtocolVersions); err != nil {
 					errs = append(errs, fmt.Sprintf("%s.versions[%d]: %s", prefix, j, err))
 				}
-			}
-		}
-	}
-
-	for i, ag := range s.Agents {
-		prefix := fmt.Sprintf("agents[%d](%s)", i, ag.Slug)
-		if ag.Publisher == "" {
-			errs = append(errs, prefix+": publisher is required")
-		} else if !pubSlugs[ag.Publisher] {
-			errs = append(errs, prefix+fmt.Sprintf(": publisher %q not found in publishers list", ag.Publisher))
-		}
-		if ag.Slug == "" {
-			errs = append(errs, prefix+": slug is required")
-		}
-		if ag.Name == "" {
-			errs = append(errs, prefix+": name is required")
-		}
-		for j, v := range ag.Versions {
-			if v.Version == "" {
-				errs = append(errs, fmt.Sprintf("%s.versions[%d]: version is required", prefix, j))
-			}
-			if v.EndpointURL == "" {
-				errs = append(errs, fmt.Sprintf("%s.versions[%d]: endpoint_url is required", prefix, j))
-			}
-			if err := domain.ValidateAgentVersionURLs(v.EndpointURL, v.DocumentationURL, v.IconURL, nil); err != nil {
-				errs = append(errs, fmt.Sprintf("%s.versions[%d]: %s", prefix, j, err))
 			}
 		}
 	}

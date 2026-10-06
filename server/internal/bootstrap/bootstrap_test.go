@@ -60,7 +60,7 @@ func TestMain(m *testing.M) {
 func resetDB(t *testing.T) {
 	t.Helper()
 	_, err := sharedDB.Pool.Exec(context.Background(),
-		`TRUNCATE agent_versions, agents, mcp_server_versions, mcp_servers, publishers,
+		`TRUNCATE mcp_server_versions, mcp_servers, publishers,
 		          role_grants, group_members, groups, users, audit_log, instance_tags RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("truncating tables: %v", err)
@@ -103,24 +103,6 @@ mcp_servers:
             version: "1.0.0"
             transport:
               type: "stdio"
-
-agents:
-  - publisher: "acme"
-    slug: "my-agent"
-    name: "My Agent"
-    description: "A test agent"
-    public: true
-    versions:
-      - version: "1.0.0"
-        status: "published"
-        endpoint_url: "https://agents.acme.com/my-agent"
-        skills:
-          - id: "do-thing"
-            name: "Do Thing"
-            description: "Does the thing"
-            tags: ["thing"]
-        authentication:
-          - scheme: "Bearer"
 `)
 	spec, err := bootstrap.LoadSpec(path)
 	if err != nil {
@@ -151,9 +133,6 @@ agents:
 	if srv.Versions[0].Packages[0].RegistryType != "npm" {
 		t.Errorf("registry_type = %q, want npm", srv.Versions[0].Packages[0].RegistryType)
 	}
-	if len(spec.Agents) != 1 {
-		t.Errorf("agents len = %d, want 1", len(spec.Agents))
-	}
 }
 
 func TestLoadSpec_JSON(t *testing.T) {
@@ -169,8 +148,7 @@ func TestLoadSpec_JSON(t *testing.T) {
       "status": "published",
       "packages": [{"registryType": "npm", "identifier": "pkg", "version": "1.0.0", "transport": {"type": "stdio"}}]
     }]
-  }],
-  "agents": []
+  }]
 }`)
 	spec, err := bootstrap.LoadSpec(path)
 	if err != nil {
@@ -305,9 +283,6 @@ func TestLoadSpec_ExampleYAML(t *testing.T) {
 	if len(spec.MCPServers) == 0 {
 		t.Error("example has zero MCP servers; expected at least one")
 	}
-	if len(spec.Agents) == 0 {
-		t.Error("example has zero agents; expected at least one")
-	}
 	// Sanity-check that at least one entry exercises each optional metadata
 	// field, otherwise the example isn't demonstrating them.
 	var featured, tagged, withReadme, withCaps bool
@@ -406,26 +381,6 @@ mcp_servers:
             version: "2.0.0"
             transport:
               type: "stdio"
-
-agents:
-  - publisher: "acme"
-    slug: "my-agent"
-    name: "My Agent"
-    description: "Test agent"
-    public: true
-    versions:
-      - version: "1.0.0"
-        status: "published"
-        endpoint_url: "https://agents.acme.com/my-agent"
-        default_input_modes: ["text/plain"]
-        default_output_modes: ["text/plain"]
-        skills:
-          - id: "do-thing"
-            name: "Do Thing"
-            description: "Does the thing"
-            tags: ["thing"]
-        authentication:
-          - scheme: "Bearer"
 `)
 	spec, err := bootstrap.LoadSpec(path)
 	if err != nil {
@@ -458,15 +413,6 @@ agents:
 	}
 	if len(versions) != 2 {
 		t.Fatalf("version count = %d, want 2", len(versions))
-	}
-
-	// Verify agent exists.
-	agent, err := sharedDB.GetAgent(ctx, "acme", "my-agent", false)
-	if err != nil {
-		t.Fatalf("GetAgent() error = %v", err)
-	}
-	if agent.Visibility != "public" {
-		t.Errorf("agent visibility = %q, want public", agent.Visibility)
 	}
 }
 
@@ -607,7 +553,6 @@ mcp_servers:
             version: "1.0.0"
             transport:
               type: "stdio"
-agents: []
 `)
 	spec, err := bootstrap.LoadSpec(path)
 	if err != nil {
@@ -665,7 +610,6 @@ mcp_servers:
             version: "1.0.0"
             transport:
               type: "stdio"
-agents: []
 `)
 	s1, err := bootstrap.LoadSpec(specV1)
 	if err != nil {
@@ -709,7 +653,6 @@ mcp_servers:
             description: "Read a file"
           - name: "write_file"
             description: "Write a file"
-agents: []
 `)
 	s2, err := bootstrap.LoadSpec(specV2)
 	if err != nil {
@@ -786,28 +729,6 @@ mcp_servers:
             version: "1.0.0"
             transport:
               type: "stdio"
-
-agents:
-  - publisher: "acme"
-    slug: "fancy-agent"
-    name: "Fancy Agent"
-    description: "showcase agent"
-    public: true
-    featured: true
-    verified: true
-    tags: ["demo", "a2a"]
-    readme: "# Fancy Agent\n\nA showcase of the v0.2 fields."
-    versions:
-      - version: "1.0.0"
-        status: "published"
-        endpoint_url: "https://agents.acme.com/fancy"
-        skills:
-          - id: "do-thing"
-            name: "Do Thing"
-            description: "Does a thing"
-            tags: ["demo"]
-        authentication:
-          - scheme: "Bearer"
 `)
 	spec, err := bootstrap.LoadSpec(path)
 	if err != nil {
@@ -841,7 +762,7 @@ agents:
 	for _, tag := range vocab {
 		seenSlugs[tag.Slug] = true
 	}
-	for _, want := range []string{"official", "featured", "demo", "a2a"} {
+	for _, want := range []string{"official", "featured"} {
 		if !seenSlugs[want] {
 			t.Errorf("instance tag %q not auto-created by bootstrap", want)
 		}
@@ -862,28 +783,11 @@ agents:
 	if caps == "" || caps == "{}" {
 		t.Errorf("version capabilities = %q, want non-empty JSON", caps)
 	}
-
-	agent, err := sharedDB.GetAgent(ctx, "acme", "fancy-agent", false)
-	if err != nil {
-		t.Fatalf("GetAgent() error = %v", err)
-	}
-	if !agent.Featured {
-		t.Error("agent featured = false, want true")
-	}
-	if !agent.Verified {
-		t.Error("agent verified = false, want true")
-	}
-	if len(agent.Tags) != 2 || agent.Tags[0] != "a2a" || agent.Tags[1] != "demo" {
-		t.Errorf("agent tags = %v, want [a2a demo]", agent.Tags)
-	}
-	if agent.Readme == "" {
-		t.Error("agent readme is empty, want non-empty markdown")
-	}
 }
 
 // TestRun_V02Fields_IdempotentPreservesAdminEdits verifies that re-running
 // bootstrap does NOT overwrite admin edits to the metadata fields. This is
-// the whole point of the `if created` guard in upsertMCPServer/upsertAgent:
+// the whole point of the `if created` guard in upsertMCPServer:
 // bootstrap seeds the initial state, but after that it must be hands-off.
 func TestRun_V02Fields_IdempotentPreservesAdminEdits(t *testing.T) {
 	resetDB(t)
@@ -913,28 +817,6 @@ mcp_servers:
             version: "1.0.0"
             transport:
               type: "stdio"
-
-agents:
-  - publisher: "acme"
-    slug: "fancy-agent"
-    name: "Fancy Agent"
-    description: "showcase"
-    public: true
-    featured: true
-    verified: true
-    tags: ["bootstrap-tag"]
-    readme: "bootstrap readme"
-    versions:
-      - version: "1.0.0"
-        status: "published"
-        endpoint_url: "https://agents.acme.com/fancy"
-        skills:
-          - id: "do"
-            name: "Do"
-            description: "do it"
-            tags: ["x"]
-        authentication:
-          - scheme: "Bearer"
 `)
 	spec, err := bootstrap.LoadSpec(path)
 	if err != nil {
@@ -956,17 +838,6 @@ agents:
 		"admin readme", srv.ID,
 	); err != nil {
 		t.Fatalf("admin update (mcp): %v", err)
-	}
-
-	agent, err := sharedDB.GetAgent(ctx, "acme", "fancy-agent", false)
-	if err != nil {
-		t.Fatalf("GetAgent() error = %v", err)
-	}
-	if _, err := sharedDB.Pool.Exec(ctx,
-		`UPDATE agents SET featured=false, verified=false, readme=$1 WHERE id=$2`,
-		"admin readme", agent.ID,
-	); err != nil {
-		t.Fatalf("admin update (agent): %v", err)
 	}
 
 	// Re-run bootstrap. The existing rows must be left untouched.
@@ -991,23 +862,6 @@ agents:
 	}
 	if srvAfter.Readme != "admin readme" {
 		t.Errorf("mcp server: readme = %q, want %q", srvAfter.Readme, "admin readme")
-	}
-
-	agentAfter, err := sharedDB.GetAgent(ctx, "acme", "fancy-agent", false)
-	if err != nil {
-		t.Fatalf("GetAgent() after: %v", err)
-	}
-	if agentAfter.Featured {
-		t.Error("agent: bootstrap clobbered admin featured=false")
-	}
-	if agentAfter.Verified {
-		t.Error("agent: bootstrap clobbered admin verified=false")
-	}
-	if len(agentAfter.Tags) != 1 || agentAfter.Tags[0] != "bootstrap-tag" {
-		t.Errorf("agent: tags = %v, want [bootstrap-tag]", agentAfter.Tags)
-	}
-	if agentAfter.Readme != "admin readme" {
-		t.Errorf("agent: readme = %q, want %q", agentAfter.Readme, "admin readme")
 	}
 }
 
@@ -1036,7 +890,6 @@ mcp_servers:
             version: "1.0.0"
             transport:
               type: "stdio"
-agents: []
 `)
 	spec, err := bootstrap.LoadSpec(path)
 	if err != nil {
@@ -1095,24 +948,6 @@ mcp_servers:
             version: "1.0.0"
             transport:
               type: "stdio"
-
-agents:
-  - publisher: "acme"
-    slug: "audit-agent"
-    name: "Audit Agent"
-    description: "seeded"
-    public: true
-    versions:
-      - version: "1.0.0"
-        status: "published"
-        endpoint_url: "https://agents.acme.com/audit"
-        skills:
-          - id: "s1"
-            name: "S1"
-            description: "skill"
-            tags: ["x"]
-        authentication:
-          - scheme: "Bearer"
 `)
 	spec, err := bootstrap.LoadSpec(path)
 	if err != nil {
@@ -1130,15 +965,11 @@ agents:
 
 	// Expected event counts per action for a single run of the spec above.
 	want := map[domain.AuditAction]int{
-		domain.ActionPublisherCreated:      1,
-		domain.ActionMCPServerCreated:      1,
-		domain.ActionMCPServerVisibility:   1, // flipped public on create
-		domain.ActionMCPVersionCreated:     1,
-		domain.ActionMCPVersionPublished:   1,
-		domain.ActionAgentCreated:          1,
-		domain.ActionAgentVisibility:       1,
-		domain.ActionAgentVersionCreated:   1,
-		domain.ActionAgentVersionPublished: 1,
+		domain.ActionPublisherCreated:    1,
+		domain.ActionMCPServerCreated:    1,
+		domain.ActionMCPServerVisibility: 1, // flipped public on create
+		domain.ActionMCPVersionCreated:   1,
+		domain.ActionMCPVersionPublished: 1,
 	}
 
 	gotCounts := map[domain.AuditAction]int{}
@@ -1250,23 +1081,6 @@ mcp_servers:
         remotes:
           - type: "sse"
             url: "data:text/html,x"
-`,
-		},
-		{
-			name:      "agent icon",
-			wantField: "icon_url",
-			spec: `
-publishers:
-  - slug: "acme"
-    name: "Acme Corp"
-agents:
-  - publisher: "acme"
-    slug: "agent"
-    name: "Agent"
-    versions:
-      - version: "1.0.0"
-        endpoint_url: "https://agent.example.com"
-        icon_url: "javascript:alert(1)"
 `,
 		},
 	}

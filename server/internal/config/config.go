@@ -31,7 +31,7 @@ type Config struct {
 	ToolDiscovery ToolDiscoveryConfig
 
 	// BootstrapFile is the optional path to a YAML/JSON file containing
-	// initial registry data (publishers, MCP servers, agents)
+	// initial registry data (publishers, MCP servers)
 	// that the server upserts on startup before accepting traffic. Empty
 	// disables bootstrap loading. Settable via env (BOOTSTRAP_FILE), YAML
 	// (top-level `bootstrap_file`), or the `--bootstrap-file` CLI flag —
@@ -229,12 +229,10 @@ type HTTPConfig struct {
 	// reads on /api/v1, expressed in requests per minute. Defaults to 1000,
 	// which a browser SPA and the e2e suite stay under in normal use.
 	PublicRateLimitRPM int
-	// PublicBaseURL is the externally reachable URL of this deployment.
-	// Surfaced in the A2A global agent card (`/.well-known/agent-card.json`),
-	// used as the access-token issuer and to derive the OIDC callback and
+	// PublicBaseURL is the externally reachable URL of this deployment. It
+	// is used as the access-token issuer and to derive the OIDC callback and
 	// post-login/logout redirects. Must be the address clients use, not an
-	// internal docker hostname. The global agent card returns 500 when this
-	// is empty rather than silently advertising localhost.
+	// internal docker hostname.
 	PublicBaseURL string
 	// ShutdownDrainDelay is how long the server keeps serving after SIGTERM,
 	// with /readyz failing, before it stops accepting connections. It gives

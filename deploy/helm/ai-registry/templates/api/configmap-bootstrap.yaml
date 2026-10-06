@@ -6,7 +6,7 @@ Content precedence (highest wins):
   2. api.bootstrap.sampleData — the built-in sample data bundled with the chart
 
 The server reads this file at startup (BOOTSTRAP_FILE env var) and upserts
-all publishers, MCP servers, and agents. Running it multiple times is safe —
+all publishers and MCP servers. Running it multiple times is safe —
 existing entries are skipped.
 */}}
 {{- if .Values.api.bootstrap.enabled -}}

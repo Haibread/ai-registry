@@ -17,9 +17,8 @@ import { useCatalogClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 
 /**
- * VersionLike is the structural shape this component actually reads.
- * Both MCPServerVersion and AgentVersion satisfy it; using a local
- * structural type avoids dragging full schema unions through the view.
+ * VersionLike is the structural shape this component actually reads; using
+ * a local structural type avoids dragging the full schema through the view.
  */
 interface VersionLike {
   id?: string
@@ -31,26 +30,19 @@ interface VersionLike {
 }
 
 interface VersionHistoryProps {
-  type: 'mcp' | 'agent'
   namespace: string
   slug: string
   latestVersion?: string
 }
 
-export function VersionHistory({ type, namespace, slug, latestVersion }: VersionHistoryProps) {
+export function VersionHistory({ namespace, slug, latestVersion }: VersionHistoryProps) {
   const { api, viewer, ready } = useCatalogClient()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['versions', type, namespace, slug, viewer],
+    queryKey: ['versions', namespace, slug, viewer],
     enabled: ready,
     queryFn: async () => {
-      if (type === 'mcp') {
-        const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions', {
-          params: { path: { namespace, slug } },
-        })
-        return r.data
-      }
-      const r = await api.GET('/api/v1/agents/{namespace}/{slug}/versions', {
+      const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions', {
         params: { path: { namespace, slug } },
       })
       return r.data
@@ -70,8 +62,7 @@ export function VersionHistory({ type, namespace, slug, latestVersion }: Version
     )
   }
 
-  // The openapi-typescript generated union for versions is a heavy discriminated
-  // shape; normalize to either a bare array or { items: [] } and treat the rows
+  // Normalize to either a bare array or { items: [] } and treat the rows
   // structurally as VersionLike.
   const raw = data as VersionLike[] | { items?: VersionLike[] } | undefined
   const versions: VersionLike[] = Array.isArray(raw)

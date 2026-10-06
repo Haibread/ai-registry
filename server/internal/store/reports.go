@@ -70,14 +70,12 @@ func (db *DB) ListReports(ctx context.Context, p ListReportsParams) ([]domain.Re
 	// bare ULID. LEFT JOINs: a report must survive its target's deletion.
 	q := `SELECT r.id, r.resource_type, r.resource_id, r.issue_type, r.description,
 		      coalesce(r.reporter_ip, ''), r.status, r.created_at, r.reviewed_at, coalesce(r.reviewed_by, ''),
-		      coalesce(pm.slug, pa.slug, '') AS resource_ns,
-		      coalesce(m.slug, a.slug, '') AS resource_slug,
-		      coalesce(m.name, a.name, '') AS resource_name
+		      coalesce(pm.slug, '') AS resource_ns,
+		      coalesce(m.slug, '') AS resource_slug,
+		      coalesce(m.name, '') AS resource_name
 		  FROM reports r
 		  LEFT JOIN mcp_servers m ON r.resource_type = 'mcp_server' AND m.id = r.resource_id
-		  LEFT JOIN publishers pm ON pm.id = m.publisher_id
-		  LEFT JOIN agents a ON r.resource_type = 'agent' AND a.id = r.resource_id
-		  LEFT JOIN publishers pa ON pa.id = a.publisher_id`
+		  LEFT JOIN publishers pm ON pm.id = m.publisher_id`
 	args := []any{}
 	if p.Status != "" {
 		q += " WHERE r.status = $1"

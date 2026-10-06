@@ -1,13 +1,13 @@
 /**
- * SearchBar — unified search input with live dropdown results.
+ * SearchBar — search input with live dropdown results.
  *
- * On type (debounced 300ms): parallel queries to MCP servers and agents list
- * endpoints. Results appear in a dropdown grouped by type.
+ * On type (debounced 300ms): queries the MCP servers list endpoint. Results
+ * appear in a dropdown.
  * Click → navigate to detail page. Enter → navigate to /explore with q param.
  *
  * The "hero" variant is large and centered (used on the home page). The
  * "compact" variant is smaller and flex-fills its container (used in the
- * global header so cross-type search is one click away from every page).
+ * global header so search is one click away from every page).
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
@@ -51,7 +51,6 @@ export function SearchBar({ variant = 'hero' }: SearchBarProps = {}) {
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
 
-  // Parallel queries
   const { data: mcpData } = useQuery({
     queryKey: ['search-mcp', debouncedQuery],
     queryFn: () => api.GET('/api/v1/mcp/servers', {
@@ -60,17 +59,8 @@ export function SearchBar({ variant = 'hero' }: SearchBarProps = {}) {
     enabled: debouncedQuery.length > 0,
   })
 
-  const { data: agentData } = useQuery({
-    queryKey: ['search-agents', debouncedQuery],
-    queryFn: () => api.GET('/api/v1/agents', {
-      params: { query: { q: debouncedQuery, limit: 5 } },
-    }).then(r => r.data),
-    enabled: debouncedQuery.length > 0,
-  })
-
   const mcpResults = mcpData?.items ?? []
-  const agentResults = agentData?.items ?? []
-  const hasResults = mcpResults.length > 0 || agentResults.length > 0
+  const hasResults = mcpResults.length > 0
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -103,7 +93,7 @@ export function SearchBar({ variant = 'hero' }: SearchBarProps = {}) {
     : 'pl-12 h-12 text-base rounded-xl shadow-sm'
   const placeholder = isCompact
     ? 'Search…'
-    : 'Search MCP servers and agents...'
+    : 'Search MCP servers...'
 
   return (
     <div ref={containerRef} className={containerCls}>
@@ -125,54 +115,23 @@ export function SearchBar({ variant = 'hero' }: SearchBarProps = {}) {
       {/* Dropdown */}
       {open && debouncedQuery && hasResults && (
         <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-lg overflow-hidden">
-          {mcpResults.length > 0 && (
-            <div>
-              <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide bg-muted/50">
-                MCP Servers
+          {mcpResults.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-accent transition-colors"
+              onClick={() => {
+                setOpen(false)
+                navigate(`/mcp/${s.namespace}/${s.slug}`)
+              }}
+            >
+              <ResourceIcon type="mcp-server" className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{s.name}</p>
+                <p className="text-xs text-muted-foreground font-mono truncate">{s.namespace}/{s.slug}</p>
               </div>
-              {mcpResults.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-accent transition-colors"
-                  onClick={() => {
-                    setOpen(false)
-                    navigate(`/mcp/${s.namespace}/${s.slug}`)
-                  }}
-                >
-                  <ResourceIcon type="mcp-server" className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{s.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">{s.namespace}/{s.slug}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-          {agentResults.length > 0 && (
-            <div>
-              <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide bg-muted/50">
-                Agents
-              </div>
-              {agentResults.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-accent transition-colors"
-                  onClick={() => {
-                    setOpen(false)
-                    navigate(`/agents/${a.namespace}/${a.slug}`)
-                  }}
-                >
-                  <ResourceIcon type="agent" className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{a.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">{a.namespace}/{a.slug}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+            </button>
+          ))}
         </div>
       )}
     </div>

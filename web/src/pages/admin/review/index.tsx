@@ -27,28 +27,17 @@ import { ProtocolVersionBadges } from '@/components/mcp/protocol-version-badges'
 
 type Item = components['schemas']['ReviewQueueItem']
 type MCPVersion = components['schemas']['MCPServerVersion']
-type AgentVersion = components['schemas']['AgentVersion']
 
 // The discriminator values returned by the server. Keep in sync with the
 // OpenAPI ReviewQueueItem.kind enum.
-type Kind =
-  | 'mcp_version'
-  | 'agent_version'
-  | 'mcp_deletion'
-  | 'agent_deletion'
-  | 'mcp_change'
-  | 'agent_change'
+type Kind = 'mcp_version' | 'mcp_deletion' | 'mcp_change'
 
 function isVersion(kind: Kind): boolean {
-  return kind === 'mcp_version' || kind === 'agent_version'
+  return kind === 'mcp_version'
 }
 
 function isChange(kind: Kind): boolean {
-  return kind === 'mcp_change' || kind === 'agent_change'
-}
-
-function isMCP(kind: Kind): boolean {
-  return kind.startsWith('mcp')
+  return kind === 'mcp_change'
 }
 
 // Friendly label for an entry-change action.
@@ -72,23 +61,17 @@ function kindLabel(it: Item): string {
   switch (kind) {
     case 'mcp_version':
       return 'MCP version'
-    case 'agent_version':
-      return 'Agent version'
     case 'mcp_deletion':
       return 'MCP deletion'
-    case 'agent_deletion':
-      return 'Agent deletion'
     case 'mcp_change':
       return `MCP · ${actionLabel(it.action)}`
-    case 'agent_change':
-      return `Agent · ${actionLabel(it.action)}`
   }
 }
 
 function kindIcon(it: Item) {
   const kind = it.kind as Kind
   if (isVersion(kind)) return GitPullRequestArrow
-  if (kind === 'mcp_deletion' || kind === 'agent_deletion') return Trash2
+  if (kind === 'mcp_deletion') return Trash2
   switch (it.action) {
     case 'visibility':
       return Eye
@@ -157,18 +140,13 @@ function ChangeDetails({ it }: { it: Item }) {
 function VersionContent({ it }: { it: Item }) {
   const api = useAuthClient()
   const [expanded, setExpanded] = useState(false)
-  const mcp = isMCP(it.kind as Kind)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['review-version-content', it.kind, it.publisher_slug, it.entry_slug, it.version],
     queryFn: async () => {
       const path = { namespace: it.publisher_slug, slug: it.entry_slug, version: it.version! }
-      if (mcp) {
-        const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}', { params: { path } })
-        return { mcp: r.data ?? null, agent: null }
-      }
-      const r = await api.GET('/api/v1/agents/{namespace}/{slug}/versions/{version}', { params: { path } })
-      return { mcp: null, agent: r.data ?? null }
+      const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}', { params: { path } })
+      return r.data ?? null
     },
     enabled: expanded,
     staleTime: 30_000,
@@ -190,12 +168,10 @@ function VersionContent({ it }: { it: Item }) {
         <div className="mt-2 rounded-md border bg-muted/30 p-3">
           {isLoading ? (
             <Skeleton className="h-12 w-full rounded" />
-          ) : isError || !data ? (
+          ) : isError || data === undefined ? (
             <p className="text-xs text-destructive">Failed to load the version's content.</p>
-          ) : data.mcp ? (
-            <MCPVersionSummary v={data.mcp} />
-          ) : data.agent ? (
-            <AgentVersionSummary v={data.agent} />
+          ) : data ? (
+            <MCPVersionSummary v={data} />
           ) : (
             <p className="text-xs text-muted-foreground">No content found.</p>
           )}
@@ -230,22 +206,6 @@ function MCPVersionSummary({ v }: { v: MCPVersion }) {
       </SummaryRow>
       <SummaryRow label="Tools">
         {tools.length === 0 ? '—' : tools.map((t) => t.name).join(', ')}
-      </SummaryRow>
-    </dl>
-  )
-}
-
-function AgentVersionSummary({ v }: { v: AgentVersion }) {
-  const skills = v.skills ?? []
-  return (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
-      <SummaryRow label="Endpoint">{v.endpoint_url}</SummaryRow>
-      <SummaryRow label="Protocol">{v.protocol_version}</SummaryRow>
-      <SummaryRow label="Skills">
-        {skills.length === 0 ? '—' : skills.map((s) => s.name).join(', ')}
-      </SummaryRow>
-      <SummaryRow label="Auth">
-        {(v.authentication ?? []).length === 0 ? '—' : (v.authentication ?? []).map((a) => a.scheme).join(', ')}
       </SummaryRow>
     </dl>
   )
@@ -318,29 +278,14 @@ export default function AdminReviewQueue() {
           '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/approve',
           { params: { path: { namespace: ns, slug, version: it.version! } }, body: { revision: rev } },
         )
-      case 'agent_version':
-        return api.POST(
-          '/api/v1/agents/{namespace}/{slug}/versions/{version}/approve',
-          { params: { path: { namespace: ns, slug, version: it.version! } }, body: { revision: rev } },
-        )
       case 'mcp_deletion':
         return api.POST(
           '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request/approve',
           { params: { path: { namespace: ns, slug } } },
         )
-      case 'agent_deletion':
-        return api.POST(
-          '/api/v1/agents/{namespace}/{slug}/deletion-request/approve',
-          { params: { path: { namespace: ns, slug } } },
-        )
       case 'mcp_change':
         return api.POST(
           '/api/v1/mcp/servers/{namespace}/{slug}/change-request/approve',
-          { params: { path: { namespace: ns, slug } }, body: { revision: rev } },
-        )
-      case 'agent_change':
-        return api.POST(
-          '/api/v1/agents/{namespace}/{slug}/change-request/approve',
           { params: { path: { namespace: ns, slug } }, body: { revision: rev } },
         )
     }
@@ -356,29 +301,14 @@ export default function AdminReviewQueue() {
           '/api/v1/mcp/servers/{namespace}/{slug}/versions/{version}/reject',
           { params: { path: { namespace: ns, slug, version: it.version! } }, body: { revision: rev, reason } },
         )
-      case 'agent_version':
-        return api.POST(
-          '/api/v1/agents/{namespace}/{slug}/versions/{version}/reject',
-          { params: { path: { namespace: ns, slug, version: it.version! } }, body: { revision: rev, reason } },
-        )
       case 'mcp_deletion':
         return api.POST(
           '/api/v1/mcp/servers/{namespace}/{slug}/deletion-request/reject',
           { params: { path: { namespace: ns, slug } }, body: { reason } },
         )
-      case 'agent_deletion':
-        return api.POST(
-          '/api/v1/agents/{namespace}/{slug}/deletion-request/reject',
-          { params: { path: { namespace: ns, slug } }, body: { reason } },
-        )
       case 'mcp_change':
         return api.POST(
           '/api/v1/mcp/servers/{namespace}/{slug}/change-request/reject',
-          { params: { path: { namespace: ns, slug } }, body: { revision: rev, reason } },
-        )
-      case 'agent_change':
-        return api.POST(
-          '/api/v1/agents/{namespace}/{slug}/change-request/reject',
           { params: { path: { namespace: ns, slug } }, body: { revision: rev, reason } },
         )
     }
@@ -497,7 +427,7 @@ export default function AdminReviewQueue() {
             const Icon = kindIcon(it)
             const key = rowKey(it)
             const isRejecting = rejectingKey === key
-            const detailHref = `/admin/${isMCP(kind) ? 'mcp' : 'agents'}/${it.publisher_slug}/${it.entry_slug}`
+            const detailHref = `/admin/mcp/${it.publisher_slug}/${it.entry_slug}`
             return (
               <li key={key} className="p-4 space-y-2">
                 <div className="flex items-start gap-3 flex-wrap">
@@ -617,7 +547,7 @@ export default function AdminReviewQueue() {
         const it = confirmTarget
         const ref = `${it.publisher_slug}/${it.entry_slug}`
         const kind = it.kind as Kind
-        const isDeletion = kind === 'mcp_deletion' || kind === 'agent_deletion'
+        const isDeletion = kind === 'mcp_deletion'
         const title = isVersion(kind)
           ? `Approve ${ref} v${it.version}?`
           : isDeletion

@@ -17,12 +17,8 @@ export const fieldExplanations: Record<string, string> = {
   // Metadata fields
   protocol_versions:
     "The MCP protocol revisions this server supports. A host can connect when it supports at least one of them.",
-  a2a_protocol_version:
-    "The version of the A2A (Agent-to-Agent) protocol this agent implements.",
   runtime:
     "How the MCP server runs: locally on your machine (stdio) or remotely via a network connection (SSE / Streamable HTTP).",
-  endpoint_url:
-    "The URL where this agent or server is reachable. Your client sends requests to this address.",
   mcp_authentication:
     "Remote MCP servers follow the MCP authorization spec — OAuth 2.1 with PKCE. Your client discovers the auth requirements at runtime from the server's protected-resource metadata.",
 
@@ -37,19 +33,6 @@ export const fieldExplanations: Record<string, string> = {
   // Visibility
   public: "Visible to everyone browsing the registry.",
   private: "Only visible to authenticated admins.",
-
-  // Input/Output modes
-  "text/plain": "Plain text input or output.",
-  "image/*": "Image data (PNG, JPEG, etc.).",
-  "application/json": "Structured JSON data.",
-  "audio/*": "Audio data.",
-  "video/*": "Video data.",
-
-  // Auth schemes
-  Bearer: "Authenticate with a Bearer token in the Authorization header.",
-  ApiKey: "Authenticate with an API key, typically in a header or query parameter.",
-  OAuth2: "Authenticate using the OAuth 2.0 authorization flow.",
-  OpenIdConnect: "Authenticate using OpenID Connect (OIDC), an identity layer on top of OAuth 2.0.",
 }
 
 /**

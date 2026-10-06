@@ -96,16 +96,6 @@ describe('AdminSidebar — active route detection', () => {
     expect(linkClass('MCP Servers')).toContain(ACTIVE_CLASS)
   })
 
-  it('highlights Agents on /admin/agents', () => {
-    renderSidebar('/admin/agents')
-    expect(linkClass('Agents')).toContain(ACTIVE_CLASS)
-  })
-
-  it('highlights Agents on a nested agent path', () => {
-    renderSidebar('/admin/agents/acme/my-agent')
-    expect(linkClass('Agents')).toContain(ACTIVE_CLASS)
-  })
-
   it('highlights Publishers on /admin/publishers', () => {
     renderSidebar('/admin/publishers')
     expect(linkClass('Publishers')).toContain(ACTIVE_CLASS)
@@ -127,7 +117,6 @@ describe('AdminSidebar — active route detection', () => {
     expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /publishers/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /mcp servers/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /agents/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /audit log/i })).toBeInTheDocument()
   })

@@ -43,11 +43,6 @@ var allowedIssueTypes = map[string]struct{}{
 	"other":      {},
 }
 
-var allowedResourceTypes = map[string]struct{}{
-	"mcp_server": {},
-	"agent":      {},
-}
-
 // CreateReport handles POST /api/v1/reports.
 //
 // Body: { resource_type, resource_id, issue_type, description }
@@ -71,9 +66,9 @@ func (h *ReportHandlers) CreateReport(w http.ResponseWriter, r *http.Request) {
 	body.IssueType = strings.TrimSpace(body.IssueType)
 	body.Description = strings.TrimSpace(body.Description)
 
-	if _, ok := allowedResourceTypes[body.ResourceType]; !ok {
+	if body.ResourceType != "mcp_server" {
 		problem.Write(w, http.StatusUnprocessableEntity, "validation-error",
-			"resource_type must be 'mcp_server' or 'agent'", r.URL.Path)
+			"resource_type must be 'mcp_server'", r.URL.Path)
 		return
 	}
 	if body.ResourceID == "" {

@@ -247,35 +247,3 @@ func TestEntryChange_QueueListsPendingChange(t *testing.T) {
 		t.Error("payload is empty")
 	}
 }
-
-func TestEntryChange_AgentVisibilityApplies(t *testing.T) {
-	resetDB(t)
-	ctx := context.Background()
-	pubID := insertPublisher(t, "acme", "acme")
-	ag, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pubID, Slug: "router", Name: "router",
-	})
-	if err != nil {
-		t.Fatalf("CreateAgent: %v", err)
-	}
-	if _, err := sharedDB.Pool.Exec(ctx,
-		`UPDATE agents SET status='published' WHERE id=$1`, ag.ID); err != nil {
-		t.Fatalf("publish agent: %v", err)
-	}
-
-	id, err := sharedDB.CreateEntryChangeRequest(ctx, domain.EntryResourceAgent, ag.ID,
-		domain.EntryChangeVisibility, json.RawMessage(`{"visibility":"public"}`), actor())
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if _, err := sharedDB.ApproveEntryChangeRequest(ctx, id, 1, reviewer()); err != nil {
-		t.Fatalf("approve: %v", err)
-	}
-	var vis string
-	if err := sharedDB.Pool.QueryRow(ctx, `SELECT visibility FROM agents WHERE id=$1`, ag.ID).Scan(&vis); err != nil {
-		t.Fatalf("read agent: %v", err)
-	}
-	if vis != "public" {
-		t.Errorf("agent visibility = %q, want public", vis)
-	}
-}

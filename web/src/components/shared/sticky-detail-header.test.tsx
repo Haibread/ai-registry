@@ -31,7 +31,6 @@ describe('StickyDetailHeader', () => {
     const ref = { current: titleEl } as React.RefObject<HTMLElement>
     return render(
       <StickyDetailHeader
-        type="mcp-server"
         name="Test Server"
         version="1.2.3"
         identifier="acme/test-server"
@@ -99,7 +98,6 @@ describe('StickyDetailHeader', () => {
     const ref = { current: titleEl } as React.RefObject<HTMLElement>
     render(
       <StickyDetailHeader
-        type="mcp-server"
         name="X"
         identifier="a/b"
         titleRef={ref}

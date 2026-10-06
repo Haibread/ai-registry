@@ -11,12 +11,6 @@ import { ResourceIcon } from '@/components/ui/resource-icon'
 import { getPublicClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 
-function detailHref(resourceType: string, namespace: string, slug: string) {
-  if (resourceType === 'mcp_server') return `/mcp/${namespace}/${slug}`
-  if (resourceType === 'agent') return `/agents/${namespace}/${slug}`
-  return '#'
-}
-
 /**
  * Group changelog entries by day (YYYY-MM-DD) so the page renders as a
  * timeline with date headers. Returns entries in insertion order (already
@@ -54,7 +48,7 @@ export default function ChangelogPage() {
           <h1 className="text-3xl font-bold">Changelog</h1>
         </div>
         <p className="text-muted-foreground">
-          Recent version publications across MCP servers and AI agents in the registry.
+          Recent version publications across MCP servers in the registry.
         </p>
 
         {isLoading ? (
@@ -81,13 +75,10 @@ export default function ChangelogPage() {
                 <ul className="divide-y rounded-md border">
                   {entries.map((e, i) => (
                     <li key={`${e.namespace}/${e.slug}/${e.version}-${i}`} className="flex items-center gap-3 p-3">
-                      <ResourceIcon
-                        type={e.resource_type === 'mcp_server' ? 'mcp-server' : 'agent'}
-                        className="h-5 w-5 shrink-0 text-muted-foreground"
-                      />
+                      <ResourceIcon type="mcp-server" className="h-5 w-5 shrink-0 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
                         <Link
-                          to={detailHref(e.resource_type, e.namespace, e.slug)}
+                          to={`/mcp/${e.namespace}/${e.slug}`}
                           className="font-medium hover:underline truncate block"
                         >
                           {e.name}

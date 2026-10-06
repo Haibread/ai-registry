@@ -42,10 +42,8 @@ function renderPage() {
 
 const sampleStats = {
   mcp_servers: 12,
-  agents: 7,
   publishers: 3,
   mcp_status_breakdown: { draft: 2, published: 9, deprecated: 1 },
-  agent_status_breakdown: { draft: 1, published: 5, deprecated: 1 },
 }
 
 const sampleMcp = [
@@ -56,17 +54,6 @@ const sampleMcp = [
     slug: 'example-mcp',
     status: 'published',
     updated_at: '2026-04-10T10:00:00Z',
-  },
-]
-
-const sampleAgents = [
-  {
-    id: '01HAGT1',
-    name: 'Example Agent',
-    namespace: 'acme',
-    slug: 'example-agent',
-    status: 'draft',
-    updated_at: '2026-04-11T10:00:00Z',
   },
 ]
 
@@ -84,7 +71,6 @@ describe('AdminDashboard', () => {
     mockGET.mockImplementation((path: string) => {
       if (path === '/api/v1/stats') return Promise.resolve({ data: sampleStats })
       if (path === '/api/v1/mcp/servers') return Promise.resolve({ data: { items: sampleMcp } })
-      if (path === '/api/v1/agents') return Promise.resolve({ data: { items: sampleAgents } })
       return Promise.resolve({ data: {} })
     })
   })
@@ -94,7 +80,7 @@ describe('AdminDashboard', () => {
     expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
   })
 
-  it('fetches stats, recent MCP servers, and recent agents on mount', async () => {
+  it('fetches stats and recent MCP servers on mount', async () => {
     renderPage()
     await waitFor(() => {
       expect(mockGET).toHaveBeenCalledWith('/api/v1/stats')
@@ -102,15 +88,11 @@ describe('AdminDashboard', () => {
     expect(mockGET).toHaveBeenCalledWith('/api/v1/mcp/servers', {
       params: { query: { limit: 5 } },
     })
-    expect(mockGET).toHaveBeenCalledWith('/api/v1/agents', {
-      params: { query: { limit: 5 } },
-    })
   })
 
   it('renders stat tile counts from the API response', async () => {
     renderPage()
     expect(await screen.findByText('12')).toBeInTheDocument() // mcp_servers
-    expect(screen.getByText('7')).toBeInTheDocument() // agents
     expect(screen.getByText('3')).toBeInTheDocument() // publishers
   })
 
@@ -122,18 +104,13 @@ describe('AdminDashboard', () => {
     expect(screen.queryByRole('link', { name: /new publisher/i })).not.toBeInTheDocument()
   })
 
-  it('renders recent MCP servers and recent agents with links to detail pages', async () => {
+  it('renders recent MCP servers with links to detail pages', async () => {
     renderPage()
     expect(await screen.findByText('Example MCP')).toBeInTheDocument()
-    expect(screen.getByText('Example Agent')).toBeInTheDocument()
     const mcpLink = screen
       .getAllByRole('link')
       .find((a) => a.getAttribute('href') === '/admin/mcp/acme/example-mcp')
-    const agentLink = screen
-      .getAllByRole('link')
-      .find((a) => a.getAttribute('href') === '/admin/agents/acme/example-agent')
     expect(mcpLink).toBeTruthy()
-    expect(agentLink).toBeTruthy()
   })
 
   it('puts pending reviews and open reports first', async () => {

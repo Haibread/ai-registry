@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Plug, Bot, Flag, Activity, ScrollText, ClipboardCheck, Settings, Tags } from 'lucide-react'
+import { LayoutDashboard, Users, UsersRound, UserCog, Shield, Plug, Flag, Activity, ScrollText, ClipboardCheck, Settings, Tags } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatQueueCount, useReviewQueueCount } from '@/hooks/use-review-queue-count'
 import { usePermissions, type Permissions } from '@/auth/useMe'
@@ -29,7 +29,6 @@ interface NavItem {
 const publisherNav: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, requires: 'always' },
   { to: '/admin/mcp', label: 'MCP Servers', icon: Plug, requires: 'always' },
-  { to: '/admin/agents', label: 'Agents', icon: Bot, requires: 'always' },
   { to: '/admin/review', label: 'Review queue', icon: ClipboardCheck, badge: 'review', requires: 'reviewer' },
   { to: '/admin/activity', label: 'Activity', icon: Activity, requires: 'publisherMember' },
   { to: '/admin/members', label: 'Members', icon: Users, requires: 'publisherAdmin' },

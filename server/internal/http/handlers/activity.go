@@ -1,7 +1,7 @@
 // Package handlers — public per-resource activity feed.
 //
-// These handlers power the public "Activity" tab on MCP server and agent
-// detail pages. They return a privacy-scrubbed view of the underlying audit
+// These handlers power the public "Activity" tab on MCP server detail
+// pages. They return a privacy-scrubbed view of the underlying audit
 // log: actor identity (subject, email) is NEVER exposed, metadata is
 // whitelisted, and draft-only events are filtered out.
 //
@@ -30,18 +30,11 @@ import (
 // not leak their existence). .deleted is also excluded because a soft-deleted
 // resource returns 404 from the parent endpoint, so the event is unreachable.
 var publicActionWhitelist = map[domain.AuditAction]struct{}{
-	// MCP
 	domain.ActionMCPServerCreated:    {},
 	domain.ActionMCPVersionPublished: {},
 	domain.ActionMCPServerDeprecated: {},
 	domain.ActionMCPServerVisibility: {},
 	domain.ActionMCPServerUpdated:    {},
-	// Agents
-	domain.ActionAgentCreated:          {},
-	domain.ActionAgentVersionPublished: {},
-	domain.ActionAgentDeprecated:       {},
-	domain.ActionAgentVisibility:       {},
-	domain.ActionAgentUpdated:          {},
 }
 
 // publicMetadataAllowlist lists metadata keys that are safe to echo back on
@@ -110,38 +103,18 @@ func (h *MCPHandlers) ListMCPServerActivity(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	writePublicActivity(w, r, h.db, srv.ID, "mcp_server")
+	writePublicActivity(w, r, h.db, srv.ID)
 }
 
-// ListAgentActivity handles GET /api/v1/agents/{namespace}/{slug}/activity.
-func (h *AgentHandlers) ListAgentActivity(w http.ResponseWriter, r *http.Request) {
-	ns := chi.URLParam(r, "namespace")
-	slug := chi.URLParam(r, "slug")
-
-	publicOnly := !canViewPrivate(r.Context(), h.db, ns)
-	ag, err := h.db.GetAgent(r.Context(), ns, slug, publicOnly)
-	if errors.Is(err, store.ErrNotFound) {
-		problem.Write(w, http.StatusNotFound, "not-found",
-			fmt.Sprintf("agent '%s/%s' does not exist", ns, slug), r.URL.Path)
-		return
-	}
-	if err != nil {
-		internalError(w, r, err)
-		return
-	}
-
-	writePublicActivity(w, r, h.db, ag.ID, "agent")
-}
-
-// writePublicActivity is the shared core of both activity endpoints. It pages
-// through the audit_log filtered by resource ID, applies the action whitelist
-// + metadata scrub, and emits PublicActivityEvent objects.
+// writePublicActivity pages through the audit_log filtered by resource ID,
+// applies the action whitelist + metadata scrub, and emits
+// PublicActivityEvent objects.
 //
 // Because the whitelist can drop rows inside a page, we may deliver fewer than
 // `limit` items even when more rows exist upstream. That's fine — the cursor
 // reflects the last raw row scanned, so pagination is still consistent; the
 // client just needs to follow next_cursor if it wants more.
-func writePublicActivity(w http.ResponseWriter, r *http.Request, db *store.DB, resourceID, resourceType string) {
+func writePublicActivity(w http.ResponseWriter, r *http.Request, db *store.DB, resourceID string) {
 	limit := int32(25)
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
@@ -150,7 +123,7 @@ func writePublicActivity(w http.ResponseWriter, r *http.Request, db *store.DB, r
 	}
 
 	p := store.ListAuditParams{
-		ResourceType: resourceType,
+		ResourceType: "mcp_server",
 		ResourceID:   resourceID,
 		Limit:        limit + 1, // fetch one extra to detect next page
 		Cursor:       r.URL.Query().Get("cursor"),

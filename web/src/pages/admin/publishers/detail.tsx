@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, Plug, Bot, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, Plug, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
@@ -45,18 +45,6 @@ export default function AdminPublisherDetail() {
     enabled: !!slug && true,
   })
 
-  const { data: agentsData, isError: agentsError } = useQuery({
-    queryKey: ['admin-publisher-agents', slug],
-    queryFn: async () => {
-      const r = await api.GET('/api/v1/agents', {
-        params: { query: { namespace: slug, limit: 50 } },
-      })
-      if (r.error) throw new Error('Failed to load agents')
-      return r.data
-    },
-    enabled: !!slug && true,
-  })
-
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-publisher', slug] })
     queryClient.invalidateQueries({ queryKey: ['admin-publishers'] })
@@ -93,15 +81,10 @@ export default function AdminPublisherDetail() {
   })
 
   const mcpServers = mcpData?.items ?? []
-  const agents = agentsData?.items ?? []
 
-  // Prefer the server-reported totals over the (page-capped) item counts so
+  // Prefer the server-reported total over the (page-capped) item count so
   // the delete confirmation reflects every resource the cascade will remove.
   const mcpCount = mcpData?.total_count ?? mcpServers.length
-  const agentCount = agentsData?.total_count ?? agents.length
-  // If either count failed to load, we can't honestly say "owns nothing" — the
-  // delete cascade summary must warn rather than understate the blast radius.
-  const countsUnknown = mcpError || agentsError
 
   if (isPending) return <p className="text-muted-foreground">Loading…</p>
   if (isError || !publisher) return (
@@ -224,28 +207,24 @@ export default function AdminPublisherDetail() {
                   This permanently deletes <span className="font-medium text-foreground">{publisher.name}</span> and
                   cannot be undone.
                 </p>
-                {countsUnknown ? (
+                {mcpError ? (
                   <p className="text-destructive">
                     Could not load this publisher's owned resources, so the full
-                    impact can't be shown. Any MCP servers and agents it owns —
+                    impact can't be shown. Any MCP servers it owns —
                     and all their versions — will still be permanently removed.
                   </p>
-                ) : (mcpCount > 0 || agentCount > 0) ? (
+                ) : mcpCount > 0 ? (
                   <p className="text-muted-foreground">
                     It also removes everything this publisher owns:
                     {' '}
                     <span className="font-medium text-foreground">
                       {mcpCount} MCP {mcpCount === 1 ? 'server' : 'servers'}
                     </span>
-                    {' and '}
-                    <span className="font-medium text-foreground">
-                      {agentCount} {agentCount === 1 ? 'agent' : 'agents'}
-                    </span>
                     , along with all of their versions.
                   </p>
                 ) : (
                   <p className="text-muted-foreground">
-                    This publisher currently owns no MCP servers or agents.
+                    This publisher currently owns no MCP servers.
                   </p>
                 )}
               </div>
@@ -296,56 +275,6 @@ export default function AdminPublisherDetail() {
                   <TableCell className="text-right">
                     <Button variant="outline" size="sm" asChild>
                       <Link to={`/admin/mcp/${s.namespace}/${s.slug}`}>
-                        Manage
-                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                      </Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-
-      <Separator />
-
-      {/* Agents */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Bot className="h-4 w-4" aria-hidden="true" />
-            Agents
-            <span className="text-sm font-normal text-muted-foreground">({agents.length})</span>
-          </h2>
-          <Button size="sm" asChild>
-            <Link to="/admin/agents/new">New Agent</Link>
-          </Button>
-        </div>
-
-        {agents.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">No agents under this namespace.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Slug</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Updated</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {agents.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell className="font-medium">{a.name}</TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground">{a.slug}</TableCell>
-                  <TableCell><StatusBadge status={a.status} /></TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(a.updated_at)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link to={`/admin/agents/${a.namespace}/${a.slug}`}>
                         Manage
                         <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                       </Link>

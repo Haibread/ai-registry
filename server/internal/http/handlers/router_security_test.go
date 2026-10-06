@@ -70,8 +70,8 @@ func fireSecure(router http.Handler, method, path, token string) *httptest.Respo
 // no session → 401, a non-admin session → 403, a Server-Admin session →
 // neither. These routes resolve their publisher from the path (or are
 // Server-Admin-only), so the matrix is independent of the request body. The
-// body-authorized create routes (POST /mcp/servers, /agents) have their own
-// per-handler role tests.
+// body-authorized create route (POST /mcp/servers) has its own per-handler
+// role tests.
 func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 	resetTables(t)
 	router, tokenFor := buildSecureRouter(t)
@@ -82,10 +82,6 @@ func TestRouter_AdminRoutes_AuthEnforcement(t *testing.T) {
 		{http.MethodPost, "/api/v1/mcp/servers/ns/slug/visibility"},
 		{http.MethodPost, "/api/v1/mcp/servers/ns/slug/versions"},
 		{http.MethodPost, "/api/v1/mcp/servers/ns/slug/versions/1.0.0/publish"},
-		{http.MethodPost, "/api/v1/agents/ns/slug/deprecate"},
-		{http.MethodPost, "/api/v1/agents/ns/slug/visibility"},
-		{http.MethodPost, "/api/v1/agents/ns/slug/versions"},
-		{http.MethodPost, "/api/v1/agents/ns/slug/versions/1.0.0/publish"},
 		{http.MethodGet, "/api/v1/stats"},
 		{http.MethodGet, "/api/v1/audit"},
 		{http.MethodGet, "/api/v1/users/some-id/grants"},

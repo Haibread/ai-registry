@@ -1,43 +1,28 @@
 /**
- * RelatedEntries — shows other entries from the same publisher.
+ * RelatedEntries — shows other MCP servers from the same publisher.
  *
  * Queries by namespace, excludes the current entry by slug, and shows up to 3 cards.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { ServerCard } from '@/components/mcp/server-card'
-import { AgentCard } from '@/components/agents/agent-card'
 import { getPublicClient } from '@/lib/api-client'
-import type { components } from '@/lib/schema'
-
-type MCPServer = components['schemas']['MCPServer']
-type Agent = components['schemas']['Agent']
 
 interface RelatedEntriesProps {
-  type: 'mcp' | 'agent'
   namespace: string
   currentSlug: string
 }
 
-export function RelatedEntries({ type, namespace, currentSlug }: RelatedEntriesProps) {
+export function RelatedEntries({ namespace, currentSlug }: RelatedEntriesProps) {
   const api = getPublicClient()
 
-  // Discriminate at the query level so `data` has a precise type downstream.
-  // TanStack Query caches by queryKey, so separating the two shapes into
-  // distinct queries also avoids cross-entity cache pollution.
   const { data } = useQuery({
-    queryKey: ['related', type, namespace, currentSlug],
-    queryFn: async (): Promise<MCPServer[] | Agent[]> => {
-      if (type === 'mcp') {
-        const r = await api.GET('/api/v1/mcp/servers', {
-          params: { query: { namespace, limit: 4 } },
-        })
-        return r.data?.items?.filter((s) => s.slug !== currentSlug).slice(0, 3) ?? []
-      }
-      const r = await api.GET('/api/v1/agents', {
+    queryKey: ['related', namespace, currentSlug],
+    queryFn: async () => {
+      const r = await api.GET('/api/v1/mcp/servers', {
         params: { query: { namespace, limit: 4 } },
       })
-      return r.data?.items?.filter((a) => a.slug !== currentSlug).slice(0, 3) ?? []
+      return r.data?.items?.filter((s) => s.slug !== currentSlug).slice(0, 3) ?? []
     },
   })
 
@@ -49,13 +34,9 @@ export function RelatedEntries({ type, namespace, currentSlug }: RelatedEntriesP
         More from {namespace}
       </h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {type === 'mcp'
-          ? (data as MCPServer[]).map((entry) => (
-              <ServerCard key={entry.id} server={entry} />
-            ))
-          : (data as Agent[]).map((entry) => (
-              <AgentCard key={entry.id} agent={entry} />
-            ))}
+        {data.map((entry) => (
+          <ServerCard key={entry.id} server={entry} />
+        ))}
       </div>
     </div>
   )

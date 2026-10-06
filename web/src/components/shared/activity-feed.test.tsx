@@ -29,7 +29,7 @@ describe('ActivityFeed', () => {
   it('renders loading skeletons initially', () => {
     mockGET.mockReturnValue(new Promise(() => {})) // never resolves
     const { container } = render(
-      <ActivityFeed resourceType="mcp" namespace="acme" slug="srv" />,
+      <ActivityFeed namespace="acme" slug="srv" />,
       { wrapper },
     )
     // There should be rounded skeleton bars rendered for the shimmer state.
@@ -42,7 +42,7 @@ describe('ActivityFeed', () => {
       data: { items: [], next_cursor: '' },
     })
     render(
-      <ActivityFeed resourceType="mcp" namespace="acme" slug="srv" />,
+      <ActivityFeed namespace="acme" slug="srv" />,
       { wrapper },
     )
     expect(await screen.findByText(/no recorded activity/i)).toBeInTheDocument()
@@ -70,7 +70,7 @@ describe('ActivityFeed', () => {
       },
     })
     render(
-      <ActivityFeed resourceType="mcp" namespace="acme" slug="srv" />,
+      <ActivityFeed namespace="acme" slug="srv" />,
       { wrapper },
     )
 
@@ -97,7 +97,7 @@ describe('ActivityFeed', () => {
       },
     })
     render(
-      <ActivityFeed resourceType="mcp" namespace="acme" slug="srv" />,
+      <ActivityFeed namespace="acme" slug="srv" />,
       { wrapper },
     )
     await screen.findByText(/visibility changed/i)
@@ -128,7 +128,7 @@ describe('ActivityFeed', () => {
       },
     })
     const { container } = render(
-      <ActivityFeed resourceType="mcp" namespace="acme" slug="srv" />,
+      <ActivityFeed namespace="acme" slug="srv" />,
       { wrapper },
     )
     await screen.findByText(/server created/i)
@@ -154,7 +154,7 @@ describe('ActivityFeed', () => {
       },
     })
     render(
-      <ActivityFeed resourceType="mcp" namespace="acme" slug="srv" />,
+      <ActivityFeed namespace="acme" slug="srv" />,
       { wrapper },
     )
     await screen.findByText(/server created/i)
@@ -192,7 +192,7 @@ describe('ActivityFeed', () => {
       })
 
     render(
-      <ActivityFeed resourceType="mcp" namespace="acme" slug="srv" />,
+      <ActivityFeed namespace="acme" slug="srv" />,
       { wrapper },
     )
     const loadMore = await screen.findByRole('button', { name: /load more/i })
@@ -210,23 +210,6 @@ describe('ActivityFeed', () => {
       expect.objectContaining({
         params: expect.objectContaining({
           query: expect.objectContaining({ cursor: 'CURSOR-PAGE-2' }),
-        }),
-      }),
-    )
-  })
-
-  it('targets the agent activity endpoint when resourceType=agent', async () => {
-    mockGET.mockResolvedValue({ data: { items: [], next_cursor: '' } })
-    render(
-      <ActivityFeed resourceType="agent" namespace="acme" slug="bot" />,
-      { wrapper },
-    )
-    await screen.findByText(/no recorded activity/i)
-    expect(mockGET).toHaveBeenCalledWith(
-      '/api/v1/agents/{namespace}/{slug}/activity',
-      expect.objectContaining({
-        params: expect.objectContaining({
-          path: { namespace: 'acme', slug: 'bot' },
         }),
       }),
     )

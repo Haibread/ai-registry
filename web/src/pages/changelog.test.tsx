@@ -58,14 +58,6 @@ describe('ChangelogPage', () => {
             published_at: '2026-04-10T10:00:00Z',
           },
           {
-            resource_type: 'agent',
-            namespace: 'acme',
-            slug: 'bot-a',
-            name: 'Bot A',
-            version: '0.5.0',
-            published_at: '2026-04-10T09:00:00Z',
-          },
-          {
             resource_type: 'mcp_server',
             namespace: 'acme',
             slug: 'srv-b',
@@ -79,10 +71,9 @@ describe('ChangelogPage', () => {
     renderPage()
     await waitFor(() => {
       expect(screen.getByText('Server A')).toBeInTheDocument()
-      expect(screen.getByText('Bot A')).toBeInTheDocument()
       expect(screen.getByText('Server B')).toBeInTheDocument()
     })
-    expect(screen.getAllByText(/v\d/).length).toBeGreaterThanOrEqual(3)
+    expect(screen.getAllByText(/v\d/).length).toBeGreaterThanOrEqual(2)
   })
 
   it('links each entry to its detail page', async () => {

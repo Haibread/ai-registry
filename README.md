@@ -2,15 +2,14 @@
 
 # AI Registry
 
-A self-hostable registry for AI ecosystem artifacts — **MCP servers** and
-**A2A agents** — with a versioned HTTP API, a public catalog UI and an admin
-console.
+A self-hostable registry for **MCP servers**, with a versioned HTTP API, a
+public catalog UI and an admin console.
 
 [![Lint](https://github.com/Haibread/ai-registry/actions/workflows/lint.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/lint.yml) [![Quality](https://github.com/Haibread/ai-registry/actions/workflows/quality.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/quality.yml) [![Docker](https://github.com/Haibread/ai-registry/actions/workflows/docker.yml/badge.svg)](https://github.com/Haibread/ai-registry/actions/workflows/docker.yml)
 
 ## Description
 
-Teams building with MCP servers and A2A agents end up with them scattered
+Teams building with MCP servers end up with them scattered
 across repositories, wikis and chat threads. The AI Registry is one catalog
 where publishers declare them, reviewers approve them, and people and machines
 discover them.
@@ -19,9 +18,7 @@ discover them.
   move through draft, published and deprecated.
 - **Spec-aware** — MCP metadata follows the
   [Model Context Protocol](https://modelcontextprotocol.io/) `server.json`
-  shapes; every agent gets an [A2A](https://a2a-protocol.org/) Agent Card at
-  `/agents/{namespace}/{slug}/.well-known/agent-card.json`, and the registry
-  publishes its own at `/.well-known/agent-card.json`.
+  shapes.
 - **Review workflow** — Editors propose versions, deletions and entry changes;
   Reviewers approve them.
 - **Publisher-scoped RBAC** — Viewer, Editor, Reviewer and Admin roles granted
@@ -32,8 +29,8 @@ discover them.
   3.1 document is served at `/openapi.yaml`.
 - **Observable** — OpenTelemetry traces, metrics and logs over OTLP.
 
-It hosts metadata only: it does not run, proxy or sandbox the servers and
-agents it lists. The only connections it makes to a listed server are the
+It hosts metadata only: it does not run, proxy or sandbox the servers it
+lists. The only connections it makes to a listed server are the
 handshakes and `tools/list` an author asks for from the MCP forms.
 
 The documentation lives at <https://haibread.github.io/ai-registry/>

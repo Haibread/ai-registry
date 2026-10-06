@@ -15,7 +15,7 @@ set:
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | yes | — | PostgreSQL connection string |
-| `PUBLIC_BASE_URL` | yes | — | External URL of the deployment, used in agent cards and login redirects |
+| `PUBLIC_BASE_URL` | yes | — | External URL of the deployment, used as the access-token issuer and in login redirects |
 | `JWT_SIGNING_KEY` or `JWT_SIGNING_SEED` | yes | ephemeral key | PEM Ed25519 key, or a ≥ 32-char secret the key is derived from; without either, tokens survive neither a restart nor a second replica |
 | `CORS_ALLOWED_ORIGINS` | when the SPA is on another origin | — | Comma-separated allowed origins |
 | `AUTH_BOOTSTRAP_ADMIN_EMAIL` / `AUTH_BOOTSTRAP_ADMIN_PASSWORD` | no | — | Seeds a local Server Admin on first start |

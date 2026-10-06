@@ -172,8 +172,8 @@ func (db *DB) tagMissingOrManaged(ctx context.Context, slug string) error {
 
 // DeleteInstanceTag hard-deletes a tag that no version references. Returns
 // ErrNotFound if the tag does not exist, ErrManagedTag when it is reconciled
-// from server configuration, and ErrConflict if any MCP server or agent
-// version carries it (published versions are immutable, so an in-use tag can
+// from server configuration, and ErrConflict if any MCP server version
+// carries it (published versions are immutable, so an in-use tag can
 // only be deactivated).
 func (db *DB) DeleteInstanceTag(ctx context.Context, slug string) error {
 	ctx, span := startSpan(ctx, "DeleteInstanceTag")
@@ -186,8 +186,7 @@ func (db *DB) DeleteInstanceTag(ctx context.Context, slug string) error {
 		DELETE FROM instance_tags
 		WHERE slug = $1
 		  AND NOT managed
-		  AND NOT EXISTS (SELECT 1 FROM mcp_server_versions v WHERE v.tags @> $2)
-		  AND NOT EXISTS (SELECT 1 FROM agent_versions av WHERE av.tags @> $2)`,
+		  AND NOT EXISTS (SELECT 1 FROM mcp_server_versions v WHERE v.tags @> $2)`,
 		slug, asArray)
 	if err != nil {
 		recordErr(span, err)

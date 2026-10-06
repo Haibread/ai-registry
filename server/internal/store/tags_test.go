@@ -2,7 +2,6 @@ package store_test
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -89,7 +88,6 @@ func TestDeleteInstanceTag_InUseConflicts(t *testing.T) {
 	ctx := context.Background()
 	pubID := insertPublisher(t, "tagged", "Tagged Corp")
 	insertTag(t, "free", "Free", "green")
-	insertTag(t, "beta", "Beta", "orange")
 
 	srv, err := sharedDB.CreateMCPServer(ctx, store.CreateMCPServerParams{
 		PublisherID: pubID, Slug: "srv", Name: "Server",
@@ -109,22 +107,6 @@ func TestDeleteInstanceTag_InUseConflicts(t *testing.T) {
 		t.Errorf("expected ErrConflict for in-use tag, got %v", err)
 	}
 
-	// Carried by an agent version → conflict too.
-	agent, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pubID, Slug: "bot", Name: "Bot",
-	})
-	if err != nil {
-		t.Fatalf("CreateAgent: %v", err)
-	}
-	if _, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
-		AgentID: agent.ID, Version: "1.0.0", EndpointURL: "https://bot.example.com",
-		ProtocolVersion: "0.2.1", Tags: []string{"beta"},
-	}); err != nil {
-		t.Fatalf("CreateAgentVersion: %v", err)
-	}
-	if err := sharedDB.DeleteInstanceTag(ctx, "beta"); err != store.ErrConflict {
-		t.Errorf("expected ErrConflict for agent-carried tag, got %v", err)
-	}
 }
 
 func TestMissingActiveTagSlugs(t *testing.T) {
@@ -256,60 +238,6 @@ func TestVersionTags_FlowThroughReads(t *testing.T) {
 	}
 	if len(byEA) != 0 || total != 0 {
 		t.Errorf("tag=early-access matched %d servers (total %d), want 0 — v1 is superseded", len(byEA), total)
-	}
-}
-
-func TestAgentVersionTags_FlowThroughReads(t *testing.T) {
-	resetDB(t)
-	ctx := context.Background()
-	pubID := insertPublisher(t, "acme", "Acme")
-	insertTag(t, "free", "Free", "green")
-
-	agent, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-		PublisherID: pubID, Slug: "bot", Name: "Bot",
-	})
-	if err != nil {
-		t.Fatalf("CreateAgent: %v", err)
-	}
-	v, err := sharedDB.CreateAgentVersion(ctx, store.CreateAgentVersionParams{
-		AgentID: agent.ID, Version: "1.0.0", EndpointURL: "https://bot.example.com",
-		Skills: json.RawMessage(`[]`), ProtocolVersion: "0.2.1",
-		Tags: []string{"free"},
-	})
-	if err != nil {
-		t.Fatalf("CreateAgentVersion: %v", err)
-	}
-	if !reflect.DeepEqual(v.Tags, []string{"free"}) {
-		t.Errorf("created agent version tags = %v", v.Tags)
-	}
-	if err := sharedDB.PublishAgentVersion(ctx, agent.ID, "1.0.0"); err != nil {
-		t.Fatalf("PublishAgentVersion: %v", err)
-	}
-
-	row, err := sharedDB.GetAgent(ctx, "acme", "bot", false)
-	if err != nil {
-		t.Fatalf("GetAgent: %v", err)
-	}
-	if !reflect.DeepEqual(row.Tags, []string{"free"}) {
-		t.Errorf("agent entry tags = %v", row.Tags)
-	}
-	if row.LatestVersion == nil || !reflect.DeepEqual(row.LatestVersion.Tags, []string{"free"}) {
-		t.Errorf("agent latest_version tags = %+v", row.LatestVersion)
-	}
-
-	matched, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Tag: "free"})
-	if err != nil {
-		t.Fatalf("ListAgents(tag=free): %v", err)
-	}
-	if len(matched) != 1 {
-		t.Errorf("tag=free matched %d agents, want 1", len(matched))
-	}
-	none, _, err := sharedDB.ListAgents(ctx, store.ListAgentsParams{Tag: "nope"})
-	if err != nil {
-		t.Fatalf("ListAgents(tag=nope): %v", err)
-	}
-	if len(none) != 0 {
-		t.Errorf("tag=nope matched %d agents, want 0", len(none))
 	}
 }
 

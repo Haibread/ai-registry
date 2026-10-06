@@ -62,7 +62,7 @@ func TestAuditHandler_ListEvents_AfterLoggingEvents(t *testing.T) {
 	resetTables(t)
 
 	logAuditEvent(t, "mcp_server", "id-001", "mcp_server.created")
-	logAuditEvent(t, "agent", "id-002", "agent.created")
+	logAuditEvent(t, "publisher", "id-002", "publisher.created")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit", nil)
 	rec := httptest.NewRecorder()
@@ -83,8 +83,8 @@ func TestAuditHandler_ListEvents_AfterLoggingEvents(t *testing.T) {
 		t.Errorf("expected 2 items, got %d", len(body.Items))
 	}
 	// Newest first
-	if body.Items[0].ResourceType != "agent" {
-		t.Errorf("first item resource_type = %q, want agent (newest first)", body.Items[0].ResourceType)
+	if body.Items[0].ResourceType != "publisher" {
+		t.Errorf("first item resource_type = %q, want publisher (newest first)", body.Items[0].ResourceType)
 	}
 }
 
@@ -93,7 +93,7 @@ func TestAuditHandler_ListEvents_ResourceTypeFilter(t *testing.T) {
 
 	logAuditEvent(t, "mcp_server", "id-mcp1", "mcp_server.created")
 	logAuditEvent(t, "mcp_server", "id-mcp2", "mcp_server.deprecated")
-	logAuditEvent(t, "agent", "id-ag1", "agent.created")
+	logAuditEvent(t, "publisher", "id-pub1", "publisher.created")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit?resource_type=mcp_server", nil)
 	rec := httptest.NewRecorder()

@@ -117,9 +117,8 @@ cd server && go test -coverprofile=coverage.out ./... && go tool cover -func=cov
 ```
 
 The contract suites are part of `go test ./...`; they assert that the OpenAPI
-operations and the chi routes match one-to-one, that every write route is
-guarded, and that emitted Agent Cards conform to the pinned A2A schema. Adding
-a route without its spec entry, or the reverse, fails them.
+operations and the chi routes match one-to-one and that every write route is
+guarded. Adding a route without its spec entry, or the reverse, fails them.
 
 ### Web — unit and component
 

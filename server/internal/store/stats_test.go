@@ -19,7 +19,7 @@ func TestGetRegistryCounts_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRegistryCounts() error = %v", err)
 	}
-	if counts.MCPServers != 0 || counts.Agents != 0 || counts.Publishers != 0 {
+	if counts.MCPServers != 0 || counts.Publishers != 0 {
 		t.Errorf("expected all zeros on empty DB, got %+v", counts)
 	}
 }
@@ -41,15 +41,6 @@ func TestGetRegistryCounts_ReflectsInserts(t *testing.T) {
 		}
 	}
 
-	// Create 2 agents under pub1.
-	for _, slug := range []string{"agent-a", "agent-b"} {
-		if _, err := sharedDB.CreateAgent(ctx, store.CreateAgentParams{
-			PublisherID: pub1ID, Slug: slug, Name: slug,
-		}); err != nil {
-			t.Fatalf("CreateAgent(%q): %v", slug, err)
-		}
-	}
-
 	counts, err := sharedDB.GetRegistryCounts(ctx)
 	if err != nil {
 		t.Fatalf("GetRegistryCounts() error = %v", err)
@@ -59,9 +50,6 @@ func TestGetRegistryCounts_ReflectsInserts(t *testing.T) {
 	}
 	if counts.MCPServers != 3 {
 		t.Errorf("MCPServers = %d, want 3", counts.MCPServers)
-	}
-	if counts.Agents != 2 {
-		t.Errorf("Agents = %d, want 2", counts.Agents)
 	}
 }
 

@@ -14,21 +14,9 @@ const (
 	ActionMCPServerUndeprecated AuditAction = "mcp_server.undeprecated"
 	ActionMCPServerVisibility   AuditAction = "mcp_server.visibility_changed"
 
-	// Agent actions
-	ActionAgentCreated          AuditAction = "agent.created"
-	ActionAgentVersionCreated   AuditAction = "agent_version.created"
-	ActionAgentVersionPublished AuditAction = "agent_version.published"
-	ActionAgentDeprecated       AuditAction = "agent.deprecated"
-	ActionAgentUndeprecated     AuditAction = "agent.undeprecated"
-	ActionAgentVisibility       AuditAction = "agent.visibility_changed"
-
 	// MCP server update/delete actions
 	ActionMCPServerUpdated AuditAction = "mcp_server.updated"
 	ActionMCPServerDeleted AuditAction = "mcp_server.deleted"
-
-	// Agent update/delete actions
-	ActionAgentUpdated AuditAction = "agent.updated"
-	ActionAgentDeleted AuditAction = "agent.deleted"
 
 	// Publisher actions
 	ActionPublisherCreated AuditAction = "publisher.created"
@@ -49,14 +37,6 @@ const (
 	ActionMCPDeletionApproved  AuditAction = "mcp_server.deletion_approved"
 	ActionMCPDeletionRejected  AuditAction = "mcp_server.deletion_rejected"
 
-	ActionAgentVersionSubmitted  AuditAction = "agent_version.submitted"
-	ActionAgentVersionWithdrawn  AuditAction = "agent_version.withdrawn"
-	ActionAgentVersionApproved   AuditAction = "agent_version.approved"
-	ActionAgentVersionRejected   AuditAction = "agent_version.rejected"
-	ActionAgentDeletionRequested AuditAction = "agent.deletion_requested"
-	ActionAgentDeletionApproved  AuditAction = "agent.deletion_approved"
-	ActionAgentDeletionRejected  AuditAction = "agent.deletion_rejected"
-
 	// Entry-change workflow actions. An Editor's visibility / deprecate /
 	// metadata-edit request is now queued instead of applied immediately; a
 	// Reviewer approves or rejects it. The concrete action and payload live in
@@ -67,11 +47,6 @@ const (
 	ActionMCPChangeApproved  AuditAction = "mcp_server.change_approved"
 	ActionMCPChangeRejected  AuditAction = "mcp_server.change_rejected"
 	ActionMCPChangeWithdrawn AuditAction = "mcp_server.change_withdrawn"
-
-	ActionAgentChangeRequested AuditAction = "agent.change_requested"
-	ActionAgentChangeApproved  AuditAction = "agent.change_approved"
-	ActionAgentChangeRejected  AuditAction = "agent.change_rejected"
-	ActionAgentChangeWithdrawn AuditAction = "agent.change_withdrawn"
 
 	// RBAC actions. The security-sensitive mutations capture the
 	// target principal / grant in the event metadata so "who granted whom what,
@@ -94,7 +69,7 @@ type AuditEvent struct {
 	ActorSubject string // Keycloak subject UUID
 	ActorEmail   string // human-readable identity
 	Action       AuditAction
-	ResourceType string // "mcp_server" | "agent" | "publisher"
+	ResourceType string // "mcp_server" | "publisher"
 	ResourceID   string // ULID of the mutated resource
 	ResourceNS   string // publisher slug
 	ResourceSlug string // resource slug

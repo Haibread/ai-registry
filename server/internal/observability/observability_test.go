@@ -211,9 +211,6 @@ func TestInitMetrics_ReturnsAllInstruments(t *testing.T) {
 	if m.MCPServersTotal == nil {
 		t.Error("MCPServersTotal is nil")
 	}
-	if m.AgentsTotal == nil {
-		t.Error("AgentsTotal is nil")
-	}
 	if m.AuthFailures == nil {
 		t.Error("AuthFailures is nil")
 	}

@@ -4,9 +4,8 @@ Guidance for Claude Code when working in this repository.
 
 ## Project
 
-AI Registry — a centralized catalog for AI ecosystem artifacts (MCP servers,
-A2A agents), exposed via a versioned HTTP API with two SPA
-clients (read-only user UI, authenticated admin UI).
+AI Registry — a centralized catalog for MCP servers, exposed via a versioned
+HTTP API with two SPA clients (read-only user UI, authenticated admin UI).
 
 ## Tech stack
 
@@ -33,7 +32,7 @@ clients (read-only user UI, authenticated admin UI).
 
 ## Repository layout
 
-- `server/` — Go service. `internal/{http,agents,auth,bootstrap,config,domain,store,observability,problem}`,
+- `server/` — Go service. `internal/{http,auth,bootstrap,config,domain,store,observability,problem}`,
   `api/` (embedded OpenAPI spec), `migrations/`, `cmd/`.
 - `web/` — the SPA (pages in `src/pages/`).
 - `deploy/` — ops (compose files, Helm, example configs).
@@ -97,4 +96,3 @@ from env/secrets, not a committed file.
 ## References
 
 - MCP: https://modelcontextprotocol.io/
-- A2A / Agent Card: https://a2a-protocol.org/

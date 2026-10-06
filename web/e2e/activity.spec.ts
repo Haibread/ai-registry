@@ -123,10 +123,10 @@ test.describe('Activity feed + admin audit', () => {
       timeout: 15_000,
     })
 
-    // Open the resource-type Select and pick "Agents" — our seeded MCP rows
-    // should disappear from view.
+    // Open the resource-type Select and pick "Publishers" — our seeded MCP
+    // rows should disappear from view.
     await page.getByLabel('Resource type').click()
-    await page.getByRole('option', { name: /agents/i }).click()
+    await page.getByRole('option', { name: /publishers/i }).click()
     // Wait for the filtered refetch: the seeded MCP slug must not appear.
     await expect(
       page.getByRole('link', {

@@ -21,7 +21,7 @@ func NewAuditHandlers(db *store.DB) *AuditHandlers {
 //
 // Query params:
 //
-//	resource_type — filter by resource type ("mcp_server", "agent", "publisher")
+//	resource_type — filter by resource type ("mcp_server", "publisher")
 //	resource_id   — filter by resource ULID
 //	actor         — filter by Keycloak subject UUID
 //	limit         — page size (1-100, default 50)
