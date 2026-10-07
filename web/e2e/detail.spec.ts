@@ -166,7 +166,9 @@ test.describe('Public detail pages', () => {
   test('publisher Markdown replaces the generated Usage tab, then resets', async ({ page }) => {
     await page.goto(`/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     await page.getByRole('button', { name: 'Customize' }).click()
-    await page.getByRole('textbox', { name: 'Usage Markdown' }).fill('## Before you start\n\nRequires v{{version}}.')
+    await page
+      .getByRole('textbox', { name: 'Usage Markdown' })
+      .fill('## Before you start\n\nRequires v{{version}}.\n\n- Bring a token\n- Upload over HTTP')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByText('Custom', { exact: true })).toBeVisible()
 
@@ -174,6 +176,13 @@ test.describe('Public detail pages', () => {
     await expect(page.getByRole('heading', { name: 'Before you start' })).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText('Requires v1.0.0.')).toBeVisible()
     await expect(page.getByText('Generated configuration')).toBeVisible()
+
+    const fontSize = (el: Element) => parseFloat(getComputedStyle(el).fontSize)
+    const headingSize = await page.getByRole('heading', { name: 'Before you start' }).evaluate(fontSize)
+    const bodySize = await page.getByText('Requires v1.0.0.').evaluate(fontSize)
+    expect(headingSize).toBeGreaterThan(bodySize)
+    const list = page.getByRole('list').filter({ hasText: 'Bring a token' })
+    await expect(list).toHaveCSS('list-style-type', 'disc')
 
     await page.goto(`/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     await page.getByRole('button', { name: 'Reset to generated' }).click()
