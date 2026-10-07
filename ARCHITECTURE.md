@@ -346,7 +346,11 @@ description) instead of being frozen into each immutable version; to keep it
 from going stale at the next release, it holds `{{version}}`-style placeholders
 that clients fill from the latest version when rendering, so the API returns
 the template as written. An edit payload without the field leaves it
-untouched on approval.
+untouched on approval. The SPA renders ` ```mermaid ` blocks in it as diagrams:
+mermaid is a separate chunk loaded only when a block is present, and runs at
+`securityLevel: 'strict'` with HTML labels off and those settings locked
+against in-diagram directives, because the Markdown is publisher-written; a
+block that fails to parse shows as plain source.
 
 **UI choices.** No bundled webfont (system stacks keep first paint fast); plain
 `FormData` parsing rather than a form library, because the admin forms are

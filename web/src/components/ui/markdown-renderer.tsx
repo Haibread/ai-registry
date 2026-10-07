@@ -2,12 +2,33 @@
  * MarkdownRenderer — renders Markdown content with GitHub-flavored support.
  *
  * Uses react-markdown + remark-gfm for tables, strikethrough, task lists, etc.
- * Styled with Tailwind prose classes.
+ * ```mermaid fenced blocks render as diagrams. Styled with Tailwind prose classes.
  */
 
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { MermaidDiagram } from '@/components/ui/mermaid-diagram'
 import { cn } from '@/lib/utils'
+
+type HastElement = NonNullable<ExtraProps['node']>
+
+function mermaidSource(pre: HastElement | undefined): string | null {
+  const code = pre?.children[0]
+  if (code?.type !== 'element' || code.tagName !== 'code') return null
+  const classes = code.properties.className
+  if (!Array.isArray(classes) || !classes.includes('language-mermaid')) return null
+  return code.children
+    .map((child) => (child.type === 'text' ? child.value : ''))
+    .join('')
+    .trimEnd()
+}
+
+const components: Components = {
+  pre({ node, ...props }) {
+    const source = mermaidSource(node)
+    return source === null ? <pre {...props} /> : <MermaidDiagram source={source} />
+  },
+}
 
 interface MarkdownRendererProps {
   content: string
@@ -31,7 +52,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
         className,
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{content}</ReactMarkdown>
     </div>
   )
 }
