@@ -253,14 +253,14 @@ export function UsageEditor({ server, canEdit, isServerAdmin, changePending, onS
             />
           )}
           {view !== 'write' && (
-            <div className={cn('min-h-72 p-4', view === 'split' && 'border-t lg:border-t-0 lg:border-l')}>
+            <div className={cn('min-h-72 min-w-0 p-4', view === 'split' && 'border-t lg:border-t-0 lg:border-l')}>
               {preview}
             </div>
           )}
         </div>
 
         <div className="flex flex-wrap justify-between gap-2 border-t px-3 py-1.5 text-xs text-muted-foreground">
-          <span>Markdown (GitHub flavored) · raw HTML is not rendered</span>
+          <span>Markdown (GitHub flavored) · ```mermaid blocks render as diagrams · raw HTML is not rendered</span>
           <span className={cn(tooLong && 'font-medium text-destructive')}>
             {draft.length.toLocaleString()} / {MAX_USAGE_MARKDOWN_LENGTH.toLocaleString()} characters
           </span>

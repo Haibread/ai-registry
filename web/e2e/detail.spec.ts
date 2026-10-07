@@ -168,7 +168,10 @@ test.describe('Public detail pages', () => {
     await page.getByRole('button', { name: 'Customize' }).click()
     await page
       .getByRole('textbox', { name: 'Usage Markdown' })
-      .fill('## Before you start\n\nRequires v{{version}}.\n\n- Bring a token\n- Upload over HTTP')
+      .fill(
+        '## Before you start\n\nRequires v{{version}}.\n\n- Bring a token\n- Upload over HTTP\n\n' +
+          '```mermaid\ngraph LR\n  Client --> Registry\n```',
+      )
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByText('Custom', { exact: true })).toBeVisible()
 
@@ -183,6 +186,11 @@ test.describe('Public detail pages', () => {
     expect(headingSize).toBeGreaterThan(bodySize)
     const list = page.getByRole('list').filter({ hasText: 'Bring a token' })
     await expect(list).toHaveCSS('list-style-type', 'disc')
+
+    const diagram = page.locator('[data-slot="mermaid-diagram"] svg')
+    await expect(diagram).toBeVisible({ timeout: 10_000 })
+    await expect(diagram).toContainText('Registry')
+    await expect(page.locator('code.language-mermaid')).toHaveCount(0)
 
     await page.goto(`/admin/mcp/${PUBLISHER_SLUG}/${MCP_SLUG}`)
     await page.getByRole('button', { name: 'Reset to generated' }).click()

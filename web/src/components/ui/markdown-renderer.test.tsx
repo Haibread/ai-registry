@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { MarkdownRenderer } from './markdown-renderer'
+
+const mermaid = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  render: vi.fn(),
+}))
+
+vi.mock('mermaid', () => ({ default: mermaid }))
 
 describe('MarkdownRenderer', () => {
   it('renders markdown headings', () => {
@@ -74,5 +81,67 @@ describe('MarkdownRenderer', () => {
     const { container } = render(<MarkdownRenderer content="Hello" className="my-custom" />)
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper.className).toContain('my-custom')
+  })
+
+  describe('mermaid blocks', () => {
+    const diagram = '```mermaid\ngraph TD\n  A-->B\n```'
+
+    beforeEach(() => {
+      mermaid.initialize.mockReset()
+      mermaid.render.mockReset()
+      mermaid.render.mockImplementation(async (id: string) => ({ svg: `<svg id="${id}" style="max-width: 640px;"><g></g></svg>` }))
+      document.documentElement.classList.remove('dark')
+    })
+
+    it('renders the diagram SVG in strict mode', async () => {
+      const { container } = render(<MarkdownRenderer content={diagram} />)
+      await waitFor(() => expect(container.querySelector('[data-slot="mermaid-diagram"] svg')).not.toBeNull())
+      expect(mermaid.render).toHaveBeenCalledWith(expect.stringMatching(/^mermaid-\d+$/), 'graph TD\n  A-->B')
+      expect(mermaid.initialize).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          htmlLabels: false,
+          suppressErrorRendering: true,
+          theme: 'default',
+          secure: expect.arrayContaining(['securityLevel', 'htmlLabels', 'themeCSS']),
+        }),
+      )
+      expect(container.querySelector('pre')).toBeNull()
+      const svg = container.querySelector('svg') as SVGElement
+      expect(svg.style.minWidth).toBe('640px')
+    })
+
+    it('gives every diagram its own id', async () => {
+      const { container } = render(<MarkdownRenderer content={`${diagram}\n\n${diagram}`} />)
+      await waitFor(() => expect(container.querySelectorAll('[data-slot="mermaid-diagram"] svg')).toHaveLength(2))
+      const ids = mermaid.render.mock.calls.map(([id]) => id)
+      expect(new Set(ids).size).toBe(ids.length)
+    })
+
+    it('leaves other code blocks untouched', () => {
+      const { container } = render(<MarkdownRenderer content={'```js\nconst a = 1\n```'} />)
+      const code = container.querySelector('pre > code')
+      expect(code).toHaveClass('language-js')
+      expect(code).toHaveTextContent('const a = 1')
+      expect(mermaid.render).not.toHaveBeenCalled()
+    })
+
+    it('falls back to the source when the diagram is invalid', async () => {
+      mermaid.render.mockRejectedValue(new Error('Parse error'))
+      const { container } = render(<MarkdownRenderer content={'```mermaid\nnot a diagram\n```'} />)
+      expect(await screen.findByText('This Mermaid diagram could not be rendered.')).toBeInTheDocument()
+      expect(container.querySelector('pre > code.language-mermaid')).toHaveTextContent('not a diagram')
+      expect(container.querySelector('svg')).toBeNull()
+    })
+
+    it('re-renders with the dark theme when the app switches to dark mode', async () => {
+      render(<MarkdownRenderer content={diagram} />)
+      await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(1))
+      act(() => document.documentElement.classList.add('dark'))
+      await waitFor(() => expect(mermaid.initialize).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'dark' })))
+      await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(2))
+      document.documentElement.classList.remove('dark')
+    })
   })
 })
