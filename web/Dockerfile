@@ -25,7 +25,7 @@ RUN npm run generate && npm run build \
  && mkdir /app/conf.d
 
 # ── Runtime (nginx) ───────────────────────────────────────────────────────────
-FROM nginxinc/nginx-unprivileged:1.31.6-alpine@sha256:b9241c6e7b8e9a862f129d8d4199ab64b10390949a78bdd5603379b32c844083 AS runner
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e AS runner
 
 # The entrypoint renders /etc/nginx/templates/ into conf.d at startup, so conf.d
 # must be writable by the runtime user. The base image owns it as uid 101 and
