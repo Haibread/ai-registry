@@ -34,7 +34,11 @@ echo "==> render: httpRoute"
 render --set httpRoute.enabled=true --set httpRoute.gatewayRef.name=test-gateway >/dev/null
 
 echo "==> render: cnpg"
-render --set cnpg.enabled=true >/dev/null
+render --set cnpg.enabled=true | grep -q 'imageName: "ghcr.io/cloudnative-pg/postgresql:18"'
+
+echo "==> render: cnpg image override"
+render --set cnpg.enabled=true --set cnpg.imageName=mirror.example.test/pg@sha256:abc \
+  | grep -q 'imageName: "mirror.example.test/pg@sha256:abc"'
 
 echo "==> render: bootstrap sample data"
 render --set api.bootstrap.enabled=true --set api.bootstrap.sampleData=true >/dev/null

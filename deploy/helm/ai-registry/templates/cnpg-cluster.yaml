@@ -36,8 +36,8 @@ spec:
   resources:
     {{- toYaml .Values.cnpg.resources | nindent 4 }}
 
-  # Use the official CNPG image for the specified Postgres major version.
-  imageName: {{ printf "ghcr.io/cloudnative-pg/postgresql:%s" .Values.cnpg.postgresVersion }}
+  # cnpg.imageName wins; otherwise the official CNPG image for postgresVersion.
+  imageName: {{ .Values.cnpg.imageName | default (printf "ghcr.io/cloudnative-pg/postgresql:%s" .Values.cnpg.postgresVersion) | quote }}
 
   # Allow the CNPG operator to connect as superuser (needed for migrations).
   # When enabled and superuserSecret is unset, CNPG auto-generates
