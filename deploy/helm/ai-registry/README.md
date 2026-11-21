@@ -104,9 +104,10 @@ A centralized registry for MCP servers
 | api.startupProbe.initialDelaySeconds | int | `5` | Delay before the first startup probe. |
 | api.startupProbe.periodSeconds | int | `5` | Interval between startup probes. |
 | api.trustedProxyCIDR | string | `nil` | CIDR of the trusted reverse proxies, e.g. "10.0.0.0/8". The client IP is the rightmost X-Forwarded-For hop outside this range. |
-| cnpg | object | `{"enableSuperuserAccess":true,"enabled":false,"initdb":{"database":"ai_registry","owner":"ai_registry"},"instances":1,"postgresVersion":"18","postgresql":{"parameters":{"max_connections":"200","shared_buffers":"256MB"}},"resources":{"limits":{"ephemeral-storage":"512Mi","memory":"512Mi"},"requests":{"cpu":"100m","ephemeral-storage":"128Mi","memory":"256Mi"}},"storageSize":"5Gi"}` | Optional CloudNativePG-managed Postgres cluster. |
+| cnpg | object | `{"enableSuperuserAccess":true,"enabled":false,"imageName":"","initdb":{"database":"ai_registry","owner":"ai_registry"},"instances":1,"postgresVersion":"18","postgresql":{"parameters":{"max_connections":"200","shared_buffers":"256MB"}},"resources":{"limits":{"ephemeral-storage":"512Mi","memory":"512Mi"},"requests":{"cpu":"100m","ephemeral-storage":"128Mi","memory":"256Mi"}},"storageSize":"5Gi"}` | Optional CloudNativePG-managed Postgres cluster. |
 | cnpg.enableSuperuserAccess | bool | `true` | Allow the CNPG operator to connect as superuser (needed for migrations). CNPG then auto-creates `<clusterName>-superuser`, which the server references to build DATABASE_URL. |
 | cnpg.enabled | bool | `false` | Provision a CloudNativePG Cluster in the release namespace and wire its superuser secret into the server's DATABASE_URL. |
+| cnpg.imageName | string | `""` | Full Postgres image reference (tag or digest), used as is. Set it to pull from a registry mirror or to pin a digest. Empty uses `ghcr.io/cloudnative-pg/postgresql:<postgresVersion>`. |
 | cnpg.initdb.database | string | `"ai_registry"` | Name of the database created by the initdb bootstrap. |
 | cnpg.initdb.owner | string | `"ai_registry"` | Owner role created by the initdb bootstrap. |
 | cnpg.instances | int | `1` | Number of Postgres instances (1 primary + N replicas). |
