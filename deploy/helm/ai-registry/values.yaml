@@ -609,6 +609,10 @@ cnpg:
   # -- Major version of the CNPG Postgres image (matches the docker-compose
   # stack, postgres:18).
   postgresVersion: "18"
+  # -- Full Postgres image reference (tag or digest), used as is. Set it to pull
+  # from a registry mirror or to pin a digest. Empty uses
+  # `ghcr.io/cloudnative-pg/postgresql:<postgresVersion>`.
+  imageName: ""
 
   initdb:
     # -- Name of the database created by the initdb bootstrap.
