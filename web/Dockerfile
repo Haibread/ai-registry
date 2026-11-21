@@ -31,7 +31,7 @@ FROM nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c
 # even the latest digest carries fixable HIGH/CRITICAL CVEs that fail the Trivy
 # gate. Upgrading at build time picks them up; it needs root, so drop back to
 # the base image's uid 101 straight after.
-USER root
+USER 0
 RUN apk upgrade --no-cache
 USER 101
 
