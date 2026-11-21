@@ -5,7 +5,7 @@
 # Pin the builder to the native BUILDPLATFORM so multi-arch builds cross-compile
 # with the Go toolchain (GOARCH=$TARGETARCH below) instead of running the whole
 # toolchain under QEMU emulation — much faster and avoids emulation flakiness.
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS builder
 
 WORKDIR /src
 
@@ -42,7 +42,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 # The Go binary is fully static (CGO_ENABLED=0) so nothing else is needed.
 # The nonroot variant runs as UID 65532; matches Helm podSecurityContext. USER
 # restates it numerically so runAsNonRoot can verify it without a passwd lookup.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931
 
 # OCI image labels. The publish workflow augments these with per-build
 # labels (revision, created, version) via docker/metadata-action. These
