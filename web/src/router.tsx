@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
+import { RouteTransition } from '@/components/layout/route-transition'
 import { RequireAuth } from '@/auth/RequireAuth'
 import { RequireServerAdmin } from '@/auth/RequireServerAdmin'
 import HomePage from '@/pages/home'
@@ -54,15 +55,18 @@ function AdminLoading() {
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/explore" element={<ExplorePage />} />
-      <Route path="/getting-started" element={<GettingStartedPage />} />
-      <Route path="/changelog" element={<ChangelogPage />} />
-      <Route path="/publishers/:slug" element={<PublisherDetailPage />} />
-      <Route path="/mcp" element={<MCPListPage />} />
-      <Route path="/mcp/:namespace" element={<MCPNamespacePage />} />
-      <Route path="/mcp/:ns/:slug" element={<MCPDetailPage />} />
-      <Route path="/login" element={<LoginPage />} />
+      <Route element={<RouteTransition />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/explore" element={<ExplorePage />} />
+        <Route path="/getting-started" element={<GettingStartedPage />} />
+        <Route path="/changelog" element={<ChangelogPage />} />
+        <Route path="/publishers/:slug" element={<PublisherDetailPage />} />
+        <Route path="/mcp" element={<MCPListPage />} />
+        <Route path="/mcp/:namespace" element={<MCPNamespacePage />} />
+        <Route path="/mcp/:ns/:slug" element={<MCPDetailPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
       <Route
         path="/admin"
         element={
@@ -101,7 +105,6 @@ export function AppRoutes() {
           <Route path="audit" element={<AdminAudit />} />
         </Route>
       </Route>
-      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }
