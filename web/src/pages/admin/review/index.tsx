@@ -24,6 +24,7 @@ import { useAuthClient } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import type { components } from '@/lib/schema'
 import { ProtocolVersionBadges } from '@/components/mcp/protocol-version-badges'
+import { VersionDiff } from '@/components/shared/version-diff'
 
 type Item = components['schemas']['ReviewQueueItem']
 type MCPVersion = components['schemas']['MCPServerVersion']
@@ -152,6 +153,22 @@ function VersionContent({ it }: { it: Item }) {
     staleTime: 30_000,
   })
 
+  // The live version the submission is compared against: the most recently
+  // published one that has not been withdrawn.
+  const { data: published, isLoading: publishedLoading, isError: publishedError } = useQuery({
+    queryKey: ['review-version-published', it.publisher_slug, it.entry_slug],
+    queryFn: async () => {
+      const path = { namespace: it.publisher_slug, slug: it.entry_slug }
+      const r = await api.GET('/api/v1/mcp/servers/{namespace}/{slug}/versions', { params: { path } })
+      if (r.error) throw new Error('Failed to list versions')
+      const live = (r.data?.items ?? []).filter((v) => v.published_at && v.status !== 'deleted')
+      live.sort((a, b) => Date.parse(b.published_at!) - Date.parse(a.published_at!))
+      return live[0] ?? null
+    },
+    enabled: expanded,
+    staleTime: 30_000,
+  })
+
   const Chevron = expanded ? ChevronDown : ChevronRight
   return (
     <div>
@@ -171,7 +188,18 @@ function VersionContent({ it }: { it: Item }) {
           ) : isError || data === undefined ? (
             <p className="text-xs text-destructive">Failed to load the version's content.</p>
           ) : data ? (
-            <MCPVersionSummary v={data} />
+            <div className="space-y-3">
+              <MCPVersionSummary v={data} />
+              {publishedLoading ? (
+                <Skeleton className="h-12 w-full rounded" />
+              ) : publishedError ? (
+                <p className="text-xs text-destructive">Failed to load the published version.</p>
+              ) : published ? (
+                <VersionDiff a={published} b={data} />
+              ) : (
+                <p className="text-xs text-muted-foreground">No published version to compare against.</p>
+              )}
+            </div>
           ) : (
             <p className="text-xs text-muted-foreground">No content found.</p>
           )}

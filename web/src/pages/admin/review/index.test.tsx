@@ -189,6 +189,46 @@ describe('AdminReviewQueue', () => {
     expect(screen.getByText(/npm: @acme\/weather@1\.0\.0 \(stdio\)/)).toBeInTheDocument()
   })
 
+  describe('diff against the published version', () => {
+    const submitted = { version: '1.1.0', runtime: 'http', protocol_versions: ['2025-03-26'], packages: [], tools: [] }
+
+    function mockVersions(list: unknown) {
+      mockGET.mockImplementation((path: string) => {
+        if (path === '/api/v1/review-queue') return Promise.resolve({ data: { items: [{ ...mcpVersionItem, version: '1.1.0' }] } })
+        if (path.endsWith('/versions')) return Promise.resolve(list)
+        return Promise.resolve({ data: submitted })
+      })
+    }
+
+    it('diffs the submission against the latest published version', async () => {
+      mockVersions({
+        data: {
+          items: [
+            { version: '0.9.0', runtime: 'stdio', published_at: '2026-01-01T00:00:00Z', status: 'deprecated' },
+            { version: '1.0.0', runtime: 'stdio', published_at: '2026-03-01T00:00:00Z', status: 'active' },
+            { version: '1.0.1', runtime: 'stdio', status: 'active' },
+          ],
+        },
+      })
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: /show submitted content/i }))
+      expect(await screen.findByText('v1.0.0')).toBeInTheDocument()
+      expect(screen.getAllByText('v1.1.0').length).toBeGreaterThan(0)
+      expect(screen.getByText('stdio')).toBeInTheDocument()
+      expect(mockGET).toHaveBeenCalledWith(
+        '/api/v1/mcp/servers/{namespace}/{slug}/versions',
+        { params: { path: { namespace: 'acme', slug: 'weather' } } },
+      )
+    })
+
+    it('says so when the entry has no published version', async () => {
+      mockVersions({ data: { items: [{ version: '1.1.0', runtime: 'http' }] } })
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: /show submitted content/i }))
+      expect(await screen.findByText(/no published version to compare against/i)).toBeInTheDocument()
+    })
+  })
+
   it('shows a reject form on click and submits with revision + reason', async () => {
     renderPage()
     const rejectButtons = await screen.findAllByRole('button', { name: /^reject$/i })
